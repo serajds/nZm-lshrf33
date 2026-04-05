@@ -6,10 +6,77 @@ import { requireEngineerOrAdmin } from "../middlewares/auth";
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
+
 const AMIRI_FONT = path.join(process.cwd(), "src/fonts/Amiri-Regular.ttf");
+const PAGE_W = 595.28;
+const PAGE_H = 841.89;
+const MARGIN = 45;
+const CONTENT_W = PAGE_W - MARGIN * 2;
+
+// ─────────────────────────────────────────────
+// Color palette
+// ─────────────────────────────────────────────
+const C = {
+  primary:   "#1e3a5f",
+  accent:    "#3b82f6",
+  success:   "#059669",
+  warning:   "#f59e0b",
+  danger:    "#dc2626",
+  light:     "#f1f5f9",
+  border:    "#cbd5e1",
+  textDark:  "#1e293b",
+  textMuted: "#64748b",
+  white:     "#ffffff",
+};
 
 const router: IRouter = Router();
 
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+function formatDate(d: string | Date | null | undefined): string {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("ar-SA-u-nu-latn", { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+function statusLabel(s: string) {
+  return { not_started: "لم يبدأ", in_progress: "قيد التنفيذ", completed: "مكتمل", delayed: "متأخر" }[s] ?? s;
+}
+
+function statusColor(s: string) {
+  return { not_started: C.textMuted, in_progress: C.accent, completed: C.success, delayed: C.danger }[s] ?? C.textMuted;
+}
+
+function reportTypeLabel(t: string) {
+  return t === "weekly" ? "أسبوعي" : "شهري";
+}
+
+function drawProgressBar(doc: InstanceType<typeof PDFDocument>, x: number, y: number, w: number, h: number, pct: number, color: string, bg = "#e2e8f0") {
+  doc.roundedRect(x, y, w, h, h / 2).fill(bg);
+  if (pct > 0) {
+    const filled = Math.max(h, (pct / 100) * w);
+    doc.roundedRect(x, y, filled, h, h / 2).fill(color);
+  }
+}
+
+function drawSectionHeader(doc: InstanceType<typeof PDFDocument>, title: string, y: number) {
+  doc.rect(MARGIN, y, CONTENT_W, 22).fill(C.primary);
+  doc.fillColor(C.white).fontSize(11).text(title, MARGIN + 8, y + 5, { width: CONTENT_W - 16, align: "right" });
+  doc.fillColor(C.textDark);
+  return y + 30;
+}
+
+function ensurePage(doc: InstanceType<typeof PDFDocument>, neededHeight: number): number {
+  if (doc.y + neededHeight > PAGE_H - 60) {
+    doc.addPage();
+    return MARGIN;
+  }
+  return doc.y;
+}
+
+// ─────────────────────────────────────────────
+// Route
+// ─────────────────────────────────────────────
 router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
@@ -28,149 +95,395 @@ router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, as
     .where(eq(activitiesTable.projectId, projectId))
     .orderBy(activitiesTable.sortOrder);
 
-  const hasAmiriFont = fs.existsSync(AMIRI_FONT);
+  const hasFont = fs.existsSync(AMIRI_FONT);
 
-  const doc = new PDFDocument({ 
-    margin: 50, 
+  const doc = new PDFDocument({
+    margin: MARGIN,
     size: "A4",
     info: {
-      Title: `تقارير المشروع - ${project.name}`,
-      Author: "نظام الإشراف الهندسي",
-    }
+      Title: `تقرير المشروع الشامل - ${project.name}`,
+      Author: "نظام الإشراف الهندسي على مشاريع البناء",
+    },
+    bufferPages: true,
   });
 
-  if (hasAmiriFont) {
-    doc.registerFont("Amiri", AMIRI_FONT);
-    doc.font("Amiri");
-  }
+  if (hasFont) { doc.registerFont("Amiri", AMIRI_FONT); doc.font("Amiri"); }
+  const setFont = (size: number, color = C.textDark) => {
+    if (hasFont) doc.font("Amiri");
+    doc.fontSize(size).fillColor(color);
+  };
 
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="project-${projectId}-reports.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''report-${projectId}.pdf`);
   doc.pipe(res);
 
-  doc.fontSize(20).text(`نظام الإشراف الهندسي`, { align: "center" });
-  doc.fontSize(16).text(`تقارير المشروع`, { align: "center" });
-  doc.moveDown(0.5);
+  // ════════════════════════════════════════════
+  // PAGE 1: COVER
+  // ════════════════════════════════════════════
 
-  doc.fontSize(14).text(`${project.name}`, { align: "center" });
-  doc.fontSize(10).text(`الموقع: ${project.location}  |  المقاول: ${project.contractor}`, { align: "center" });
-  doc.moveDown(0.5);
+  // Top header band
+  doc.rect(0, 0, PAGE_W, 90).fill(C.primary);
+  setFont(9, C.white);
+  doc.text("نظام الإشراف الهندسي على مشاريع البناء", MARGIN, 18, { width: CONTENT_W, align: "center" });
+  setFont(18, C.white);
+  doc.text("تقرير المشروع الشامل", MARGIN, 38, { width: CONTENT_W, align: "center" });
+  setFont(9, "#93c5fd");
+  doc.text(`تاريخ الإصدار: ${formatDate(new Date())}`, MARGIN, 70, { width: CONTENT_W, align: "center" });
 
-  const today = new Date().toLocaleDateString("en-SA");
-  doc.fontSize(9).text(`تاريخ الإصدار: ${today}  |  نسبة الإنجاز الكلية: ${project.overallProgress}%`, { align: "center" });
+  let y = 105;
 
-  doc.moveDown();
-  doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
-  doc.moveDown();
+  // Project name box
+  doc.roundedRect(MARGIN, y, CONTENT_W, 40, 6).fill(C.light);
+  setFont(14, C.primary);
+  doc.text(project.name, MARGIN + 10, y + 10, { width: CONTENT_W - 20, align: "center" });
+  y += 52;
 
-  if (activities.length > 0) {
-    doc.fontSize(13).text("ملخص الأنشطة", { underline: true });
-    doc.moveDown(0.3);
+  // Project info grid (2 columns)
+  const infoItems = [
+    ["الجهة المالكة", project.ownerEntity],
+    ["المقاول المنفذ", project.contractor],
+    ["الجهة المشرفة", project.supervisorEntity],
+    ["موقع المشروع", project.location],
+    ["تاريخ البداية", formatDate(project.startDate)],
+    ["التاريخ المتوقع للإنهاء", formatDate(project.expectedEndDate)],
+  ];
 
-    activities.forEach((act, i) => {
-      doc.fontSize(10).text(
-        `${i + 1}. ${act.name}  |  المخطط: ${act.plannedProgress}%  |  الفعلي: ${act.actualProgress}%`,
-        { indent: 10 }
-      );
-    });
-    doc.moveDown();
+  const colW = (CONTENT_W - 8) / 2;
+  doc.rect(MARGIN, y, CONTENT_W, infoItems.length / 2 * 26 + 8).fill(C.white).stroke(C.border);
+
+  infoItems.forEach((item, i) => {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const ix = col === 0 ? MARGIN + colW + 8 : MARGIN + 4;
+    const iy = y + 8 + row * 26;
+
+    if (col === 0 && i > 0) {
+      doc.moveTo(MARGIN + colW + 4, iy - 4).lineTo(MARGIN + CONTENT_W - 4, iy - 4).stroke(C.border);
+    }
+
+    setFont(8, C.textMuted);
+    doc.text(item[0], ix, iy, { width: colW - 8, align: "right" });
+    setFont(9, C.textDark);
+    doc.text(item[1] ?? "—", ix, iy + 10, { width: colW - 8, align: "right" });
+  });
+
+  y += infoItems.length / 2 * 26 + 20;
+
+  // ── Overall Progress ──
+  const overall = project.overallProgress ?? 0;
+  const today = new Date();
+  const start = new Date(project.startDate);
+  const end = new Date(project.expectedEndDate);
+  const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+  const elapsed = Math.max(0, Math.ceil((today.getTime() - start.getTime()) / 86400000));
+  const planned = Math.min(100, Math.round((elapsed / totalDays) * 100));
+  const deviation = overall - planned;
+  const delayDays = deviation < 0 ? Math.round(Math.abs(deviation) / 100 * totalDays) : 0;
+
+  doc.rect(MARGIN, y, CONTENT_W, 90).fill(C.light).stroke(C.border);
+  setFont(10, C.primary);
+  doc.text("ملخص الأداء", MARGIN + 8, y + 8, { width: CONTENT_W - 16, align: "right" });
+
+  // Progress bars
+  const barY1 = y + 26;
+  setFont(8, C.textMuted);
+  doc.text("الإنجاز الفعلي", MARGIN + 8, barY1, { width: 90, align: "right" });
+  drawProgressBar(doc, MARGIN + 105, barY1, CONTENT_W - 185, 12, overall, C.accent);
+  setFont(9, C.textDark);
+  doc.text(`${overall}%`, MARGIN + CONTENT_W - 75, barY1 - 1, { width: 70, align: "right" });
+
+  const barY2 = y + 46;
+  setFont(8, C.textMuted);
+  doc.text("الإنجاز المخطط", MARGIN + 8, barY2, { width: 90, align: "right" });
+  drawProgressBar(doc, MARGIN + 105, barY2, CONTENT_W - 185, 12, planned, "#94a3b8");
+  setFont(9, C.textDark);
+  doc.text(`${planned}%`, MARGIN + CONTENT_W - 75, barY2 - 1, { width: 70, align: "right" });
+
+  // Status indicators
+  const st1x = MARGIN + 8;
+  setFont(8, C.textMuted);
+  doc.text(`الانحراف: `, st1x + 200, y + 68, { continued: true, width: 60 });
+  const devColor = deviation < -10 ? C.danger : deviation < 0 ? C.warning : C.success;
+  setFont(9, devColor);
+  doc.text(`${deviation > 0 ? "+" : ""}${deviation}%`);
+
+  setFont(8, C.textMuted);
+  doc.text(`الأيام المنقضية: `, st1x + 90, y + 68, { continued: true, width: 85 });
+  setFont(9, C.textDark);
+  doc.text(`${elapsed} / ${totalDays} يوم`);
+
+  if (delayDays > 0) {
+    setFont(8, C.textMuted);
+    doc.text(`التأخر التقديري: `, st1x, y + 68, { continued: true, width: 85 });
+    setFont(9, C.danger);
+    doc.text(`${delayDays} يوم`);
   }
 
+  y += 100;
+
+  // Stats row (activities/reports)
+  const statItems = [
+    { label: "إجمالي الأنشطة", value: String(activities.length) },
+    { label: "مكتملة", value: String(activities.filter(a => a.status === "completed").length), color: C.success },
+    { label: "قيد التنفيذ", value: String(activities.filter(a => a.status === "in_progress").length), color: C.accent },
+    { label: "متأخرة", value: String(activities.filter(a => a.status === "delayed").length), color: C.danger },
+    { label: "التقارير", value: String(reports.length) },
+  ];
+  const statW = CONTENT_W / statItems.length;
+  statItems.forEach((st, i) => {
+    const sx = MARGIN + i * statW;
+    doc.rect(sx, y, statW, 45).fill(i % 2 === 0 ? C.white : C.light).stroke(C.border);
+    setFont(16, st.color ?? C.primary);
+    doc.text(st.value, sx + 4, y + 6, { width: statW - 8, align: "center" });
+    setFont(7, C.textMuted);
+    doc.text(st.label, sx + 4, y + 28, { width: statW - 8, align: "center" });
+  });
+  y += 55;
+
+  // ════════════════════════════════════════════
+  // PAGE 2: ACTIVITIES TABLE
+  // ════════════════════════════════════════════
+  if (activities.length > 0) {
+    doc.addPage();
+    if (hasFont) doc.font("Amiri");
+    y = MARGIN;
+    y = drawSectionHeader(doc, "جدول الأنشطة والإنجاز", y);
+
+    // Table header
+    const cols = { name: 200, planned: 55, actual: 55, dev: 45, status: 70, period: 85 };
+    const headerH = 20;
+    doc.rect(MARGIN, y, CONTENT_W, headerH).fill(C.light).stroke(C.border);
+    const heads = [
+      { text: "الفترة الزمنية", x: MARGIN + 4, w: cols.period },
+      { text: "الحالة", x: MARGIN + cols.period + 4, w: cols.status },
+      { text: "الانحراف", x: MARGIN + cols.period + cols.status + 4, w: cols.dev },
+      { text: "فعلي%", x: MARGIN + cols.period + cols.status + cols.dev + 4, w: cols.actual },
+      { text: "مخطط%", x: MARGIN + cols.period + cols.status + cols.dev + cols.actual + 4, w: cols.planned },
+      { text: "اسم النشاط", x: MARGIN + cols.period + cols.status + cols.dev + cols.actual + cols.planned + 4, w: cols.name },
+    ];
+    heads.forEach(h => {
+      setFont(8, C.textMuted);
+      doc.text(h.text, h.x, y + 5, { width: h.w, align: "right" });
+    });
+    y += headerH;
+
+    activities.forEach((a, i) => {
+      const rowH = 32;
+      y = ensurePage(doc, rowH + 10);
+      const bg = i % 2 === 0 ? C.white : "#f8fafc";
+      doc.rect(MARGIN, y, CONTENT_W, rowH).fill(bg).stroke(C.border);
+
+      // Activity name
+      setFont(9, C.textDark);
+      const nameX = MARGIN + cols.period + cols.status + cols.dev + cols.actual + cols.planned + 4;
+      doc.text(a.name, nameX, y + 4, { width: cols.name - 8, align: "right" });
+
+      // Planned
+      const plX = MARGIN + cols.period + cols.status + cols.dev + cols.actual + 4;
+      setFont(9, C.textMuted);
+      doc.text(`${a.plannedProgress}%`, plX, y + 10, { width: cols.planned - 8, align: "center" });
+
+      // Actual with mini bar
+      const acX = MARGIN + cols.period + cols.status + cols.dev + 4;
+      setFont(9, C.textDark);
+      doc.text(`${a.actualProgress}%`, acX, y + 4, { width: cols.actual - 8, align: "center" });
+      drawProgressBar(doc, acX + 2, y + 18, cols.actual - 12, 5, a.actualProgress, statusColor(a.status));
+
+      // Deviation
+      const devN = a.actualProgress - a.plannedProgress;
+      const dvX = MARGIN + cols.period + cols.status + 4;
+      setFont(8, devN < 0 ? C.danger : devN > 0 ? C.success : C.textMuted);
+      doc.text(`${devN > 0 ? "+" : ""}${devN}%`, dvX, y + 10, { width: cols.dev - 8, align: "center" });
+
+      // Status
+      const stX = MARGIN + cols.period + 4;
+      setFont(8, statusColor(a.status));
+      doc.text(statusLabel(a.status), stX, y + 10, { width: cols.status - 8, align: "center" });
+
+      // Period
+      setFont(7, C.textMuted);
+      doc.text(formatDate(a.plannedStartDate), MARGIN + 4, y + 5, { width: cols.period - 8, align: "right" });
+      doc.text(`→ ${formatDate(a.plannedEndDate)}`, MARGIN + 4, y + 17, { width: cols.period - 8, align: "right" });
+
+      y += rowH;
+    });
+
+    // Legend
+    y = ensurePage(doc, 30);
+    y += 8;
+    setFont(8, C.textMuted);
+    doc.text("الأنشطة المكتملة بلون أخضر — المتأخرة بلون أحمر — قيد التنفيذ بلون أزرق", MARGIN, y, { width: CONTENT_W, align: "right" });
+  }
+
+  // ════════════════════════════════════════════
+  // PAGES 3+: REPORTS
+  // ════════════════════════════════════════════
   if (reports.length === 0) {
-    doc.fontSize(11).text("لا توجد تقارير مسجلة لهذا المشروع.", { align: "center" });
+    doc.addPage();
+    if (hasFont) doc.font("Amiri");
+    setFont(12, C.textMuted);
+    doc.text("لا توجد تقارير دورية مسجلة لهذا المشروع.", MARGIN, PAGE_H / 2, { width: CONTENT_W, align: "center" });
   } else {
-    doc.fontSize(13).text(`التقارير الدورية (${reports.length})`, { underline: true });
-    doc.moveDown(0.5);
-
     reports.forEach((report, idx) => {
-      if (doc.y > doc.page.height - 150) {
-        doc.addPage();
-        if (hasAmiriFont) doc.font("Amiri");
+      doc.addPage();
+      if (hasFont) doc.font("Amiri");
+      y = MARGIN;
+
+      // Report header
+      const typeColor = report.type === "monthly" ? C.primary : C.accent;
+      doc.rect(MARGIN, y, CONTENT_W, 50).fill(typeColor);
+      setFont(9, C.white);
+      doc.text(`تقرير ${reportTypeLabel(report.type)}  —  ${idx + 1} من ${reports.length}`, MARGIN + 8, y + 8, { width: CONTENT_W - 16, align: "right" });
+      setFont(12, C.white);
+      doc.text(`الفترة: ${formatDate(report.periodStart)} — ${formatDate(report.periodEnd)}`, MARGIN + 8, y + 24, { width: CONTENT_W - 16, align: "right" });
+      setFont(8, "rgba(255,255,255,0.8)");
+      doc.text(`تاريخ التقرير: ${formatDate(report.reportDate)}`, MARGIN + 8, y + 40, { width: CONTENT_W - 16, align: "right" });
+      y += 58;
+
+      // Progress indicator for this report
+      doc.roundedRect(MARGIN, y, CONTENT_W, 32, 4).fill(C.light).stroke(C.border);
+      setFont(8, C.textMuted);
+      doc.text("نسبة الإنجاز المُبلَّغ عنها في هذه الفترة", MARGIN + 8, y + 6, { width: CONTENT_W - 100, align: "right" });
+      drawProgressBar(doc, MARGIN + 8, y + 20, CONTENT_W - 100, 8, report.progressPercentage ?? 0, typeColor);
+      setFont(14, typeColor);
+      doc.text(`${report.progressPercentage ?? 0}%`, MARGIN + CONTENT_W - 88, y + 8, { width: 80, align: "center" });
+      y += 42;
+
+      // Work description
+      if (report.workDescription) {
+        y = ensurePage(doc, 40);
+        y = drawSectionHeader(doc, "الأعمال المنجزة خلال الفترة", y);
+        doc.roundedRect(MARGIN, y, CONTENT_W, 14).fill(C.light);
+        setFont(9, C.textDark);
+        const descLines = report.workDescription.split("\n");
+        descLines.forEach(line => {
+          y = ensurePage(doc, 16);
+          if (line.trim().startsWith("-") || line.trim().startsWith("•")) {
+            doc.circle(MARGIN + CONTENT_W - 10, y + 5, 2).fill(C.accent);
+            doc.text(line.replace(/^[-•]\s*/, ""), MARGIN + 8, y + 1, { width: CONTENT_W - 20, align: "right" });
+          } else if (line.trim()) {
+            doc.text(line.trim(), MARGIN + 8, y + 1, { width: CONTENT_W - 16, align: "right" });
+          }
+          y += 14;
+        });
+        y += 4;
       }
 
-      const typeLabel = report.type === "weekly" ? "أسبوعي" : "شهري";
-      const dateStr = new Date(report.reportDate).toLocaleDateString("en-SA");
-
-      doc.fontSize(12).text(`تقرير ${typeLabel} - ${dateStr}`, { underline: true });
-      doc.fontSize(10).text(`نسبة الإنجاز للفترة: ${report.progressPercentage}%`);
-      doc.moveDown(0.2);
-
-      doc.fontSize(10).text("وصف الأعمال المنجزة:", { continued: false });
-      doc.fontSize(9).text(report.workDescription || "-", { indent: 15 });
-      doc.moveDown(0.2);
-
+      // Technical notes
       if (report.technicalNotes) {
-        doc.fontSize(10).text("ملاحظات فنية:", { continued: false });
-        doc.fontSize(9).text(report.technicalNotes, { indent: 15 });
-        doc.moveDown(0.2);
+        y = ensurePage(doc, 40);
+        doc.rect(MARGIN, y, CONTENT_W, 20).fill(C.warning + "22").stroke(C.warning + "55");
+        setFont(9, "#92400e");
+        doc.text("ملاحظات فنية", MARGIN + 8, y + 5, { width: CONTENT_W - 16, align: "right" });
+        y += 22;
+        setFont(9, C.textDark);
+        const noteLines = report.technicalNotes.split("\n");
+        noteLines.forEach(line => {
+          if (!line.trim()) return;
+          y = ensurePage(doc, 16);
+          doc.text(line.trim(), MARGIN + 8, y, { width: CONTENT_W - 16, align: "right" });
+          y += 14;
+        });
+        y += 4;
       }
 
+      // Recommendations
       if (report.recommendations) {
-        doc.fontSize(10).text("التوصيات:", { continued: false });
-        doc.fontSize(9).text(report.recommendations, { indent: 15 });
-        doc.moveDown(0.2);
+        y = ensurePage(doc, 40);
+        doc.rect(MARGIN, y, CONTENT_W, 20).fill(C.success + "22").stroke(C.success + "55");
+        setFont(9, "#065f46");
+        doc.text("التوصيات", MARGIN + 8, y + 5, { width: CONTENT_W - 16, align: "right" });
+        y += 22;
+        setFont(9, C.textDark);
+        const recLines = report.recommendations.split("\n");
+        let recNum = 1;
+        recLines.forEach(line => {
+          if (!line.trim()) return;
+          y = ensurePage(doc, 16);
+          const isNumbered = /^\d+\./.test(line.trim());
+          if (!isNumbered && (line.trim().startsWith("-") || line.trim().startsWith("•"))) {
+            doc.text(`${recNum++}. ${line.replace(/^[-•]\s*/, "")}`, MARGIN + 8, y, { width: CONTENT_W - 16, align: "right" });
+          } else {
+            doc.text(line.trim(), MARGIN + 8, y, { width: CONTENT_W - 16, align: "right" });
+          }
+          y += 14;
+        });
+        y += 4;
       }
 
+      // Images (if any)
       if (report.imageUrls && report.imageUrls.length > 0) {
         const uploadsDir = path.join(process.cwd(), "uploads");
-        const validImages: string[] = [];
-
+        const validImgs: string[] = [];
         for (const imgUrl of report.imageUrls) {
           try {
             const filename = path.basename(imgUrl.split("?")[0]);
             const imgPath = path.join(uploadsDir, filename);
-            if (fs.existsSync(imgPath)) {
-              validImages.push(imgPath);
-            }
-          } catch {
-            // skip invalid image path
-          }
+            if (fs.existsSync(imgPath)) validImgs.push(imgPath);
+          } catch { /* skip */ }
         }
-
-        if (validImages.length > 0) {
-          doc.moveDown(0.3);
-          doc.fontSize(10).text("صور الموقع:", { continued: false });
-          doc.moveDown(0.2);
-
-          const imgSize = 150;
-          const gapX = 15;
-          const leftMargin = 50;
-          const imgsPerRow = 3;
-
-          for (let imgIdx = 0; imgIdx < validImages.length; imgIdx++) {
-            const col = imgIdx % imgsPerRow;
-            const x = leftMargin + col * (imgSize + gapX);
-            const y = doc.y;
-
-            if (y + imgSize > doc.page.height - 80) {
-              doc.addPage();
-            }
-
-            const currentY = doc.y;
+        if (validImgs.length > 0) {
+          y = ensurePage(doc, 40);
+          y = drawSectionHeader(doc, `صور الموقع (${validImgs.length})`, y);
+          const imgW = (CONTENT_W - 10) / 2;
+          const imgH = imgW * 0.65;
+          validImgs.forEach((imgPath, ii) => {
+            const col = ii % 2;
+            const ix = col === 0 ? MARGIN + imgW + 10 : MARGIN;
+            if (col === 0) y = ensurePage(doc, imgH + 10);
             try {
-              doc.image(validImages[imgIdx], x, currentY, {
-                fit: [imgSize, imgSize],
-              });
-            } catch {
-              // skip image that can't be embedded
-            }
-
-            if (col === imgsPerRow - 1 || imgIdx === validImages.length - 1) {
-              doc.y = currentY + imgSize + 8;
-              doc.x = leftMargin;
-            }
-          }
-
-          doc.moveDown(0.3);
+              doc.image(imgPath, ix, y, { fit: [imgW, imgH], align: "center" });
+            } catch { /* skip */ }
+            if (col === 1 || ii === validImgs.length - 1) y += imgH + 8;
+          });
         }
-      }
-
-      if (idx < reports.length - 1) {
-        doc.moveDown(0.5);
-        doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke("#cccccc");
-        doc.moveDown(0.5);
       }
     });
+  }
+
+  // ════════════════════════════════════════════
+  // LAST PAGE: SIGNATURES
+  // ════════════════════════════════════════════
+  doc.addPage();
+  if (hasFont) doc.font("Amiri");
+  y = MARGIN;
+  y = drawSectionHeader(doc, "التوقيعات والاعتماد", y);
+
+  const sigBoxW = (CONTENT_W - 20) / 3;
+  const sigBoxH = 100;
+  const sigBoxY = y + 20;
+  const sigs = [
+    { title: "المقاول المنفذ", name: project.contractor },
+    { title: "الجهة المشرفة", name: project.supervisorEntity },
+    { title: "الجهة المالكة", name: project.ownerEntity },
+  ];
+  sigs.forEach((sig, i) => {
+    const sx = MARGIN + i * (sigBoxW + 10);
+    doc.roundedRect(sx, sigBoxY, sigBoxW, sigBoxH, 6).stroke(C.border);
+    setFont(9, C.primary);
+    doc.text(sig.title, sx + 6, sigBoxY + 10, { width: sigBoxW - 12, align: "center" });
+    setFont(8, C.textMuted);
+    doc.text(sig.name, sx + 6, sigBoxY + 28, { width: sigBoxW - 12, align: "center" });
+    doc.moveTo(sx + 12, sigBoxY + 78).lineTo(sx + sigBoxW - 12, sigBoxY + 78).stroke(C.border);
+    setFont(7, C.textMuted);
+    doc.text("التوقيع والختم", sx + 6, sigBoxY + 82, { width: sigBoxW - 12, align: "center" });
+  });
+
+  y = sigBoxY + sigBoxH + 30;
+  doc.roundedRect(MARGIN, y, CONTENT_W, 50, 4).fill(C.light).stroke(C.border);
+  setFont(8, C.textMuted);
+  doc.text("صدر هذا التقرير من نظام الإشراف الهندسي على مشاريع البناء", MARGIN + 8, y + 10, { width: CONTENT_W - 16, align: "center" });
+  setFont(9, C.textDark);
+  doc.text(`تاريخ الإصدار: ${formatDate(new Date())}  |  المشروع: ${project.name}`, MARGIN + 8, y + 27, { width: CONTENT_W - 16, align: "center" });
+
+  // Page numbers
+  const pageCount = (doc as { _pageBuffer?: unknown[] })._pageBuffer?.length ?? 1;
+  for (let i = 0; i < pageCount; i++) {
+    doc.switchToPage(i);
+    if (hasFont) doc.font("Amiri");
+    doc.rect(0, PAGE_H - 28, PAGE_W, 28).fill(C.primary);
+    doc.fillColor(C.white).fontSize(8)
+      .text(`صفحة ${i + 1} من ${pageCount}  |  نظام الإشراف الهندسي`, MARGIN, PAGE_H - 18, { width: CONTENT_W, align: "center" });
   }
 
   doc.end();
