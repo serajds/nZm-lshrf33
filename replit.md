@@ -25,3 +25,48 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## Application: نظام الإشراف الهندسي على مشاريع البناء
+
+A full-stack Arabic RTL engineering supervision system for construction projects.
+
+### Artifacts
+- **API Server** (`artifacts/api-server`) — Express 5 REST API, port from `$PORT` env (prod: 8080)
+- **Web App** (`artifacts/construction-supervision`) — React + Vite, RTL Arabic frontend
+
+### Features
+- Full Arabic RTL layout with Noto Kufi Arabic font
+- JWT authentication (stored in `localStorage` as `auth_token`)
+- Dashboard with project statistics and charts (Recharts)
+- Projects management with CRUD operations
+- Project detail tabs: Summary, Activities (Gantt), Reports, Files, Deviation Analysis
+- Owner portal (`/owner/:token`) — public password-protected read-only view
+- User management with roles: admin, engineer, owner
+- File uploads via multer (served at `/api/uploads/`)
+
+### Default Credentials (Seed Data)
+- **Admin**: username=`admin`, password=`admin123`
+- **Engineer**: username=`engineer1`, password=`eng123`
+- 3 Arabic sample projects seeded automatically
+
+### Auth Flow
+- Login → JWT token stored in `localStorage` as `auth_token`
+- `setAuthTokenGetter` configured in `main.tsx` to inject token as Bearer header
+- Protected routes redirect to `/login` when unauthenticated
+- Owner portal uses a separate token in the URL + password verification
+
+### API Routes
+- `POST /api/auth/login` — login
+- `GET /api/auth/me` — current user (requires Bearer token)
+- `GET/POST /api/projects` — projects list/create
+- `GET/PUT/DELETE /api/projects/:id` — project detail
+- `GET /api/projects/:id/summary` — computed summary with deviations
+- `GET/POST /api/projects/:id/activities` — Gantt activities
+- `GET/POST /api/projects/:id/reports` — periodic reports
+- `GET/POST /api/projects/:id/files` — file upload/list
+- `POST /api/projects/:id/generate-owner-link` — create owner access token
+- `POST /api/owner/:token/verify` — verify owner password
+- `GET /api/owner/:token/project` — get project for owner
+- `GET /api/dashboard/summary` — overall stats
+- `GET /api/dashboard/deviations` — deviation analysis
+- `GET/POST/PUT/DELETE /api/users` — user management (admin only)

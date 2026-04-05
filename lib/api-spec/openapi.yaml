@@ -3,20 +3,36 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: API specification for Engineering Supervision System
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: projects
+    description: Project management
+  - name: activities
+    description: Schedule activities
+  - name: reports
+    description: Periodic reports
+  - name: files
+    description: File management
+  - name: users
+    description: User management
+  - name: owner-portal
+    description: Owner read-only portal
+  - name: dashboard
+    description: Dashboard analytics
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +40,665 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # Auth
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current logged-in user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Projects
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List all projects
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectBody"
+      responses:
+        "201":
+          description: Created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{id}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get a project by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectBody"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+    delete:
+      operationId: deleteProject
+      tags: [projects]
+      summary: Delete a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # Activities (Schedule items)
+  /projects/{projectId}/activities:
+    get:
+      operationId: listActivities
+      tags: [activities]
+      summary: List activities for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+    post:
+      operationId: createActivity
+      tags: [activities]
+      summary: Create an activity
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateActivityBody"
+      responses:
+        "201":
+          description: Created activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+
+  /projects/{projectId}/activities/{id}:
+    patch:
+      operationId: updateActivity
+      tags: [activities]
+      summary: Update an activity
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateActivityBody"
+      responses:
+        "200":
+          description: Updated activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+    delete:
+      operationId: deleteActivity
+      tags: [activities]
+      summary: Delete an activity
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # Reports
+  /projects/{projectId}/reports:
+    get:
+      operationId: listReports
+      tags: [reports]
+      summary: List reports for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: type
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Report"
+    post:
+      operationId: createReport
+      tags: [reports]
+      summary: Create a report
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReportBody"
+      responses:
+        "201":
+          description: Created report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+
+  /projects/{projectId}/reports/{id}:
+    get:
+      operationId: getReport
+      tags: [reports]
+      summary: Get a report by ID
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateReport
+      tags: [reports]
+      summary: Update a report
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReportBody"
+      responses:
+        "200":
+          description: Updated report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+    delete:
+      operationId: deleteReport
+      tags: [reports]
+      summary: Delete a report
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # Files
+  /projects/{projectId}/files:
+    get:
+      operationId: listFiles
+      tags: [files]
+      summary: List files for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: category
+          in: query
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectFile"
+    post:
+      operationId: uploadFile
+      tags: [files]
+      summary: Upload a file for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                category:
+                  type: string
+                description:
+                  type: ["string", "null"]
+              required:
+                - file
+                - category
+      responses:
+        "201":
+          description: Uploaded file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectFile"
+
+  /projects/{projectId}/files/{id}:
+    delete:
+      operationId: deleteFile
+      tags: [files]
+      summary: Delete a file
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # Users
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserBody"
+      responses:
+        "201":
+          description: Created user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{id}:
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # Owner portal
+  /owner/access/{token}:
+    get:
+      operationId: getOwnerProjectByToken
+      tags: [owner-portal]
+      summary: Get project info for owner portal
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project summary for owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnerProjectView"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /owner/verify:
+    post:
+      operationId: verifyOwnerAccess
+      tags: [owner-portal]
+      summary: Verify owner password for a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OwnerVerifyBody"
+      responses:
+        "200":
+          description: Access granted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnerProjectView"
+        "401":
+          description: Invalid password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Dashboard
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary stats
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /projects/{projectId}/summary:
+    get:
+      operationId: getProjectSummary
+      tags: [dashboard]
+      summary: Get project progress summary
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Project summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSummary"
+
+  /projects/{projectId}/deviation:
+    get:
+      operationId: getProjectDeviation
+      tags: [dashboard]
+      summary: Get project deviation analysis
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deviation analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviationAnalysis"
+
+  /projects/{projectId}/generate-owner-link:
+    post:
+      operationId: generateOwnerLink
+      tags: [projects]
+      summary: Generate owner access link
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateOwnerLinkBody"
+      responses:
+        "200":
+          description: Generated owner link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnerLinkResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +709,642 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    # Auth
+    LoginBody:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+      required:
+        - user
+        - token
+
+    # User
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, engineer, owner]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - username
+        - fullName
+        - email
+        - role
+        - createdAt
+
+    CreateUserBody:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, engineer, owner]
+      required:
+        - username
+        - password
+        - fullName
+        - email
+        - role
+
+    UpdateUserBody:
+      type: object
+      properties:
+        fullName:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        role:
+          type: ["string", "null"]
+        password:
+          type: ["string", "null"]
+
+    # Projects
+    Project:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        location:
+          type: string
+        ownerEntity:
+          type: string
+        supervisorEntity:
+          type: string
+        contractor:
+          type: string
+        startDate:
+          type: string
+          format: date
+        expectedEndDate:
+          type: string
+          format: date
+        actualEndDate:
+          type: ["string", "null"]
+          format: date
+        status:
+          type: string
+          enum: [active, completed, delayed, suspended]
+        overallProgress:
+          type: number
+        ownerAccessToken:
+          type: ["string", "null"]
+        ownerAccessPassword:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - location
+        - ownerEntity
+        - supervisorEntity
+        - contractor
+        - startDate
+        - expectedEndDate
+        - status
+        - overallProgress
+        - createdAt
+        - updatedAt
+
+    CreateProjectBody:
+      type: object
+      properties:
+        name:
+          type: string
+        location:
+          type: string
+        ownerEntity:
+          type: string
+        supervisorEntity:
+          type: string
+        contractor:
+          type: string
+        startDate:
+          type: string
+          format: date
+        expectedEndDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [active, completed, delayed, suspended]
+          default: active
+      required:
+        - name
+        - location
+        - ownerEntity
+        - supervisorEntity
+        - contractor
+        - startDate
+        - expectedEndDate
+
+    UpdateProjectBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
+        ownerEntity:
+          type: ["string", "null"]
+        supervisorEntity:
+          type: ["string", "null"]
+        contractor:
+          type: ["string", "null"]
+        startDate:
+          type: ["string", "null"]
+          format: date
+        expectedEndDate:
+          type: ["string", "null"]
+          format: date
+        actualEndDate:
+          type: ["string", "null"]
+          format: date
+        status:
+          type: ["string", "null"]
+          enum: [active, completed, delayed, suspended, null]
+        overallProgress:
+          type: ["number", "null"]
+
+    # Activities
+    Activity:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        name:
+          type: string
+        plannedStartDate:
+          type: string
+          format: date
+        plannedEndDate:
+          type: string
+          format: date
+        actualStartDate:
+          type: ["string", "null"]
+          format: date
+        actualEndDate:
+          type: ["string", "null"]
+          format: date
+        plannedProgress:
+          type: number
+        actualProgress:
+          type: number
+        status:
+          type: string
+          enum: [not_started, in_progress, completed, delayed]
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - name
+        - plannedStartDate
+        - plannedEndDate
+        - plannedProgress
+        - actualProgress
+        - status
+        - sortOrder
+        - createdAt
+
+    CreateActivityBody:
+      type: object
+      properties:
+        name:
+          type: string
+        plannedStartDate:
+          type: string
+          format: date
+        plannedEndDate:
+          type: string
+          format: date
+        actualStartDate:
+          type: ["string", "null"]
+          format: date
+        actualEndDate:
+          type: ["string", "null"]
+          format: date
+        plannedProgress:
+          type: number
+          default: 0
+        actualProgress:
+          type: number
+          default: 0
+        status:
+          type: string
+          enum: [not_started, in_progress, completed, delayed]
+          default: not_started
+        sortOrder:
+          type: integer
+          default: 0
+      required:
+        - name
+        - plannedStartDate
+        - plannedEndDate
+
+    UpdateActivityBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        plannedStartDate:
+          type: ["string", "null"]
+          format: date
+        plannedEndDate:
+          type: ["string", "null"]
+          format: date
+        actualStartDate:
+          type: ["string", "null"]
+          format: date
+        actualEndDate:
+          type: ["string", "null"]
+          format: date
+        plannedProgress:
+          type: ["number", "null"]
+        actualProgress:
+          type: ["number", "null"]
+        status:
+          type: ["string", "null"]
+          enum: [not_started, in_progress, completed, delayed, null]
+        sortOrder:
+          type: ["integer", "null"]
+
+    # Reports
+    Report:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        type:
+          type: string
+          enum: [weekly, monthly]
+        reportDate:
+          type: string
+          format: date
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        workDescription:
+          type: string
+        progressPercentage:
+          type: number
+        technicalNotes:
+          type: ["string", "null"]
+        recommendations:
+          type: ["string", "null"]
+        imageUrls:
+          type: array
+          items:
+            type: string
+        createdById:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - type
+        - reportDate
+        - periodStart
+        - periodEnd
+        - workDescription
+        - progressPercentage
+        - imageUrls
+        - createdAt
+        - updatedAt
+
+    CreateReportBody:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [weekly, monthly]
+        reportDate:
+          type: string
+          format: date
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        workDescription:
+          type: string
+        progressPercentage:
+          type: number
+        technicalNotes:
+          type: ["string", "null"]
+        recommendations:
+          type: ["string", "null"]
+        imageUrls:
+          type: array
+          items:
+            type: string
+      required:
+        - type
+        - reportDate
+        - periodStart
+        - periodEnd
+        - workDescription
+        - progressPercentage
+
+    UpdateReportBody:
+      type: object
+      properties:
+        type:
+          type: ["string", "null"]
+          enum: [weekly, monthly, null]
+        reportDate:
+          type: ["string", "null"]
+          format: date
+        periodStart:
+          type: ["string", "null"]
+          format: date
+        periodEnd:
+          type: ["string", "null"]
+          format: date
+        workDescription:
+          type: ["string", "null"]
+        progressPercentage:
+          type: ["number", "null"]
+        technicalNotes:
+          type: ["string", "null"]
+        recommendations:
+          type: ["string", "null"]
+        imageUrls:
+          type: array
+          items:
+            type: string
+
+    # Files
+    ProjectFile:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        filename:
+          type: string
+        originalName:
+          type: string
+        category:
+          type: string
+          enum: [image, pdf, test_result, document, other]
+        fileUrl:
+          type: string
+        fileSize:
+          type: integer
+        mimeType:
+          type: string
+        description:
+          type: ["string", "null"]
+        uploadedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - filename
+        - originalName
+        - category
+        - fileUrl
+        - fileSize
+        - mimeType
+        - uploadedAt
+
+    # Owner portal
+    OwnerVerifyBody:
+      type: object
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+      required:
+        - token
+        - password
+
+    OwnerProjectView:
+      type: object
+      properties:
+        project:
+          $ref: "#/components/schemas/Project"
+        activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/Activity"
+        reports:
+          type: array
+          items:
+            $ref: "#/components/schemas/Report"
+        summary:
+          $ref: "#/components/schemas/ProjectSummary"
+      required:
+        - project
+        - activities
+        - reports
+        - summary
+
+    GenerateOwnerLinkBody:
+      type: object
+      properties:
+        password:
+          type: string
+      required:
+        - password
+
+    OwnerLinkResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        url:
+          type: string
+      required:
+        - token
+        - url
+
+    # Dashboard
+    DashboardSummary:
+      type: object
+      properties:
+        totalProjects:
+          type: integer
+        activeProjects:
+          type: integer
+        completedProjects:
+          type: integer
+        delayedProjects:
+          type: integer
+        averageProgress:
+          type: number
+        totalReports:
+          type: integer
+        recentProjects:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+      required:
+        - totalProjects
+        - activeProjects
+        - completedProjects
+        - delayedProjects
+        - averageProgress
+        - totalReports
+        - recentProjects
+
+    ProjectSummary:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        overallProgress:
+          type: number
+        plannedProgress:
+          type: number
+        activitiesTotal:
+          type: integer
+        activitiesCompleted:
+          type: integer
+        activitiesDelayed:
+          type: integer
+        daysElapsed:
+          type: integer
+        totalDays:
+          type: integer
+        daysRemaining:
+          type: integer
+        delayDays:
+          type: integer
+        reportsCount:
+          type: integer
+        filesCount:
+          type: integer
+      required:
+        - projectId
+        - overallProgress
+        - plannedProgress
+        - activitiesTotal
+        - activitiesCompleted
+        - activitiesDelayed
+        - daysElapsed
+        - totalDays
+        - daysRemaining
+        - delayDays
+        - reportsCount
+        - filesCount
+
+    DeviationAnalysis:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        timeDeviation:
+          type: number
+        progressDeviation:
+          type: number
+        status:
+          type: string
+          enum: [on_track, slightly_delayed, significantly_delayed, ahead]
+        activitiesAnalysis:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityDeviation"
+      required:
+        - projectId
+        - timeDeviation
+        - progressDeviation
+        - status
+        - activitiesAnalysis
+
+    ActivityDeviation:
+      type: object
+      properties:
+        activityId:
+          type: integer
+        activityName:
+          type: string
+        plannedProgress:
+          type: number
+        actualProgress:
+          type: number
+        deviation:
+          type: number
+        delayDays:
+          type: ["integer", "null"]
+      required:
+        - activityId
+        - activityName
+        - plannedProgress
+        - actualProgress
+        - deviation
