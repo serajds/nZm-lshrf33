@@ -2,11 +2,11 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { activitiesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireAuth, requireEngineerOrAdmin } from "../middlewares/auth";
+import { requireEngineerOrAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
-router.get("/projects/:projectId/activities", requireAuth, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/activities", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 

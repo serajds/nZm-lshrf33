@@ -2,12 +2,12 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, reportsTable, activitiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireEngineerOrAdmin } from "../middlewares/auth";
 import PDFDocument from "pdfkit";
 
 const router: IRouter = Router();
 
-router.get("/projects/:projectId/reports/export-pdf", requireAuth, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 

@@ -2,11 +2,11 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable } from "@workspace/db";
 import { eq, count, avg, sql } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireEngineerOrAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
-router.get("/dashboard/summary", requireAuth, async (_req, res): Promise<void> => {
+router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Promise<void> => {
   const [totals] = await db.select({
     total: count(),
     avgProgress: avg(projectsTable.overallProgress),
@@ -39,7 +39,7 @@ router.get("/dashboard/summary", requireAuth, async (_req, res): Promise<void> =
   });
 });
 
-router.get("/projects/:projectId/summary", requireAuth, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/summary", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -78,7 +78,7 @@ router.get("/projects/:projectId/summary", requireAuth, async (req, res): Promis
   });
 });
 
-router.get("/projects/:projectId/deviation", requireAuth, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/deviation", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
