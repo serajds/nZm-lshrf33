@@ -8,14 +8,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+} from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Building2, MapPin, HardHat, Lock, 
-  CheckCircle2, AlertTriangle
+  CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock
 } from "lucide-react";
+
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
+
+interface ProjectExtension {
+  id: number;
+  extensionDate: string;
+  daysAdded: number;
+  newEndDate: string;
+  reason: string | null;
+  documentRef: string | null;
+  approvedBy: string | null;
+}
 
 export default function OwnerPortal() {
   const params = useParams();
@@ -89,6 +103,13 @@ export default function OwnerPortal() {
   }
 
   const { project, activities, reports, summary } = ownerData;
+  const extensions: ProjectExtension[] = (ownerData as unknown as { extensions?: ProjectExtension[] }).extensions ?? [];
+  const totalExtDays = extensions.reduce((s, e) => s + e.daysAdded, 0);
+  const latestExt = extensions.length > 0 ? extensions[extensions.length - 1] : null;
+
+  function formatDate(d: string) {
+    return new Date(d).toLocaleDateString("ar-SA-u-nu-latn", { year: "numeric", month: "2-digit", day: "2-digit" });
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -162,6 +183,7 @@ export default function OwnerPortal() {
           <TabsList className="w-full justify-start mb-4">
             <TabsTrigger value="progress">سير العمل</TabsTrigger>
             <TabsTrigger value="reports">التقارير</TabsTrigger>
+            <TabsTrigger value="extensions">التمديدات {extensions.length > 0 && <Badge className="mr-1 bg-amber-500 text-white text-[10px] px-1 py-0">{extensions.length}</Badge>}</TabsTrigger>
           </TabsList>
           
           <TabsContent value="progress" className="space-y-6">
@@ -239,6 +261,96 @@ export default function OwnerPortal() {
                     </CardContent>
                   </Card>
                 ))
+              )}
+            </div>
+          </TabsContent>
+          <TabsContent value="extensions">
+            <div className="space-y-4">
+              {extensions.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center text-muted-foreground">
+                    لا توجد تمديدات زمنية — المشروع يسير وفق الجدول الأصلي
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <Card>
+                      <CardContent className="pt-5">
+                        <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5" /> التاريخ الأصلي للإنهاء
+                        </p>
+                        <p className="text-lg font-bold tabular-nums" dir="ltr">
+                          {formatDate(project.expectedEndDate)}
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-amber-400">
+                      <CardContent className="pt-5">
+                        <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
+                          <ArrowBigRightDash className="h-3.5 w-3.5 text-amber-500" /> التاريخ الحالي بعد التمديدات
+                        </p>
+                        <p className="text-lg font-bold tabular-nums text-amber-600" dir="ltr">
+                          {latestExt ? formatDate(latestExt.newEndDate) : "—"}
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="pt-5">
+                        <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
+                          <Clock className="h-3.5 w-3.5" /> إجمالي أيام التمديد
+                        </p>
+                        <p className="text-2xl font-bold tabular-nums text-amber-600">
+                          {totalExtDays} <span className="text-sm font-normal">يوم</span>
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">سجل التمديدات الرسمية</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0 overflow-x-auto">
+                      <Table className="min-w-[580px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-right">#</TableHead>
+                            <TableHead className="text-right">تاريخ الاتفاقية</TableHead>
+                            <TableHead className="text-center">الأيام المضافة</TableHead>
+                            <TableHead className="text-right">تاريخ الإنهاء الجديد</TableHead>
+                            <TableHead className="text-right">السبب</TableHead>
+                            <TableHead className="text-right">رقم الخطاب</TableHead>
+                            <TableHead className="text-right">الجهة الموافِقة</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {extensions.map((ext, i) => (
+                            <TableRow key={ext.id}>
+                              <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
+                              <TableCell dir="ltr" className="text-sm tabular-nums">{formatDate(ext.extensionDate)}</TableCell>
+                              <TableCell className="text-center">
+                                <Badge className="bg-amber-500 text-white">+{ext.daysAdded} يوم</Badge>
+                              </TableCell>
+                              <TableCell dir="ltr" className="text-sm tabular-nums font-medium text-amber-700">
+                                {formatDate(ext.newEndDate)}
+                              </TableCell>
+                              <TableCell className="text-sm max-w-[160px] truncate" title={ext.reason ?? undefined}>
+                                {ext.reason ?? <span className="text-muted-foreground">—</span>}
+                              </TableCell>
+                              <TableCell className="text-sm font-mono">
+                                {ext.documentRef ?? <span className="text-muted-foreground">—</span>}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {ext.approvedBy ?? <span className="text-muted-foreground">—</span>}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </>
               )}
             </div>
           </TabsContent>

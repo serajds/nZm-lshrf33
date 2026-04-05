@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectExtensionsTable, projectsTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { requireEngineerOrAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -67,10 +67,10 @@ router.delete("/projects/:projectId/extensions/:id", requireEngineerOrAdmin, asy
   const id = parseInt(rawId, 10);
 
   const [ext] = await db.delete(projectExtensionsTable)
-    .where(eq(projectExtensionsTable.id, id))
+    .where(and(eq(projectExtensionsTable.id, id), eq(projectExtensionsTable.projectId, projectId)))
     .returning();
 
-  if (!ext || ext.projectId !== projectId) {
+  if (!ext) {
     res.status(404).json({ error: "التمديد غير موجود" });
     return;
   }
