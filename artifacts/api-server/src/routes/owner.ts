@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable } from "@workspace/db";
+import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectExtensionsTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
 
@@ -51,6 +51,10 @@ router.post("/owner/verify", async (req, res): Promise<void> => {
     .where(eq(reportsTable.projectId, project.id))
     .orderBy(reportsTable.reportDate);
 
+  const extensions = await db.select().from(projectExtensionsTable)
+    .where(eq(projectExtensionsTable.projectId, project.id))
+    .orderBy(projectExtensionsTable.extensionDate);
+
   // Build summary
   const today = new Date();
   const startDate = new Date(project.startDate);
@@ -84,7 +88,7 @@ router.post("/owner/verify", async (req, res): Promise<void> => {
 
   const { ownerAccessPassword: _, ...safeProject } = project;
 
-  res.json({ project: safeProject, activities, reports, summary });
+  res.json({ project: safeProject, activities, reports, extensions, summary });
 });
 
 export default router;
