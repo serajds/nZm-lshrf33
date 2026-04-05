@@ -146,6 +146,21 @@ export default function ProjectActivities() {
     "الفعلي": a.actualProgress,
   }));
 
+  const allDates = (activities ?? []).flatMap(a => [
+    a.plannedStartDate, a.plannedEndDate, a.actualStartDate, a.actualEndDate
+  ].filter(Boolean) as string[]);
+  const ganttStart = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => new Date(d).getTime()))) : new Date(project?.startDate ?? Date.now());
+  const ganttEnd = allDates.length > 0 ? new Date(Math.max(...allDates.map(d => new Date(d).getTime()))) : new Date(project?.expectedEndDate ?? Date.now());
+  const totalDays = Math.max(1, (ganttEnd.getTime() - ganttStart.getTime()) / (1000 * 60 * 60 * 24));
+
+  const getBarStyle = (startDate: string, endDate: string, color: string) => {
+    const s = new Date(startDate).getTime();
+    const e = new Date(endDate).getTime();
+    const left = ((s - ganttStart.getTime()) / (1000 * 60 * 60 * 24)) / totalDays * 100;
+    const width = Math.max(1, ((e - s) / (1000 * 60 * 60 * 24)) / totalDays * 100);
+    return { left: `${left}%`, width: `${width}%`, backgroundColor: color };
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -166,6 +181,64 @@ export default function ProjectActivities() {
       </Tabs>
 
       <div className="grid gap-6">
+        {/* Gantt Timeline Chart */}
+        {(activities ?? []).length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>مخطط Gantt - الجدول الزمني للأنشطة</CardTitle>
+              <div className="flex gap-4 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1"><span className="w-4 h-3 rounded inline-block bg-blue-400 opacity-60"></span> المخطط</span>
+                <span className="flex items-center gap-1"><span className="w-4 h-3 rounded inline-block bg-emerald-500"></span> الفعلي</span>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <div className="min-w-[600px]">
+                  <div className="flex mb-2 border-b pb-2">
+                    <div className="w-48 shrink-0 text-sm font-medium text-muted-foreground">النشاط</div>
+                    <div className="flex-1 relative text-xs text-muted-foreground flex justify-between px-1">
+                      <span>{ganttStart.toLocaleDateString('ar-SA')}</span>
+                      <span>{new Date((ganttStart.getTime() + ganttEnd.getTime()) / 2).toLocaleDateString('ar-SA')}</span>
+                      <span>{ganttEnd.toLocaleDateString('ar-SA')}</span>
+                    </div>
+                  </div>
+                  {(activities ?? []).map((a) => (
+                    <div key={a.id} className="flex items-center mb-3 group">
+                      <div className="w-48 shrink-0 text-sm truncate pl-2" title={a.name}>{a.name}</div>
+                      <div className="flex-1 relative h-8">
+                        <div className="absolute inset-0 flex flex-col justify-center gap-1">
+                          <div className="relative h-3">
+                            <div
+                              className="absolute h-full rounded opacity-60"
+                              style={getBarStyle(a.plannedStartDate, a.plannedEndDate, "#60a5fa")}
+                              title={`مخطط: ${a.plannedStartDate} → ${a.plannedEndDate}`}
+                            />
+                          </div>
+                          {a.actualStartDate && (a.actualEndDate || a.actualStartDate) && (
+                            <div className="relative h-3">
+                              <div
+                                className="absolute h-full rounded"
+                                style={getBarStyle(
+                                  a.actualStartDate,
+                                  a.actualEndDate ?? new Date().toISOString().split('T')[0],
+                                  a.status === 'delayed' ? '#ef4444' : '#10b981'
+                                )}
+                                title={`فعلي: ${a.actualStartDate} → ${a.actualEndDate ?? 'جارٍ'}`}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="w-16 text-center text-xs text-muted-foreground">%{a.actualProgress}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Progress Comparison Chart */}
         <Card>
           <CardHeader>
             <CardTitle>الإنجاز المخطط مقابل الفعلي</CardTitle>
