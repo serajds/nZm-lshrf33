@@ -69,7 +69,7 @@ router.post("/owner/verify", async (req, res): Promise<void> => {
   const daysRemaining = Math.max(0, rawDaysRemaining);
   const delayDays = rawDaysRemaining < 0 ? Math.abs(rawDaysRemaining) : 0;
   const plannedProgress = Math.min(100, (daysElapsed / totalDays) * 100);
-  const suspensionDays = suspensions.reduce((s, x) => s + x.calendarDays, 0);
+  const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
   const netDelayDays = Math.max(0, delayDays - suspensionDays);
 
   const activitiesCompleted = activities.filter(a => a.status === "completed").length;

@@ -62,7 +62,7 @@ router.get("/projects/:projectId/summary", requireEngineerOrAdmin, async (req, r
   const daysRemaining = Math.max(0, totalDays - daysElapsed);
   const plannedProgress = Math.min(100, (daysElapsed / totalDays) * 100);
   const delayDays = project.overallProgress < plannedProgress ? Math.round((plannedProgress - project.overallProgress) / 100 * totalDays) : 0;
-  const suspensionDays = suspensions.reduce((s, x) => s + x.calendarDays, 0);
+  const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
   const netDelayDays = Math.max(0, delayDays - suspensionDays);
 
   res.json({
@@ -105,7 +105,7 @@ router.get("/projects/:projectId/deviation", requireEngineerOrAdmin, async (req,
 
   const progressDeviation = project.overallProgress - plannedProgress;
   const timeDeviation = progressDeviation < -10 ? (plannedProgress - project.overallProgress) / 100 * totalDays : 0;
-  const suspensionDays = suspensions.reduce((s, x) => s + x.calendarDays, 0);
+  const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
   const grossDelayDays = progressDeviation < 0 ? Math.round(Math.abs(progressDeviation) / 100 * totalDays) : 0;
   const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
 
