@@ -50,7 +50,7 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   Plus, Edit2, Trash2, ArrowRight, ChevronDown,
   CheckCircle2, Clock, AlertTriangle, PlayCircle, 
-  TrendingUp, TrendingDown, Minus
+  TrendingUp, TrendingDown, Minus, Timer, CalendarCheck, CalendarX, Hourglass
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -93,6 +93,72 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-flex items-center gap-1 text-xs font-medium ${s.cls}`}>
       <Icon className="h-3.5 w-3.5 shrink-0" />
       {s.label}
+    </span>
+  );
+}
+
+type DelayInfo =
+  | { kind: "delayed";  days: number; label: string }
+  | { kind: "early";   days: number; label: string }
+  | { kind: "on_time"; days: number; label: string }
+  | { kind: "remaining"; days: number; label: string }
+  | { kind: "late_start"; days: number; label: string };
+
+function calcActivityDelay(a: Activity): DelayInfo {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const plannedEnd = new Date(a.plannedEndDate); plannedEnd.setHours(0, 0, 0, 0);
+  const plannedStart = new Date(a.plannedStartDate); plannedStart.setHours(0, 0, 0, 0);
+  const diffDays = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / 86400000);
+
+  if (a.status === "completed") {
+    const refDate = a.actualEndDate ? new Date(a.actualEndDate) : today;
+    refDate.setHours(0, 0, 0, 0);
+    const d = diffDays(refDate, plannedEnd);
+    if (d > 0) return { kind: "delayed",  days: d, label: `متأخر ${d} يوم` };
+    if (d < 0) return { kind: "early",    days: -d, label: `مبكر ${-d} يوم` };
+    return { kind: "on_time", days: 0, label: "في الموعد" };
+  }
+
+  if (a.status === "not_started") {
+    const d = diffDays(today, plannedStart);
+    if (d > 0) return { kind: "late_start", days: d,  label: `تأخر البدء ${d} يوم` };
+    return { kind: "remaining", days: -d, label: `${-d} يوم للبدء` };
+  }
+
+  // in_progress or delayed
+  const d = diffDays(today, plannedEnd);
+  if (d > 0) return { kind: "delayed",   days: d,  label: `متأخر ${d} يوم` };
+  if (d === 0) return { kind: "on_time", days: 0,  label: "آخر يوم مخطط" };
+  return { kind: "remaining", days: -d, label: `${-d} يوم متبقٍ` };
+}
+
+function DelayBadge({ info }: { info: DelayInfo }) {
+  if (info.kind === "delayed" || info.kind === "late_start") {
+    const Icon = info.kind === "late_start" ? CalendarX : Timer;
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800 whitespace-nowrap">
+        <Icon className="h-3 w-3 shrink-0" /> {info.label}
+      </span>
+    );
+  }
+  if (info.kind === "early") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800 whitespace-nowrap">
+        <CalendarCheck className="h-3 w-3 shrink-0" /> {info.label}
+      </span>
+    );
+  }
+  if (info.kind === "on_time") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800 whitespace-nowrap">
+        <CalendarCheck className="h-3 w-3 shrink-0" /> {info.label}
+      </span>
+    );
+  }
+  // remaining
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground border border-border whitespace-nowrap">
+      <Hourglass className="h-3 w-3 shrink-0" /> {info.label}
     </span>
   );
 }
@@ -531,31 +597,33 @@ export default function ProjectActivities() {
             <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-right w-[220px]">النشاط</TableHead>
+                  <TableHead className="text-right w-[200px]">النشاط</TableHead>
                   <TableHead className="text-right">البداية</TableHead>
                   <TableHead className="text-right">النهاية</TableHead>
+                  <TableHead className="text-center w-[140px]">التأخر / التقدم</TableHead>
                   <TableHead className="text-center w-[160px]">الإنجاز (مخطط/فعلي)</TableHead>
-                  <TableHead className="text-right w-[140px]">الحالة</TableHead>
-                  <TableHead className="text-center w-[130px]">إجراءات سريعة</TableHead>
+                  <TableHead className="text-right w-[130px]">الحالة</TableHead>
+                  <TableHead className="text-center w-[110px]">إجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">جاري التحميل...</TableCell>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">جاري التحميل...</TableCell>
                   </TableRow>
                 ) : (activities ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</TableCell>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</TableCell>
                   </TableRow>
                 ) : (
                   (activities ?? []).map((a) => {
                     const isBusy = updatingId === a.id;
                     const deviation = a.actualProgress - a.plannedProgress;
+                    const delayInfo = calcActivityDelay(a);
                     return (
                       <TableRow key={a.id} className={isBusy ? "opacity-60 pointer-events-none" : ""}>
                         {/* Name */}
-                        <TableCell className="font-medium max-w-[220px]">
+                        <TableCell className="font-medium max-w-[200px]">
                           <span className="block truncate" title={a.name}>{a.name}</span>
                         </TableCell>
 
@@ -565,6 +633,11 @@ export default function ProjectActivities() {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground tabular-nums" dir="ltr">
                           {new Date(a.plannedEndDate).toLocaleDateString('ar-SA-u-nu-latn')}
+                        </TableCell>
+
+                        {/* Delay / Advance */}
+                        <TableCell className="text-center">
+                          <DelayBadge info={delayInfo} />
                         </TableCell>
 
                         {/* Progress visual */}
