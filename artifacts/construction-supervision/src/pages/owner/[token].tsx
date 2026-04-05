@@ -403,8 +403,10 @@ export default function OwnerPortal() {
                               <TableCell>
                                 {susp.type === "official_holiday" ? (
                                   <Badge className="bg-violet-100 text-violet-700 border border-violet-300">عطلة رسمية</Badge>
-                                ) : (
+                                ) : susp.type === "force_majeure" ? (
                                   <Badge className="bg-red-100 text-red-700 border border-red-300">ظرف قاهر</Badge>
+                                ) : (
+                                  <Badge className="bg-orange-100 text-orange-700 border border-orange-300">توقف مقاول</Badge>
                                 )}
                               </TableCell>
                               <TableCell dir="ltr" className="text-sm tabular-nums">{formatDate(susp.startDate)}</TableCell>

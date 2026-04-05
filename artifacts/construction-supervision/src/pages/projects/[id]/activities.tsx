@@ -280,8 +280,16 @@ export default function ProjectActivities() {
     const left = Math.max(0, ((s - ganttStart.getTime()) / (1000 * 60 * 60 * 24)) / totalDays * 100);
     const right = Math.min(100, ((new Date(susp.endDate).getTime() - ganttStart.getTime()) / (1000 * 60 * 60 * 24) + 1) / totalDays * 100);
     const width = Math.max(0.5, right - left);
-    const color = susp.type === "official_holiday" ? "rgba(139,92,246,0.18)" : "rgba(239,68,68,0.15)";
-    const border = susp.type === "official_holiday" ? "1px solid rgba(139,92,246,0.4)" : "1px solid rgba(239,68,68,0.35)";
+    const color = susp.type === "official_holiday"
+      ? "rgba(139,92,246,0.18)"
+      : susp.type === "force_majeure"
+        ? "rgba(239,68,68,0.15)"
+        : "rgba(249,115,22,0.15)";
+    const border = susp.type === "official_holiday"
+      ? "1px solid rgba(139,92,246,0.4)"
+      : susp.type === "force_majeure"
+        ? "1px solid rgba(239,68,68,0.35)"
+        : "1px solid rgba(249,115,22,0.4)";
     return { left: `${left}%`, width: `${width}%`, backgroundColor: color, borderLeft: border, borderRight: border };
   };
 
@@ -323,6 +331,9 @@ export default function ProjectActivities() {
                     <span className="flex items-center gap-1.5">
                       <span className="w-3 h-2.5 rounded-sm inline-block" style={{ background: "rgba(239,68,68,0.25)", border: "1px solid rgba(239,68,68,0.5)" }} /> ظرف قاهر
                     </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-2.5 rounded-sm inline-block" style={{ background: "rgba(249,115,22,0.25)", border: "1px solid rgba(249,115,22,0.5)" }} /> توقف مقاول
+                    </span>
                   </>
                 )}
               </div>
@@ -351,7 +362,7 @@ export default function ProjectActivities() {
                             key={susp.id}
                             className="absolute inset-y-0 z-0 pointer-events-none"
                             style={getSuspensionStyle(susp)}
-                            title={`${susp.type === "official_holiday" ? "عطلة رسمية" : "ظرف قاهر"}: ${susp.startDate} ← ${susp.endDate} (${susp.calendarDays} يوم)`}
+                            title={`${susp.type === "official_holiday" ? "عطلة رسمية" : susp.type === "force_majeure" ? "ظرف قاهر" : "توقف مقاول"}: ${susp.startDate} ← ${susp.endDate} (${susp.calendarDays} يوم)`}
                           />
                         ))}
                         <div className="absolute inset-0 z-10 flex flex-col justify-center gap-1">

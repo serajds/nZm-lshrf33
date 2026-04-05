@@ -580,7 +580,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, as
     y += 22;
 
     const rowH = 22;
-    const typeLabel = (t: string) => t === "official_holiday" ? "عطلة رسمية" : "ظرف قاهر";
+    const typeLabel = (t: string) => t === "official_holiday" ? "عطلة رسمية" : t === "force_majeure" ? "ظرف قاهر" : "توقف مقاول";
 
     suspensions.forEach((susp, i) => {
       const rowBg = i % 2 === 0 ? "#ffffff" : C.light;
@@ -602,7 +602,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, as
       doc.text(formatDate(susp.startDate), cx + 4, y + 9, { width: suspCols.start - 6, align: "center" });
       cx += suspCols.start;
       // type
-      setFont(8, susp.type === "official_holiday" ? C.primary : "#dc2626");
+      setFont(8, susp.type === "official_holiday" ? C.primary : susp.type === "force_majeure" ? "#dc2626" : "#ea580c");
       doc.text(typeLabel(susp.type), cx + 4, y + 9, { width: suspCols.type - 6, align: "center" });
       cx += suspCols.type;
       // num

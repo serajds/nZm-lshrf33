@@ -375,7 +375,7 @@ export interface ProjectSummary {
 export interface ProjectSuspension {
   id: number;
   projectId: number;
-  type: "official_holiday" | "force_majeure";
+  type: "official_holiday" | "force_majeure" | "contractor_delay";
   title: string;
   startDate: string;
   endDate: string;

@@ -1,10 +1,45 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectSuspensionsTable, projectsTable } from "@workspace/db";
+import { projectSuspensionsTable, projectsTable, activitiesTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireEngineerOrAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
+
+const RECALC_TYPES = ["official_holiday", "force_majeure"] as const;
+const ALL_TYPES = ["official_holiday", "force_majeure", "contractor_delay"] as const;
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+async function shiftActivities(projectId: number, suspStartDate: string, calendarDays: number, direction: 1 | -1) {
+  const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+  const suspStart = new Date(suspStartDate);
+
+  for (const activity of activities) {
+    const actStart = new Date(activity.plannedStartDate);
+    const actEnd = new Date(activity.plannedEndDate);
+    const shift = calendarDays * direction;
+
+    if (actStart >= suspStart) {
+      // Activity starts on or after suspension: shift both dates
+      await db.update(activitiesTable)
+        .set({
+          plannedStartDate: addDays(activity.plannedStartDate, shift),
+          plannedEndDate: addDays(activity.plannedEndDate, shift),
+        })
+        .where(eq(activitiesTable.id, activity.id));
+    } else if (actEnd >= suspStart) {
+      // Activity spans the suspension: only extend/shorten end date
+      await db.update(activitiesTable)
+        .set({ plannedEndDate: addDays(activity.plannedEndDate, shift) })
+        .where(eq(activitiesTable.id, activity.id));
+    }
+  }
+}
 
 router.get("/projects/:projectId/suspensions", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId, 10);
@@ -27,8 +62,8 @@ router.post("/projects/:projectId/suspensions", requireEngineerOrAdmin, async (r
     return;
   }
 
-  if (!["official_holiday", "force_majeure"].includes(type)) {
-    res.status(400).json({ error: "النوع يجب أن يكون عطلة رسمية أو ظرف قاهر" });
+  if (!ALL_TYPES.includes(type)) {
+    res.status(400).json({ error: "نوع التوقف غير صحيح" });
     return;
   }
 
@@ -45,12 +80,11 @@ router.post("/projects/:projectId/suspensions", requireEngineerOrAdmin, async (r
     return;
   }
 
-  // Inclusive calendar days: endDate - startDate + 1
   const calendarDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
   const [suspension] = await db.insert(projectSuspensionsTable).values({
     projectId,
-    type: type as "official_holiday" | "force_majeure",
+    type: type as typeof ALL_TYPES[number],
     title,
     startDate,
     endDate,
@@ -61,20 +95,33 @@ router.post("/projects/:projectId/suspensions", requireEngineerOrAdmin, async (r
     notes: notes ?? null,
   }).returning();
 
-  res.status(201).json(suspension);
+  // Shift activity planned dates only for legitimate suspensions (not contractor delay)
+  if ((RECALC_TYPES as readonly string[]).includes(type)) {
+    await shiftActivities(projectId, startDate, calendarDays, 1);
+  }
+
+  res.status(201).json({ ...suspension, activitiesShifted: (RECALC_TYPES as readonly string[]).includes(type) });
 });
 
 router.delete("/projects/:projectId/suspensions/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId, 10);
   const id = parseInt(req.params.id, 10);
 
-  const [deleted] = await db.delete(projectSuspensionsTable)
-    .where(and(eq(projectSuspensionsTable.id, id), eq(projectSuspensionsTable.projectId, projectId)))
-    .returning();
+  const [susp] = await db.select()
+    .from(projectSuspensionsTable)
+    .where(and(eq(projectSuspensionsTable.id, id), eq(projectSuspensionsTable.projectId, projectId)));
 
-  if (!deleted) {
+  if (!susp) {
     res.status(404).json({ error: "التوقف غير موجود" });
     return;
+  }
+
+  await db.delete(projectSuspensionsTable)
+    .where(and(eq(projectSuspensionsTable.id, id), eq(projectSuspensionsTable.projectId, projectId)));
+
+  // Reverse activity shift for legitimate suspensions (not contractor delay)
+  if ((RECALC_TYPES as readonly string[]).includes(susp.type)) {
+    await shiftActivities(projectId, susp.startDate, susp.calendarDays, -1);
   }
 
   res.sendStatus(204);
