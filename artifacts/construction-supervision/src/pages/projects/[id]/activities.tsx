@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { 
   useListActivities, 
   useCreateActivity, 
@@ -8,7 +9,7 @@ import {
   useGetProject,
   getListActivitiesQueryKey 
 } from "@workspace/api-client-react";
-import type { Activity } from "@workspace/api-client-react";
+import type { Activity, ProjectSuspension } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +46,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+
 import { 
   Plus, Edit2, Trash2, ArrowRight, ChevronDown,
   CheckCircle2, Clock, AlertTriangle, PlayCircle, 
@@ -53,6 +55,14 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
+
+function authFetch(url: string, init?: RequestInit) {
+  const token = localStorage.getItem("auth_token");
+  return fetch(url, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
+  });
+}
 
 const STATUS_OPTIONS = [
   { value: "not_started",  label: "لم يبدأ",      icon: Clock,         cls: "text-muted-foreground" },
@@ -113,6 +123,15 @@ export default function ProjectActivities() {
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: activities, isLoading } = useListActivities(projectId, { query: { enabled: !!projectId } });
+  const { data: suspensions = [] } = useQuery<ProjectSuspension[]>({
+    queryKey: [`/api/projects/${projectId}/suspensions`],
+    queryFn: async () => {
+      const r = await authFetch(`/api/projects/${projectId}/suspensions`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!projectId,
+  });
   
   const createActivity = useCreateActivity();
   const updateActivity = useUpdateActivity();
@@ -255,6 +274,17 @@ export default function ProjectActivities() {
     return { left: `${left}%`, width: `${width}%`, backgroundColor: color };
   };
 
+  const getSuspensionStyle = (susp: ProjectSuspension) => {
+    const s = new Date(susp.startDate).getTime();
+    const e = new Date(susp.endDate).getTime();
+    const left = Math.max(0, ((s - ganttStart.getTime()) / (1000 * 60 * 60 * 24)) / totalDays * 100);
+    const right = Math.min(100, ((new Date(susp.endDate).getTime() - ganttStart.getTime()) / (1000 * 60 * 60 * 24) + 1) / totalDays * 100);
+    const width = Math.max(0.5, right - left);
+    const color = susp.type === "official_holiday" ? "rgba(139,92,246,0.18)" : "rgba(239,68,68,0.15)";
+    const border = susp.type === "official_holiday" ? "1px solid rgba(139,92,246,0.4)" : "1px solid rgba(239,68,68,0.35)";
+    return { left: `${left}%`, width: `${width}%`, backgroundColor: color, borderLeft: border, borderRight: border };
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start gap-3">
@@ -275,7 +305,7 @@ export default function ProjectActivities() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">مخطط Gantt - الجدول الزمني</CardTitle>
-              <div className="flex gap-4 text-xs text-muted-foreground">
+              <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-2.5 rounded-sm inline-block bg-blue-400 opacity-60" /> المخطط
                 </span>
@@ -285,6 +315,16 @@ export default function ProjectActivities() {
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-2.5 rounded-sm inline-block bg-red-500" /> متأخر
                 </span>
+                {suspensions.length > 0 && (
+                  <>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-2.5 rounded-sm inline-block" style={{ background: "rgba(139,92,246,0.35)", border: "1px solid rgba(139,92,246,0.6)" }} /> عطلة رسمية
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-2.5 rounded-sm inline-block" style={{ background: "rgba(239,68,68,0.25)", border: "1px solid rgba(239,68,68,0.5)" }} /> ظرف قاهر
+                    </span>
+                  </>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -305,7 +345,16 @@ export default function ProjectActivities() {
                         <span className="truncate text-foreground" title={a.name}>{a.name}</span>
                       </div>
                       <div className="flex-1 relative h-8">
-                        <div className="absolute inset-0 flex flex-col justify-center gap-1">
+                        {/* Suspension overlays — drawn first (behind bars) */}
+                        {suspensions.map(susp => (
+                          <div
+                            key={susp.id}
+                            className="absolute inset-y-0 z-0 pointer-events-none"
+                            style={getSuspensionStyle(susp)}
+                            title={`${susp.type === "official_holiday" ? "عطلة رسمية" : "ظرف قاهر"}: ${susp.startDate} ← ${susp.endDate} (${susp.calendarDays} يوم)`}
+                          />
+                        ))}
+                        <div className="absolute inset-0 z-10 flex flex-col justify-center gap-1">
                           <div className="relative h-3">
                             <div
                               className="absolute h-full rounded opacity-60"
