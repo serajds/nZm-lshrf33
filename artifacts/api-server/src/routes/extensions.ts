@@ -33,29 +33,40 @@ router.post("/projects/:projectId/extensions", requireEngineerOrAdmin, async (re
     return;
   }
 
-  const [lastExt] = await db.select()
-    .from(projectExtensionsTable)
-    .where(eq(projectExtensionsTable.projectId, projectId))
-    .orderBy(desc(projectExtensionsTable.extensionDate))
-    .limit(1);
-
-  const baseDate = lastExt ? new Date(lastExt.newEndDate) : new Date(project.expectedEndDate);
-  const newEnd = new Date(baseDate);
-  newEnd.setDate(newEnd.getDate() + Number(daysAdded));
-  const newEndDate = newEnd.toISOString().split("T")[0];
-
+  // Insert with a placeholder newEndDate; full chain will be recomputed below
   const [extension] = await db.insert(projectExtensionsTable).values({
     projectId,
     extensionDate,
     daysAdded: Number(daysAdded),
-    newEndDate,
+    newEndDate: extensionDate, // temporary; overwritten immediately
     reason: reason ?? null,
     documentRef: documentRef ?? null,
     approvedBy: approvedBy ?? null,
     notes: notes ?? null,
   }).returning();
 
-  res.status(201).json(extension);
+  // Recompute new_end_date for all extensions in chronological order
+  // so backdated inserts don't create an inconsistent chain
+  const allExts = await db.select()
+    .from(projectExtensionsTable)
+    .where(eq(projectExtensionsTable.projectId, projectId))
+    .orderBy(asc(projectExtensionsTable.extensionDate));
+
+  let runningEnd = new Date(project.expectedEndDate);
+  let updatedExtension = extension;
+  for (const ext of allExts) {
+    const next = new Date(runningEnd);
+    next.setDate(next.getDate() + ext.daysAdded);
+    const newEndDate = next.toISOString().split("T")[0];
+    const [updated] = await db.update(projectExtensionsTable)
+      .set({ newEndDate })
+      .where(eq(projectExtensionsTable.id, ext.id))
+      .returning();
+    if (ext.id === extension.id) updatedExtension = updated;
+    runningEnd = next;
+  }
+
+  res.status(201).json(updatedExtension);
 });
 
 router.delete("/projects/:projectId/extensions/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
