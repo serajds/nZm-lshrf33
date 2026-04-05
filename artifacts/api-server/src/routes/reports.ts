@@ -2,11 +2,11 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { reportsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireAuth, requireEngineerOrAdmin } from "../middlewares/auth";
+import { requireEngineerOrAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
-router.get("/projects/:projectId/reports", requireAuth, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/reports", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const { type } = req.query;
@@ -53,7 +53,7 @@ router.post("/projects/:projectId/reports", requireEngineerOrAdmin, async (req, 
   res.status(201).json(report);
 });
 
-router.get("/projects/:projectId/reports/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/reports/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);

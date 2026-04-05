@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectFilesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireAuth, requireEngineerOrAdmin } from "../middlewares/auth";
+import { requireEngineerOrAdmin } from "../middlewares/auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -29,7 +29,7 @@ const upload = multer({
 
 const router: IRouter = Router();
 
-router.get("/projects/:projectId/files", requireAuth, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/files", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const { category } = req.query;

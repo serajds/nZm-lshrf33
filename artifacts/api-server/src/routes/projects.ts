@@ -2,13 +2,13 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable } from "@workspace/db";
 import { eq, ilike, or, sql } from "drizzle-orm";
-import { requireAuth, requireEngineerOrAdmin } from "../middlewares/auth";
+import { requireEngineerOrAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
 
 const router: IRouter = Router();
 
-router.get("/projects", requireAuth, async (req, res): Promise<void> => {
+router.get("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const { status, search } = req.query;
 
   let query = db.select().from(projectsTable);
@@ -55,7 +55,7 @@ router.post("/projects", requireEngineerOrAdmin, async (req, res): Promise<void>
   res.status(201).json(project);
 });
 
-router.get("/projects/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
@@ -108,7 +108,7 @@ router.delete("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise
   res.sendStatus(204);
 });
 
-router.post("/projects/:projectId/generate-owner-link", requireAuth, async (req, res): Promise<void> => {
+router.post("/projects/:projectId/generate-owner-link", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const { password } = req.body;

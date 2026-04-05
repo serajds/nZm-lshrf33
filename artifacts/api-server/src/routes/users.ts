@@ -7,7 +7,7 @@ import { hashPassword } from "../lib/auth";
 
 const router: IRouter = Router();
 
-router.get("/users", requireAuth, async (_req, res): Promise<void> => {
+router.get("/users", requireAdmin, async (_req, res): Promise<void> => {
   const users = await db.select({
     id: usersTable.id,
     username: usersTable.username,
