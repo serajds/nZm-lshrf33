@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useListProjects, useCreateProject, useUpdateProject, useDeleteProject, getListProjectsQueryKey } from "@workspace/api-client-react";
 import type { Project } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,12 +41,16 @@ const projectSchema = z.object({
   startDate: z.string().min(1, "تاريخ البداية مطلوب"),
   expectedEndDate: z.string().min(1, "تاريخ النهاية المتوقع مطلوب"),
   status: z.enum(["active", "completed", "delayed", "suspended"]).default("active"),
+}).refine((data) => !data.startDate || !data.expectedEndDate || data.expectedEndDate >= data.startDate, {
+  message: "تاريخ النهاية يجب أن يكون بعد تاريخ البداية",
+  path: ["expectedEndDate"],
 });
 
 type ProjectFormValues = z.infer<typeof projectSchema>;
 
 export default function Projects() {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -54,8 +58,13 @@ export default function Projects() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const { data: projects, isLoading } = useListProjects({
-    search: search || null,
+    search: debouncedSearch || null,
     status: statusFilter && statusFilter !== "all" ? statusFilter : null,
   });
 

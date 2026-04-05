@@ -17,6 +17,16 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from "@/components/ui/table";
@@ -55,6 +65,7 @@ export default function ProjectActivities() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: activities, isLoading } = useListActivities(projectId, { query: { enabled: !!projectId } });
@@ -94,15 +105,16 @@ export default function ProjectActivities() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذا النشاط؟")) {
-      try {
-        await deleteActivity.mutateAsync({ projectId, id });
-        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(projectId) });
-        toast({ title: "تم حذف النشاط" });
-      } catch {
-        toast({ variant: "destructive", title: "فشل الحذف" });
-      }
+  const handleDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await deleteActivity.mutateAsync({ projectId, id: deletingId });
+      queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(projectId) });
+      toast({ title: "تم حذف النشاط" });
+    } catch {
+      toast({ variant: "destructive", title: "فشل الحذف" });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -429,7 +441,7 @@ export default function ProjectActivities() {
                           <Button variant="ghost" size="icon" onClick={() => handleEdit(a)}>
                             <Edit2 className="h-4 w-4 text-muted-foreground" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(a.id)}>
+                          <Button variant="ghost" size="icon" onClick={() => setDeletingId(a.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
@@ -442,6 +454,21 @@ export default function ProjectActivities() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+            <AlertDialogDescription>هل أنت متأكد من حذف هذا النشاط؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2">
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              حذف
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
