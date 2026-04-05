@@ -6,7 +6,7 @@ import { projectsTable } from "./projects";
 export const projectSuspensionsTable = pgTable("project_suspensions", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull().references(() => projectsTable.id, { onDelete: "cascade" }),
-  type: text("type", { enum: ["official_holiday", "force_majeure"] }).notNull(),
+  type: text("type", { enum: ["official_holiday", "force_majeure", "contractor_delay"] }).notNull(),
   title: text("title").notNull(),
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),

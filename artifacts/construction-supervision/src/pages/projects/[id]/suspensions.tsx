@@ -26,7 +26,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, ArrowRight, Calendar, FileText, Umbrella, Wind } from "lucide-react";
+import { Plus, Trash2, ArrowRight, Calendar, FileText, Umbrella, Wind, AlertTriangle } from "lucide-react";
 
 function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
@@ -41,7 +41,7 @@ function authFetch(url: string, init?: RequestInit) {
 }
 
 const suspensionSchema = z.object({
-  type: z.enum(["official_holiday", "force_majeure"]),
+  type: z.enum(["official_holiday", "force_majeure", "contractor_delay"]),
   title: z.string().min(1, "العنوان مطلوب"),
   startDate: z.string().min(1, "تاريخ البداية مطلوب"),
   endDate: z.string().min(1, "تاريخ النهاية مطلوب"),
@@ -67,7 +67,7 @@ function computeDays(start: string, end: string): number {
   return Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 }
 
-function TypeBadge({ type }: { type: "official_holiday" | "force_majeure" }) {
+function TypeBadge({ type }: { type: "official_holiday" | "force_majeure" | "contractor_delay" }) {
   if (type === "official_holiday") {
     return (
       <Badge className="bg-violet-500 text-white gap-1">
@@ -75,9 +75,16 @@ function TypeBadge({ type }: { type: "official_holiday" | "force_majeure" }) {
       </Badge>
     );
   }
+  if (type === "force_majeure") {
+    return (
+      <Badge className="bg-red-500 text-white gap-1">
+        <Wind className="h-3 w-3" /> ظرف قاهر
+      </Badge>
+    );
+  }
   return (
-    <Badge className="bg-red-500 text-white gap-1">
-      <Wind className="h-3 w-3" /> ظرف قاهر
+    <Badge className="bg-orange-500 text-white gap-1">
+      <AlertTriangle className="h-3 w-3" /> توقف مقاول
     </Badge>
   );
 }
@@ -118,9 +125,14 @@ export default function ProjectSuspensions() {
       }
       return r.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: { activitiesShifted?: boolean }) => {
       queryClient.invalidateQueries({ queryKey });
-      toast({ title: "تم إضافة التوقف بنجاح" });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/activities`] });
+      if (data?.activitiesShifted) {
+        toast({ title: "تم إضافة التوقف وتحديث الجدول الزمني", description: "تم تأجيل تواريخ الأنشطة تلقائياً بعدد أيام التوقف" });
+      } else {
+        toast({ title: "تم إضافة التوقف بنجاح", description: "لم يتم تعديل الجدول الزمني (توقف من المقاول)" });
+      }
       setIsDialogOpen(false);
       form.reset();
     },
@@ -134,7 +146,8 @@ export default function ProjectSuspensions() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
-      toast({ title: "تم حذف التوقف" });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/activities`] });
+      toast({ title: "تم حذف التوقف", description: "تم إعادة ضبط تواريخ الأنشطة إن كان التوقف رسمياً" });
       setDeletingId(null);
     },
     onError: () => toast({ variant: "destructive", title: "فشل حذف التوقف" }),
@@ -164,6 +177,10 @@ export default function ProjectSuspensions() {
   const forceMajeureDays = suspensions
     .filter(s => s.type === "force_majeure")
     .reduce((sum, s) => sum + s.calendarDays, 0);
+  const contractorDays = suspensions
+    .filter(s => s.type === "contractor_delay")
+    .reduce((sum, s) => sum + s.calendarDays, 0);
+  // Only official + force majeure count toward net delay deduction
   const totalDays = holidayDays + forceMajeureDays;
 
   return (
@@ -181,7 +198,7 @@ export default function ProjectSuspensions() {
       <ProjectNav projectId={projectId} />
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-5">
             <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
@@ -190,6 +207,7 @@ export default function ProjectSuspensions() {
             <p className={`text-2xl font-bold tabular-nums ${holidayDays > 0 ? "text-violet-600" : "text-muted-foreground"}`}>
               {holidayDays} <span className="text-sm font-normal">يوم</span>
             </p>
+            <p className="text-[11px] text-emerald-600 mt-1">✓ يُخصم من التأخير</p>
           </CardContent>
         </Card>
 
@@ -201,15 +219,28 @@ export default function ProjectSuspensions() {
             <p className={`text-2xl font-bold tabular-nums ${forceMajeureDays > 0 ? "text-red-600" : "text-muted-foreground"}`}>
               {forceMajeureDays} <span className="text-sm font-normal">يوم</span>
             </p>
+            <p className="text-[11px] text-emerald-600 mt-1">✓ يُخصم من التأخير</p>
           </CardContent>
         </Card>
 
-        <Card className={totalDays > 0 ? "border-slate-400" : ""}>
+        <Card>
           <CardContent className="pt-5">
             <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
-              <Calendar className="h-3.5 w-3.5" /> إجمالي أيام التوقف
+              <AlertTriangle className="h-3.5 w-3.5 text-orange-500" /> توقف المقاول
             </p>
-            <p className={`text-2xl font-bold tabular-nums ${totalDays > 0 ? "text-slate-700" : "text-muted-foreground"}`}>
+            <p className={`text-2xl font-bold tabular-nums ${contractorDays > 0 ? "text-orange-600" : "text-muted-foreground"}`}>
+              {contractorDays} <span className="text-sm font-normal">يوم</span>
+            </p>
+            <p className="text-[11px] text-destructive mt-1">✗ لا يُخصم من التأخير</p>
+          </CardContent>
+        </Card>
+
+        <Card className={totalDays > 0 ? "border-emerald-400" : ""}>
+          <CardContent className="pt-5">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5" /> المخصوم من التأخير
+            </p>
+            <p className={`text-2xl font-bold tabular-nums ${totalDays > 0 ? "text-emerald-700" : "text-muted-foreground"}`}>
               {totalDays} <span className="text-sm font-normal">يوم</span>
             </p>
           </CardContent>
@@ -251,10 +282,13 @@ export default function ProjectSuspensions() {
                         </FormControl>
                         <SelectContent dir="rtl">
                           <SelectItem value="official_holiday">
-                            <span className="flex items-center gap-2"><Umbrella className="h-3.5 w-3.5 text-violet-500" /> عطلة رسمية</span>
+                            <span className="flex items-center gap-2"><Umbrella className="h-3.5 w-3.5 text-violet-500" /> عطلة رسمية (يُعيد حساب الجدول)</span>
                           </SelectItem>
                           <SelectItem value="force_majeure">
-                            <span className="flex items-center gap-2"><Wind className="h-3.5 w-3.5 text-red-500" /> ظرف قاهر (قوة قاهرة)</span>
+                            <span className="flex items-center gap-2"><Wind className="h-3.5 w-3.5 text-red-500" /> ظرف قاهر (يُعيد حساب الجدول)</span>
+                          </SelectItem>
+                          <SelectItem value="contractor_delay">
+                            <span className="flex items-center gap-2"><AlertTriangle className="h-3.5 w-3.5 text-orange-500" /> توقف من المقاول (بدون تعديل الجدول)</span>
                           </SelectItem>
                         </SelectContent>
                       </Select>
