@@ -163,6 +163,14 @@ function DelayBadge({ info }: { info: DelayInfo }) {
   );
 }
 
+function fmtDate(iso: string) {
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}/${m}/${day}`;
+}
+
 function ProgressBar({ value, max = 100, color }: { value: number; max?: number; color: string }) {
   const pct = Math.min(100, (value / max) * 100);
   return (
@@ -598,8 +606,7 @@ export default function ProjectActivities() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right w-[200px]">النشاط</TableHead>
-                  <TableHead className="text-right">البداية</TableHead>
-                  <TableHead className="text-right">النهاية</TableHead>
+                  <TableHead className="text-right w-[190px]">الفترة المخططة</TableHead>
                   <TableHead className="text-center w-[140px]">التأخر / التقدم</TableHead>
                   <TableHead className="text-center w-[160px]">الإنجاز (مخطط/فعلي)</TableHead>
                   <TableHead className="text-right w-[130px]">الحالة</TableHead>
@@ -609,11 +616,11 @@ export default function ProjectActivities() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">جاري التحميل...</TableCell>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">جاري التحميل...</TableCell>
                   </TableRow>
                 ) : (activities ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</TableCell>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</TableCell>
                   </TableRow>
                 ) : (
                   (activities ?? []).map((a) => {
@@ -627,12 +634,18 @@ export default function ProjectActivities() {
                           <span className="block truncate" title={a.name}>{a.name}</span>
                         </TableCell>
 
-                        {/* Dates */}
-                        <TableCell className="text-sm text-muted-foreground tabular-nums" dir="ltr">
-                          {new Date(a.plannedStartDate).toLocaleDateString('ar-SA-u-nu-latn')}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground tabular-nums" dir="ltr">
-                          {new Date(a.plannedEndDate).toLocaleDateString('ar-SA-u-nu-latn')}
+                        {/* Date range */}
+                        <TableCell className="w-[190px]">
+                          <div className="flex flex-col gap-0.5 font-mono text-xs tabular-nums">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-muted-foreground w-8 shrink-0">بداية</span>
+                              <span className="text-foreground">{fmtDate(a.plannedStartDate)}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-muted-foreground w-8 shrink-0">نهاية</span>
+                              <span className="text-foreground">{fmtDate(a.plannedEndDate)}</span>
+                            </div>
+                          </div>
                         </TableCell>
 
                         {/* Delay / Advance */}
