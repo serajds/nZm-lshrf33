@@ -45,13 +45,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         title: "تم تسجيل الدخول بنجاح",
       });
       setLocation("/");
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as { error?: string };
       toast({
         variant: "destructive",
         title: "فشل تسجيل الدخول",
         description: e?.error || "تأكد من اسم المستخدم وكلمة المرور",
       });
-      throw e;
+      throw err;
     }
   };
 

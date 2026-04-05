@@ -4,6 +4,8 @@ import { projectsTable, reportsTable, activitiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireEngineerOrAdmin } from "../middlewares/auth";
 import PDFDocument from "pdfkit";
+import path from "path";
+import fs from "fs";
 
 const router: IRouter = Router();
 
@@ -100,6 +102,60 @@ router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, as
         doc.fontSize(10).text("التوصيات:", { continued: false });
         doc.fontSize(9).text(report.recommendations, { indent: 15 });
         doc.moveDown(0.2);
+      }
+
+      if (report.imageUrls && report.imageUrls.length > 0) {
+        const uploadsDir = path.join(process.cwd(), "uploads");
+        const validImages: string[] = [];
+
+        for (const imgUrl of report.imageUrls) {
+          try {
+            const filename = path.basename(imgUrl.split("?")[0]);
+            const imgPath = path.join(uploadsDir, filename);
+            if (fs.existsSync(imgPath)) {
+              validImages.push(imgPath);
+            }
+          } catch {
+            // skip invalid image path
+          }
+        }
+
+        if (validImages.length > 0) {
+          doc.moveDown(0.3);
+          doc.fontSize(10).text("صور الموقع:", { continued: false });
+          doc.moveDown(0.2);
+
+          const imgSize = 150;
+          const gapX = 15;
+          const leftMargin = 50;
+          const imgsPerRow = 3;
+
+          for (let imgIdx = 0; imgIdx < validImages.length; imgIdx++) {
+            const col = imgIdx % imgsPerRow;
+            const x = leftMargin + col * (imgSize + gapX);
+            const y = doc.y;
+
+            if (y + imgSize > doc.page.height - 80) {
+              doc.addPage();
+            }
+
+            const currentY = doc.y;
+            try {
+              doc.image(validImages[imgIdx], x, currentY, {
+                fit: [imgSize, imgSize],
+              });
+            } catch {
+              // skip image that can't be embedded
+            }
+
+            if (col === imgsPerRow - 1 || imgIdx === validImages.length - 1) {
+              doc.y = currentY + imgSize + 8;
+              doc.x = leftMargin;
+            }
+          }
+
+          doc.moveDown(0.3);
+        }
       }
 
       if (idx < reports.length - 1) {
