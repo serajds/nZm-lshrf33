@@ -371,7 +371,7 @@ export const getListProjectsUrl = (params?: ListProjectsParams) => {
 
   Object.entries(params || {}).forEach(([key, value]) => {
     if (value !== undefined) {
-      normalizedParams.append(key, value === null ? "null" : value.toString());
+      if (value !== null) { normalizedParams.append(key, value.toString()); }
     }
   });
 
@@ -1160,7 +1160,7 @@ export const getListReportsUrl = (
 
   Object.entries(params || {}).forEach(([key, value]) => {
     if (value !== undefined) {
-      normalizedParams.append(key, value === null ? "null" : value.toString());
+      if (value !== null) { normalizedParams.append(key, value.toString()); }
     }
   });
 
@@ -1710,7 +1710,7 @@ export const getListFilesUrl = (
 
   Object.entries(params || {}).forEach(([key, value]) => {
     if (value !== undefined) {
-      normalizedParams.append(key, value === null ? "null" : value.toString());
+      if (value !== null) { normalizedParams.append(key, value.toString()); }
     }
   });
 
