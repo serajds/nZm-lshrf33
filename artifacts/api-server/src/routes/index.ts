@@ -10,6 +10,7 @@ import ownerRouter from "./owner";
 import dashboardRouter from "./dashboard";
 import pdfRouter from "./pdf";
 import extensionsRouter from "./extensions";
+import suspensionsRouter from "./suspensions";
 
 const router: IRouter = Router();
 
@@ -18,6 +19,7 @@ router.use(authRouter);
 router.use(projectsRouter);
 router.use(activitiesRouter);
 router.use(extensionsRouter);
+router.use(suspensionsRouter);
 router.use(pdfRouter);
 router.use(reportsRouter);
 router.use(filesRouter);

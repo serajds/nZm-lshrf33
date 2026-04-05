@@ -366,8 +366,25 @@ export interface ProjectSummary {
   totalDays: number;
   daysRemaining: number;
   delayDays: number;
+  suspensionDays: number;
+  netDelayDays: number;
   reportsCount: number;
   filesCount: number;
+}
+
+export interface ProjectSuspension {
+  id: number;
+  projectId: number;
+  type: "official_holiday" | "force_majeure";
+  title: string;
+  startDate: string;
+  endDate: string;
+  calendarDays: number;
+  reason: string | null;
+  documentRef: string | null;
+  approvedBy: string | null;
+  notes: string | null;
+  createdAt: string;
 }
 
 export interface ProjectExtension {
@@ -388,6 +405,7 @@ export interface OwnerProjectView {
   activities: Activity[];
   reports: Report[];
   extensions: ProjectExtension[];
+  suspensions: ProjectSuspension[];
   summary: ProjectSummary;
 }
 

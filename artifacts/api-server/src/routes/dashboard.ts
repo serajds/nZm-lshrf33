@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable } from "@workspace/db";
+import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectSuspensionsTable } from "@workspace/db";
 import { eq, count, avg, sql } from "drizzle-orm";
 import { requireEngineerOrAdmin } from "../middlewares/auth";
 
@@ -52,6 +52,7 @@ router.get("/projects/:projectId/summary", requireEngineerOrAdmin, async (req, r
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
   const [reportCount] = await db.select({ count: count() }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
   const [fileCount] = await db.select({ count: count() }).from(projectFilesTable).where(eq(projectFilesTable.projectId, projectId));
+  const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId));
 
   const today = new Date();
   const startDate = new Date(project.startDate);
@@ -61,6 +62,8 @@ router.get("/projects/:projectId/summary", requireEngineerOrAdmin, async (req, r
   const daysRemaining = Math.max(0, totalDays - daysElapsed);
   const plannedProgress = Math.min(100, (daysElapsed / totalDays) * 100);
   const delayDays = project.overallProgress < plannedProgress ? Math.round((plannedProgress - project.overallProgress) / 100 * totalDays) : 0;
+  const suspensionDays = suspensions.reduce((s, x) => s + x.calendarDays, 0);
+  const netDelayDays = Math.max(0, delayDays - suspensionDays);
 
   res.json({
     projectId,
@@ -73,6 +76,8 @@ router.get("/projects/:projectId/summary", requireEngineerOrAdmin, async (req, r
     totalDays,
     daysRemaining,
     delayDays,
+    suspensionDays,
+    netDelayDays,
     reportsCount: Number(reportCount?.count ?? 0),
     filesCount: Number(fileCount?.count ?? 0),
   });
@@ -89,6 +94,7 @@ router.get("/projects/:projectId/deviation", requireEngineerOrAdmin, async (req,
   }
 
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+  const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId));
 
   const today = new Date();
   const startDate = new Date(project.startDate);
@@ -99,6 +105,9 @@ router.get("/projects/:projectId/deviation", requireEngineerOrAdmin, async (req,
 
   const progressDeviation = project.overallProgress - plannedProgress;
   const timeDeviation = progressDeviation < -10 ? (plannedProgress - project.overallProgress) / 100 * totalDays : 0;
+  const suspensionDays = suspensions.reduce((s, x) => s + x.calendarDays, 0);
+  const grossDelayDays = progressDeviation < 0 ? Math.round(Math.abs(progressDeviation) / 100 * totalDays) : 0;
+  const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
 
   let overallStatus: "on_track" | "slightly_delayed" | "significantly_delayed" | "ahead";
   if (progressDeviation > 5) {
@@ -138,6 +147,9 @@ router.get("/projects/:projectId/deviation", requireEngineerOrAdmin, async (req,
     projectId,
     timeDeviation,
     progressDeviation,
+    suspensionDays,
+    grossDelayDays,
+    netDelayDays,
     status: overallStatus,
     activitiesAnalysis,
   });

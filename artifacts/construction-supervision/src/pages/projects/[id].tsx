@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   Building2, MapPin, Calendar, ActivitySquare, CheckCircle2,
-  AlertTriangle, ArrowRight, Share2, Copy, Clock, ArrowBigRightDash
+  AlertTriangle, ArrowRight, Share2, Copy, Clock, ArrowBigRightDash, PauseCircle
 } from "lucide-react";
 import { ProjectNav } from "@/components/project-nav";
 
@@ -201,10 +201,25 @@ export default function ProjectDetails() {
                 />
               </div>
               {summary?.delayDays ? (
-                <p className="text-sm text-destructive mt-3 flex items-center gap-1.5 font-medium">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  تأخير بمقدار {summary.delayDays} يوم عن المخطط
-                </p>
+                <div className="mt-3 space-y-1.5">
+                  <p className="text-sm text-destructive flex items-center gap-1.5 font-medium">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    تأخير إجمالي: {summary.delayDays} يوم
+                  </p>
+                  {(summary.suspensionDays ?? 0) > 0 && (
+                    <p className="text-sm text-amber-600 flex items-center gap-1.5 font-medium">
+                      <PauseCircle className="h-4 w-4 shrink-0" />
+                      توقفات مشروعة: {summary.suspensionDays} يوم
+                    </p>
+                  )}
+                  <p className={`text-sm flex items-center gap-1.5 font-semibold ${(summary.netDelayDays ?? summary.delayDays) > 0 ? "text-destructive" : "text-emerald-600"}`}>
+                    {(summary.netDelayDays ?? summary.delayDays) > 0 ? (
+                      <><AlertTriangle className="h-4 w-4 shrink-0" /> صافي التأخير: {summary.netDelayDays ?? summary.delayDays} يوم</>
+                    ) : (
+                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا تأخير بعد خصم التوقفات</>
+                    )}
+                  </p>
+                </div>
               ) : (
                 <p className="text-sm text-emerald-600 mt-3 flex items-center gap-1.5 font-medium">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />

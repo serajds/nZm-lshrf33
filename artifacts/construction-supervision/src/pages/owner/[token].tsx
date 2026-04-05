@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams } from "wouter";
 import { useVerifyOwnerAccess } from "@workspace/api-client-react";
-import type { OwnerProjectView, Activity, Report, ProjectExtension } from "@workspace/api-client-react";
+import type { OwnerProjectView, Activity, Report, ProjectExtension, ProjectSuspension } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { 
   Building2, MapPin, HardHat, Lock, 
-  CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock
+  CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock, PauseCircle
 } from "lucide-react";
 
 import {
@@ -92,9 +92,10 @@ export default function OwnerPortal() {
     );
   }
 
-  const { project, activities, reports, extensions = [], summary } = ownerData;
+  const { project, activities, reports, extensions = [], suspensions = [], summary } = ownerData;
   const totalExtDays = extensions.reduce((s, e) => s + e.daysAdded, 0);
   const latestExt = extensions.length > 0 ? extensions[extensions.length - 1] : null;
+  const totalSuspDays = (suspensions as ProjectSuspension[]).reduce((s, x) => s + x.calendarDays, 0);
 
   function formatDate(d: string) {
     return new Date(d).toLocaleDateString("ar-SA-u-nu-latn", { year: "numeric", month: "2-digit", day: "2-digit" });
@@ -169,10 +170,11 @@ export default function OwnerPortal() {
         </div>
 
         <Tabs defaultValue="progress" className="w-full">
-          <TabsList className="w-full justify-start mb-4">
+          <TabsList className="w-full justify-start mb-4 flex-wrap gap-1">
             <TabsTrigger value="progress">سير العمل</TabsTrigger>
             <TabsTrigger value="reports">التقارير</TabsTrigger>
             <TabsTrigger value="extensions">التمديدات {extensions.length > 0 && <Badge className="mr-1 bg-amber-500 text-white text-[10px] px-1 py-0">{extensions.length}</Badge>}</TabsTrigger>
+            <TabsTrigger value="suspensions">التوقفات {(suspensions as ProjectSuspension[]).length > 0 && <Badge className="mr-1 bg-violet-500 text-white text-[10px] px-1 py-0">{(suspensions as ProjectSuspension[]).length}</Badge>}</TabsTrigger>
           </TabsList>
           
           <TabsContent value="progress" className="space-y-6">
@@ -332,6 +334,86 @@ export default function OwnerPortal() {
                               </TableCell>
                               <TableCell className="text-sm">
                                 {ext.approvedBy ?? <span className="text-muted-foreground">—</span>}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="suspensions">
+            <div className="space-y-4">
+              {(suspensions as ProjectSuspension[]).length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center text-muted-foreground">
+                    لا توجد توقفات مسجلة للمشروع
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Card>
+                      <CardContent className="pt-5">
+                        <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
+                          <PauseCircle className="h-3.5 w-3.5 text-violet-500" /> عدد التوقفات المسجلة
+                        </p>
+                        <p className="text-2xl font-bold tabular-nums text-violet-600">
+                          {(suspensions as ProjectSuspension[]).length}
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-amber-400">
+                      <CardContent className="pt-5">
+                        <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
+                          <Clock className="h-3.5 w-3.5 text-amber-500" /> إجمالي أيام التوقف
+                        </p>
+                        <p className="text-2xl font-bold tabular-nums text-amber-600">
+                          {totalSuspDays} <span className="text-sm font-normal">يوم</span>
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">سجل التوقفات الرسمية</CardTitle>
+                      <CardDescription>العطل الرسمية والظروف القاهرة المعتمدة</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0 overflow-x-auto">
+                      <Table className="min-w-[560px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-right">#</TableHead>
+                            <TableHead className="text-right">النوع</TableHead>
+                            <TableHead className="text-right">تاريخ البدء</TableHead>
+                            <TableHead className="text-right">تاريخ الانتهاء</TableHead>
+                            <TableHead className="text-center">الأيام</TableHead>
+                            <TableHead className="text-right">السبب</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(suspensions as ProjectSuspension[]).map((susp, i) => (
+                            <TableRow key={susp.id}>
+                              <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
+                              <TableCell>
+                                {susp.type === "official_holiday" ? (
+                                  <Badge className="bg-violet-100 text-violet-700 border border-violet-300">عطلة رسمية</Badge>
+                                ) : (
+                                  <Badge className="bg-red-100 text-red-700 border border-red-300">ظرف قاهر</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell dir="ltr" className="text-sm tabular-nums">{formatDate(susp.startDate)}</TableCell>
+                              <TableCell dir="ltr" className="text-sm tabular-nums">{formatDate(susp.endDate)}</TableCell>
+                              <TableCell className="text-center">
+                                <Badge className="bg-amber-500 text-white">{susp.calendarDays} يوم</Badge>
+                              </TableCell>
+                              <TableCell className="text-sm max-w-[160px] truncate" title={susp.reason ?? undefined}>
+                                {susp.reason ?? <span className="text-muted-foreground">—</span>}
                               </TableCell>
                             </TableRow>
                           ))}
