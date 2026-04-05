@@ -57,7 +57,9 @@ router.post("/owner/verify", async (req, res): Promise<void> => {
   const endDate = new Date(project.expectedEndDate);
   const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-  const daysRemaining = Math.max(0, totalDays - daysElapsed);
+  const rawDaysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const daysRemaining = Math.max(0, rawDaysRemaining);
+  const delayDays = rawDaysRemaining < 0 ? Math.abs(rawDaysRemaining) : 0;
   const plannedProgress = Math.min(100, (daysElapsed / totalDays) * 100);
 
   const activitiesCompleted = activities.filter(a => a.status === "completed").length;
@@ -75,7 +77,7 @@ router.post("/owner/verify", async (req, res): Promise<void> => {
     daysElapsed,
     totalDays,
     daysRemaining,
-    delayDays: Math.max(0, -daysRemaining),
+    delayDays,
     reportsCount: reports.length,
     filesCount: filesCountResult?.count ?? 0,
   };

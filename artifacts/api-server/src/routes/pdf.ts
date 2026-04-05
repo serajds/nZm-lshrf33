@@ -6,6 +6,7 @@ import { requireEngineerOrAdmin } from "../middlewares/auth";
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
+const AMIRI_FONT = path.join(process.cwd(), "src/fonts/Amiri-Regular.ttf");
 
 const router: IRouter = Router();
 
@@ -27,6 +28,8 @@ router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, as
     .where(eq(activitiesTable.projectId, projectId))
     .orderBy(activitiesTable.sortOrder);
 
+  const hasAmiriFont = fs.existsSync(AMIRI_FONT);
+
   const doc = new PDFDocument({ 
     margin: 50, 
     size: "A4",
@@ -36,11 +39,14 @@ router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, as
     }
   });
 
+  if (hasAmiriFont) {
+    doc.registerFont("Amiri", AMIRI_FONT);
+    doc.font("Amiri");
+  }
+
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="project-${projectId}-reports.pdf"`);
   doc.pipe(res);
-
-  const centerX = doc.page.width / 2;
 
   doc.fontSize(20).text(`نظام الإشراف الهندسي`, { align: "center" });
   doc.fontSize(16).text(`تقارير المشروع`, { align: "center" });
@@ -79,6 +85,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, as
     reports.forEach((report, idx) => {
       if (doc.y > doc.page.height - 150) {
         doc.addPage();
+        if (hasAmiriFont) doc.font("Amiri");
       }
 
       const typeLabel = report.type === "weekly" ? "أسبوعي" : "شهري";
