@@ -356,7 +356,7 @@ export default function Projects() {
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Calendar className="h-4 w-4 shrink-0" />
-                    <span>النهاية: {new Date(project.expectedEndDate).toLocaleDateString('ar-SA')}</span>
+                    <span>النهاية: {new Date(project.expectedEndDate).toLocaleDateString('ar-SA-u-nu-latn')}</span>
                   </div>
                 </div>
                 

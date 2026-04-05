@@ -240,20 +240,20 @@ export default function ProjectDetails() {
                   <p className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
                     <Calendar className="h-4 w-4" /> تاريخ البداية
                   </p>
-                  <p className="text-foreground" dir="ltr">{new Date(project.startDate).toLocaleDateString('ar-SA')}</p>
+                  <p className="text-foreground" dir="ltr">{new Date(project.startDate).toLocaleDateString('ar-SA-u-nu-latn')}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
                     <Calendar className="h-4 w-4" /> النهاية المتوقعة
                   </p>
-                  <p className="text-foreground" dir="ltr">{new Date(project.expectedEndDate).toLocaleDateString('ar-SA')}</p>
+                  <p className="text-foreground" dir="ltr">{new Date(project.expectedEndDate).toLocaleDateString('ar-SA-u-nu-latn')}</p>
                 </div>
                 {project.actualEndDate && (
                   <div className="space-y-1">
                     <p className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
                       <CheckCircle2 className="h-4 w-4" /> النهاية الفعلية
                     </p>
-                    <p className="text-foreground" dir="ltr">{new Date(project.actualEndDate).toLocaleDateString('ar-SA')}</p>
+                    <p className="text-foreground" dir="ltr">{new Date(project.actualEndDate).toLocaleDateString('ar-SA-u-nu-latn')}</p>
                   </div>
                 )}
               </div>
