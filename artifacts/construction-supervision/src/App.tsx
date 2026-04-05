@@ -13,6 +13,7 @@ import ProjectActivities from "@/pages/projects/[id]/activities";
 import ProjectReports from "@/pages/projects/[id]/reports";
 import ProjectFiles from "@/pages/projects/[id]/files";
 import ProjectDeviation from "@/pages/projects/[id]/deviation";
+import ProjectExtensions from "@/pages/projects/[id]/extensions";
 import Users from "@/pages/users";
 import OwnerPortal from "@/pages/owner/[token]";
 import NotFound from "@/pages/not-found";
@@ -61,6 +62,9 @@ function Router() {
       </Route>
       <Route path="/projects/:id/deviation">
         <ProtectedRoute component={ProjectDeviation} />
+      </Route>
+      <Route path="/projects/:id/extensions">
+        <ProtectedRoute component={ProjectExtensions} />
       </Route>
       <Route path="/projects/:id">
         <ProtectedRoute component={ProjectDetails} />

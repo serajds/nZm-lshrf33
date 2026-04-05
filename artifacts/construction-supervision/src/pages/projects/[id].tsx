@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import {
   useGetProject,
   useGetProjectSummary,
@@ -14,9 +15,23 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   Building2, MapPin, Calendar, ActivitySquare, CheckCircle2,
-  AlertTriangle, ArrowRight, Share2, Copy, Clock
+  AlertTriangle, ArrowRight, Share2, Copy, Clock, ArrowBigRightDash
 } from "lucide-react";
 import { ProjectNav } from "@/components/project-nav";
+
+interface ProjectExtension {
+  id: number;
+  extensionDate: string;
+  daysAdded: number;
+  newEndDate: string;
+  reason: string | null;
+  documentRef: string | null;
+}
+
+function authFetch(url: string) {
+  const token = localStorage.getItem("auth_token");
+  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+}
 
 export default function ProjectDetails() {
   const params = useParams();
@@ -34,6 +49,20 @@ export default function ProjectDetails() {
   const { data: summary, isLoading: isSummaryLoading } = useGetProjectSummary(projectId, {
     query: { enabled: !!projectId }
   });
+  const { data: extensions = [] } = useQuery<ProjectExtension[]>({
+    queryKey: [`/api/projects/${projectId}/extensions`],
+    queryFn: async () => {
+      const r = await authFetch(`/api/projects/${projectId}/extensions`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const totalExtDays = extensions.reduce((s, e) => s + e.daysAdded, 0);
+  const latestEndDate = extensions.length > 0
+    ? extensions[extensions.length - 1].newEndDate
+    : null;
 
   const generateLink = useGenerateOwnerLink();
 
@@ -240,22 +269,28 @@ export default function ProjectDetails() {
                   ltr: true,
                 },
                 {
-                  icon: Calendar, label: "النهاية المتوقعة",
+                  icon: Calendar, label: "النهاية التعاقدية الأصلية",
                   value: new Date(project.expectedEndDate).toLocaleDateString("ar-SA-u-nu-latn"),
                   ltr: true,
                 },
+                ...(latestEndDate ? [{
+                  icon: ArrowBigRightDash, label: `النهاية بعد التمديد (+${totalExtDays} يوم)`,
+                  value: new Date(latestEndDate).toLocaleDateString("ar-SA-u-nu-latn"),
+                  ltr: true,
+                  highlight: true,
+                }] : []),
                 ...(project.actualEndDate ? [{
                   icon: Clock, label: "النهاية الفعلية",
                   value: new Date(project.actualEndDate).toLocaleDateString("ar-SA-u-nu-latn"),
                   ltr: true,
                 }] : []),
               ].map((item, i) => (
-                <div key={i} className="space-y-1">
-                  <p className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground">
+                <div key={i} className={`space-y-1 ${(item as { highlight?: boolean }).highlight ? "rounded-md bg-amber-50 border border-amber-200 px-2 py-1" : ""}`}>
+                  <p className={`text-xs font-medium flex items-center gap-1.5 ${(item as { highlight?: boolean }).highlight ? "text-amber-700" : "text-muted-foreground"}`}>
                     <item.icon className="h-3.5 w-3.5 shrink-0" />
                     {item.label}
                   </p>
-                  <p className="text-sm text-foreground" dir={item.ltr ? "ltr" : undefined}>
+                  <p className={`text-sm ${(item as { highlight?: boolean }).highlight ? "text-amber-800 font-semibold" : "text-foreground"}`} dir={item.ltr ? "ltr" : undefined}>
                     {item.value}
                   </p>
                 </div>

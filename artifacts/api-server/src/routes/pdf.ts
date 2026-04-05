@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, reportsTable, activitiesTable } from "@workspace/db";
+import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireEngineerOrAdmin } from "../middlewares/auth";
 import PDFDocument from "pdfkit";
@@ -94,6 +94,10 @@ router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, as
   const activities = await db.select().from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId))
     .orderBy(activitiesTable.sortOrder);
+
+  const extensions = await db.select().from(projectExtensionsTable)
+    .where(eq(projectExtensionsTable.projectId, projectId))
+    .orderBy(projectExtensionsTable.extensionDate);
 
   const hasFont = fs.existsSync(AMIRI_FONT);
 
@@ -438,6 +442,93 @@ router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, as
           });
         }
       }
+    });
+  }
+
+  // ════════════════════════════════════════════
+  // EXTENSIONS PAGE (if any)
+  // ════════════════════════════════════════════
+  if (extensions.length > 0) {
+    doc.addPage();
+    if (hasFont) doc.font("Amiri");
+    y = MARGIN;
+    y = drawSectionHeader(doc, "سجل التمديدات الزمنية", y);
+
+    // Summary box
+    const totalDaysAdded = extensions.reduce((s, e) => s + e.daysAdded, 0);
+    const latestExt = extensions[extensions.length - 1];
+    doc.roundedRect(MARGIN, y, CONTENT_W, 36, 4).fill(C.light).stroke(C.border);
+    setFont(8, C.textMuted);
+    doc.text("التاريخ الأصلي للإنهاء", MARGIN + 8, y + 8, { width: 120, align: "right" });
+    setFont(9, C.textDark);
+    doc.text(formatDate(project.expectedEndDate), MARGIN + 8, y + 20, { width: 120, align: "right" });
+
+    setFont(8, C.textMuted);
+    doc.text("إجمالي أيام التمديد", MARGIN + 140, y + 8, { width: 100, align: "right" });
+    setFont(14, C.warning);
+    doc.text(`${totalDaysAdded} يوم`, MARGIN + 140, y + 16, { width: 100, align: "right" });
+
+    setFont(8, C.textMuted);
+    doc.text("تاريخ الإنهاء الحالي", MARGIN + 260, y + 8, { width: 120, align: "right" });
+    setFont(10, "#92400e");
+    doc.text(formatDate(latestExt.newEndDate), MARGIN + 260, y + 20, { width: 120, align: "right" });
+    y += 46;
+
+    // Table header
+    const extCols = { num: 25, date: 80, days: 55, newEnd: 80, reason: 130, docRef: 80, approvedBy: 60 };
+    const extHeaderH = 20;
+    doc.rect(MARGIN, y, CONTENT_W, extHeaderH).fill(C.light).stroke(C.border);
+    const extHeads = [
+      { text: "الجهة الموافِقة", x: MARGIN + 4, w: extCols.approvedBy },
+      { text: "رقم الخطاب", x: MARGIN + extCols.approvedBy + 4, w: extCols.docRef },
+      { text: "السبب", x: MARGIN + extCols.approvedBy + extCols.docRef + 4, w: extCols.reason },
+      { text: "تاريخ الإنهاء الجديد", x: MARGIN + extCols.approvedBy + extCols.docRef + extCols.reason + 4, w: extCols.newEnd },
+      { text: "الأيام المضافة", x: MARGIN + extCols.approvedBy + extCols.docRef + extCols.reason + extCols.newEnd + 4, w: extCols.days },
+      { text: "تاريخ الاتفاقية", x: MARGIN + extCols.approvedBy + extCols.docRef + extCols.reason + extCols.newEnd + extCols.days + 4, w: extCols.date },
+      { text: "#", x: MARGIN + extCols.approvedBy + extCols.docRef + extCols.reason + extCols.newEnd + extCols.days + extCols.date + 4, w: extCols.num },
+    ];
+    extHeads.forEach(h => {
+      setFont(8, C.textMuted);
+      doc.text(h.text, h.x, y + 5, { width: h.w, align: "right" });
+    });
+    y += extHeaderH;
+
+    extensions.forEach((ext, i) => {
+      const rowH = 28;
+      y = ensurePage(doc, rowH + 10);
+      const bg = i % 2 === 0 ? C.white : "#fffbeb";
+      doc.rect(MARGIN, y, CONTENT_W, rowH).fill(bg).stroke(C.border);
+
+      let cx = MARGIN + 4;
+      // approvedBy
+      setFont(8, C.textMuted);
+      doc.text(ext.approvedBy ?? "—", cx, y + 9, { width: extCols.approvedBy - 6, align: "right" });
+      cx += extCols.approvedBy;
+      // docRef
+      setFont(8, C.textMuted);
+      doc.text(ext.documentRef ?? "—", cx + 4, y + 9, { width: extCols.docRef - 6, align: "right" });
+      cx += extCols.docRef;
+      // reason
+      setFont(9, C.textDark);
+      doc.text(ext.reason ?? "—", cx + 4, y + 4, { width: extCols.reason - 8, align: "right", height: 20, lineBreak: false });
+      cx += extCols.reason;
+      // newEndDate
+      setFont(9, "#92400e");
+      doc.text(formatDate(ext.newEndDate), cx + 4, y + 9, { width: extCols.newEnd - 6, align: "center" });
+      cx += extCols.newEnd;
+      // daysAdded
+      setFont(10, C.warning);
+      doc.text(`+${ext.daysAdded}`, cx + 4, y + 7, { width: extCols.days - 6, align: "center" });
+      cx += extCols.days;
+      // extensionDate
+      setFont(9, C.textMuted);
+      doc.text(formatDate(ext.extensionDate), cx + 4, y + 9, { width: extCols.date - 6, align: "center" });
+      cx += extCols.date;
+      // number
+      setFont(8, C.textMuted);
+      doc.text(String(i + 1), cx + 4, y + 9, { width: extCols.num - 4, align: "center" });
+
+      y += rowH;
     });
   }
 
