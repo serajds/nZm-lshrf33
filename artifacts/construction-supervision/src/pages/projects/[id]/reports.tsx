@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProjectNav } from "@/components/project-nav";
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from "@/components/ui/dialog";
@@ -180,26 +180,21 @@ export default function ProjectReports() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/projects")}>
+      <div className="flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
-        <h1 className="text-3xl font-bold tracking-tight">{project?.name} - التقارير</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">التقارير</p>
+        </div>
       </div>
 
-      <Tabs defaultValue="reports" className="w-full" dir="rtl">
-        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-6">
-          <TabsTrigger value="summary" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}`)}>ملخص المشروع</TabsTrigger>
-          <TabsTrigger value="activities" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}/activities`)}>الجدول الزمني</TabsTrigger>
-          <TabsTrigger value="reports" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3">التقارير</TabsTrigger>
-          <TabsTrigger value="files" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}/files`)}>الملفات</TabsTrigger>
-          <TabsTrigger value="deviation" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}/deviation`)}>تحليل الانحراف</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <ProjectNav projectId={projectId} />
 
-      <div className="flex justify-between items-center bg-card p-4 rounded-lg border shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-48">
+      <div className="flex flex-wrap justify-between items-center bg-card p-4 rounded-lg border shadow-sm gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="w-40">
             <Select value={typeFilter ?? "all"} onValueChange={(v) => setTypeFilter(v)}>
               <SelectTrigger>
                 <SelectValue placeholder="نوع التقرير" />

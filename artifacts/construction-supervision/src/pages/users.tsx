@@ -126,9 +126,9 @@ export default function Users() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <UsersIcon className="h-8 w-8 text-primary" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+          <UsersIcon className="h-6 w-6 text-primary shrink-0" />
           المستخدمون
         </h1>
         
@@ -230,8 +230,8 @@ export default function Users() {
       </div>
 
       <Card>
-        <CardContent className="p-0">
-          <Table>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[540px]">
             <TableHeader>
               <TableRow>
                 <TableHead className="text-right">الاسم</TableHead>

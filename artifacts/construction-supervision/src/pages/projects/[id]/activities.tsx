@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProjectNav } from "@/components/project-nav";
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from "@/components/ui/dialog";
@@ -175,22 +175,17 @@ export default function ProjectActivities() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/projects")}>
+      <div className="flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
-        <h1 className="text-3xl font-bold tracking-tight">{project?.name} - الجدول الزمني</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">الجدول الزمني</p>
+        </div>
       </div>
 
-      <Tabs defaultValue="activities" className="w-full" dir="rtl">
-        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-6">
-          <TabsTrigger value="summary" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}`)}>ملخص المشروع</TabsTrigger>
-          <TabsTrigger value="activities" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3">الجدول الزمني</TabsTrigger>
-          <TabsTrigger value="reports" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}/reports`)}>التقارير</TabsTrigger>
-          <TabsTrigger value="files" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}/files`)}>الملفات</TabsTrigger>
-          <TabsTrigger value="deviation" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}/deviation`)}>تحليل الانحراف</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <ProjectNav projectId={projectId} />
 
       <div className="grid gap-6">
         {/* Gantt Timeline Chart */}
@@ -409,8 +404,8 @@ export default function ProjectActivities() {
               </DialogContent>
             </Dialog>
           </CardHeader>
-          <CardContent className="p-0">
-            <Table>
+          <CardContent className="p-0 overflow-x-auto">
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">النشاط</TableHead>

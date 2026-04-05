@@ -7,7 +7,7 @@ import type { ActivityDeviation } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProjectNav } from "@/components/project-nav";
 import { ArrowRight, AlertTriangle, TrendingDown, TrendingUp, CheckCircle2 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine
@@ -43,22 +43,17 @@ export default function ProjectDeviation() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/projects")}>
+      <div className="flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
-        <h1 className="text-3xl font-bold tracking-tight">{project?.name} - تحليل الانحراف</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">تحليل الانحراف</p>
+        </div>
       </div>
 
-      <Tabs defaultValue="deviation" className="w-full" dir="rtl">
-        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-6">
-          <TabsTrigger value="summary" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}`)}>ملخص المشروع</TabsTrigger>
-          <TabsTrigger value="activities" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}/activities`)}>الجدول الزمني</TabsTrigger>
-          <TabsTrigger value="reports" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}/reports`)}>التقارير</TabsTrigger>
-          <TabsTrigger value="files" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3" onClick={() => setLocation(`/projects/${projectId}/files`)}>الملفات</TabsTrigger>
-          <TabsTrigger value="deviation" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 py-3">تحليل الانحراف</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <ProjectNav projectId={projectId} />
 
       {deviationData && statusInfo && (
         <div className="grid gap-6">

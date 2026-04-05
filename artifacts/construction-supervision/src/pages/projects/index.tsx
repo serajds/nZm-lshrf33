@@ -159,7 +159,7 @@ export default function Projects() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
-        <h1 className="text-3xl font-bold tracking-tight">المشاريع</h1>
+        <h1 className="text-xl md:text-2xl font-bold">المشاريع</h1>
         
         <Button className="gap-2" onClick={openCreate}>
           <Plus className="h-4 w-4" />
