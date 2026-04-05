@@ -14,13 +14,18 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { HardHat, Loader2 } from "lucide-react";
+import { HardHat, Loader2, Building2, ClipboardList, BarChart3 } from "lucide-react";
 
 const loginSchema = z.object({
   username: z.string().min(1, "اسم المستخدم مطلوب"),
   password: z.string().min(1, "كلمة المرور مطلوبة"),
 });
+
+const features = [
+  { icon: Building2, text: "إدارة مشاريع البناء" },
+  { icon: ClipboardList, text: "التقارير الدورية والمرفقات" },
+  { icon: BarChart3, text: "لوحة تحليلات شاملة" },
+];
 
 export default function Login() {
   const { login, isAuthenticated } = useAuth();
@@ -34,10 +39,7 @@ export default function Login() {
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      username: "",
-      password: "",
-    },
+    defaultValues: { username: "", password: "" },
   });
 
   async function onSubmit(values: z.infer<typeof loginSchema>) {
@@ -50,31 +52,117 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center bg-muted p-4" dir="rtl">
-      <div className="mb-8 flex flex-col items-center">
-        <div className="w-16 h-16 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center shadow-lg mb-4">
-          <HardHat className="w-8 h-8" />
+    <div className="min-h-screen flex" dir="rtl" style={{ backgroundColor: "hsl(var(--background))" }}>
+
+      {/* ===== RIGHT PANEL — Branding ===== */}
+      <div
+        className="hidden lg:flex flex-col justify-between w-5/12 p-12"
+        style={{ backgroundColor: "hsl(var(--sidebar))" }}
+      >
+        {/* Logo */}
+        <div className="flex items-center gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+            style={{ backgroundColor: "hsl(var(--sidebar-primary))" }}
+          >
+            <HardHat className="w-5 h-5" style={{ color: "hsl(var(--sidebar-primary-foreground))" }} />
+          </div>
+          <span
+            className="text-base font-bold"
+            style={{ color: "hsl(var(--sidebar-accent-foreground))" }}
+          >
+            نظام الإشراف الهندسي
+          </span>
         </div>
-        <h1 className="text-2xl font-bold text-foreground">نظام الإشراف الهندسي</h1>
-        <p className="text-muted-foreground mt-2">منصة إدارة ومتابعة مشاريع البناء</p>
+
+        {/* Center content */}
+        <div>
+          <h2
+            className="text-3xl font-bold leading-snug mb-4"
+            style={{ color: "hsl(var(--sidebar-accent-foreground))" }}
+          >
+            منصة متكاملة
+            <br />
+            لإدارة مشاريع البناء
+          </h2>
+          <p
+            className="text-sm leading-relaxed mb-10"
+            style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.6 }}
+          >
+            تتبع تقدم المشاريع، وأصدر التقارير الدورية، وراقب الجداول الزمنية بدقة واحترافية.
+          </p>
+
+          <div className="space-y-4">
+            {features.map((f) => (
+              <div key={f.text} className="flex items-center gap-3">
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                  style={{
+                    backgroundColor: "hsl(var(--sidebar-accent))",
+                  }}
+                >
+                  <f.icon
+                    className="w-4 h-4"
+                    style={{ color: "hsl(var(--sidebar-primary))" }}
+                  />
+                </div>
+                <span
+                  className="text-sm font-medium"
+                  style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.75 }}
+                >
+                  {f.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <p
+          className="text-xs"
+          style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.35 }}
+        >
+          &copy; {new Date().getFullYear()} نظام الإشراف الهندسي. جميع الحقوق محفوظة.
+        </p>
       </div>
 
-      <Card className="w-full max-w-md shadow-xl">
-        <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-2xl">تسجيل الدخول</CardTitle>
-          <CardDescription>أدخل بيانات الاعتماد الخاصة بك للوصول</CardDescription>
-        </CardHeader>
-        <CardContent>
+      {/* ===== LEFT PANEL — Login Form ===== */}
+      <div className="flex-1 flex flex-col items-center justify-center p-8">
+        {/* Mobile logo */}
+        <div className="flex lg:hidden flex-col items-center mb-10">
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+            style={{ backgroundColor: "hsl(var(--primary))" }}
+          >
+            <HardHat className="w-7 h-7 text-white" />
+          </div>
+          <h1 className="text-xl font-bold text-foreground">نظام الإشراف الهندسي</h1>
+        </div>
+
+        <div className="w-full max-w-sm">
+          {/* Heading */}
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-foreground">تسجيل الدخول</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              أدخل بيانات حسابك للوصول إلى النظام
+            </p>
+          </div>
+
+          {/* Form */}
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
               <FormField
                 control={form.control}
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>اسم المستخدم</FormLabel>
+                    <FormLabel className="text-sm font-medium">اسم المستخدم</FormLabel>
                     <FormControl>
-                      <Input placeholder="admin" {...field} dir="ltr" className="text-right" />
+                      <Input
+                        placeholder="أدخل اسم المستخدم"
+                        {...field}
+                        className="h-10"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -85,19 +173,29 @@ export default function Login() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>كلمة المرور</FormLabel>
+                    <FormLabel className="text-sm font-medium">كلمة المرور</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} dir="ltr" className="text-right" />
+                      <Input
+                        type="password"
+                        placeholder="أدخل كلمة المرور"
+                        {...field}
+                        className="h-10"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={isLoggingIn}>
+
+              <Button
+                type="submit"
+                className="w-full h-10 font-semibold"
+                disabled={isLoggingIn}
+              >
                 {isLoggingIn ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin ml-2" />
-                    جاري تسجيل الدخول...
+                    <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                    جاري الدخول...
                   </>
                 ) : (
                   "دخول"
@@ -105,11 +203,12 @@ export default function Login() {
               </Button>
             </form>
           </Form>
-        </CardContent>
-      </Card>
-      
-      <div className="mt-8 text-sm text-muted-foreground">
-        &copy; {new Date().getFullYear()} نظام الإشراف الهندسي المتقدم. جميع الحقوق محفوظة.
+
+          {/* Footer mobile */}
+          <p className="mt-10 text-center text-xs text-muted-foreground lg:hidden">
+            &copy; {new Date().getFullYear()} نظام الإشراف الهندسي. جميع الحقوق محفوظة.
+          </p>
+        </div>
       </div>
     </div>
   );
