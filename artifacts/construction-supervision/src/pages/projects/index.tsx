@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { useListProjects, useCreateProject, getListProjectsQueryKey } from "@workspace/api-client-react";
-import type { CreateProjectBody } from "@workspace/api-client-react/src/generated/api.schemas";
+import { useListProjects, useCreateProject, useUpdateProject, useDeleteProject, getListProjectsQueryKey } from "@workspace/api-client-react";
+import type { Project } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,11 +13,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Search, Building2, MapPin, Calendar } from "lucide-react";
+import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -34,10 +43,14 @@ const projectSchema = z.object({
   status: z.enum(["active", "completed", "delayed", "suspended"]).default("active"),
 });
 
+type ProjectFormValues = z.infer<typeof projectSchema>;
+
 export default function Projects() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -47,8 +60,10 @@ export default function Projects() {
   });
 
   const createProject = useCreateProject();
+  const updateProject = useUpdateProject();
+  const deleteProject = useDeleteProject();
 
-  const form = useForm<z.infer<typeof projectSchema>>({
+  const form = useForm<ProjectFormValues>({
     resolver: zodResolver(projectSchema),
     defaultValues: {
       name: "",
@@ -57,20 +72,66 @@ export default function Projects() {
       supervisorEntity: "",
       contractor: "",
       startDate: new Date().toISOString().split('T')[0],
-      expectedEndDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0], // +1 year
+      expectedEndDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
       status: "active",
     }
   });
 
-  const onSubmit = async (values: z.infer<typeof projectSchema>) => {
+  const openEdit = (p: Project) => {
+    setEditingProject(p);
+    form.reset({
+      name: p.name,
+      location: p.location,
+      ownerEntity: p.ownerEntity,
+      supervisorEntity: p.supervisorEntity,
+      contractor: p.contractor,
+      startDate: new Date(p.startDate).toISOString().split('T')[0],
+      expectedEndDate: new Date(p.expectedEndDate).toISOString().split('T')[0],
+      status: p.status as ProjectFormValues["status"],
+    });
+    setIsDialogOpen(true);
+  };
+
+  const openCreate = () => {
+    setEditingProject(null);
+    form.reset({
+      name: "", location: "", ownerEntity: "", supervisorEntity: "",
+      contractor: "",
+      startDate: new Date().toISOString().split('T')[0],
+      expectedEndDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
+      status: "active",
+    });
+    setIsDialogOpen(true);
+  };
+
+  const onSubmit = async (values: ProjectFormValues) => {
     try {
-      await createProject.mutateAsync({ data: values });
+      if (editingProject) {
+        await updateProject.mutateAsync({ id: editingProject.id, data: values });
+        toast({ title: "تم تحديث المشروع بنجاح" });
+      } else {
+        await createProject.mutateAsync({ data: values });
+        toast({ title: "تم إنشاء المشروع بنجاح" });
+      }
       queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() });
       setIsDialogOpen(false);
       form.reset();
-      toast({ title: "تم إنشاء المشروع بنجاح" });
-    } catch (error) {
-      toast({ variant: "destructive", title: "فشل إنشاء المشروع" });
+      setEditingProject(null);
+    } catch {
+      toast({ variant: "destructive", title: editingProject ? "فشل تحديث المشروع" : "فشل إنشاء المشروع" });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingProject) return;
+    try {
+      await deleteProject.mutateAsync({ id: deletingProject.id });
+      queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() });
+      toast({ title: "تم حذف المشروع بنجاح" });
+    } catch {
+      toast({ variant: "destructive", title: "فشل حذف المشروع" });
+    } finally {
+      setDeletingProject(null);
     }
   };
 
@@ -84,21 +145,25 @@ export default function Projects() {
     }
   };
 
+  const isSubmitting = createProject.isPending || updateProject.isPending;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
         <h1 className="text-3xl font-bold tracking-tight">المشاريع</h1>
         
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              مشروع جديد
-            </Button>
-          </DialogTrigger>
+        <Button className="gap-2" onClick={openCreate}>
+          <Plus className="h-4 w-4" />
+          مشروع جديد
+        </Button>
+
+        <Dialog open={isDialogOpen} onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) { setEditingProject(null); form.reset(); }
+        }}>
           <DialogContent className="sm:max-w-[600px]" dir="rtl">
             <DialogHeader>
-              <DialogTitle>إضافة مشروع جديد</DialogTitle>
+              <DialogTitle>{editingProject ? "تعديل المشروع" : "إضافة مشروع جديد"}</DialogTitle>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -180,10 +245,33 @@ export default function Projects() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={form.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem className="col-span-2">
+                        <FormLabel>حالة المشروع</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange} dir="rtl">
+                          <FormControl>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                          </FormControl>
+                          <SelectContent dir="rtl">
+                            <SelectItem value="active">نشط</SelectItem>
+                            <SelectItem value="completed">مكتمل</SelectItem>
+                            <SelectItem value="delayed">متأخر</SelectItem>
+                            <SelectItem value="suspended">متوقف</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <div className="flex justify-end pt-4 gap-2">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
-                  <Button type="submit" disabled={createProject.isPending}>حفظ المشروع</Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? "جاري الحفظ..." : editingProject ? "حفظ التعديلات" : "حفظ المشروع"}
+                  </Button>
                 </div>
               </form>
             </Form>
@@ -231,12 +319,20 @@ export default function Projects() {
             <Card key={project.id} className="hover:shadow-md transition-shadow flex flex-col h-full">
               <CardHeader className="pb-3 border-b border-border/50">
                 <div className="flex justify-between items-start gap-2">
-                  <CardTitle className="text-lg line-clamp-2">
+                  <CardTitle className="text-lg line-clamp-2 flex-1">
                     <Link href={`/projects/${project.id}`} className="hover:text-primary transition-colors">
                       {project.name}
                     </Link>
                   </CardTitle>
-                  {getStatusBadge(project.status)}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {getStatusBadge(project.status)}
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(project)}>
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeletingProject(project)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-4 flex-1 flex flex-col justify-between space-y-4">
@@ -272,6 +368,27 @@ export default function Projects() {
           ))}
         </div>
       )}
+
+      <AlertDialog open={!!deletingProject} onOpenChange={(open) => { if (!open) setDeletingProject(null); }}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>حذف المشروع</AlertDialogTitle>
+            <AlertDialogDescription>
+              هل أنت متأكد من حذف مشروع "{deletingProject?.name}"؟ لا يمكن التراجع عن هذا الإجراء.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2">
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteProject.isPending}
+            >
+              {deleteProject.isPending ? "جاري الحذف..." : "حذف المشروع"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

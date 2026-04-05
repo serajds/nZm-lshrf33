@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { 
   useListReports, 
@@ -25,7 +25,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, Download } from "lucide-react";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, Download, ImagePlus, X, Loader2 } from "lucide-react";
 
 const reportSchema = z.object({
   type: z.enum(["weekly", "monthly"]),
@@ -51,6 +51,8 @@ export default function ProjectReports() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   
@@ -121,6 +123,41 @@ export default function ProjectReports() {
     a.download = `project-${projectId}-reports.pdf`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setIsUploading(true);
+    const token = localStorage.getItem("auth_token");
+    const newUrls: string[] = [];
+    for (const file of Array.from(files)) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("category", "image");
+      formData.append("description", "صورة تقرير");
+      try {
+        const resp = await fetch(`/api/projects/${projectId}/files`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        if (resp.ok) {
+          const data = await resp.json() as { fileUrl?: string };
+          if (data.fileUrl) {
+            newUrls.push(data.fileUrl);
+          }
+        } else {
+          toast({ variant: "destructive", title: `فشل رفع ${file.name}` });
+        }
+      } catch {
+        toast({ variant: "destructive", title: `خطأ في رفع ${file.name}` });
+      }
+    }
+    const current = form.getValues("imageUrls") ?? [];
+    form.setValue("imageUrls", [...current, ...newUrls]);
+    setIsUploading(false);
+    if (imageInputRef.current) imageInputRef.current.value = "";
   };
 
   const onSubmit = async (values: ReportFormValues) => {
@@ -292,6 +329,73 @@ export default function ProjectReports() {
                     )}
                   />
                 </div>
+
+                {/* Image Upload Section */}
+                <FormField
+                  control={form.control}
+                  name="imageUrls"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <ImagePlus className="h-4 w-4" /> صور الموقع (اختياري)
+                      </FormLabel>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <input
+                            ref={imageInputRef}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={handleImageUpload}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={isUploading}
+                            onClick={() => imageInputRef.current?.click()}
+                            className="gap-2"
+                          >
+                            {isUploading ? (
+                              <><Loader2 className="h-4 w-4 animate-spin" /> جاري الرفع...</>
+                            ) : (
+                              <><ImagePlus className="h-4 w-4" /> إضافة صور</>
+                            )}
+                          </Button>
+                          {(field.value ?? []).length > 0 && (
+                            <span className="text-xs text-muted-foreground">{(field.value ?? []).length} صورة مرفقة</span>
+                          )}
+                        </div>
+                        {(field.value ?? []).length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {(field.value ?? []).map((url, idx) => (
+                              <div key={idx} className="relative group w-20 h-20 rounded-md overflow-hidden border">
+                                <img
+                                  src={url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`}
+                                  alt={`صورة ${idx + 1}`}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = (field.value ?? []).filter((_, i) => i !== idx);
+                                    form.setValue("imageUrls", updated);
+                                  }}
+                                  className="absolute top-0.5 right-0.5 bg-destructive text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
                 <div className="flex justify-end gap-2 pt-4 sticky bottom-0 bg-background pb-2 mt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
                   <Button type="submit" disabled={createReport.isPending || updateReport.isPending}>حفظ التقرير</Button>
@@ -367,6 +471,34 @@ export default function ProjectReports() {
                         </div>
                       )}
                     </div>
+                    {report.imageUrls && report.imageUrls.length > 0 && (
+                      <div className="pt-2 border-t">
+                        <h4 className="text-sm font-semibold mb-2 flex items-center gap-1">
+                          <ImagePlus className="h-4 w-4" /> صور الموقع ({report.imageUrls.length})
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {report.imageUrls.map((url, idx) => {
+                            const authUrl = url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`;
+                            return (
+                              <a
+                                key={idx}
+                                href={authUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-20 h-20 rounded-md overflow-hidden border block hover:opacity-80 transition-opacity"
+                              >
+                                <img
+                                  src={authUrl}
+                                  alt={`صورة ${idx + 1}`}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                />
+                              </a>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
