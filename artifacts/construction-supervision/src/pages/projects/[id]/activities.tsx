@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link, useLocation } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { 
   useListActivities, 
   useCreateActivity, 
@@ -8,6 +8,7 @@ import {
   useGetProject,
   getListActivitiesQueryKey 
 } from "@workspace/api-client-react";
+import type { Activity } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,8 @@ const activitySchema = z.object({
   sortOrder: z.coerce.number().default(0),
 });
 
+type ActivityFormValues = z.infer<typeof activitySchema>;
+
 export default function ProjectActivities() {
   const params = useParams();
   const [, setLocation] = useLocation();
@@ -60,7 +63,7 @@ export default function ProjectActivities() {
   const updateActivity = useUpdateActivity();
   const deleteActivity = useDeleteActivity();
 
-  const form = useForm<z.infer<typeof activitySchema>>({
+  const form = useForm<ActivityFormValues>({
     resolver: zodResolver(activitySchema),
     defaultValues: {
       name: "",
@@ -75,7 +78,7 @@ export default function ProjectActivities() {
     }
   });
 
-  const handleEdit = (a: any) => {
+  const handleEdit = (a: Activity) => {
     setEditingId(a.id);
     form.reset({
       name: a.name,
@@ -85,8 +88,8 @@ export default function ProjectActivities() {
       actualEndDate: a.actualEndDate ? new Date(a.actualEndDate).toISOString().split('T')[0] : "",
       plannedProgress: a.plannedProgress,
       actualProgress: a.actualProgress,
-      status: a.status,
-      sortOrder: a.sortOrder,
+      status: a.status as ActivityFormValues["status"],
+      sortOrder: a.sortOrder ?? 0,
     });
     setIsDialogOpen(true);
   };
@@ -94,37 +97,35 @@ export default function ProjectActivities() {
   const handleDelete = async (id: number) => {
     if (confirm("هل أنت متأكد من حذف هذا النشاط؟")) {
       try {
-        await deleteActivity.mutateAsync({ id });
+        await deleteActivity.mutateAsync({ projectId, id });
         queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(projectId) });
         toast({ title: "تم حذف النشاط" });
-      } catch (e) {
+      } catch {
         toast({ variant: "destructive", title: "فشل الحذف" });
       }
     }
   };
 
-  const onSubmit = async (values: z.infer<typeof activitySchema>) => {
+  const onSubmit = async (values: ActivityFormValues) => {
     try {
-      // Create request payload conforming to CreateActivityBody / UpdateActivityBody
-      const payload: any = {
-        projectId,
+      const payload = {
         ...values,
         actualStartDate: values.actualStartDate || null,
         actualEndDate: values.actualEndDate || null,
       };
 
       if (editingId) {
-        await updateActivity.mutateAsync({ id: editingId, data: payload });
+        await updateActivity.mutateAsync({ projectId, id: editingId, data: payload });
         toast({ title: "تم التحديث" });
       } else {
-        await createActivity.mutateAsync({ data: payload });
+        await createActivity.mutateAsync({ projectId, data: payload });
         toast({ title: "تمت الإضافة" });
       }
       queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(projectId) });
       setIsDialogOpen(false);
       form.reset();
       setEditingId(null);
-    } catch (e) {
+    } catch {
       toast({ variant: "destructive", title: "فشل الحفظ" });
     }
   };
@@ -139,11 +140,11 @@ export default function ProjectActivities() {
     }
   };
 
-  const ganttData = activities?.map((a: any) => ({
+  const ganttData = (activities ?? []).map((a) => ({
     name: a.name,
     "المخطط": a.plannedProgress,
     "الفعلي": a.actualProgress,
-  })) || [];
+  }));
 
   return (
     <div className="space-y-6">
@@ -175,7 +176,7 @@ export default function ProjectActivities() {
                 <BarChart data={ganttData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="name" angle={-45} textAnchor="end" height={60} interval={0} fontSize={12} />
-                  <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                  <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
                   <Tooltip contentStyle={{ textAlign: 'right', direction: 'rtl' }} formatter={(v: number) => [`${v}%`]} />
                   <Bar dataKey="المخطط" fill="hsl(var(--muted-foreground))" opacity={0.5} radius={[4, 4, 0, 0]} />
                   <Bar dataKey="الفعلي" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
@@ -243,7 +244,7 @@ export default function ProjectActivities() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>بداية الفعلي</FormLabel>
-                            <FormControl><Input type="date" {...field} value={field.value || ''} /></FormControl>
+                            <FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -254,7 +255,7 @@ export default function ProjectActivities() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>نهاية الفعلي</FormLabel>
-                            <FormControl><Input type="date" {...field} value={field.value || ''} /></FormControl>
+                            <FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -339,10 +340,10 @@ export default function ProjectActivities() {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={7} className="text-center py-4">جاري التحميل...</TableCell></TableRow>
-                ) : activities?.length === 0 ? (
+                ) : (activities ?? []).length === 0 ? (
                   <TableRow><TableCell colSpan={7} className="text-center py-4 text-muted-foreground">لا يوجد أنشطة</TableCell></TableRow>
                 ) : (
-                  activities?.map((a: any) => (
+                  (activities ?? []).map((a) => (
                     <TableRow key={a.id}>
                       <TableCell className="font-medium">{a.name}</TableCell>
                       <TableCell dir="ltr" className="text-right text-muted-foreground">{new Date(a.plannedStartDate).toLocaleDateString('ar-SA')}</TableCell>

@@ -6,7 +6,8 @@ import {
   useGetProject,
   getListFilesQueryKey 
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { ProjectFile } from "@workspace/api-client-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, ArrowRight, FileText, Image as ImageIcon, File as FileIcon, UploadCloud, Download } from "lucide-react";
+import { Trash2, ArrowRight, FileText, Image as ImageIcon, File as FileIcon, UploadCloud, Download } from "lucide-react";
 
 export default function ProjectFiles() {
   const params = useParams();
@@ -46,10 +47,10 @@ export default function ProjectFiles() {
   const handleDelete = async (id: number) => {
     if (confirm("هل أنت متأكد من حذف هذا الملف؟")) {
       try {
-        await deleteFile.mutateAsync({ id });
+        await deleteFile.mutateAsync({ projectId, id });
         queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) });
         toast({ title: "تم حذف الملف" });
-      } catch (e) {
+      } catch {
         toast({ variant: "destructive", title: "فشل الحذف" });
       }
     }
@@ -71,10 +72,11 @@ export default function ProjectFiles() {
         formData.append("description", uploadDescription);
       }
 
+      const token = localStorage.getItem("auth_token");
       const res = await fetch(`/api/projects/${projectId}/files`, {
         method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
-        // don't set Content-Type header, let browser set it with boundary
       });
 
       if (!res.ok) throw new Error("Upload failed");
@@ -85,7 +87,7 @@ export default function ProjectFiles() {
       setUploadDescription("");
       if (fileInputRef.current) fileInputRef.current.value = '';
       toast({ title: "تم رفع الملف بنجاح" });
-    } catch (e) {
+    } catch {
       toast({ variant: "destructive", title: "فشل رفع الملف" });
     } finally {
       setIsUploading(false);
@@ -140,7 +142,7 @@ export default function ProjectFiles() {
 
       <div className="flex justify-between items-center bg-card p-4 rounded-lg border shadow-sm">
         <div className="w-full sm:w-48">
-          <Select value={categoryFilter || "all"} onValueChange={(v) => setCategoryFilter(v)}>
+          <Select value={categoryFilter ?? "all"} onValueChange={(v) => setCategoryFilter(v)}>
             <SelectTrigger>
               <SelectValue placeholder="تصنيف الملف" />
             </SelectTrigger>
@@ -179,7 +181,7 @@ export default function ProjectFiles() {
                 <Input 
                   type="file" 
                   ref={fileInputRef}
-                  onChange={(e) => setFileToUpload(e.target.files?.[0] || null)}
+                  onChange={(e) => setFileToUpload(e.target.files?.[0] ?? null)}
                   className="cursor-pointer"
                 />
               </div>
@@ -218,14 +220,14 @@ export default function ProjectFiles() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {isLoading ? (
           <div className="col-span-full text-center py-12">جاري التحميل...</div>
-        ) : files?.length === 0 ? (
+        ) : (files ?? []).length === 0 ? (
           <div className="col-span-full text-center py-12 bg-card rounded-lg border border-dashed">
             <FileIcon className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-3" />
             <h3 className="text-lg font-medium">لا توجد ملفات</h3>
             <p className="text-muted-foreground text-sm mt-1">لم يتم رفع أي ملفات مطابقة للبحث</p>
           </div>
         ) : (
-          files?.map((file: any) => (
+          (files ?? []).map((file: ProjectFile) => (
             <Card key={file.id} className="overflow-hidden flex flex-col group">
               <CardContent className="p-4 flex-1 flex flex-col">
                 <div className="flex justify-between items-start mb-4">

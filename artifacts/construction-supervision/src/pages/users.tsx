@@ -6,6 +6,7 @@ import {
   useDeleteUser,
   getListUsersQueryKey
 } from "@workspace/api-client-react";
+import type { User } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,13 +67,13 @@ export default function Users() {
     return null;
   }
 
-  const handleEdit = (u: any) => {
+  const handleEdit = (u: User) => {
     setEditingUserId(u.id);
     form.reset({
       fullName: u.fullName,
       username: u.username,
       email: u.email,
-      role: u.role,
+      role: u.role as "admin" | "engineer" | "owner",
       password: "",
     });
     setIsDialogOpen(true);
@@ -93,8 +94,8 @@ export default function Users() {
   const onSubmit = async (values: z.infer<typeof userSchema>) => {
     try {
       if (editingUserId) {
-        const updateData: any = { ...values };
-        if (!updateData.password) delete updateData.password;
+        const { password, ...rest } = values;
+        const updateData = password ? { ...rest, password } : rest;
         await updateUser.mutateAsync({ id: editingUserId, data: updateData });
         toast({ title: "تم تحديث المستخدم بنجاح" });
       } else {
@@ -102,7 +103,7 @@ export default function Users() {
             toast({ variant: "destructive", title: "كلمة المرور مطلوبة للمستخدم الجديد" });
             return;
         }
-        await createUser.mutateAsync({ data: values as any });
+        await createUser.mutateAsync({ data: { ...values, password: values.password! } });
         toast({ title: "تم إنشاء المستخدم بنجاح" });
       }
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });

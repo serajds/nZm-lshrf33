@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link, useLocation } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { 
   useListReports, 
   useCreateReport, 
@@ -8,7 +8,8 @@ import {
   useGetProject,
   getListReportsQueryKey 
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { Report } from "@workspace/api-client-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,6 +39,8 @@ const reportSchema = z.object({
   imageUrls: z.array(z.string()).default([]),
 });
 
+type ReportFormValues = z.infer<typeof reportSchema>;
+
 export default function ProjectReports() {
   const params = useParams();
   const [, setLocation] = useLocation();
@@ -59,7 +62,7 @@ export default function ProjectReports() {
   const updateReport = useUpdateReport();
   const deleteReport = useDeleteReport();
 
-  const form = useForm<z.infer<typeof reportSchema>>({
+  const form = useForm<ReportFormValues>({
     resolver: zodResolver(reportSchema),
     defaultValues: {
       type: "weekly",
@@ -74,18 +77,18 @@ export default function ProjectReports() {
     }
   });
 
-  const handleEdit = (r: any) => {
+  const handleEdit = (r: Report) => {
     setEditingId(r.id);
     form.reset({
-      type: r.type,
+      type: r.type as ReportFormValues["type"],
       reportDate: new Date(r.reportDate).toISOString().split('T')[0],
       periodStart: new Date(r.periodStart).toISOString().split('T')[0],
       periodEnd: new Date(r.periodEnd).toISOString().split('T')[0],
       workDescription: r.workDescription,
       progressPercentage: r.progressPercentage,
-      technicalNotes: r.technicalNotes,
-      recommendations: r.recommendations,
-      imageUrls: r.imageUrls || [],
+      technicalNotes: r.technicalNotes ?? "",
+      recommendations: r.recommendations ?? "",
+      imageUrls: r.imageUrls ?? [],
     });
     setIsDialogOpen(true);
   };
@@ -93,35 +96,29 @@ export default function ProjectReports() {
   const handleDelete = async (id: number) => {
     if (confirm("هل أنت متأكد من حذف هذا التقرير؟")) {
       try {
-        await deleteReport.mutateAsync({ id });
+        await deleteReport.mutateAsync({ projectId, id });
         queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
         toast({ title: "تم حذف التقرير" });
-      } catch (e) {
+      } catch {
         toast({ variant: "destructive", title: "فشل الحذف" });
       }
     }
   };
 
-  const onSubmit = async (values: z.infer<typeof reportSchema>) => {
+  const onSubmit = async (values: ReportFormValues) => {
     try {
-      // API payload shape
-      const payload: any = {
-        projectId,
-        ...values,
-      };
-
       if (editingId) {
-        await updateReport.mutateAsync({ id: editingId, data: payload });
+        await updateReport.mutateAsync({ projectId, id: editingId, data: values });
         toast({ title: "تم التحديث" });
       } else {
-        await createReport.mutateAsync({ data: payload });
+        await createReport.mutateAsync({ projectId, data: values });
         toast({ title: "تمت الإضافة" });
       }
       queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
       setIsDialogOpen(false);
       form.reset();
       setEditingId(null);
-    } catch (e) {
+    } catch {
       toast({ variant: "destructive", title: "فشل الحفظ" });
     }
   };
@@ -147,7 +144,7 @@ export default function ProjectReports() {
 
       <div className="flex justify-between items-center bg-card p-4 rounded-lg border shadow-sm">
         <div className="w-full sm:w-48">
-          <Select value={typeFilter || "all"} onValueChange={(v) => setTypeFilter(v)}>
+          <Select value={typeFilter ?? "all"} onValueChange={(v) => setTypeFilter(v)}>
             <SelectTrigger>
               <SelectValue placeholder="نوع التقرير" />
             </SelectTrigger>
@@ -255,7 +252,7 @@ export default function ProjectReports() {
                     render={({ field }) => (
                       <FormItem className="col-span-2">
                         <FormLabel>الملاحظات الفنية (اختياري)</FormLabel>
-                        <FormControl><Textarea className="min-h-20" {...field} value={field.value || ''} /></FormControl>
+                        <FormControl><Textarea className="min-h-20" {...field} value={field.value ?? ''} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -266,7 +263,7 @@ export default function ProjectReports() {
                     render={({ field }) => (
                       <FormItem className="col-span-2">
                         <FormLabel>التوصيات (اختياري)</FormLabel>
-                        <FormControl><Textarea className="min-h-20" {...field} value={field.value || ''} /></FormControl>
+                        <FormControl><Textarea className="min-h-20" {...field} value={field.value ?? ''} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -285,14 +282,14 @@ export default function ProjectReports() {
       <div className="grid gap-4">
         {isLoading ? (
           <div className="text-center py-12">جاري التحميل...</div>
-        ) : reports?.length === 0 ? (
+        ) : (reports ?? []).length === 0 ? (
           <div className="text-center py-12 bg-card rounded-lg border border-dashed">
             <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-3" />
             <h3 className="text-lg font-medium">لا توجد تقارير</h3>
             <p className="text-muted-foreground text-sm mt-1">لم يتم إضافة أي تقارير لهذا المشروع بعد</p>
           </div>
         ) : (
-          reports?.map((report: any) => (
+          (reports ?? []).map((report) => (
             <Card key={report.id} className="overflow-hidden">
               <div className="flex flex-col md:flex-row">
                 <div className="bg-muted p-4 md:w-48 flex flex-col justify-center items-center text-center border-b md:border-b-0 md:border-l">

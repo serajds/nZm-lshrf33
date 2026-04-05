@@ -7,15 +7,19 @@ import { AppLayout } from "@/components/layout";
 
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
-import Projects from "@/pages/projects";
+import Projects from "@/pages/projects/index";
 import ProjectDetails from "@/pages/projects/[id]";
+import ProjectActivities from "@/pages/projects/[id]/activities";
+import ProjectReports from "@/pages/projects/[id]/reports";
+import ProjectFiles from "@/pages/projects/[id]/files";
+import ProjectDeviation from "@/pages/projects/[id]/deviation";
 import Users from "@/pages/users";
 import OwnerPortal from "@/pages/owner/[token]";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType<any> }) {
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
@@ -45,6 +49,18 @@ function Router() {
       </Route>
       <Route path="/projects">
         <ProtectedRoute component={Projects} />
+      </Route>
+      <Route path="/projects/:id/activities">
+        <ProtectedRoute component={ProjectActivities} />
+      </Route>
+      <Route path="/projects/:id/reports">
+        <ProtectedRoute component={ProjectReports} />
+      </Route>
+      <Route path="/projects/:id/files">
+        <ProtectedRoute component={ProjectFiles} />
+      </Route>
+      <Route path="/projects/:id/deviation">
+        <ProtectedRoute component={ProjectDeviation} />
       </Route>
       <Route path="/projects/:id">
         <ProtectedRoute component={ProjectDetails} />

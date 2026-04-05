@@ -22,6 +22,7 @@ export * from "./deviationAnalysis";
 export * from "./deviationAnalysisStatus";
 export * from "./errorResponse";
 export * from "./generateOwnerLinkBody";
+export * from "./getOwnerProjectByToken200";
 export * from "./healthStatus";
 export * from "./listFilesParams";
 export * from "./listProjectsParams";

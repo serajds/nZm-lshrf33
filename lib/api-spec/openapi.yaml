@@ -576,7 +576,7 @@ paths:
     get:
       operationId: getOwnerProjectByToken
       tags: [owner-portal]
-      summary: Get project info for owner portal
+      summary: Check if owner access token is valid
       parameters:
         - name: token
           in: path
@@ -585,11 +585,19 @@ paths:
             type: string
       responses:
         "200":
-          description: Project summary for owner
+          description: Token exists
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OwnerProjectView"
+                type: object
+                properties:
+                  exists:
+                    type: boolean
+                  projectName:
+                    type: string
+                required:
+                  - exists
+                  - projectName
         "404":
           description: Not found
           content:
@@ -838,8 +846,6 @@ components:
         overallProgress:
           type: number
         ownerAccessToken:
-          type: ["string", "null"]
-        ownerAccessPassword:
           type: ["string", "null"]
         createdAt:
           type: string
