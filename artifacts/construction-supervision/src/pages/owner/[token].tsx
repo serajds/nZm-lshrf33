@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams } from "wouter";
 import { useVerifyOwnerAccess } from "@workspace/api-client-react";
-import type { OwnerProjectView, Activity, Report } from "@workspace/api-client-react";
+import type { OwnerProjectView, Activity, Report, ProjectExtension } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,16 +20,6 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
-
-interface ProjectExtension {
-  id: number;
-  extensionDate: string;
-  daysAdded: number;
-  newEndDate: string;
-  reason: string | null;
-  documentRef: string | null;
-  approvedBy: string | null;
-}
 
 export default function OwnerPortal() {
   const params = useParams();
@@ -102,8 +92,7 @@ export default function OwnerPortal() {
     );
   }
 
-  const { project, activities, reports, summary } = ownerData;
-  const extensions: ProjectExtension[] = (ownerData as unknown as { extensions?: ProjectExtension[] }).extensions ?? [];
+  const { project, activities, reports, extensions = [], summary } = ownerData;
   const totalExtDays = extensions.reduce((s, e) => s + e.daysAdded, 0);
   const latestExt = extensions.length > 0 ? extensions[extensions.length - 1] : null;
 
