@@ -44,6 +44,19 @@ export default function ProjectFiles() {
   
   const deleteFile = useDeleteFile();
 
+  const handleDownload = async (file: ProjectFile) => {
+    const token = localStorage.getItem("auth_token");
+    const url = token ? `${file.fileUrl}?token=${encodeURIComponent(token)}` : file.fileUrl;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.originalName;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const handleDelete = async (id: number) => {
     if (confirm("هل أنت متأكد من حذف هذا الملف؟")) {
       try {
@@ -255,10 +268,8 @@ export default function ProjectFiles() {
                 </div>
               </CardContent>
               <div className="bg-muted px-4 py-2 border-t flex justify-between gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                <Button variant="secondary" size="sm" className="flex-1 gap-1" asChild>
-                  <a href={file.fileUrl} target="_blank" rel="noopener noreferrer">
-                    <Download className="h-3 w-3" /> تحميل
-                  </a>
+                <Button variant="secondary" size="sm" className="flex-1 gap-1" onClick={() => handleDownload(file)}>
+                  <Download className="h-3 w-3" /> تحميل
                 </Button>
                 <Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleDelete(file.id)}>
                   <Trash2 className="h-4 w-4" />
