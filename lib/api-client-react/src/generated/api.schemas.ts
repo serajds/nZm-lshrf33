@@ -370,10 +370,24 @@ export interface ProjectSummary {
   filesCount: number;
 }
 
+export interface ProjectExtension {
+  id: number;
+  projectId: number;
+  extensionDate: string;
+  daysAdded: number;
+  newEndDate: string;
+  reason: string | null;
+  documentRef: string | null;
+  approvedBy: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
 export interface OwnerProjectView {
   project: Project;
   activities: Activity[];
   reports: Report[];
+  extensions: ProjectExtension[];
   summary: ProjectSummary;
 }
 
