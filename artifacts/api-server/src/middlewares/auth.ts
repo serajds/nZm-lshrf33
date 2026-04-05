@@ -36,3 +36,14 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
     next();
   });
 }
+
+export function requireEngineerOrAdmin(req: Request, res: Response, next: NextFunction): void {
+  requireAuth(req, res, () => {
+    const role = req.user?.role;
+    if (role !== "admin" && role !== "engineer") {
+      res.status(403).json({ error: "غير مصرح بهذه العملية" });
+      return;
+    }
+    next();
+  });
+}

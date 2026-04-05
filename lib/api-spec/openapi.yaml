@@ -420,6 +420,32 @@ paths:
         "204":
           description: Deleted
 
+  /projects/{projectId}/reports/export-pdf:
+    get:
+      operationId: exportReportsPdf
+      tags: [reports]
+      summary: Export project reports as PDF
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # Files
   /projects/{projectId}/files:
     get:

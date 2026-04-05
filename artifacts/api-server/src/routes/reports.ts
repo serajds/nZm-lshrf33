@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { reportsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireEngineerOrAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
@@ -22,7 +22,7 @@ router.get("/projects/:projectId/reports", requireAuth, async (req, res): Promis
   res.json(reports);
 });
 
-router.post("/projects/:projectId/reports", requireAuth, async (req, res): Promise<void> => {
+router.post("/projects/:projectId/reports", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -70,7 +70,7 @@ router.get("/projects/:projectId/reports/:id", requireAuth, async (req, res): Pr
   res.json(report);
 });
 
-router.patch("/projects/:projectId/reports/:id", requireAuth, async (req, res): Promise<void> => {
+router.patch("/projects/:projectId/reports/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
@@ -103,7 +103,7 @@ router.patch("/projects/:projectId/reports/:id", requireAuth, async (req, res): 
   res.json(report);
 });
 
-router.delete("/projects/:projectId/reports/:id", requireAuth, async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/reports/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);

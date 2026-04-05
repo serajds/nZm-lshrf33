@@ -396,6 +396,13 @@ export const DeleteReportParams = zod.object({
 });
 
 /**
+ * @summary Export project reports as PDF
+ */
+export const ExportReportsPdfParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+/**
  * @summary List files for a project
  */
 export const ListFilesParams = zod.object({

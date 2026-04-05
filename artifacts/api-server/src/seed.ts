@@ -4,6 +4,10 @@ import { hashPassword } from "./lib/auth";
 import { logger } from "./lib/logger";
 
 export async function seed() {
+  if (process.env.NODE_ENV !== "development") {
+    logger.info("Skipping seed in non-development environment");
+    return;
+  }
   try {
     const existingUsers = await db.select().from(usersTable).limit(1);
     if (existingUsers.length > 0) {

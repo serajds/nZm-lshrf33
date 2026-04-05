@@ -25,7 +25,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, Download } from "lucide-react";
 
 const reportSchema = z.object({
   type: z.enum(["weekly", "monthly"]),
@@ -105,6 +105,24 @@ export default function ProjectReports() {
     }
   };
 
+  const handleExportPdf = async () => {
+    const token = localStorage.getItem("auth_token");
+    const response = await fetch(`/api/projects/${projectId}/reports/export-pdf`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      toast({ variant: "destructive", title: "فشل تصدير التقرير" });
+      return;
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `project-${projectId}-reports.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const onSubmit = async (values: ReportFormValues) => {
     try {
       if (editingId) {
@@ -143,17 +161,22 @@ export default function ProjectReports() {
       </Tabs>
 
       <div className="flex justify-between items-center bg-card p-4 rounded-lg border shadow-sm">
-        <div className="w-full sm:w-48">
-          <Select value={typeFilter ?? "all"} onValueChange={(v) => setTypeFilter(v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="نوع التقرير" />
-            </SelectTrigger>
-            <SelectContent dir="rtl">
-              <SelectItem value="all">الكل</SelectItem>
-              <SelectItem value="weekly">أسبوعي</SelectItem>
-              <SelectItem value="monthly">شهري</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-3">
+          <div className="w-48">
+            <Select value={typeFilter ?? "all"} onValueChange={(v) => setTypeFilter(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="نوع التقرير" />
+              </SelectTrigger>
+              <SelectContent dir="rtl">
+                <SelectItem value="all">الكل</SelectItem>
+                <SelectItem value="weekly">أسبوعي</SelectItem>
+                <SelectItem value="monthly">شهري</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button variant="outline" className="gap-2" onClick={handleExportPdf}>
+            <Download className="h-4 w-4" /> تصدير PDF
+          </Button>
         </div>
         
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
