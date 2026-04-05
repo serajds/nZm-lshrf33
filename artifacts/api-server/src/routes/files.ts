@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectFilesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireEngineerOrAdmin } from "../middlewares/auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -48,7 +48,7 @@ router.get("/projects/:projectId/files", requireAuth, async (req, res): Promise<
   res.json(files);
 });
 
-router.post("/projects/:projectId/files", requireAuth, upload.single("file"), async (req, res): Promise<void> => {
+router.post("/projects/:projectId/files", requireEngineerOrAdmin, upload.single("file"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -80,7 +80,7 @@ router.post("/projects/:projectId/files", requireAuth, upload.single("file"), as
   res.status(201).json(file);
 });
 
-router.delete("/projects/:projectId/files/:id", requireAuth, async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/files/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);

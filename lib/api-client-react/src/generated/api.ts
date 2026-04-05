@@ -1611,6 +1611,95 @@ export const useDeleteReport = <
 };
 
 /**
+ * @summary Export project reports as PDF
+ */
+export const getExportReportsPdfUrl = (projectId: number) => {
+  return `/api/projects/${projectId}/reports/export-pdf`;
+};
+
+export const exportReportsPdf = async (
+  projectId: number,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getExportReportsPdfUrl(projectId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportReportsPdfQueryKey = (projectId: number) => {
+  return [`/api/projects/${projectId}/reports/export-pdf`] as const;
+};
+
+export const getExportReportsPdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportReportsPdf>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  projectId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportReportsPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportReportsPdfQueryKey(projectId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportReportsPdf>>
+  > = ({ signal }) =>
+    exportReportsPdf(projectId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!projectId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportReportsPdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportReportsPdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportReportsPdf>>
+>;
+export type ExportReportsPdfQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Export project reports as PDF
+ */
+
+export function useExportReportsPdf<
+  TData = Awaited<ReturnType<typeof exportReportsPdf>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  projectId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportReportsPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportReportsPdfQueryOptions(projectId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary List files for a project
  */
 export const getListFilesUrl = (

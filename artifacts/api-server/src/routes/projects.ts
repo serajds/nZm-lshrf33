@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable } from "@workspace/db";
 import { eq, ilike, or, sql } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireEngineerOrAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
 
@@ -34,7 +34,7 @@ router.get("/projects", requireAuth, async (req, res): Promise<void> => {
   res.json(projects);
 });
 
-router.post("/projects", requireAuth, async (req, res): Promise<void> => {
+router.post("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const {
     name, location, ownerEntity, supervisorEntity, contractor,
     startDate, expectedEndDate, status
@@ -68,7 +68,7 @@ router.get("/projects/:id", requireAuth, async (req, res): Promise<void> => {
   res.json(project);
 });
 
-router.patch("/projects/:id", requireAuth, async (req, res): Promise<void> => {
+router.patch("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
@@ -95,7 +95,7 @@ router.patch("/projects/:id", requireAuth, async (req, res): Promise<void> => {
   res.json(project);
 });
 
-router.delete("/projects/:id", requireAuth, async (req, res): Promise<void> => {
+router.delete("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
