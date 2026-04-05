@@ -74,7 +74,6 @@ export const ListProjectsResponseItem = zod.object({
   status: zod.enum(["active", "completed", "delayed", "suspended"]),
   overallProgress: zod.number(),
   ownerAccessToken: zod.string().nullish(),
-  ownerAccessPassword: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -118,7 +117,6 @@ export const GetProjectResponse = zod.object({
   status: zod.enum(["active", "completed", "delayed", "suspended"]),
   overallProgress: zod.number(),
   ownerAccessToken: zod.string().nullish(),
-  ownerAccessPassword: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -164,7 +162,6 @@ export const UpdateProjectResponse = zod.object({
   status: zod.enum(["active", "completed", "delayed", "suspended"]),
   overallProgress: zod.number(),
   ownerAccessToken: zod.string().nullish(),
-  ownerAccessPassword: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -499,78 +496,15 @@ export const DeleteUserParams = zod.object({
 });
 
 /**
- * @summary Get project info for owner portal
+ * @summary Check if owner access token is valid
  */
 export const GetOwnerProjectByTokenParams = zod.object({
   token: zod.coerce.string(),
 });
 
 export const GetOwnerProjectByTokenResponse = zod.object({
-  project: zod.object({
-    id: zod.number(),
-    name: zod.string(),
-    location: zod.string(),
-    ownerEntity: zod.string(),
-    supervisorEntity: zod.string(),
-    contractor: zod.string(),
-    startDate: zod.coerce.date(),
-    expectedEndDate: zod.coerce.date(),
-    actualEndDate: zod.coerce.date().nullish(),
-    status: zod.enum(["active", "completed", "delayed", "suspended"]),
-    overallProgress: zod.number(),
-    ownerAccessToken: zod.string().nullish(),
-    ownerAccessPassword: zod.string().nullish(),
-    createdAt: zod.coerce.date(),
-    updatedAt: zod.coerce.date(),
-  }),
-  activities: zod.array(
-    zod.object({
-      id: zod.number(),
-      projectId: zod.number(),
-      name: zod.string(),
-      plannedStartDate: zod.coerce.date(),
-      plannedEndDate: zod.coerce.date(),
-      actualStartDate: zod.coerce.date().nullish(),
-      actualEndDate: zod.coerce.date().nullish(),
-      plannedProgress: zod.number(),
-      actualProgress: zod.number(),
-      status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
-      sortOrder: zod.number(),
-      createdAt: zod.coerce.date(),
-    }),
-  ),
-  reports: zod.array(
-    zod.object({
-      id: zod.number(),
-      projectId: zod.number(),
-      type: zod.enum(["weekly", "monthly"]),
-      reportDate: zod.coerce.date(),
-      periodStart: zod.coerce.date(),
-      periodEnd: zod.coerce.date(),
-      workDescription: zod.string(),
-      progressPercentage: zod.number(),
-      technicalNotes: zod.string().nullish(),
-      recommendations: zod.string().nullish(),
-      imageUrls: zod.array(zod.string()),
-      createdById: zod.number().nullish(),
-      createdAt: zod.coerce.date(),
-      updatedAt: zod.coerce.date(),
-    }),
-  ),
-  summary: zod.object({
-    projectId: zod.number(),
-    overallProgress: zod.number(),
-    plannedProgress: zod.number(),
-    activitiesTotal: zod.number(),
-    activitiesCompleted: zod.number(),
-    activitiesDelayed: zod.number(),
-    daysElapsed: zod.number(),
-    totalDays: zod.number(),
-    daysRemaining: zod.number(),
-    delayDays: zod.number(),
-    reportsCount: zod.number(),
-    filesCount: zod.number(),
-  }),
+  exists: zod.boolean(),
+  projectName: zod.string(),
 });
 
 /**
@@ -595,7 +529,6 @@ export const VerifyOwnerAccessResponse = zod.object({
     status: zod.enum(["active", "completed", "delayed", "suspended"]),
     overallProgress: zod.number(),
     ownerAccessToken: zod.string().nullish(),
-    ownerAccessPassword: zod.string().nullish(),
     createdAt: zod.coerce.date(),
     updatedAt: zod.coerce.date(),
   }),
@@ -673,7 +606,6 @@ export const GetDashboardSummaryResponse = zod.object({
       status: zod.enum(["active", "completed", "delayed", "suspended"]),
       overallProgress: zod.number(),
       ownerAccessToken: zod.string().nullish(),
-      ownerAccessPassword: zod.string().nullish(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
     }),

@@ -3,6 +3,7 @@ import {
   useGetProjectDeviation,
   useGetProject
 } from "@workspace/api-client-react";
+import type { ActivityDeviation } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,10 +36,10 @@ export default function ProjectDeviation() {
   const statusInfo = deviationData ? getStatusInfo(deviationData.status) : null;
   const StatusIcon = statusInfo?.icon || AlertTriangle;
 
-  const chartData = deviationData?.activitiesAnalysis.map((a: any) => ({
+  const chartData = (deviationData?.activitiesAnalysis ?? []).map((a: ActivityDeviation) => ({
     name: a.activityName,
-    deviation: a.deviation, // Negative is behind schedule, positive is ahead
-  })) || [];
+    deviation: a.deviation,
+  }));
 
   return (
     <div className="space-y-6">
@@ -121,7 +122,7 @@ export default function ProjectDeviation() {
                     />
                     <ReferenceLine y={0} stroke="#666" />
                     <Bar dataKey="deviation" radius={[4, 4, 0, 0]}>
-                      {chartData.map((entry: any, index: number) => (
+                      {chartData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.deviation < 0 ? 'hsl(var(--destructive))' : 'hsl(160, 84%, 39%)'} />
                       ))}
                     </Bar>
@@ -133,9 +134,9 @@ export default function ProjectDeviation() {
                 <h3 className="font-semibold">الأنشطة الحرجة المتأخرة</h3>
                 <div className="grid gap-3">
                   {deviationData.activitiesAnalysis
-                    .filter((a: any) => a.deviation < -5)
-                    .sort((a: any, b: any) => a.deviation - b.deviation)
-                    .map((activity: any, idx: number) => (
+                    .filter((a: ActivityDeviation) => a.deviation < -5)
+                    .sort((a: ActivityDeviation, b: ActivityDeviation) => a.deviation - b.deviation)
+                    .map((activity: ActivityDeviation, idx: number) => (
                       <div key={idx} className="flex justify-between items-center p-3 rounded-md border border-destructive/20 bg-destructive/5">
                         <span className="font-medium">{activity.activityName}</span>
                         <div className="flex items-center gap-4 text-sm">
@@ -144,7 +145,7 @@ export default function ProjectDeviation() {
                         </div>
                       </div>
                     ))}
-                  {deviationData.activitiesAnalysis.filter((a: any) => a.deviation < -5).length === 0 && (
+                  {deviationData.activitiesAnalysis.filter((a: ActivityDeviation) => a.deviation < -5).length === 0 && (
                     <div className="text-center py-4 text-muted-foreground text-sm">لا توجد أنشطة متأخرة بشكل حرج</div>
                   )}
                 </div>

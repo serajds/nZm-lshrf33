@@ -22,8 +22,6 @@ export interface Project {
   overallProgress: number;
   /** @nullable */
   ownerAccessToken?: string | null;
-  /** @nullable */
-  ownerAccessPassword?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

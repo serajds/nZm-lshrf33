@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams } from "wouter";
 import { useVerifyOwnerAccess } from "@workspace/api-client-react";
+import type { OwnerProjectView, Activity, Report } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,8 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Building2, MapPin, Calendar, HardHat, Lock, 
-  CheckCircle2, AlertTriangle, FileText
+  Building2, MapPin, HardHat, Lock, 
+  CheckCircle2, AlertTriangle
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -18,11 +19,11 @@ import {
 
 export default function OwnerPortal() {
   const params = useParams();
-  const token = params.token || "";
+  const token = params.token ?? "";
   const { toast } = useToast();
   
   const [password, setPassword] = useState("");
-  const [ownerData, setOwnerData] = useState<any>(null);
+  const [ownerData, setOwnerData] = useState<OwnerProjectView | null>(null);
   
   const verifyAccess = useVerifyOwnerAccess();
 
@@ -35,11 +36,12 @@ export default function OwnerPortal() {
         data: { token, password }
       });
       setOwnerData(res);
-    } catch (e: any) {
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "الرجاء التأكد من كلمة المرور";
       toast({ 
         variant: "destructive", 
         title: "رمز الدخول غير صحيح",
-        description: e?.error || "الرجاء التأكد من كلمة المرور"
+        description: errorMessage
       });
     }
   };
@@ -98,11 +100,11 @@ export default function OwnerPortal() {
     }
   };
 
-  const ganttData = activities?.map((a: any) => ({
+  const ganttData = activities.map((a: Activity) => ({
     name: a.name,
     "المخطط": a.plannedProgress,
     "الفعلي": a.actualProgress,
-  })) || [];
+  }));
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8" dir="rtl">
@@ -133,8 +135,8 @@ export default function OwnerPortal() {
               <CardTitle className="text-sm font-medium text-muted-foreground">حالة التأخير</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className={`text-3xl font-bold ${summary.delayDays > 0 ? 'text-destructive' : 'text-emerald-600'}`}>
-                {summary.delayDays > 0 ? `${summary.delayDays} يوم` : 'لا يوجد تأخير'}
+              <div className={`text-3xl font-bold ${summary.delayDays && summary.delayDays > 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+                {summary.delayDays && summary.delayDays > 0 ? `${summary.delayDays} يوم` : 'لا يوجد تأخير'}
               </div>
             </CardContent>
           </Card>
@@ -173,7 +175,7 @@ export default function OwnerPortal() {
                     <BarChart data={ganttData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} interval={0} />
-                      <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                      <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
                       <Tooltip contentStyle={{ textAlign: 'right', direction: 'rtl' }} formatter={(v: number) => [`${v}%`]} />
                       <Bar dataKey="المخطط" fill="hsl(var(--muted-foreground))" opacity={0.5} radius={[4, 4, 0, 0]} />
                       <Bar dataKey="الفعلي" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
@@ -186,10 +188,10 @@ export default function OwnerPortal() {
 
           <TabsContent value="reports">
             <div className="grid gap-4">
-              {reports?.length === 0 ? (
+              {reports.length === 0 ? (
                 <div className="text-center py-12 bg-card rounded-lg border">لا توجد تقارير متاحة</div>
               ) : (
-                reports?.map((report: any) => (
+                reports.map((report: Report) => (
                   <Card key={report.id}>
                     <CardHeader className="pb-3 border-b">
                       <div className="flex justify-between items-center">

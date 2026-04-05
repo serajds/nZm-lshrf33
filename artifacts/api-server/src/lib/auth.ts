@@ -1,7 +1,11 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "engineering-supervision-secret-key-2024";
+const JWT_SECRET = process.env.JWT_SECRET ?? (
+  process.env.NODE_ENV === "production"
+    ? (() => { throw new Error("JWT_SECRET environment variable is required in production"); })()
+    : "engineering-supervision-dev-secret-key"
+);
 
 export interface JwtPayload {
   userId: number;

@@ -96,8 +96,6 @@ export interface Project {
   overallProgress: number;
   /** @nullable */
   ownerAccessToken?: string | null;
-  /** @nullable */
-  ownerAccessPassword?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -456,4 +454,9 @@ export type UploadFileBody = {
   category: string;
   /** @nullable */
   description?: string | null;
+};
+
+export type GetOwnerProjectByToken200 = {
+  exists: boolean;
+  projectName: string;
 };

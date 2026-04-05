@@ -26,6 +26,7 @@ import type {
   DeviationAnalysis,
   ErrorResponse,
   GenerateOwnerLinkBody,
+  GetOwnerProjectByToken200,
   HealthStatus,
   ListFilesParams,
   ListProjectsParams,
@@ -2223,7 +2224,7 @@ export const useDeleteUser = <
 };
 
 /**
- * @summary Get project info for owner portal
+ * @summary Check if owner access token is valid
  */
 export const getGetOwnerProjectByTokenUrl = (token: string) => {
   return `/api/owner/access/${token}`;
@@ -2232,11 +2233,14 @@ export const getGetOwnerProjectByTokenUrl = (token: string) => {
 export const getOwnerProjectByToken = async (
   token: string,
   options?: RequestInit,
-): Promise<OwnerProjectView> => {
-  return customFetch<OwnerProjectView>(getGetOwnerProjectByTokenUrl(token), {
-    ...options,
-    method: "GET",
-  });
+): Promise<GetOwnerProjectByToken200> => {
+  return customFetch<GetOwnerProjectByToken200>(
+    getGetOwnerProjectByTokenUrl(token),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
 };
 
 export const getGetOwnerProjectByTokenQueryKey = (token: string) => {
@@ -2285,7 +2289,7 @@ export type GetOwnerProjectByTokenQueryResult = NonNullable<
 export type GetOwnerProjectByTokenQueryError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Get project info for owner portal
+ * @summary Check if owner access token is valid
  */
 
 export function useGetOwnerProjectByToken<
