@@ -338,34 +338,6 @@ export default function ProjectActivities() {
   const ganttEnd = allDates.length > 0
     ? new Date(Math.max(...allDates.map(d => new Date(d).getTime())))
     : new Date(project?.expectedEndDate ?? Date.now());
-  const totalDays = Math.max(1, (ganttEnd.getTime() - ganttStart.getTime()) / (1000 * 60 * 60 * 24));
-
-  const getBarStyle = (startDate: string, endDate: string, color: string) => {
-    const s = new Date(startDate).getTime();
-    const e = new Date(endDate).getTime();
-    const left = ((s - ganttStart.getTime()) / (1000 * 60 * 60 * 24)) / totalDays * 100;
-    const width = Math.max(1, ((e - s) / (1000 * 60 * 60 * 24)) / totalDays * 100);
-    return { left: `${left}%`, width: `${width}%`, backgroundColor: color };
-  };
-
-  const getSuspensionStyle = (susp: ProjectSuspension) => {
-    const s = new Date(susp.startDate).getTime();
-    const e = new Date(susp.endDate).getTime();
-    const left = Math.max(0, ((s - ganttStart.getTime()) / (1000 * 60 * 60 * 24)) / totalDays * 100);
-    const right = Math.min(100, ((new Date(susp.endDate).getTime() - ganttStart.getTime()) / (1000 * 60 * 60 * 24) + 1) / totalDays * 100);
-    const width = Math.max(0.5, right - left);
-    const color = susp.type === "official_holiday"
-      ? "rgba(139,92,246,0.18)"
-      : susp.type === "force_majeure"
-        ? "rgba(239,68,68,0.15)"
-        : "rgba(249,115,22,0.15)";
-    const border = susp.type === "official_holiday"
-      ? "1px solid rgba(139,92,246,0.4)"
-      : susp.type === "force_majeure"
-        ? "1px solid rgba(239,68,68,0.35)"
-        : "1px solid rgba(249,115,22,0.4)";
-    return { left: `${left}%`, width: `${width}%`, backgroundColor: color, borderLeft: border, borderRight: border };
-  };
 
   return (
     <div className="space-y-6">
@@ -382,94 +354,211 @@ export default function ProjectActivities() {
       <ProjectNav projectId={projectId} />
 
       <div className="grid gap-6">
-        {/* Gantt Timeline */}
-        {(activities ?? []).length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">مخطط Gantt - الجدول الزمني</CardTitle>
-              <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-2.5 rounded-sm inline-block bg-blue-400 opacity-60" /> المخطط
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-2.5 rounded-sm inline-block bg-emerald-500" /> الفعلي
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-2.5 rounded-sm inline-block bg-red-500" /> متأخر
-                </span>
-                {suspensions.length > 0 && (
-                  <>
+        {/* ── Gantt Chart ── */}
+        {(activities ?? []).length > 0 && (() => {
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const spanMs = ganttEnd.getTime() - ganttStart.getTime();
+          const toPct = (d: Date) => Math.max(0, Math.min(100, (d.getTime() - ganttStart.getTime()) / spanMs * 100));
+          const todayPct = toPct(today);
+          const NAME_W = 176; // px — fixed name column
+
+          const ticks = [0, 25, 50, 75, 100].map(p => ({
+            pct: p,
+            label: fmtDate(new Date(ganttStart.getTime() + p / 100 * spanMs).toISOString().split("T")[0]),
+          }));
+
+          const suspLabel = (t: string) =>
+            t === "official_holiday" ? "عطلة رسمية" : t === "force_majeure" ? "ظرف قاهر" : "توقف مقاول";
+
+          return (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <CardTitle className="text-base">مخطط Gantt - الجدول الزمني</CardTitle>
+                  {/* Legend */}
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-2.5 rounded-sm inline-block" style={{ background: "rgba(139,92,246,0.35)", border: "1px solid rgba(139,92,246,0.6)" }} /> عطلة رسمية
+                      <span className="inline-block w-6 h-3 rounded-sm bg-blue-400/70" /> مخطط
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-2.5 rounded-sm inline-block" style={{ background: "rgba(239,68,68,0.25)", border: "1px solid rgba(239,68,68,0.5)" }} /> ظرف قاهر
+                      <span className="inline-block w-6 h-3 rounded-sm bg-emerald-500" /> فعلي / مكتمل
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-2.5 rounded-sm inline-block" style={{ background: "rgba(249,115,22,0.25)", border: "1px solid rgba(249,115,22,0.5)" }} /> توقف مقاول
+                      <span className="inline-block w-6 h-3 rounded-sm bg-red-500" /> فعلي / متأخر
                     </span>
-                  </>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <div className="min-w-[600px]">
-                  <div className="flex mb-2 border-b pb-2">
-                    <div className="w-52 shrink-0 text-xs font-medium text-muted-foreground">النشاط</div>
-                    <div className="flex-1 text-xs text-muted-foreground flex justify-between px-1">
-                      <span>{ganttStart.toLocaleDateString('ar-SA-u-nu-latn')}</span>
-                      <span>{new Date((ganttStart.getTime() + ganttEnd.getTime()) / 2).toLocaleDateString('ar-SA-u-nu-latn')}</span>
-                      <span>{ganttEnd.toLocaleDateString('ar-SA-u-nu-latn')}</span>
-                    </div>
+                    {suspensions.some(s => s.type === "official_holiday") && (
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block w-4 h-3 rounded-sm" style={{ background: "rgba(139,92,246,0.35)", border: "1px solid rgba(139,92,246,0.6)" }} /> عطلة رسمية
+                      </span>
+                    )}
+                    {suspensions.some(s => s.type === "force_majeure") && (
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block w-4 h-3 rounded-sm" style={{ background: "rgba(239,68,68,0.25)", border: "1px solid rgba(239,68,68,0.5)" }} /> ظرف قاهر
+                      </span>
+                    )}
+                    {suspensions.some(s => s.type === "contractor_delay") && (
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block w-4 h-3 rounded-sm" style={{ background: "rgba(249,115,22,0.25)", border: "1px solid rgba(249,115,22,0.5)" }} /> توقف مقاول
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block w-px h-3 bg-red-500" style={{ borderLeft: "2px dashed #ef4444" }} /> اليوم
+                    </span>
                   </div>
-                  {(activities ?? []).map((a) => (
-                    <div key={a.id} className="flex items-center mb-3">
-                      <div className="w-52 shrink-0 text-xs truncate pl-2 flex items-center gap-1.5">
-                        <StatusBadge status={a.status} />
-                        <span className="truncate text-foreground" title={a.name}>{a.name}</span>
-                      </div>
-                      <div className="flex-1 relative h-8">
-                        {/* Suspension overlays — drawn first (behind bars) */}
-                        {suspensions.map(susp => (
-                          <div
-                            key={susp.id}
-                            className="absolute inset-y-0 z-0 pointer-events-none"
-                            style={getSuspensionStyle(susp)}
-                            title={`${susp.type === "official_holiday" ? "عطلة رسمية" : susp.type === "force_majeure" ? "ظرف قاهر" : "توقف مقاول"}: ${susp.startDate} ← ${susp.endDate} (${susp.calendarDays} يوم)`}
-                          />
-                        ))}
-                        <div className="absolute inset-0 z-10 flex flex-col justify-center gap-1">
-                          <div className="relative h-3">
-                            <div
-                              className="absolute h-full rounded opacity-60"
-                              style={getBarStyle(a.plannedStartDate, a.plannedEndDate, "#60a5fa")}
-                              title={`مخطط: ${a.plannedStartDate} → ${a.plannedEndDate}`}
-                            />
-                          </div>
-                          {a.actualStartDate && (
-                            <div className="relative h-3">
-                              <div
-                                className="absolute h-full rounded"
-                                style={getBarStyle(
-                                  a.actualStartDate,
-                                  a.actualEndDate ?? new Date().toISOString().split('T')[0],
-                                  a.status === 'delayed' ? '#ef4444' : '#10b981'
-                                )}
-                                title={`فعلي: ${a.actualStartDate} → ${a.actualEndDate ?? 'جارٍ'}`}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="w-12 text-center text-xs font-medium text-primary">{a.actualProgress}%</div>
-                    </div>
-                  ))}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              </CardHeader>
+
+              <CardContent className="pt-0">
+                <div className="overflow-x-auto">
+                  <div style={{ minWidth: 640 }}>
+
+                    {/* ── Date tick header ── */}
+                    <div className="flex items-end border-b border-border pb-1 mb-0" style={{ paddingRight: NAME_W }}>
+                      <div className="flex-1 relative h-6">
+                        {ticks.map(({ pct, label }) => (
+                          <span
+                            key={pct}
+                            className="absolute bottom-0 text-[10px] font-mono text-muted-foreground"
+                            style={{
+                              left: `${pct}%`,
+                              transform: pct === 0 ? "none" : pct === 100 ? "translateX(-100%)" : "translateX(-50%)",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* ── Activity rows ── */}
+                    {(activities ?? []).map((a, idx) => {
+                      const barColor = a.status === "delayed" ? "#ef4444" : a.status === "completed" ? "#10b981" : "#10b981";
+                      const actualEnd = a.actualEndDate ?? (a.actualStartDate ? today.toISOString().split("T")[0] : null);
+                      const isLast = idx === (activities ?? []).length - 1;
+
+                      return (
+                        <div
+                          key={a.id}
+                          className={`flex items-stretch ${!isLast ? "border-b border-border/50" : ""}`}
+                          style={{ minHeight: 54 }}
+                        >
+                          {/* Name column */}
+                          <div
+                            className="shrink-0 flex items-center gap-2 py-2 pr-1 border-l border-border/40"
+                            style={{ width: NAME_W, minWidth: NAME_W }}
+                          >
+                            <StatusBadge status={a.status} />
+                            <span
+                              className="text-xs font-medium text-foreground leading-tight line-clamp-2"
+                              style={{ maxWidth: NAME_W - 56 }}
+                              title={a.name}
+                            >
+                              {a.name}
+                            </span>
+                          </div>
+
+                          {/* Timeline column */}
+                          <div className="flex-1 relative py-2">
+
+                            {/* Grid lines */}
+                            {[25, 50, 75].map(p => (
+                              <div key={p} className="absolute inset-y-0 w-px bg-border/50" style={{ left: `${p}%` }} />
+                            ))}
+
+                            {/* Today marker */}
+                            {todayPct > 0 && todayPct < 100 && (
+                              <div
+                                className="absolute inset-y-0 w-px z-20 pointer-events-none"
+                                style={{ left: `${todayPct}%`, borderLeft: "2px dashed #ef4444", opacity: 0.75 }}
+                                title={`اليوم: ${fmtDate(today.toISOString().split("T")[0])}`}
+                              />
+                            )}
+
+                            {/* Suspension overlays */}
+                            {suspensions.map(susp => {
+                              const sl = toPct(new Date(susp.startDate));
+                              const er = toPct(new Date(susp.endDate));
+                              const sw = Math.max(0.4, er - sl);
+                              const bg = susp.type === "official_holiday"
+                                ? "rgba(139,92,246,0.14)"
+                                : susp.type === "force_majeure"
+                                  ? "rgba(239,68,68,0.12)"
+                                  : "rgba(249,115,22,0.12)";
+                              const bd = susp.type === "official_holiday"
+                                ? "1px solid rgba(139,92,246,0.45)"
+                                : susp.type === "force_majeure"
+                                  ? "1px solid rgba(239,68,68,0.4)"
+                                  : "1px solid rgba(249,115,22,0.45)";
+                              return (
+                                <div
+                                  key={susp.id}
+                                  className="absolute inset-y-0 z-0"
+                                  style={{ left: `${sl}%`, width: `${sw}%`, background: bg, borderLeft: bd, borderRight: bd }}
+                                  title={`${suspLabel(susp.type)}: ${susp.startDate} ← ${susp.endDate} (${susp.calendarDays} يوم)`}
+                                />
+                              );
+                            })}
+
+                            {/* Bars */}
+                            <div className="absolute inset-0 z-10 flex flex-col justify-center gap-1.5 px-0">
+                              {/* Planned bar */}
+                              <div className="relative h-4">
+                                {(() => {
+                                  const sl = toPct(new Date(a.plannedStartDate));
+                                  const el = toPct(new Date(a.plannedEndDate));
+                                  const w = Math.max(0.5, el - sl);
+                                  return (
+                                    <div
+                                      className="absolute h-full rounded-full bg-blue-400/70"
+                                      style={{ left: `${sl}%`, width: `${w}%` }}
+                                      title={`مخطط: ${fmtDate(a.plannedStartDate)} → ${fmtDate(a.plannedEndDate)}`}
+                                    />
+                                  );
+                                })()}
+                              </div>
+
+                              {/* Actual bar */}
+                              {a.actualStartDate && actualEnd && (
+                                <div className="relative h-4">
+                                  {(() => {
+                                    const sl = toPct(new Date(a.actualStartDate));
+                                    const el = toPct(new Date(actualEnd));
+                                    const w = Math.max(0.5, el - sl);
+                                    const ongoing = !a.actualEndDate && a.status !== "completed";
+                                    return (
+                                      <div
+                                        className="absolute h-full rounded-full flex items-center overflow-hidden"
+                                        style={{
+                                          left: `${sl}%`,
+                                          width: `${w}%`,
+                                          backgroundColor: barColor,
+                                          ...(ongoing ? { borderRight: "3px solid white" } : {}),
+                                        }}
+                                        title={`فعلي: ${fmtDate(a.actualStartDate)} → ${a.actualEndDate ? fmtDate(a.actualEndDate) : "جارٍ"} (${a.actualProgress}%)`}
+                                      >
+                                        {w > 8 && (
+                                          <span className="text-[9px] font-bold text-white px-1.5 truncate">
+                                            {a.actualProgress}%
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Progress Comparison Chart */}
         <Card>
