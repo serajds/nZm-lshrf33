@@ -199,7 +199,7 @@ export default function OwnerPortal() {
                           تقرير {report.type === 'weekly' ? 'أسبوعي' : 'شهري'} 
                         </CardTitle>
                         <span className="text-sm text-muted-foreground" dir="ltr">
-                          {new Date(report.reportDate).toLocaleDateString('ar-SA')}
+                          {new Date(report.reportDate).toLocaleDateString('ar-SA-u-nu-latn')}
                         </span>
                       </div>
                     </CardHeader>

@@ -209,9 +209,9 @@ export default function ProjectActivities() {
                   <div className="flex mb-2 border-b pb-2">
                     <div className="w-48 shrink-0 text-sm font-medium text-muted-foreground">النشاط</div>
                     <div className="flex-1 relative text-xs text-muted-foreground flex justify-between px-1">
-                      <span>{ganttStart.toLocaleDateString('ar-SA')}</span>
-                      <span>{new Date((ganttStart.getTime() + ganttEnd.getTime()) / 2).toLocaleDateString('ar-SA')}</span>
-                      <span>{ganttEnd.toLocaleDateString('ar-SA')}</span>
+                      <span>{ganttStart.toLocaleDateString('ar-SA-u-nu-latn')}</span>
+                      <span>{new Date((ganttStart.getTime() + ganttEnd.getTime()) / 2).toLocaleDateString('ar-SA-u-nu-latn')}</span>
+                      <span>{ganttEnd.toLocaleDateString('ar-SA-u-nu-latn')}</span>
                     </div>
                   </div>
                   {(activities ?? []).map((a) => (
@@ -431,8 +431,8 @@ export default function ProjectActivities() {
                   (activities ?? []).map((a) => (
                     <TableRow key={a.id}>
                       <TableCell className="font-medium">{a.name}</TableCell>
-                      <TableCell dir="ltr" className="text-right text-muted-foreground">{new Date(a.plannedStartDate).toLocaleDateString('ar-SA')}</TableCell>
-                      <TableCell dir="ltr" className="text-right text-muted-foreground">{new Date(a.plannedEndDate).toLocaleDateString('ar-SA')}</TableCell>
+                      <TableCell dir="ltr" className="text-right text-muted-foreground">{new Date(a.plannedStartDate).toLocaleDateString('ar-SA-u-nu-latn')}</TableCell>
+                      <TableCell dir="ltr" className="text-right text-muted-foreground">{new Date(a.plannedEndDate).toLocaleDateString('ar-SA-u-nu-latn')}</TableCell>
                       <TableCell className="text-center">%{a.plannedProgress}</TableCell>
                       <TableCell className="text-center font-bold text-primary">%{a.actualProgress}</TableCell>
                       <TableCell>{getStatusBadge(a.status)}</TableCell>

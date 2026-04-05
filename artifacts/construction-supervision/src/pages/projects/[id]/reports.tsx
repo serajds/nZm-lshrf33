@@ -424,13 +424,13 @@ export default function ProjectReports() {
                   <Badge variant="outline" className="mb-2 bg-background">
                     {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
                   </Badge>
-                  <div className="text-sm font-semibold" dir="ltr">{new Date(report.reportDate).toLocaleDateString('ar-SA')}</div>
+                  <div className="text-sm font-semibold" dir="ltr">{new Date(report.reportDate).toLocaleDateString('ar-SA-u-nu-latn')}</div>
                 </div>
                 <div className="flex-1 p-6">
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <div className="text-sm text-muted-foreground mb-1">
-                        الفترة: <span dir="ltr">{new Date(report.periodStart).toLocaleDateString('ar-SA')}</span> - <span dir="ltr">{new Date(report.periodEnd).toLocaleDateString('ar-SA')}</span>
+                        الفترة: <span dir="ltr">{new Date(report.periodStart).toLocaleDateString('ar-SA-u-nu-latn')}</span> - <span dir="ltr">{new Date(report.periodEnd).toLocaleDateString('ar-SA-u-nu-latn')}</span>
                       </div>
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-sm font-medium">الإنجاز التراكمي:</span>
