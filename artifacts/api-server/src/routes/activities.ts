@@ -1,10 +1,24 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { activitiesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { activitiesTable, projectsTable } from "@workspace/db";
+import { eq, and, avg } from "drizzle-orm";
 import { requireEngineerOrAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
+
+async function syncProjectProgress(projectId: number) {
+  const [result] = await db
+    .select({ avgProgress: avg(activitiesTable.actualProgress) })
+    .from(activitiesTable)
+    .where(eq(activitiesTable.projectId, projectId));
+
+  const computed = result?.avgProgress ? Math.round(Number(result.avgProgress)) : 0;
+
+  await db
+    .update(projectsTable)
+    .set({ overallProgress: computed })
+    .where(eq(projectsTable.id, projectId));
+}
 
 router.get("/projects/:projectId/activities", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
@@ -44,6 +58,8 @@ router.post("/projects/:projectId/activities", requireEngineerOrAdmin, async (re
     sortOrder: sortOrder ?? 0,
   }).returning();
 
+  await syncProjectProgress(projectId);
+
   res.status(201).json(activity);
 });
 
@@ -77,6 +93,8 @@ router.patch("/projects/:projectId/activities/:id", requireEngineerOrAdmin, asyn
     return;
   }
 
+  await syncProjectProgress(projectId);
+
   res.json(activity);
 });
 
@@ -94,6 +112,8 @@ router.delete("/projects/:projectId/activities/:id", requireEngineerOrAdmin, asy
     res.status(404).json({ error: "البند غير موجود" });
     return;
   }
+
+  await syncProjectProgress(projectId);
 
   res.sendStatus(204);
 });
