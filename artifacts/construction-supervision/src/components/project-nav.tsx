@@ -5,6 +5,7 @@ const navItems = [
   { label: "ملخص المشروع", path: "" },
   { label: "الجدول الزمني", path: "/activities" },
   { label: "التمديدات", path: "/extensions" },
+  { label: "التوقفات", path: "/suspensions" },
   { label: "التقارير", path: "/reports" },
   { label: "الملفات", path: "/files" },
   { label: "تحليل الانحراف", path: "/deviation" },

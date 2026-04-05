@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable } from "@workspace/db";
+import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable, projectSuspensionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireEngineerOrAdmin } from "../middlewares/auth";
 import PDFDocument from "pdfkit";
@@ -98,6 +98,10 @@ router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, as
   const extensions = await db.select().from(projectExtensionsTable)
     .where(eq(projectExtensionsTable.projectId, projectId))
     .orderBy(projectExtensionsTable.extensionDate);
+
+  const suspensions = await db.select().from(projectSuspensionsTable)
+    .where(eq(projectSuspensionsTable.projectId, projectId))
+    .orderBy(projectSuspensionsTable.startDate);
 
   const hasFont = fs.existsSync(AMIRI_FONT);
 
@@ -528,6 +532,82 @@ router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, as
       setFont(8, C.textMuted);
       doc.text(String(i + 1), cx + 4, y + 9, { width: extCols.num - 4, align: "center" });
 
+      y += rowH;
+    });
+  }
+
+  // ════════════════════════════════════════════
+  // SUSPENSIONS PAGE (if any)
+  // ════════════════════════════════════════════
+  if (suspensions.length > 0) {
+    doc.addPage();
+    if (hasFont) doc.font("Amiri");
+    y = MARGIN;
+    y = drawSectionHeader(doc, "سجل التوقفات (العطل الرسمية والظروف القاهرة)", y);
+
+    const totalSuspDays = suspensions.reduce((s, x) => s + x.calendarDays, 0);
+    doc.roundedRect(MARGIN, y, CONTENT_W, 36, 4).fill(C.light).stroke(C.border);
+    setFont(8, C.textMuted);
+    doc.text("عدد التوقفات", MARGIN + 8, y + 8, { width: 140, align: "right" });
+    setFont(12, C.primary);
+    doc.text(String(suspensions.length), MARGIN + 8, y + 18, { width: 140, align: "right" });
+
+    setFont(8, C.textMuted);
+    doc.text("إجمالي أيام التوقف", MARGIN + 160, y + 8, { width: 140, align: "right" });
+    setFont(14, C.warning);
+    doc.text(`${totalSuspDays} يوم`, MARGIN + 160, y + 16, { width: 140, align: "right" });
+
+    y += 46;
+
+    // Table header
+    const suspCols = { num: 30, type: 90, start: 80, end: 80, days: 60, reason: 0 };
+    suspCols.reason = CONTENT_W - suspCols.num - suspCols.type - suspCols.start - suspCols.end - suspCols.days;
+
+    doc.roundedRect(MARGIN, y, CONTENT_W, 22, 3).fill(C.primary);
+    const suspHeaders = [
+      { label: "السبب / الملاحظة", w: suspCols.reason },
+      { label: "الأيام", w: suspCols.days },
+      { label: "تاريخ الانتهاء", w: suspCols.end },
+      { label: "تاريخ البدء", w: suspCols.start },
+      { label: "النوع", w: suspCols.type },
+      { label: "#", w: suspCols.num },
+    ];
+    let hx = MARGIN;
+    suspHeaders.forEach(h => {
+      doc.fillColor(C.white).fontSize(8).text(h.label, hx + 4, y + 7, { width: h.w - 6, align: "center" });
+      hx += h.w;
+    });
+    y += 22;
+
+    const rowH = 22;
+    const typeLabel = (t: string) => t === "official_holiday" ? "عطلة رسمية" : "ظرف قاهر";
+
+    suspensions.forEach((susp, i) => {
+      const rowBg = i % 2 === 0 ? "#ffffff" : C.light;
+      doc.rect(MARGIN, y, CONTENT_W, rowH).fill(rowBg);
+      let cx = MARGIN;
+      // reason
+      setFont(8, C.textDark);
+      doc.text(susp.reason ?? "—", cx + 4, y + 7, { width: suspCols.reason - 6, align: "right" });
+      cx += suspCols.reason;
+      // days
+      setFont(10, C.warning);
+      doc.text(String(susp.calendarDays), cx + 4, y + 7, { width: suspCols.days - 6, align: "center" });
+      cx += suspCols.days;
+      // end
+      setFont(9, C.textMuted);
+      doc.text(formatDate(susp.endDate), cx + 4, y + 9, { width: suspCols.end - 6, align: "center" });
+      cx += suspCols.end;
+      // start
+      doc.text(formatDate(susp.startDate), cx + 4, y + 9, { width: suspCols.start - 6, align: "center" });
+      cx += suspCols.start;
+      // type
+      setFont(8, susp.type === "official_holiday" ? C.primary : "#dc2626");
+      doc.text(typeLabel(susp.type), cx + 4, y + 9, { width: suspCols.type - 6, align: "center" });
+      cx += suspCols.type;
+      // num
+      setFont(8, C.textMuted);
+      doc.text(String(i + 1), cx + 4, y + 9, { width: suspCols.num - 4, align: "center" });
       y += rowH;
     });
   }
