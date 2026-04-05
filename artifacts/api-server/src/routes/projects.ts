@@ -99,11 +99,16 @@ router.delete("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
-  const [project] = await db.delete(projectsTable).where(eq(projectsTable.id, id)).returning();
-  if (!project) {
+  const [existing] = await db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.id, id));
+  if (!existing) {
     res.status(404).json({ error: "المشروع غير موجود" });
     return;
   }
+
+  await db.delete(activitiesTable).where(eq(activitiesTable.projectId, id));
+  await db.delete(reportsTable).where(eq(reportsTable.projectId, id));
+  await db.delete(projectFilesTable).where(eq(projectFilesTable.projectId, id));
+  await db.delete(projectsTable).where(eq(projectsTable.id, id));
 
   res.sendStatus(204);
 });
