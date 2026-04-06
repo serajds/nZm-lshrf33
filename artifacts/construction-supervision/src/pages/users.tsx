@@ -14,6 +14,16 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
@@ -41,6 +51,7 @@ export default function Users() {
   const [, setLocation] = useLocation();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -78,15 +89,16 @@ export default function Users() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذا المستخدم؟")) {
-      try {
-        await deleteUser.mutateAsync({ id });
-        queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
-        toast({ title: "تم حذف المستخدم بنجاح" });
-      } catch (e) {
-        toast({ variant: "destructive", title: "حدث خطأ أثناء الحذف" });
-      }
+  const handleDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await deleteUser.mutateAsync({ id: deletingId });
+      queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      toast({ title: "تم حذف المستخدم بنجاح" });
+    } catch (e) {
+      toast({ variant: "destructive", title: "حدث خطأ أثناء الحذف" });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -263,7 +275,7 @@ export default function Users() {
                         <Button variant="ghost" size="icon" onClick={() => handleEdit(u)}>
                           <Edit2 className="h-4 w-4 text-muted-foreground" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(u.id)} disabled={user?.id === u.id}>
+                        <Button variant="ghost" size="icon" onClick={() => setDeletingId(u.id)} disabled={user?.id === u.id}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -275,6 +287,20 @@ export default function Users() {
           </Table>
         </CardContent>
       </Card>
+      <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+            <AlertDialogDescription>هل أنت متأكد من حذف هذا المستخدم؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2">
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              حذف
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

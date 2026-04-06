@@ -20,6 +20,16 @@ import { ProjectNav } from "@/components/project-nav";
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -60,6 +70,7 @@ export default function ProjectReports() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -122,15 +133,16 @@ export default function ProjectReports() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذا التقرير؟")) {
-      try {
-        await deleteReport.mutateAsync({ projectId, id });
-        queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
-        toast({ title: "تم حذف التقرير" });
-      } catch {
-        toast({ variant: "destructive", title: "فشل الحذف" });
-      }
+  const handleDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await deleteReport.mutateAsync({ projectId, id: deletingId });
+      queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
+      toast({ title: "تم حذف التقرير" });
+    } catch {
+      toast({ variant: "destructive", title: "فشل الحذف" });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -527,7 +539,7 @@ export default function ProjectReports() {
                       <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleEdit(report)}>
                         <Edit2 className="h-4 w-4" /> تعديل
                       </Button>
-                      <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive hover:text-white gap-1.5" onClick={() => handleDelete(report.id)}>
+                      <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive hover:text-white gap-1.5" onClick={() => setDeletingId(report.id)}>
                         <Trash2 className="h-4 w-4" /> حذف
                       </Button>
                     </div>
@@ -600,6 +612,20 @@ export default function ProjectReports() {
           ))
         )}
       </div>
+      <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+            <AlertDialogDescription>هل أنت متأكد من حذف هذا التقرير؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2">
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              حذف
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -14,6 +14,16 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
@@ -33,6 +43,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [removingId, setRemovingId] = useState<number | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [selectedRole, setSelectedRole] = useState<string>("engineer");
 
@@ -95,14 +106,16 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
     }
   };
 
-  const handleRemove = async (memberId: number) => {
-    if (!confirm("هل أنت متأكد من إزالة هذا العضو؟")) return;
+  const handleRemove = async () => {
+    if (!removingId) return;
     try {
-      await removeMember.mutateAsync({ projectId, id: memberId });
+      await removeMember.mutateAsync({ projectId, id: removingId });
       queryClient.invalidateQueries({ queryKey: getListProjectMembersQueryKey(projectId) });
       toast({ title: "تم إزالة العضو بنجاح" });
     } catch {
       toast({ variant: "destructive", title: "فشل إزالة العضو" });
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -222,7 +235,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleRemove(member.id)}
+                        onClick={() => setRemovingId(member.id)}
                         disabled={removeMember.isPending}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -235,6 +248,20 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
           </Table>
         )}
       </CardContent>
+      <AlertDialog open={!!removingId} onOpenChange={(open) => { if (!open) setRemovingId(null); }}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد الإزالة</AlertDialogTitle>
+            <AlertDialogDescription>هل أنت متأكد من إزالة هذا العضو من المشروع؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2">
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemove} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              إزالة
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
