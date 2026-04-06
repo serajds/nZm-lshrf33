@@ -95,9 +95,12 @@ router.post("/projects/:projectId/suspensions", requireProjectAccess("projectId"
     notes: notes ?? null,
   }).returning();
 
-  // Shift activity planned dates only for legitimate suspensions (not contractor delay)
+  // Shift activity planned dates and project end date for legitimate suspensions (not contractor delay)
   if ((RECALC_TYPES as readonly string[]).includes(type)) {
     await shiftActivities(projectId, startDate, calendarDays, 1);
+    await db.update(projectsTable)
+      .set({ expectedEndDate: addDays(project.expectedEndDate, calendarDays) })
+      .where(eq(projectsTable.id, projectId));
   }
 
   res.status(201).json({ ...suspension, activitiesShifted: (RECALC_TYPES as readonly string[]).includes(type) });
@@ -116,12 +119,19 @@ router.delete("/projects/:projectId/suspensions/:id", requireProjectAccess("proj
     return;
   }
 
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+
   await db.delete(projectSuspensionsTable)
     .where(and(eq(projectSuspensionsTable.id, id), eq(projectSuspensionsTable.projectId, projectId)));
 
-  // Reverse activity shift for legitimate suspensions (not contractor delay)
+  // Reverse activity shift and project end date for legitimate suspensions (not contractor delay)
   if ((RECALC_TYPES as readonly string[]).includes(susp.type)) {
     await shiftActivities(projectId, susp.startDate, susp.calendarDays, -1);
+    if (project) {
+      await db.update(projectsTable)
+        .set({ expectedEndDate: addDays(project.expectedEndDate, -susp.calendarDays) })
+        .where(eq(projectsTable.id, projectId));
+    }
   }
 
   res.sendStatus(204);

@@ -124,8 +124,10 @@ export default function ProjectSuspensions() {
     onSuccess: (data: { activitiesShifted?: boolean }) => {
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/activities`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       if (data?.activitiesShifted) {
-        toast({ title: "تم إضافة التوقف وتحديث الجدول الزمني", description: "تم تأجيل تواريخ الأنشطة تلقائياً بعدد أيام التوقف" });
+        toast({ title: "تم إضافة التوقف وتحديث الجدول الزمني", description: "تم ترحيل تواريخ الأنشطة وتاريخ نهاية المشروع تلقائياً" });
       } else {
         toast({ title: "تم إضافة التوقف بنجاح", description: "لم يتم تعديل الجدول الزمني (توقف من المقاول)" });
       }
@@ -143,7 +145,9 @@ export default function ProjectSuspensions() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/activities`] });
-      toast({ title: "تم حذف التوقف", description: "تم إعادة ضبط تواريخ الأنشطة إن كان التوقف رسمياً" });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({ title: "تم حذف التوقف", description: "تم إعادة ضبط تواريخ الأنشطة وتاريخ نهاية المشروع إن كان التوقف رسمياً" });
       setDeletingId(null);
     },
     onError: () => toast({ variant: "destructive", title: "فشل حذف التوقف" }),
