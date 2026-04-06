@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, date, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, date, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { projectsTable } from "./projects";
@@ -15,6 +15,7 @@ export const projectSuspensionsTable = pgTable("project_suspensions", {
   documentRef: text("document_ref"),
   approvedBy: text("approved_by"),
   notes: text("notes"),
+  datesShifted: boolean("dates_shifted").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
