@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable } from "@workspace/db";
+import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable } from "@workspace/db";
 import { eq, ilike, or, sql } from "drizzle-orm";
 import { requireEngineerOrAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
@@ -37,7 +37,8 @@ router.get("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> 
 router.post("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const {
     name, location, ownerEntity, supervisorEntity, contractor,
-    startDate, expectedEndDate, status
+    startDate, expectedEndDate, status,
+    ownerCompanyId, contractorCompanyId, supervisorCompanyId
   } = req.body;
 
   if (!name || !location || !ownerEntity || !supervisorEntity || !contractor || !startDate || !expectedEndDate) {
@@ -50,6 +51,9 @@ router.post("/projects", requireEngineerOrAdmin, async (req, res): Promise<void>
     startDate, expectedEndDate,
     status: status ?? "active",
     overallProgress: 0,
+    ownerCompanyId: ownerCompanyId && ownerCompanyId !== "none" && !isNaN(Number(ownerCompanyId)) ? parseInt(ownerCompanyId, 10) : null,
+    contractorCompanyId: contractorCompanyId && contractorCompanyId !== "none" && !isNaN(Number(contractorCompanyId)) ? parseInt(contractorCompanyId, 10) : null,
+    supervisorCompanyId: supervisorCompanyId && supervisorCompanyId !== "none" && !isNaN(Number(supervisorCompanyId)) ? parseInt(supervisorCompanyId, 10) : null,
   }).returning();
 
   res.status(201).json(project);
@@ -68,16 +72,43 @@ router.get("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise<vo
   res.json(project);
 });
 
+router.get("/projects/:id/company-logos", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
+  if (!project) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
+
+  const logos: Record<string, { name: string; logoUrl: string | null }> = {};
+  const ids = [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId].filter(Boolean) as number[];
+  if (ids.length > 0) {
+    const companies = await db.select().from(companiesTable);
+    for (const c of companies) {
+      if (ids.includes(c.id)) {
+        if (c.id === project.ownerCompanyId) logos.owner = { name: c.name, logoUrl: c.logoUrl };
+        if (c.id === project.contractorCompanyId) logos.contractor = { name: c.name, logoUrl: c.logoUrl };
+        if (c.id === project.supervisorCompanyId) logos.supervisor = { name: c.name, logoUrl: c.logoUrl };
+      }
+    }
+  }
+  res.json(logos);
+});
+
 router.patch("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
   const updateData: Record<string, unknown> = {};
-  const allowed = ["name", "location", "ownerEntity", "supervisorEntity", "contractor", "startDate", "expectedEndDate", "actualEndDate", "status", "overallProgress"];
+  const allowed = ["name", "location", "ownerEntity", "supervisorEntity", "contractor", "startDate", "expectedEndDate", "actualEndDate", "status", "overallProgress", "ownerCompanyId", "contractorCompanyId", "supervisorCompanyId"];
 
+  const companyIdFields = ["ownerCompanyId", "contractorCompanyId", "supervisorCompanyId"];
   for (const key of allowed) {
     if (req.body[key] !== undefined) {
-      updateData[key] = req.body[key];
+      if (companyIdFields.includes(key)) {
+        const val = req.body[key];
+        updateData[key] = val && val !== "none" && !isNaN(Number(val)) ? parseInt(val, 10) : null;
+      } else {
+        updateData[key] = req.body[key];
+      }
     }
   }
 

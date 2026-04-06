@@ -16,6 +16,7 @@ import ProjectDeviation from "@/pages/projects/[id]/deviation";
 import ProjectExtensions from "@/pages/projects/[id]/extensions";
 import ProjectSuspensions from "@/pages/projects/[id]/suspensions";
 import Users from "@/pages/users";
+import Companies from "@/pages/companies";
 import OwnerPortal from "@/pages/owner/[token]";
 import NotFound from "@/pages/not-found";
 
@@ -75,6 +76,9 @@ function Router() {
       </Route>
       <Route path="/users">
         <ProtectedRoute component={Users} />
+      </Route>
+      <Route path="/companies">
+        <ProtectedRoute component={Companies} />
       </Route>
       
       <Route component={NotFound} />

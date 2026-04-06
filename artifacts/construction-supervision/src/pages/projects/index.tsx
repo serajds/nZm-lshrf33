@@ -30,8 +30,22 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
+
+function authFetchJson(url: string) {
+  const token = localStorage.getItem("auth_token");
+  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.ok ? r.json() : []);
+}
+
+interface CompanyOption {
+  id: number;
+  name: string;
+  type: "owner" | "contractor" | "supervisor";
+  logoUrl: string | null;
+}
 
 const projectSchema = z.object({
   name: z.string().min(1, "اسم المشروع مطلوب"),
@@ -42,6 +56,9 @@ const projectSchema = z.object({
   startDate: z.string().min(1, "تاريخ البداية مطلوب"),
   expectedEndDate: z.string().min(1, "تاريخ النهاية المتوقع مطلوب"),
   status: z.enum(["active", "completed", "delayed", "suspended"]).default("active"),
+  ownerCompanyId: z.string().optional(),
+  contractorCompanyId: z.string().optional(),
+  supervisorCompanyId: z.string().optional(),
 }).refine((data) => !data.startDate || !data.expectedEndDate || data.expectedEndDate >= data.startDate, {
   message: "تاريخ النهاية يجب أن يكون بعد تاريخ البداية",
   path: ["expectedEndDate"],
@@ -58,6 +75,15 @@ export default function Projects() {
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const { data: companies = [] } = useQuery<CompanyOption[]>({
+    queryKey: ["companies"],
+    queryFn: () => authFetchJson(`${API_BASE}/companies`),
+  });
+
+  const ownerCompanies = companies.filter(c => c.type === "owner");
+  const contractorCompanies = companies.filter(c => c.type === "contractor");
+  const supervisorCompanies = companies.filter(c => c.type === "supervisor");
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 400);
@@ -84,8 +110,18 @@ export default function Projects() {
       startDate: new Date().toISOString().split('T')[0],
       expectedEndDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
       status: "active",
+      ownerCompanyId: "",
+      contractorCompanyId: "",
+      supervisorCompanyId: "",
     }
   });
+
+  const handleCompanySelect = (companyId: string, field: "ownerEntity" | "contractor" | "supervisorEntity") => {
+    const company = companies.find(c => String(c.id) === companyId);
+    if (company) {
+      form.setValue(field, company.name);
+    }
+  };
 
   const openEdit = (p: Project) => {
     setEditingProject(p);
@@ -98,6 +134,9 @@ export default function Projects() {
       startDate: new Date(p.startDate).toISOString().split('T')[0],
       expectedEndDate: new Date(p.expectedEndDate).toISOString().split('T')[0],
       status: p.status as ProjectFormValues["status"],
+      ownerCompanyId: (p as any).ownerCompanyId ? String((p as any).ownerCompanyId) : "",
+      contractorCompanyId: (p as any).contractorCompanyId ? String((p as any).contractorCompanyId) : "",
+      supervisorCompanyId: (p as any).supervisorCompanyId ? String((p as any).supervisorCompanyId) : "",
     });
     setIsDialogOpen(true);
   };
@@ -110,6 +149,9 @@ export default function Projects() {
       startDate: new Date().toISOString().split('T')[0],
       expectedEndDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
       status: "active",
+      ownerCompanyId: "",
+      contractorCompanyId: "",
+      supervisorCompanyId: "",
     });
     setIsDialogOpen(true);
   };
@@ -191,12 +233,44 @@ export default function Projects() {
                   />
                   <FormField
                     control={form.control}
+                    name="ownerCompanyId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>شركة المالك</FormLabel>
+                        <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "ownerEntity"); }} dir="rtl">
+                          <FormControl><SelectTrigger><SelectValue placeholder="اختر شركة..." /></SelectTrigger></FormControl>
+                          <SelectContent dir="rtl">
+                            <SelectItem value="none">— بدون —</SelectItem>
+                            {ownerCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
                     name="ownerEntity"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>الجهة المالكة</FormLabel>
+                        <FormLabel>اسم الجهة المالكة</FormLabel>
                         <FormControl><Input {...field} /></FormControl>
                         <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="contractorCompanyId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>شركة المقاول</FormLabel>
+                        <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "contractor"); }} dir="rtl">
+                          <FormControl><SelectTrigger><SelectValue placeholder="اختر شركة..." /></SelectTrigger></FormControl>
+                          <SelectContent dir="rtl">
+                            <SelectItem value="none">— بدون —</SelectItem>
+                            {contractorCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
                       </FormItem>
                     )}
                   />
@@ -205,7 +279,7 @@ export default function Projects() {
                     name="contractor"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>المقاول المنفذ</FormLabel>
+                        <FormLabel>اسم المقاول</FormLabel>
                         <FormControl><Input {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -213,10 +287,26 @@ export default function Projects() {
                   />
                   <FormField
                     control={form.control}
+                    name="supervisorCompanyId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>شركة الإشراف</FormLabel>
+                        <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "supervisorEntity"); }} dir="rtl">
+                          <FormControl><SelectTrigger><SelectValue placeholder="اختر شركة..." /></SelectTrigger></FormControl>
+                          <SelectContent dir="rtl">
+                            <SelectItem value="none">— بدون —</SelectItem>
+                            {supervisorCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
                     name="supervisorEntity"
                     render={({ field }) => (
-                      <FormItem className="col-span-2">
-                        <FormLabel>الجهة المشرفة</FormLabel>
+                      <FormItem>
+                        <FormLabel>اسم الجهة المشرفة</FormLabel>
                         <FormControl><Input {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>

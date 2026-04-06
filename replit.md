@@ -55,12 +55,22 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Protected routes redirect to `/login` when unauthenticated
 - Owner portal uses a separate token in the URL + password verification
 
+### Companies & Logos
+- Companies management page at `/companies` with CRUD + logo upload
+- Company types: owner, contractor, supervisor
+- Projects can optionally link to companies via `ownerCompanyId`, `contractorCompanyId`, `supervisorCompanyId`
+- Company logos appear in report print preview header (logos strip above the main header)
+- Text fields (`ownerEntity`, `contractor`, `supervisorEntity`) remain for backward compatibility
+- DB table: `companies` (id, name, type, logo_url, phone, email, address)
+- DB columns added to `projects`: `owner_company_id`, `contractor_company_id`, `supervisor_company_id`
+
 ### API Routes
 - `POST /api/auth/login` — login
 - `GET /api/auth/me` — current user (requires Bearer token)
 - `GET/POST /api/projects` — projects list/create
 - `GET/PUT/DELETE /api/projects/:id` — project detail
 - `GET /api/projects/:id/summary` — computed summary with deviations
+- `GET /api/projects/:id/company-logos` — get linked company logos
 - `GET/POST /api/projects/:id/activities` — Gantt activities
 - `GET/POST /api/projects/:id/reports` — periodic reports
 - `GET/POST /api/projects/:id/files` — file upload/list
@@ -70,3 +80,4 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - `GET /api/dashboard/summary` — overall stats
 - `GET /api/dashboard/deviations` — deviation analysis
 - `GET/POST/PUT/DELETE /api/users` — user management (admin only)
+- `GET/POST/PATCH/DELETE /api/companies` — companies management with logo upload

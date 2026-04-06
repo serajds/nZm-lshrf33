@@ -25,10 +25,17 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer } from "lucide-react";
-import { previewReport, type ActivityForReport } from "@/lib/report-pdf";
+import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
+
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
+
+function authFetchJson(url: string) {
+  const token = localStorage.getItem("auth_token");
+  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.ok ? r.json() : {});
+}
 
 const reportSchema = z.object({
   type: z.enum(["weekly", "monthly"]),
@@ -58,6 +65,12 @@ export default function ProjectReports() {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
+
+  const { data: companyLogos } = useQuery<Record<string, CompanyLogo>>({
+    queryKey: ["project-company-logos", projectId],
+    queryFn: () => authFetchJson(`${API_BASE}/projects/${projectId}/company-logos`),
+    enabled: !!projectId,
+  });
   
   const { data: reports, isLoading } = useListReports(projectId, {
     type: typeFilter && typeFilter !== "all" ? typeFilter : undefined
@@ -133,6 +146,7 @@ export default function ProjectReports() {
       actualProgress: a.actualProgress ?? 0,
       status: a.status ?? "not_started",
     }));
+    const apiBase = API_BASE.replace("/api", "");
     previewReport({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -154,6 +168,8 @@ export default function ProjectReports() {
       startDate: (project as any).startDate ?? null,
       expectedEndDate: (project as any).expectedEndDate ?? null,
       plannedProgress: (project as any).plannedProgress ?? null,
+      companyLogos: companyLogos as any,
+      apiBase,
     });
   };
 

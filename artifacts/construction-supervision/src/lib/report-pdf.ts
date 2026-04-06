@@ -5,6 +5,11 @@ export interface ActivityForReport {
   status: string;
 }
 
+export interface CompanyLogo {
+  name: string;
+  logoUrl: string | null;
+}
+
 export interface ReportPdfData {
   projectName: string;
   ownerEntity?: string | null;
@@ -26,6 +31,12 @@ export interface ReportPdfData {
   startDate?: string | null;
   expectedEndDate?: string | null;
   plannedProgress?: number | null;
+  companyLogos?: {
+    owner?: CompanyLogo;
+    contractor?: CompanyLogo;
+    supervisor?: CompanyLogo;
+  };
+  apiBase?: string;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -179,6 +190,58 @@ function buildPrintHTML(data: ReportPdfData): string {
 
   .avoid-break { break-inside: avoid; page-break-inside: avoid; }
 
+  /* ── COMPANY LOGOS STRIP ── */
+  .logos-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+  }
+  .logo-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    text-align: center;
+  }
+  .logo-img-box {
+    width: 72px;
+    height: 72px;
+    border-radius: 10px;
+    border: 1.5px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .logo-img-box img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .logo-role {
+    font-size: 9px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .logo-name {
+    font-size: 11px;
+    font-weight: 700;
+    color: #1e293b;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* ── HEADER ── */
   .header {
     background: linear-gradient(135deg, #1e293b, #334155, #475569);
@@ -293,6 +356,43 @@ function buildPrintHTML(data: ReportPdfData): string {
   <button class="btn-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
   <button class="btn-close" onclick="window.close()">✕ إغلاق</button>
 </div>
+
+${(() => {
+  const logos = data.companyLogos;
+  const base = data.apiBase || "";
+  if (!logos || (!logos.owner?.logoUrl && !logos.contractor?.logoUrl && !logos.supervisor?.logoUrl)) return "";
+  const items: string[] = [];
+  if (logos.supervisor) {
+    const src = logos.supervisor.logoUrl ? escAttr(base + logos.supervisor.logoUrl) : "";
+    items.push(`<div class="logo-item">
+      <div class="logo-role">جهة الإشراف</div>
+      <div class="logo-img-box">${src ? `<img src="${src}" onerror="this.parentNode.innerHTML='🏗️'" />` : "🏗️"}</div>
+      <div class="logo-name">${esc(logos.supervisor.name)}</div>
+    </div>`);
+  }
+  items.push(`<div class="logo-item" style="flex:2">
+    <div style="font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:2px">نظام الإشراف الهندسي</div>
+    <div style="font-size:16px;font-weight:800;color:#1e293b">${esc(data.projectName)}</div>
+    <div style="font-size:12px;color:#64748b">تقرير ${typeLbl}</div>
+  </div>`);
+  if (logos.owner) {
+    const src = logos.owner.logoUrl ? escAttr(base + logos.owner.logoUrl) : "";
+    items.push(`<div class="logo-item">
+      <div class="logo-role">الجهة المالكة</div>
+      <div class="logo-img-box">${src ? `<img src="${src}" onerror="this.parentNode.innerHTML='🏛️'" />` : "🏛️"}</div>
+      <div class="logo-name">${esc(logos.owner.name)}</div>
+    </div>`);
+  }
+  if (logos.contractor) {
+    const src = logos.contractor.logoUrl ? escAttr(base + logos.contractor.logoUrl) : "";
+    items.push(`<div class="logo-item">
+      <div class="logo-role">المقاول</div>
+      <div class="logo-img-box">${src ? `<img src="${src}" onerror="this.parentNode.innerHTML='🔨'" />` : "🔨"}</div>
+      <div class="logo-name">${esc(logos.contractor.name)}</div>
+    </div>`);
+  }
+  return `<div class="logos-strip avoid-break">${items.join("")}</div>`;
+})()}
 
 <!-- HEADER -->
 <div class="header avoid-break">
