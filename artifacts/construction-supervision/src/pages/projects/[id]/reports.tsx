@@ -6,9 +6,10 @@ import {
   useUpdateReport, 
   useDeleteReport,
   useGetProject,
+  useListActivities,
   getListReportsQueryKey 
 } from "@workspace/api-client-react";
-import type { Report } from "@workspace/api-client-react";
+import type { Report, Activity } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, Download, ImagePlus, X, Loader2 } from "lucide-react";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, Download, ImagePlus, X, Loader2, Calculator } from "lucide-react";
 import { generateReportPDF } from "@/lib/report-pdf";
 
 const reportSchema = z.object({
@@ -62,10 +63,21 @@ export default function ProjectReports() {
   const { data: reports, isLoading } = useListReports(projectId, {
     type: typeFilter && typeFilter !== "all" ? typeFilter : undefined
   }, { query: { enabled: !!projectId } });
+
+  const { data: activities } = useListActivities(projectId, { query: { enabled: !!projectId } });
   
   const createReport = useCreateReport();
   const updateReport = useUpdateReport();
   const deleteReport = useDeleteReport();
+
+  const calcAutoProgress = () => {
+    const acts = (activities ?? []) as Activity[];
+    if (acts.length === 0) return null;
+    const totalWeight = acts.reduce((s, a) => s + (a.progressWeight ?? 1), 0);
+    if (totalWeight === 0) return null;
+    const weighted = acts.reduce((s, a) => s + (a.actualProgress ?? 0) * (a.progressWeight ?? 1), 0);
+    return Math.round((weighted / totalWeight) * 10) / 10;
+  };
 
   const form = useForm<ReportFormValues>({
     resolver: zodResolver(reportSchema),
@@ -230,7 +242,12 @@ export default function ProjectReports() {
           if (!open) { form.reset(); setEditingId(null); }
         }}>
           <DialogTrigger asChild>
-            <Button className="gap-2">
+            <Button className="gap-2" onClick={() => {
+              if (!editingId) {
+                const auto = calcAutoProgress();
+                if (auto !== null) form.setValue("progressPercentage", auto);
+              }
+            }}>
               <Plus className="h-4 w-4" /> إضافة تقرير
             </Button>
           </DialogTrigger>
@@ -296,13 +313,45 @@ export default function ProjectReports() {
                   <FormField
                     control={form.control}
                     name="progressPercentage"
-                    render={({ field }) => (
-                      <FormItem className="col-span-2">
-                        <FormLabel>نسبة الإنجاز حتى تاريخه (%)</FormLabel>
-                        <FormControl><Input type="number" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    render={({ field }) => {
+                      const autoVal = calcAutoProgress();
+                      return (
+                        <FormItem className="col-span-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <FormLabel className="mb-0">نسبة الإنجاز حتى تاريخه (%)</FormLabel>
+                            {autoVal !== null && (
+                              <button
+                                type="button"
+                                onClick={() => field.onChange(autoVal)}
+                                className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium bg-primary/8 hover:bg-primary/15 rounded-md px-2.5 py-1 transition-colors border border-primary/20"
+                              >
+                                <Calculator className="h-3.5 w-3.5" />
+                                احتساب تلقائي ({autoVal}%)
+                              </button>
+                            )}
+                          </div>
+                          <FormControl>
+                            <div className="relative">
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={0.1}
+                                {...field}
+                                className="pl-8"
+                              />
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium pointer-events-none">%</span>
+                            </div>
+                          </FormControl>
+                          {autoVal !== null && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              محتسب من المتوسط الموزون لإنجاز {(activities ?? []).length} نشاط
+                            </p>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
                   />
                   <FormField
                     control={form.control}
