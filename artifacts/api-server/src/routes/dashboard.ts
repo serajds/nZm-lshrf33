@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectSuspensionsTable } from "@workspace/db";
-import { eq, count, avg, sql } from "drizzle-orm";
+import { eq, count, avg, sql, desc } from "drizzle-orm";
 import { requireEngineerOrAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -19,23 +19,80 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
 
   const [reportCount] = await db.select({ count: count() }).from(reportsTable);
 
+  const activityCounts = await db.select({
+    status: activitiesTable.status,
+    cnt: count(),
+  }).from(activitiesTable).groupBy(activitiesTable.status);
+
   const recentProjects = await db.select().from(projectsTable)
     .orderBy(sql`${projectsTable.updatedAt} DESC`)
-    .limit(5);
+    .limit(8);
+
+  const allProjects = await db.select({
+    id: projectsTable.id,
+    name: projectsTable.name,
+    overallProgress: projectsTable.overallProgress,
+    status: projectsTable.status,
+    startDate: projectsTable.startDate,
+    expectedEndDate: projectsTable.expectedEndDate,
+    ownerEntity: projectsTable.ownerEntity,
+  }).from(projectsTable).orderBy(desc(projectsTable.overallProgress));
+
+  const recentReports = await db.select({
+    id: reportsTable.id,
+    projectId: reportsTable.projectId,
+    type: reportsTable.type,
+    reportDate: reportsTable.reportDate,
+    progressPercentage: reportsTable.progressPercentage,
+  }).from(reportsTable).orderBy(desc(reportsTable.reportDate)).limit(5);
 
   const countByStatus = (status: string) => {
     const found = statusCounts.find(s => s.status === status);
     return found ? Number(found.cnt) : 0;
   };
 
+  const activityCountByStatus = (status: string) => {
+    const found = activityCounts.find(a => a.status === status);
+    return found ? Number(found.cnt) : 0;
+  };
+
+  const today = new Date();
+
+  const projectsWithPlanned = allProjects.map(p => {
+    const startDate = new Date(p.startDate);
+    const endDate = new Date(p.expectedEndDate);
+    const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const plannedProgress = Math.min(100, Math.round((daysElapsed / totalDays) * 100));
+    const daysRemaining = Math.max(0, totalDays - daysElapsed);
+    return {
+      id: p.id,
+      name: p.name,
+      overallProgress: p.overallProgress,
+      plannedProgress,
+      status: p.status,
+      daysRemaining,
+      ownerEntity: p.ownerEntity,
+      startDate: p.startDate,
+      expectedEndDate: p.expectedEndDate,
+    };
+  });
+
   res.json({
     totalProjects: Number(totals?.total ?? 0),
     activeProjects: countByStatus("active"),
     completedProjects: countByStatus("completed"),
     delayedProjects: countByStatus("delayed"),
-    averageProgress: Number(totals?.avgProgress ?? 0),
+    suspendedProjects: countByStatus("suspended"),
+    averageProgress: Math.round(Number(totals?.avgProgress ?? 0)),
     totalReports: Number(reportCount?.count ?? 0),
+    totalActivities: activityCounts.reduce((s, a) => s + Number(a.cnt), 0),
+    completedActivities: activityCountByStatus("completed"),
+    delayedActivities: activityCountByStatus("delayed"),
+    inProgressActivities: activityCountByStatus("in_progress"),
     recentProjects,
+    allProjects: projectsWithPlanned,
+    recentReports,
   });
 });
 
