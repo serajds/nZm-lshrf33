@@ -19,7 +19,7 @@ import {
   BarChart3, Activity as ActivityIcon, TrendingUp, TrendingDown, FileText,
   CalendarDays, Gauge, Timer, ShieldCheck, CircleDot, ChevronLeft, ChevronRight, X, ZoomIn
 } from "lucide-react";
-import { previewReport } from "@/lib/report-pdf";
+import { previewReport, type ActivityForReport } from "@/lib/report-pdf";
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
@@ -258,6 +258,12 @@ export default function OwnerPortal() {
     const imageUrls = (report.imageUrls ?? []).map((url) =>
       url.includes("?") ? url : `${url}?token=${ownerJwt}`
     );
+    const activityList: ActivityForReport[] = (activities as Activity[]).map((a) => ({
+      name: a.name,
+      plannedProgress: a.plannedProgress ?? 0,
+      actualProgress: a.actualProgress ?? 0,
+      status: a.status ?? "not_started",
+    }));
     previewReport({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -275,6 +281,7 @@ export default function OwnerPortal() {
       imageUrls,
       reportId: report.id,
       reportNumber: report.reportNumber,
+      activities: activityList,
       contractValue: (project as any).contractValue ?? null,
       startDate: (project as any).startDate ?? null,
       expectedEndDate: (project as any).expectedEndDate ?? null,
@@ -756,6 +763,46 @@ export default function OwnerPortal() {
                             <CheckCircle2 className="h-4 w-4 text-emerald-500" /> وصف الأعمال المنجزة
                           </h4>
                           <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{report.workDescription}</p>
+                        </div>
+                      )}
+
+                      {activities.length > 0 && (
+                        <div className="pt-3 border-t">
+                          <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                            <ActivityIcon className="h-4 w-4 text-blue-500" /> الأنشطة ({activities.length})
+                          </h4>
+                          <div className="overflow-x-auto rounded-lg border">
+                            <Table className="min-w-[500px]">
+                              <TableHeader>
+                                <TableRow className="bg-muted/40">
+                                  <TableHead className="text-right text-xs py-2">النشاط</TableHead>
+                                  <TableHead className="text-center text-xs py-2 w-24">المخطط %</TableHead>
+                                  <TableHead className="text-center text-xs py-2 w-24">الفعلي %</TableHead>
+                                  <TableHead className="text-center text-xs py-2 w-28">الحالة</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {(activities as Activity[]).map((act) => (
+                                  <TableRow key={act.id}>
+                                    <TableCell className="text-sm py-1.5">{act.name}</TableCell>
+                                    <TableCell className="text-center text-sm py-1.5 tabular-nums">{act.plannedProgress}%</TableCell>
+                                    <TableCell className="text-center text-sm py-1.5 tabular-nums font-medium">{act.actualProgress}%</TableCell>
+                                    <TableCell className="text-center py-1.5">
+                                      {act.status === "completed" ? (
+                                        <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] px-1.5">مكتمل</Badge>
+                                      ) : act.status === "in_progress" ? (
+                                        <Badge className="bg-blue-100 text-blue-700 border border-blue-300 text-[10px] px-1.5">قيد التنفيذ</Badge>
+                                      ) : act.status === "delayed" ? (
+                                        <Badge className="bg-red-100 text-red-700 border border-red-300 text-[10px] px-1.5">متأخر</Badge>
+                                      ) : (
+                                        <Badge className="bg-gray-100 text-gray-600 border border-gray-300 text-[10px] px-1.5">لم يبدأ</Badge>
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
                         </div>
                       )}
 
