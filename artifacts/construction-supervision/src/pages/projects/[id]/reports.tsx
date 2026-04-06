@@ -27,8 +27,8 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, Download, ImagePlus, X, Loader2, Calculator } from "lucide-react";
-import { generateReportPDF } from "@/lib/report-pdf";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, Download, ImagePlus, X, Loader2, Calculator, Eye, Printer } from "lucide-react";
+import { generateReportPDF, previewReport, type ActivityForReport } from "@/lib/report-pdf";
 
 const reportSchema = z.object({
   type: z.enum(["weekly", "monthly"]),
@@ -122,36 +122,52 @@ export default function ProjectReports() {
     }
   };
 
+  const buildPdfData = (report: Report) => {
+    const token = localStorage.getItem("auth_token");
+    const imageUrls = (report.imageUrls ?? []).map((url) =>
+      url.includes("?") ? url : `${url}?token=${token}`
+    );
+    const activityList: ActivityForReport[] = ((activities ?? []) as Activity[]).map((a) => ({
+      name: a.name,
+      plannedProgress: a.plannedProgress ?? 0,
+      actualProgress: a.actualProgress ?? 0,
+      status: a.status ?? "not_started",
+    }));
+    return {
+      projectName: project!.name,
+      ownerEntity: project!.ownerEntity,
+      contractor: project!.contractor,
+      supervisorEntity: project!.supervisorEntity,
+      location: project!.location,
+      reportType: report.type,
+      reportDate: report.reportDate,
+      periodStart: report.periodStart,
+      periodEnd: report.periodEnd,
+      progressPercentage: report.progressPercentage,
+      workDescription: report.workDescription,
+      technicalNotes: report.technicalNotes,
+      recommendations: report.recommendations,
+      imageUrls,
+      reportId: report.id,
+      activities: activityList,
+    };
+  };
+
   const handleDownloadPDF = async (report: Report) => {
     if (!project) return;
     setPdfLoadingId(report.id);
     try {
-      const token = localStorage.getItem("auth_token");
-      const imageUrls = (report.imageUrls ?? []).map((url) =>
-        url.includes("?") ? url : `${url}?token=${token}`
-      );
-      await generateReportPDF({
-        projectName: project.name,
-        ownerEntity: project.ownerEntity,
-        contractor: project.contractor,
-        supervisorEntity: project.supervisorEntity,
-        location: project.location,
-        reportType: report.type,
-        reportDate: report.reportDate,
-        periodStart: report.periodStart,
-        periodEnd: report.periodEnd,
-        progressPercentage: report.progressPercentage,
-        workDescription: report.workDescription,
-        technicalNotes: report.technicalNotes,
-        recommendations: report.recommendations,
-        imageUrls,
-        reportId: report.id,
-      });
+      await generateReportPDF(buildPdfData(report));
     } catch {
       toast({ variant: "destructive", title: "فشل تصدير PDF" });
     } finally {
       setPdfLoadingId(null);
     }
+  };
+
+  const handlePreview = (report: Report) => {
+    if (!project) return;
+    previewReport(buildPdfData(report));
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -495,25 +511,34 @@ export default function ProjectReports() {
                         <Badge className="bg-primary">{report.progressPercentage}%</Badge>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-blue-600 hover:bg-blue-50 hover:text-blue-700 border-blue-200"
+                        className="text-violet-600 hover:bg-violet-50 hover:text-violet-700 border-violet-200 gap-1.5"
+                        onClick={() => handlePreview(report)}
+                        title="معاينة وطباعة"
+                      >
+                        <Printer className="h-4 w-4" /> معاينة وطباعة
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 hover:bg-blue-50 hover:text-blue-700 border-blue-200 gap-1.5"
                         onClick={() => handleDownloadPDF(report)}
                         disabled={pdfLoadingId === report.id}
                         title="تحميل PDF"
                       >
                         {pdfLoadingId === report.id
-                          ? <Loader2 className="h-4 w-4 animate-spin ml-1" />
-                          : <Download className="h-4 w-4 ml-1" />}
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <Download className="h-4 w-4" />}
                         PDF
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(report)}>
-                        <Edit2 className="h-4 w-4 ml-1" /> تعديل
+                      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleEdit(report)}>
+                        <Edit2 className="h-4 w-4" /> تعديل
                       </Button>
-                      <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive hover:text-white" onClick={() => handleDelete(report.id)}>
-                        <Trash2 className="h-4 w-4 ml-1" /> حذف
+                      <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive hover:text-white gap-1.5" onClick={() => handleDelete(report.id)}>
+                        <Trash2 className="h-4 w-4" /> حذف
                       </Button>
                     </div>
                   </div>
@@ -543,11 +568,13 @@ export default function ProjectReports() {
                       )}
                     </div>
                     {report.imageUrls && report.imageUrls.length > 0 && (
-                      <div className="pt-2 border-t">
-                        <h4 className="text-sm font-semibold mb-2 flex items-center gap-1">
-                          <ImagePlus className="h-4 w-4" /> صور الموقع ({report.imageUrls.length})
+                      <div className="pt-3 border-t">
+                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                          <ImagePlus className="h-4 w-4 text-muted-foreground" />
+                          صور الموقع
+                          <span className="text-xs text-muted-foreground font-normal">({report.imageUrls.length} صورة)</span>
                         </h4>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                           {report.imageUrls.map((url, idx) => {
                             const authUrl = url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`;
                             return (
@@ -556,14 +583,20 @@ export default function ProjectReports() {
                                 href={authUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="w-20 h-20 rounded-md overflow-hidden border block hover:opacity-80 transition-opacity"
+                                className="group relative aspect-video rounded-lg overflow-hidden border-2 border-muted hover:border-primary/40 transition-all shadow-sm hover:shadow-md block"
                               >
                                 <img
                                   src={authUrl}
                                   alt={`صورة ${idx + 1}`}
-                                  className="w-full h-full object-cover"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                 />
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                  <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                                <div className="absolute bottom-1.5 right-1.5 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">
+                                  {idx + 1}/{report.imageUrls!.length}
+                                </div>
                               </a>
                             );
                           })}
