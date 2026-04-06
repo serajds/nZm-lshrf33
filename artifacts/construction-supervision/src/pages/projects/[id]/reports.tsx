@@ -27,8 +27,8 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, Download, ImagePlus, X, Loader2, Calculator, Eye, Printer } from "lucide-react";
-import { generateReportPDF, previewReport, type ActivityForReport } from "@/lib/report-pdf";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer } from "lucide-react";
+import { previewReport, type ActivityForReport } from "@/lib/report-pdf";
 
 const reportSchema = z.object({
   type: z.enum(["weekly", "monthly"]),
@@ -55,7 +55,6 @@ export default function ProjectReports() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
@@ -122,7 +121,8 @@ export default function ProjectReports() {
     }
   };
 
-  const buildPdfData = (report: Report) => {
+  const handlePreview = (report: Report) => {
+    if (!project) return;
     const token = localStorage.getItem("auth_token");
     const imageUrls = (report.imageUrls ?? []).map((url) =>
       url.includes("?") ? url : `${url}?token=${token}`
@@ -133,12 +133,12 @@ export default function ProjectReports() {
       actualProgress: a.actualProgress ?? 0,
       status: a.status ?? "not_started",
     }));
-    return {
-      projectName: project!.name,
-      ownerEntity: project!.ownerEntity,
-      contractor: project!.contractor,
-      supervisorEntity: project!.supervisorEntity,
-      location: project!.location,
+    previewReport({
+      projectName: project.name,
+      ownerEntity: project.ownerEntity,
+      contractor: project.contractor,
+      supervisorEntity: project.supervisorEntity,
+      location: project.location,
       reportType: report.type,
       reportDate: report.reportDate,
       periodStart: report.periodStart,
@@ -150,24 +150,7 @@ export default function ProjectReports() {
       imageUrls,
       reportId: report.id,
       activities: activityList,
-    };
-  };
-
-  const handleDownloadPDF = async (report: Report) => {
-    if (!project) return;
-    setPdfLoadingId(report.id);
-    try {
-      await generateReportPDF(buildPdfData(report));
-    } catch {
-      toast({ variant: "destructive", title: "فشل تصدير PDF" });
-    } finally {
-      setPdfLoadingId(null);
-    }
-  };
-
-  const handlePreview = (report: Report) => {
-    if (!project) return;
-    previewReport(buildPdfData(report));
+    });
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -520,19 +503,6 @@ export default function ProjectReports() {
                         title="معاينة وطباعة"
                       >
                         <Printer className="h-4 w-4" /> معاينة وطباعة
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-blue-600 hover:bg-blue-50 hover:text-blue-700 border-blue-200 gap-1.5"
-                        onClick={() => handleDownloadPDF(report)}
-                        disabled={pdfLoadingId === report.id}
-                        title="تحميل PDF"
-                      >
-                        {pdfLoadingId === report.id
-                          ? <Loader2 className="h-4 w-4 animate-spin" />
-                          : <Download className="h-4 w-4" />}
-                        PDF
                       </Button>
                       <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleEdit(report)}>
                         <Edit2 className="h-4 w-4" /> تعديل
