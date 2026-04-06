@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable, projectSuspensionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
+import { calcPlannedProgressForProject, calcDelayDays } from "../lib/progress";
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
@@ -184,9 +185,9 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   const end = new Date(project.expectedEndDate);
   const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
   const elapsed = Math.max(0, Math.ceil((today.getTime() - start.getTime()) / 86400000));
-  const planned = Math.min(100, Math.round((elapsed / totalDays) * 100));
+  const planned = Math.round(calcPlannedProgressForProject(activities, elapsed, totalDays));
   const deviation = overall - planned;
-  const delayDays = deviation < 0 ? Math.round(Math.abs(deviation) / 100 * totalDays) : 0;
+  const delayDays = calcDelayDays(planned, overall, totalDays);
 
   doc.rect(MARGIN, y, CONTENT_W, 90).fill(C.light).stroke(C.border);
   setFont(10, C.primary);
