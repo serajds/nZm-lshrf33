@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { reportsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -18,7 +18,7 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), as
       .where(and(eq(reportsTable.projectId, projectId), eq(reportsTable.type, type as "weekly" | "monthly")));
   }
 
-  const reports = await query.orderBy(reportsTable.reportDate);
+  const reports = await query.orderBy(desc(reportsTable.reportDate));
   res.json(reports);
 });
 
