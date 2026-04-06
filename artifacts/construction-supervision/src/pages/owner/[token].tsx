@@ -618,7 +618,7 @@ export default function OwnerPortal() {
           </Card>
         </div>
 
-        <Tabs defaultValue="progress" className="w-full mb-8">
+        <Tabs defaultValue="progress" className="w-full mb-8" dir="rtl">
           <TabsList className="w-full justify-start mb-4 flex-wrap gap-1 bg-muted/50 p-1">
             <TabsTrigger value="progress" className="gap-1.5"><BarChart3 className="h-3.5 w-3.5" />سير العمل</TabsTrigger>
             <TabsTrigger value="activities" className="gap-1.5"><ActivityIcon className="h-3.5 w-3.5" />الأنشطة</TabsTrigger>
@@ -657,8 +657,8 @@ export default function OwnerPortal() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={ganttData} margin={{ top: 10, right: 10, left: 10, bottom: 60 }} barCategoryGap="20%">
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                      <XAxis dataKey="name" angle={-40} textAnchor="end" height={80} interval={0} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                      <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                      <XAxis dataKey="name" angle={-40} textAnchor="end" height={80} interval={0} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} reversed />
+                      <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} orientation="right" />
                       <Tooltip
                         contentStyle={{ textAlign: 'right', direction: 'rtl', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', fontSize: '12px' }}
                         formatter={(v: number, name: string) => [`${v}%`, name === 'planned' ? 'المخطط' : 'الفعلي']}
