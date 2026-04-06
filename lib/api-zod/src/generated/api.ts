@@ -295,6 +295,8 @@ export const ListReportsParams = zod.object({
 
 export const ListReportsQueryParams = zod.object({
   type: zod.coerce.string().nullish(),
+  dateFrom: zod.coerce.string().nullish(),
+  dateTo: zod.coerce.string().nullish(),
 });
 
 export const ListReportsResponseItem = zod.object({

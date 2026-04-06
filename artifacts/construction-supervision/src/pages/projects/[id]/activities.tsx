@@ -222,6 +222,34 @@ export default function ProjectActivities() {
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(projectId) });
 
+  const exportActivities = async () => {
+    if (!activities || activities.length === 0) {
+      toast({ variant: "destructive", title: "لا توجد بنود للتصدير" });
+      return;
+    }
+    const XLSX = await import("xlsx");
+    const statusLabels: Record<string, string> = { not_started: "لم يبدأ", in_progress: "قيد التنفيذ", completed: "مكتمل", delayed: "متأخر" };
+    const data = [
+      ["اسم البند", "تاريخ البداية المخططة", "تاريخ النهاية المخططة", "البداية الفعلية", "النهاية الفعلية", "الإنجاز المخطط %", "الإنجاز الفعلي %", "الحالة"],
+      ...activities.map((a: any) => [
+        a.name,
+        a.plannedStartDate?.split("T")[0] || "",
+        a.plannedEndDate?.split("T")[0] || "",
+        a.actualStartDate?.split("T")[0] || "",
+        a.actualEndDate?.split("T")[0] || "",
+        a.plannedProgress ?? 0,
+        a.actualProgress ?? 0,
+        statusLabels[a.status] || a.status,
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws["!cols"] = [{ wch: 30 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "بنود الأعمال");
+    const projectName = project?.name || "مشروع";
+    XLSX.writeFile(wb, `بنود_${projectName}.xlsx`);
+  };
+
   const downloadTemplate = async () => {
     const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
@@ -639,6 +667,9 @@ export default function ProjectActivities() {
               <p className="text-xs text-muted-foreground mt-0.5">انقر على الحالة أو نسبة الإنجاز لتحديثها مباشرةً</p>
             </div>
             <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" className="gap-2 shrink-0" onClick={exportActivities} disabled={!activities || activities.length === 0}>
+              <Download className="h-4 w-4" /> تصدير Excel
+            </Button>
             <Dialog open={isImportOpen} onOpenChange={(open) => {
               setIsImportOpen(open);
               if (!open) setImportFile(null);

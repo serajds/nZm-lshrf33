@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { reportsTable, activitiesTable } from "@workspace/db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -9,16 +9,30 @@ const router: IRouter = Router();
 router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
-  const { type } = req.query;
+  const { type, dateFrom, dateTo } = req.query;
 
-  let query = db.select().from(reportsTable).where(eq(reportsTable.projectId, projectId));
+  const isValidDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s));
 
-  if (type && typeof type === "string") {
-    query = db.select().from(reportsTable)
-      .where(and(eq(reportsTable.projectId, projectId), eq(reportsTable.type, type as "weekly" | "monthly")));
+  const conditions = [eq(reportsTable.projectId, projectId)];
+
+  if (type && typeof type === "string" && type !== "all") {
+    conditions.push(eq(reportsTable.type, type as "weekly" | "monthly"));
   }
 
-  const reports = await query.orderBy(desc(reportsTable.reportDate));
+  if (dateFrom && typeof dateFrom === "string") {
+    if (!isValidDate(dateFrom)) { res.status(400).json({ error: "dateFrom must be YYYY-MM-DD" }); return; }
+    conditions.push(gte(reportsTable.reportDate, dateFrom));
+  }
+
+  if (dateTo && typeof dateTo === "string") {
+    if (!isValidDate(dateTo)) { res.status(400).json({ error: "dateTo must be YYYY-MM-DD" }); return; }
+    conditions.push(lte(reportsTable.reportDate, dateTo));
+  }
+
+  const reports = await db.select().from(reportsTable)
+    .where(and(...conditions))
+    .orderBy(desc(reportsTable.reportDate));
+
   res.json(reports);
 });
 

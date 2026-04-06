@@ -72,6 +72,8 @@ export default function ProjectReports() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -84,7 +86,9 @@ export default function ProjectReports() {
   });
   
   const { data: reports, isLoading } = useListReports(projectId, {
-    type: typeFilter && typeFilter !== "all" ? typeFilter : undefined
+    type: typeFilter && typeFilter !== "all" ? typeFilter : undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
   }, { query: { enabled: !!projectId } });
 
   const { data: activities } = useListActivities(projectId, { query: { enabled: !!projectId } });
@@ -268,6 +272,15 @@ export default function ProjectReports() {
                 <SelectItem value="monthly">شهري</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">من</span>
+            <Input type="date" className="w-36 text-sm" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <span className="text-xs text-muted-foreground whitespace-nowrap">إلى</span>
+            <Input type="date" className="w-36 text-sm" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            {(dateFrom || dateTo) && (
+              <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => { setDateFrom(""); setDateTo(""); }}>مسح</Button>
+            )}
           </div>
         </div>
         
