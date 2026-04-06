@@ -15,9 +15,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { 
   Building2, MapPin, HardHat, Lock, 
-  CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock, PauseCircle, Download, Loader2
+  CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock, PauseCircle, Printer
 } from "lucide-react";
-import { generateReportPDF } from "@/lib/report-pdf";
+import { previewReport } from "@/lib/report-pdf";
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -30,8 +30,6 @@ export default function OwnerPortal() {
   
   const [password, setPassword] = useState("");
   const [ownerData, setOwnerData] = useState<OwnerProjectView | null>(null);
-  const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
-  
   const verifyAccess = useVerifyOwnerAccess();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -100,31 +98,24 @@ export default function OwnerPortal() {
   const latestExt = extensions.length > 0 ? extensions[extensions.length - 1] : null;
   const totalSuspDays = (suspensions as ProjectSuspension[]).reduce((s, x) => s + x.calendarDays, 0);
 
-  const handleDownloadPDF = async (report: Report) => {
-    setPdfLoadingId(report.id);
-    try {
-      await generateReportPDF({
-        projectName: project.name,
-        ownerEntity: project.ownerEntity,
-        contractor: project.contractor,
-        supervisorEntity: project.supervisorEntity,
-        location: project.location,
-        reportType: report.type,
-        reportDate: report.reportDate,
-        periodStart: report.periodStart,
-        periodEnd: report.periodEnd,
-        progressPercentage: report.progressPercentage,
-        workDescription: report.workDescription,
-        technicalNotes: report.technicalNotes,
-        recommendations: report.recommendations,
-        imageUrls: report.imageUrls ?? [],
-        reportId: report.id,
-      });
-    } catch {
-      toast({ variant: "destructive", title: "فشل تصدير PDF" });
-    } finally {
-      setPdfLoadingId(null);
-    }
+  const handlePreview = (report: Report) => {
+    previewReport({
+      projectName: project.name,
+      ownerEntity: project.ownerEntity,
+      contractor: project.contractor,
+      supervisorEntity: project.supervisorEntity,
+      location: project.location,
+      reportType: report.type,
+      reportDate: report.reportDate,
+      periodStart: report.periodStart,
+      periodEnd: report.periodEnd,
+      progressPercentage: report.progressPercentage,
+      workDescription: report.workDescription,
+      technicalNotes: report.technicalNotes,
+      recommendations: report.recommendations,
+      imageUrls: report.imageUrls ?? [],
+      reportId: report.id,
+    });
   };
 
   const getStatusBadge = (status: string) => {
@@ -244,14 +235,11 @@ export default function OwnerPortal() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="text-blue-600 hover:bg-blue-50 hover:text-blue-700 border-blue-200 gap-1"
-                            onClick={() => handleDownloadPDF(report)}
-                            disabled={pdfLoadingId === report.id}
+                            className="text-violet-600 hover:bg-violet-50 hover:text-violet-700 border-violet-200 gap-1"
+                            onClick={() => handlePreview(report)}
                           >
-                            {pdfLoadingId === report.id
-                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              : <Download className="h-3.5 w-3.5" />}
-                            PDF
+                            <Printer className="h-3.5 w-3.5" />
+                            معاينة وطباعة
                           </Button>
                         </div>
                       </div>
