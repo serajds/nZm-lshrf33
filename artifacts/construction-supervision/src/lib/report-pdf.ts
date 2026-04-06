@@ -395,10 +395,299 @@ ${imagesPages}
 </html>`;
 }
 
+/** Build a clean, print-friendly HTML — fully separate from the html2canvas PDF path */
+function buildPrintHTML(data: ReportPdfData): string {
+  const typeLbl = data.reportType === "weekly" ? "أسبوعي" : "شهري";
+  const pct = Math.min(100, Math.max(0, data.progressPercentage));
+
+  const metaRows = [
+    ["جهة المالك", data.ownerEntity],
+    ["المقاول", data.contractor],
+    ["جهة الإشراف", data.supervisorEntity],
+    ["الموقع", data.location],
+  ].filter(([, v]) => !!v);
+
+  const infoRows = [
+    ["تاريخ التقرير", fmtDate(data.reportDate)],
+    ["بداية الفترة", fmtDate(data.periodStart)],
+    ["نهاية الفترة", fmtDate(data.periodEnd)],
+    ["رقم التقرير", `#${data.reportId}`],
+  ];
+
+  const metaTable = metaRows.length ? `
+    <table class="meta-tbl">
+      <tbody>
+        ${metaRows.map(([l, v]) => `<tr><td class="meta-lbl">${l}</td><td class="meta-val">${escapeHtml(v ?? "")}</td></tr>`).join("")}
+      </tbody>
+    </table>` : "";
+
+  const activitiesSection = data.activities && data.activities.length > 0 ? `
+    <div class="section avoid-break">
+      <div class="section-hd blue-hd">حالة الأنشطة</div>
+      <table class="acts-tbl">
+        <thead>
+          <tr>
+            <th class="th">النشاط</th>
+            <th class="th th-sm">مخطط %</th>
+            <th class="th th-sm">فعلي %</th>
+            <th class="th th-sm">الحالة</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.activities.map((a, i) => `
+            <tr class="${i % 2 === 0 ? "row-even" : "row-odd"}">
+              <td class="td">${escapeHtml(a.name)}</td>
+              <td class="td td-c">${a.plannedProgress}%</td>
+              <td class="td td-c td-bold">${a.actualProgress}%</td>
+              <td class="td td-c">
+                <span class="badge" style="background:${statusBg(a.status)};color:${statusColor(a.status)};border:1px solid ${statusColor(a.status)}55">
+                  ${statusLabel(a.status)}
+                </span>
+              </td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>` : "";
+
+  const notesSection = data.technicalNotes ? `
+    <div class="section avoid-break warn-box">
+      <div class="section-hd warn-hd">الملاحظات الفنية</div>
+      <p class="sec-text">${escapeHtml(data.technicalNotes)}</p>
+    </div>` : "";
+
+  const recsSection = data.recommendations ? `
+    <div class="section avoid-break success-box">
+      <div class="section-hd success-hd">التوصيات</div>
+      <p class="sec-text">${escapeHtml(data.recommendations)}</p>
+    </div>` : "";
+
+  const images = data.imageUrls ?? [];
+  const imagesSection = images.length > 0 ? `
+    <div class="page-break-before">
+      <div class="section-hd blue-hd img-hd">صور الموقع (${images.length} صورة)</div>
+      <div class="img-grid">
+        ${images.map((url, i) => `
+          <div class="img-wrap avoid-break">
+            <img src="${url}" class="site-img" onerror="this.parentNode.style.display='none'" />
+            <div class="img-caption">صورة ${i + 1} من ${images.length}</div>
+          </div>`).join("")}
+      </div>
+    </div>` : "";
+
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<title>تقرير ${typeLbl} — ${escapeHtml(data.projectName)}</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 20mm;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Noto Kufi Arabic', Arial, sans-serif;
+    font-size: 12pt;
+    line-height: 1.75;
+    color: #1a1a2e;
+    direction: rtl;
+    text-align: right;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── Report header ── */
+  .rpt-header {
+    background: #1a1a2e;
+    color: #fff;
+    padding: 18pt 20pt 14pt;
+    margin-bottom: 0;
+    border-radius: 6pt 6pt 0 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .rpt-sys { font-size: 9pt; color: rgba(255,255,255,0.55); margin-bottom: 4pt; }
+  .rpt-title { font-size: 18pt; font-weight: 800; color: #fff; margin-bottom: 6pt; }
+  .rpt-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    border: 1.5px solid rgba(255,255,255,0.3);
+    border-radius: 20pt;
+    padding: 2pt 14pt;
+    font-size: 10pt;
+    font-weight: 700;
+    color: rgba(255,255,255,0.9);
+  }
+
+  /* ── Info bar ── */
+  .info-bar {
+    background: #eef2ff;
+    border-top: 2px solid #c7d2fe;
+    border-bottom: 2px solid #1a1a2e;
+    padding: 10pt 20pt;
+    margin-bottom: 16pt;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .info-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 0; }
+  .info-cell { text-align: center; border-right: 1px solid #c7d2fe; padding: 0 8pt; }
+  .info-cell:last-child { border-right: none; }
+  .info-lbl { font-size: 8pt; color: #6b7280; font-weight: 600; margin-bottom: 2pt; }
+  .info-val { font-size: 13pt; font-weight: 800; color: #1a1a2e; }
+
+  /* ── Meta table ── */
+  .meta-tbl { width: 100%; border-collapse: collapse; margin-bottom: 14pt; font-size: 11pt; break-inside: avoid; page-break-inside: avoid; }
+  .meta-lbl { font-weight: 700; color: #374151; width: 140pt; padding: 4pt 0; border-bottom: 1px solid #f0f0f0; }
+  .meta-val { color: #4b5563; padding: 4pt 0; border-bottom: 1px solid #f0f0f0; }
+
+  /* ── Progress ── */
+  .progress-wrap {
+    margin-bottom: 16pt;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .progress-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6pt; }
+  .progress-lbl { font-size: 11pt; font-weight: 700; color: #374151; }
+  .progress-pct { font-size: 20pt; font-weight: 800; color: #1d4ed8; }
+  .track { height: 13pt; background: #e5e7eb; border-radius: 7pt; overflow: hidden; }
+  .fill { height: 100%; width: ${pct}%; background: linear-gradient(90deg, #1d4ed8, #60a5fa); border-radius: 7pt; }
+
+  /* ── Sections ── */
+  .section {
+    border: 1px solid #e5e7eb;
+    border-radius: 6pt;
+    padding: 12pt 16pt;
+    margin-bottom: 14pt;
+    background: #fafafa;
+  }
+  .avoid-break { break-inside: avoid; page-break-inside: avoid; }
+  .section-hd {
+    font-size: 11pt;
+    font-weight: 700;
+    margin-bottom: 8pt;
+    padding-bottom: 6pt;
+    border-bottom: 1.5px solid #e5e7eb;
+    color: #374151;
+  }
+  .blue-hd { color: #1e40af; border-bottom-color: #bfdbfe; }
+  .warn-hd { color: #c2410c; border-bottom-color: #fed7aa; }
+  .success-hd { color: #15803d; border-bottom-color: #bbf7d0; }
+  .warn-box { background: #fff7ed; border-color: #fed7aa; }
+  .success-box { background: #f0fdf4; border-color: #bbf7d0; }
+  .sec-text { font-size: 11.5pt; color: #374151; line-height: 1.9; white-space: pre-wrap; }
+
+  /* ── Activities table ── */
+  .acts-tbl { width: 100%; border-collapse: collapse; font-size: 10.5pt; }
+  .th { background: #eff6ff; padding: 6pt 8pt; text-align: center; font-size: 9pt; font-weight: 700; color: #1e40af; border-bottom: 2px solid #bfdbfe; }
+  .th:first-child { text-align: right; }
+  .td { padding: 7pt 8pt; border-bottom: 1px solid #f0f0f0; color: #374151; }
+  .th-sm { width: 70pt; }
+  .td-c { text-align: center; }
+  .td-bold { font-weight: 700; }
+  .row-even { background: #fff; }
+  .row-odd { background: #f9fafb; }
+  .badge { display: inline-block; padding: 2pt 7pt; border-radius: 12pt; font-size: 9pt; font-weight: 700; }
+
+  /* ── Images ── */
+  .page-break-before { break-before: page; page-break-before: always; }
+  .img-hd { margin-bottom: 14pt; }
+  .img-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14pt; }
+  .img-wrap { border: 1px solid #e5e7eb; border-radius: 6pt; overflow: hidden; background: #f9fafb; }
+  .site-img { width: 100%; height: 160pt; object-fit: cover; display: block; }
+  .img-caption { font-size: 9pt; color: #6b7280; text-align: center; padding: 5pt; }
+
+  /* ── Footer ── */
+  .rpt-footer {
+    margin-top: 20pt;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 8pt;
+    font-size: 9pt;
+    color: #9ca3af;
+    display: flex;
+    justify-content: space-between;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  @media print {
+    body { font-size: 11pt; }
+    .page-break-before { break-before: page; page-break-before: always; }
+    .avoid-break { break-inside: avoid !important; page-break-inside: avoid !important; }
+    .rpt-header { border-radius: 0; }
+  }
+</style>
+<script>
+  window.addEventListener('load', function() {
+    setTimeout(function() { window.print(); }, 1400);
+  });
+<\/script>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="rpt-header avoid-break">
+  <div class="rpt-sys">نظام الإشراف الهندسي</div>
+  <div class="rpt-title">${escapeHtml(data.projectName)}</div>
+  <span class="rpt-badge">تقرير ${typeLbl}</span>
+</div>
+
+<!-- INFO BAR -->
+<div class="info-bar">
+  <div class="info-grid">
+    ${infoRows.map(([l, v]) => `
+    <div class="info-cell">
+      <div class="info-lbl">${l}</div>
+      <div class="info-val">${v}</div>
+    </div>`).join("")}
+  </div>
+</div>
+
+<!-- META -->
+${metaTable}
+
+<!-- PROGRESS -->
+<div class="progress-wrap">
+  <div class="progress-row">
+    <span class="progress-lbl">نسبة الإنجاز التراكمية</span>
+    <span class="progress-pct">${pct}%</span>
+  </div>
+  <div class="track"><div class="fill"></div></div>
+</div>
+
+<!-- ACTIVITIES -->
+${activitiesSection}
+
+<!-- WORK DESCRIPTION -->
+<div class="section avoid-break">
+  <div class="section-hd">وصف الأعمال المنجزة خلال الفترة</div>
+  <p class="sec-text">${escapeHtml(data.workDescription)}</p>
+</div>
+
+<!-- NOTES -->
+${notesSection}
+
+<!-- RECOMMENDATIONS -->
+${recsSection}
+
+<!-- IMAGES -->
+${imagesSection}
+
+<!-- FOOTER -->
+<div class="rpt-footer">
+  <span>تم إنشاؤه آلياً — ${fmtDate(new Date().toISOString())}</span>
+  <span>نظام الإشراف الهندسي</span>
+</div>
+
+</body>
+</html>`;
+}
+
 /** Open a browser print-preview window */
 export function previewReport(data: ReportPdfData): void {
-  const html = buildReportHTML(data, true);
-  const win = window.open("", "_blank", "width=900,height=700");
+  const html = buildPrintHTML(data);
+  const win = window.open("", "_blank", "width=860,height=760");
   if (!win) {
     alert("يرجى السماح بالنوافذ المنبثقة لاستخدام خاصية المعاينة");
     return;
