@@ -697,101 +697,313 @@ export function previewReport(data: ReportPdfData): void {
   win.document.close();
 }
 
-export async function generateReportPDF(data: ReportPdfData): Promise<void> {
-  const html = buildReportHTML(data, false);
+/** Build an HTML template for html2canvas PDF rendering (794px fixed, px units, no images) */
+function buildPdfBodyHTML(data: ReportPdfData): string {
+  const typeLbl = data.reportType === "weekly" ? "أسبوعي" : "شهري";
+  const pct = Math.min(100, Math.max(0, data.progressPercentage));
 
+  const metaRows = [
+    ["جهة المالك", data.ownerEntity],
+    ["المقاول", data.contractor],
+    ["جهة الإشراف", data.supervisorEntity],
+    ["الموقع", data.location],
+  ].filter(([, v]) => !!v);
+
+  const infoRows = [
+    ["تاريخ التقرير", fmtDate(data.reportDate)],
+    ["بداية الفترة", fmtDate(data.periodStart)],
+    ["نهاية الفترة", fmtDate(data.periodEnd)],
+    ["رقم التقرير", `#${data.reportId}`],
+  ];
+
+  const metaTable = metaRows.length ? `
+    <table class="meta-tbl" data-nb>
+      <tbody>
+        ${metaRows.map(([l, v]) => `<tr><td class="ml">${l}</td><td class="mv">${escapeHtml(v ?? "")}</td></tr>`).join("")}
+      </tbody>
+    </table>` : "";
+
+  const activitiesSection = data.activities && data.activities.length > 0 ? `
+    <div class="section nb">
+      <div class="sh blue-sh">حالة الأنشطة</div>
+      <table class="at">
+        <thead>
+          <tr>
+            <th class="th">النشاط</th><th class="th thc">مخطط %</th>
+            <th class="th thc">فعلي %</th><th class="th thc">الحالة</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.activities.map((a, i) => `
+            <tr style="background:${i % 2 === 0 ? "#fff" : "#f9fafb"}">
+              <td class="td">${escapeHtml(a.name)}</td>
+              <td class="td tdc">${a.plannedProgress}%</td>
+              <td class="td tdc" style="font-weight:700">${a.actualProgress}%</td>
+              <td class="td tdc">
+                <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:${statusBg(a.status)};color:${statusColor(a.status)};border:1px solid ${statusColor(a.status)}44">
+                  ${statusLabel(a.status)}
+                </span>
+              </td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>` : "";
+
+  const notesSection = data.technicalNotes ? `
+    <div class="section nb warn-box">
+      <div class="sh warn-sh">الملاحظات الفنية</div>
+      <p class="st">${escapeHtml(data.technicalNotes)}</p>
+    </div>` : "";
+
+  const recsSection = data.recommendations ? `
+    <div class="section nb succ-box">
+      <div class="sh succ-sh">التوصيات</div>
+      <p class="st">${escapeHtml(data.recommendations)}</p>
+    </div>` : "";
+
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Noto Kufi Arabic', Arial, sans-serif;
+    font-size: 13px; line-height: 1.75;
+    color: #1a1a2e; direction: rtl; text-align: right;
+    width: 794px; background: #fff;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .hdr { background:#1a1a2e; color:#fff; padding:24px 36px 20px; }
+  .hdr-sys { font-size:10px; color:rgba(255,255,255,.55); margin-bottom:4px; }
+  .hdr-title { font-size:20px; font-weight:800; margin-bottom:8px; }
+  .hdr-badge { display:inline-block; background:rgba(255,255,255,.15); border:1.5px solid rgba(255,255,255,.3); border-radius:20px; padding:3px 14px; font-size:11px; font-weight:700; color:rgba(255,255,255,.9); }
+  .ibar { background:#eef2ff; border-top:2px solid #c7d2fe; border-bottom:2px solid #1a1a2e; display:flex; }
+  .ic { flex:1; text-align:center; padding:14px 8px; border-right:1px solid #c7d2fe; }
+  .ic:last-child { border-right:none; }
+  .il { font-size:9px; color:#6b7280; font-weight:600; margin-bottom:3px; }
+  .iv { font-size:15px; font-weight:800; color:#1a1a2e; }
+  .content { padding:20px 36px 36px; }
+  .meta-tbl { width:100%; border-collapse:collapse; margin-bottom:14px; font-size:12px; }
+  .ml { font-weight:700; color:#374151; width:130px; padding:5px 0; border-bottom:1px solid #f0f0f0; }
+  .mv { color:#4b5563; padding:5px 0; border-bottom:1px solid #f0f0f0; }
+  .pw { margin-bottom:16px; }
+  .pr { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .pl { font-size:12px; font-weight:700; color:#374151; }
+  .pp { font-size:22px; font-weight:800; color:#1d4ed8; }
+  .track { height:13px; background:#e5e7eb; border-radius:7px; overflow:hidden; }
+  .fill { height:100%; width:${pct}%; background:linear-gradient(90deg,#1d4ed8,#60a5fa); border-radius:7px; }
+  .section { border:1px solid #e5e7eb; border-radius:8px; padding:14px 18px; margin-bottom:14px; background:#fafafa; }
+  .sh { font-size:12px; font-weight:700; margin-bottom:8px; padding-bottom:6px; border-bottom:1.5px solid #e5e7eb; color:#374151; }
+  .blue-sh { color:#1e40af; border-bottom-color:#bfdbfe; }
+  .warn-sh { color:#c2410c; border-bottom-color:#fed7aa; }
+  .succ-sh { color:#15803d; border-bottom-color:#bbf7d0; }
+  .warn-box { background:#fff7ed; border-color:#fed7aa; }
+  .succ-box { background:#f0fdf4; border-color:#bbf7d0; }
+  .st { font-size:12.5px; color:#374151; line-height:1.9; white-space:pre-wrap; }
+  .at { width:100%; border-collapse:collapse; font-size:11px; }
+  .th { background:#eff6ff; padding:6px 8px; font-size:9px; font-weight:700; color:#1e40af; border-bottom:2px solid #bfdbfe; text-align:right; }
+  .thc { width:70px; text-align:center; }
+  .td { padding:7px 8px; border-bottom:1px solid #f0f0f0; color:#374151; }
+  .tdc { text-align:center; }
+  .ftr { border-top:1px solid #e5e7eb; padding:10px 36px; display:flex; justify-content:space-between; font-size:10px; color:#9ca3af; }
+</style>
+</head>
+<body>
+<div class="hdr nb" data-nb>
+  <div class="hdr-sys">نظام الإشراف الهندسي</div>
+  <div class="hdr-title">${escapeHtml(data.projectName)}</div>
+  <span class="hdr-badge">تقرير ${typeLbl}</span>
+</div>
+<div class="ibar" data-nb>
+  ${infoRows.map(([l, v]) => `<div class="ic"><div class="il">${l}</div><div class="iv">${v}</div></div>`).join("")}
+</div>
+<div class="content">
+  ${metaTable}
+  <div class="pw nb" data-nb>
+    <div class="pr"><span class="pl">نسبة الإنجاز التراكمية</span><span class="pp">${pct}%</span></div>
+    <div class="track"><div class="fill"></div></div>
+  </div>
+  ${activitiesSection}
+  <div class="section nb" data-nb>
+    <div class="sh">وصف الأعمال المنجزة خلال الفترة</div>
+    <p class="st">${escapeHtml(data.workDescription)}</p>
+  </div>
+  ${notesSection}
+  ${recsSection}
+</div>
+<div class="ftr nb" data-nb>
+  <span>تم إنشاؤه آلياً — ${fmtDate(new Date().toISOString())}</span>
+  <span>نظام الإشراف الهندسي</span>
+</div>
+</body>
+</html>`;
+}
+
+/** Get absolute offsetTop of an element from the top of the document */
+function getAbsoluteTop(el: HTMLElement): number {
+  let top = 0;
+  let cur: HTMLElement | null = el;
+  while (cur) {
+    top += cur.offsetTop;
+    cur = cur.offsetParent as HTMLElement | null;
+  }
+  return top;
+}
+
+/** Find smart page-break Y coordinates (in canvas pixels) that avoid splitting elements */
+function computeSmartBreaks(
+  doc: Document,
+  canvasHeight: number,
+  pageHeightPx: number,
+  scale: number
+): number[] {
+  const noBreakEls = Array.from(doc.querySelectorAll("[data-nb], .nb, .section, .hdr, .ibar, .ftr, .pw, .meta-tbl, .at"));
+  const zones = noBreakEls.map((el) => {
+    const htmlEl = el as HTMLElement;
+    const top = getAbsoluteTop(htmlEl) * scale;
+    const bottom = top + htmlEl.offsetHeight * scale;
+    return { top, bottom };
+  });
+
+  const breaks: number[] = [];
+  let y = 0;
+  while (y < canvasHeight) {
+    let cut = y + pageHeightPx;
+    if (cut >= canvasHeight) break;
+    // Find if any zone straddles the cut; if so, move cut to zone.top
+    let moved = true;
+    let passes = 0;
+    while (moved && passes < 20) {
+      moved = false;
+      for (const z of zones) {
+        if (z.top < cut && cut < z.bottom) {
+          const newCut = Math.max(y + 1, z.top - 4);
+          if (newCut !== cut) { cut = newCut; moved = true; break; }
+        }
+      }
+      passes++;
+    }
+    breaks.push(cut);
+    y = cut;
+  }
+  return breaks;
+}
+
+export async function generateReportPDF(data: ReportPdfData): Promise<void> {
+  const html = buildPdfBodyHTML(data);
+
+  // Create off-screen iframe
   const iframe = document.createElement("iframe");
   iframe.style.cssText =
-    "position:fixed;top:-9999px;left:-9999px;width:794px;height:2000px;border:none;visibility:hidden;";
+    "position:fixed;top:-9999px;left:-9999px;width:794px;height:6000px;border:none;visibility:hidden;";
   document.body.appendChild(iframe);
 
   const iframeWin = iframe.contentWindow!;
   const doc = iframe.contentDocument || iframeWin.document;
-  if (!doc) {
-    document.body.removeChild(iframe);
-    throw new Error("Cannot create iframe document");
-  }
+  if (!doc) { document.body.removeChild(iframe); throw new Error("iframe doc unavailable"); }
 
-  doc.open();
-  doc.write(html);
-  doc.close();
+  doc.open(); doc.write(html); doc.close();
 
   await new Promise<void>((resolve) => {
-    const check = () => {
-      if (iframeWin.document.readyState === "complete") {
-        setTimeout(resolve, 1500);
-      } else {
-        iframe.addEventListener("load", () => setTimeout(resolve, 1500), { once: true });
-      }
-    };
-    check();
+    if (iframeWin.document.readyState === "complete") setTimeout(resolve, 1800);
+    else iframe.addEventListener("load", () => setTimeout(resolve, 1800), { once: true });
   });
+  try { await iframeWin.document.fonts.ready; } catch { /* ok */ }
+  await new Promise<void>((r) => setTimeout(r, 400));
 
-  try {
-    await iframeWin.document.fonts.ready;
-  } catch { /* ignore */ }
+  // Expand iframe to full content height to avoid scroll offset issues
+  const fullH = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight);
+  iframe.style.height = `${fullH + 200}px`;
+  await new Promise<void>((r) => setTimeout(r, 100));
 
-  await new Promise<void>((r) => setTimeout(r, 300));
-
-  // ── Render main page ──
-  const mainPage = doc.querySelector(".main-page") as HTMLElement;
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pdfW = pdf.internal.pageSize.getWidth();
   const pdfH = pdf.internal.pageSize.getHeight();
 
-  async function renderEl(el: HTMLElement, addPage = false) {
-    const canvas = await html2canvas(el, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: "#ffffff",
-      logging: false,
-      windowWidth: 794,
-      onclone: (clonedDoc) => {
-        clonedDoc.documentElement.setAttribute("lang", "ar");
-        clonedDoc.body.style.direction = "rtl";
-        clonedDoc.body.style.textAlign = "right";
-      },
-    });
-    const imgData = canvas.toDataURL("image/jpeg", 0.93);
-    const canvasRatio = canvas.height / canvas.width;
-    const imgH = pdfW * canvasRatio;
+  // Render full body to one canvas
+  const canvas = await html2canvas(doc.body, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: "#ffffff",
+    logging: false,
+    windowWidth: 794,
+    scrollX: 0,
+    scrollY: 0,
+    onclone: (clonedDoc) => {
+      clonedDoc.documentElement.setAttribute("lang", "ar");
+      clonedDoc.documentElement.setAttribute("dir", "rtl");
+      clonedDoc.body.style.direction = "rtl";
+    },
+  });
 
-    if (imgH <= pdfH) {
-      if (addPage) pdf.addPage();
-      pdf.addImage(imgData, "JPEG", 0, 0, pdfW, imgH);
-    } else {
-      const pageHeightPx = Math.round((pdfH / pdfW) * canvas.width);
-      let yOffset = 0;
-      let firstSlice = true;
-      while (yOffset < canvas.height) {
-        const sliceH = Math.min(pageHeightPx, canvas.height - yOffset);
-        const sliceCanvas = document.createElement("canvas");
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = sliceH;
-        const ctx = sliceCanvas.getContext("2d")!;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-        ctx.drawImage(canvas, 0, yOffset, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-        const sliceData = sliceCanvas.toDataURL("image/jpeg", 0.93);
-        if (!firstSlice || addPage) pdf.addPage();
-        pdf.addImage(sliceData, "JPEG", 0, 0, pdfW, (sliceH / canvas.width) * pdfW);
-        yOffset += sliceH;
-        firstSlice = false;
-      }
-    }
+  const scale = 2;
+  const pageHeightPx = Math.round((pdfH / pdfW) * canvas.width);
+  const breaks = computeSmartBreaks(doc, canvas.height, pageHeightPx, scale);
+
+  // Slice canvas at smart break points
+  let yOffset = 0;
+  let firstSlice = true;
+  const slicePoints = [...breaks, canvas.height];
+
+  for (const cutAt of slicePoints) {
+    if (cutAt <= yOffset) continue;
+    const sliceH = cutAt - yOffset;
+    const sliceCanvas = document.createElement("canvas");
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = sliceH;
+    const ctx = sliceCanvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+    ctx.drawImage(canvas, 0, yOffset, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+    const imgData = sliceCanvas.toDataURL("image/jpeg", 0.93);
+    const sliceHMM = (sliceH / canvas.width) * pdfW;
+    if (!firstSlice) pdf.addPage();
+    pdf.addImage(imgData, "JPEG", 0, 0, pdfW, sliceHMM);
+    yOffset = cutAt;
+    firstSlice = false;
   }
 
-  await renderEl(mainPage, false);
-
-  // ── Render each image page ──
-  const imagePages = doc.querySelectorAll(".image-page");
-  for (const imgPage of Array.from(imagePages)) {
-    await renderEl(imgPage as HTMLElement, true);
+  // ── Render each image as a full PDF page ──
+  const images = data.imageUrls ?? [];
+  for (const imgUrl of images) {
+    await new Promise<void>((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        pdf.addPage();
+        // Fit image to PDF page with margins
+        const margin = 10;
+        const maxW = pdfW - margin * 2;
+        const maxH = pdfH - margin * 2;
+        const ratio = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
+        const w = img.naturalWidth * ratio;
+        const h = img.naturalHeight * ratio;
+        const x = (pdfW - w) / 2;
+        const y = (pdfH - h) / 2;
+        // Draw on a temp canvas
+        const tmpCanvas = document.createElement("canvas");
+        tmpCanvas.width = img.naturalWidth;
+        tmpCanvas.height = img.naturalHeight;
+        const ctx = tmpCanvas.getContext("2d")!;
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
+        ctx.drawImage(img, 0, 0);
+        const imgData = tmpCanvas.toDataURL("image/jpeg", 0.92);
+        // Dark background for image page
+        pdf.setFillColor(15, 23, 42);
+        pdf.rect(0, 0, pdfW, pdfH, "F");
+        pdf.addImage(imgData, "JPEG", x, y, w, h);
+        resolve();
+      };
+      img.onerror = () => resolve();
+      img.src = imgUrl;
+    });
   }
 
   document.body.removeChild(iframe);
-
   const typeLbl = data.reportType === "weekly" ? "أسبوعي" : "شهري";
   pdf.save(`تقرير-${typeLbl}-${fmtDate(data.reportDate)}-${data.reportId}.pdf`);
 }
