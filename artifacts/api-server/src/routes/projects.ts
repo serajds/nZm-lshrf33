@@ -86,6 +86,9 @@ router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
     supervisorCompanyId: supervisorCompanyId && supervisorCompanyId !== "none" && !isNaN(Number(supervisorCompanyId)) ? parseInt(supervisorCompanyId, 10) : null,
   }).returning();
 
+  const { logAudit } = await import("../lib/audit");
+  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "create", entityType: "project", entityId: project.id, entityName: project.name });
+
   res.status(201).json(project);
 });
 
@@ -160,6 +163,9 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
     return;
   }
 
+  const { logAudit } = await import("../lib/audit");
+  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "update", entityType: "project", entityId: project.id, entityName: project.name, details: updateData });
+
   res.json(project);
 });
 
@@ -167,11 +173,14 @@ router.delete("/projects/:id", requireAdmin, async (req, res): Promise<void> => 
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
-  const [existing] = await db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.id, id));
+  const [existing] = await db.select({ id: projectsTable.id, name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, id));
   if (!existing) {
     res.status(404).json({ error: "المشروع غير موجود" });
     return;
   }
+
+  const { logAudit } = await import("../lib/audit");
+  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "delete", entityType: "project", entityId: id, entityName: (existing as any).name });
 
   await db.delete(projectMembersTable).where(eq(projectMembersTable.projectId, id));
   await db.delete(activitiesTable).where(eq(activitiesTable.projectId, id));

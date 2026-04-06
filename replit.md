@@ -48,6 +48,9 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Excel export for activities: downloads all project activities as an xlsx file with name, dates, progress, and status columns (Arabic headers)
 - Dashboard delay notifications: shows top 10 delayed activities (past planned end date, not completed) with project name, delay days, and progress; clicking navigates to the project's activities page
 - Reports date range filter: filter reports by `dateFrom`/`dateTo` query params (YYYY-MM-DD validated) in addition to existing type filter
+- Audit log system: tracks create/update/delete operations on projects, activities, and reports. DB table `audit_log` stores userId, userName, action, entityType, entityId, entityName, projectId, details (jsonb). Admin-only API endpoint `GET /audit-log` with filters (entityType, action, projectId, dateFrom, dateTo). Frontend page at `/audit-log` with filter controls.
+- Owner portal charts: pie chart for activity status distribution (completed, in progress, delayed, not started), progress summary cards showing planned vs actual vs deviation
+- Executive summary PDF: comprehensive print-ready project overview generated from project detail page ("ملخص تنفيذي" button). Includes project info, KPI metrics, activity status breakdown, activity table with per-item deviation. Uses browser print dialog for PDF export.
 - Role-based access control with project-level permissions
 - User management with roles: admin, project_manager, engineer, owner
 - Project team management (add/remove members, assign project roles)
@@ -108,8 +111,9 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - `POST /api/owner/verify` — verify owner password (returns ownerJwt for session persistence)
 - `GET /api/owner/:token/data` — get owner project data (JWT authenticated, no password needed)
 - `GET /api/owner/:token/project` — get project for owner (legacy)
-- `GET /api/dashboard/summary` — overall stats
+- `GET /api/dashboard/summary` — overall stats (includes `delayedActivitiesList`)
 - `GET /api/dashboard/deviations` — deviation analysis
+- `GET /api/audit-log` — admin-only audit trail with filters (entityType, action, projectId, dateFrom, dateTo)
 - `GET/POST/PATCH/DELETE /api/projects/:id/members` — project team membership (admin/PM)
 - `GET/POST/PUT/DELETE /api/users` — user management (admin only, list accessible to all staff)
 - `GET/POST/PATCH/DELETE /api/companies` — companies management with logo upload

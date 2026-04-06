@@ -527,3 +527,204 @@ export function previewReport(data: ReportPdfData): void {
   win.document.write(html);
   win.document.close();
 }
+
+export interface ExecutiveSummaryData {
+  projectName: string;
+  ownerEntity?: string | null;
+  contractor?: string | null;
+  supervisorEntity?: string | null;
+  location?: string | null;
+  startDate?: string | null;
+  expectedEndDate?: string | null;
+  actualEndDate?: string | null;
+  status?: string;
+  overallProgress: number;
+  plannedProgress: number;
+  activities: ActivityForReport[];
+  reportsCount: number;
+  contractValue?: number | null;
+  companyLogos?: {
+    owner?: CompanyLogo;
+    contractor?: CompanyLogo;
+    supervisor?: CompanyLogo;
+  };
+  apiBase?: string;
+  suspensionDays?: number;
+  extensionDays?: number;
+}
+
+function buildExecutiveSummaryHTML(data: ExecutiveSummaryData): string {
+  const deviation = data.overallProgress - data.plannedProgress;
+  const totalDays = daysBetween(data.startDate, data.expectedEndDate);
+  const elapsed = daysBetween(data.startDate, new Date().toISOString());
+  const remaining = totalDays != null && elapsed != null ? Math.max(0, totalDays - elapsed) : null;
+  const delayDays = data.expectedEndDate ? Math.max(0, Math.ceil((new Date().getTime() - new Date(data.expectedEndDate).getTime()) / 86400000)) : 0;
+
+  const completed = data.activities.filter(a => a.status === "completed").length;
+  const inProgress = data.activities.filter(a => a.status === "in_progress").length;
+  const delayed = data.activities.filter(a => a.status === "delayed").length;
+  const notStarted = data.activities.filter(a => a.status === "not_started").length;
+  const total = data.activities.length;
+
+  const statusLbl = ({ active: "نشط", completed: "مكتمل", delayed: "متأخر", suspended: "معلّق" } as Record<string, string>)[data.status ?? ""] ?? data.status ?? "—";
+
+  const logosHtml = data.companyLogos ? (() => {
+    const entries = [data.companyLogos.owner, data.companyLogos.supervisor, data.companyLogos.contractor].filter(l => l?.logoUrl);
+    if (entries.length === 0) return "";
+    return `<div style="display:flex;justify-content:center;gap:40px;margin-bottom:20px;padding:12px 0">
+      ${entries.map(l => `<div style="text-align:center"><img src="${escAttr(l!.logoUrl!.startsWith("/") && data.apiBase ? data.apiBase + l!.logoUrl! : l!.logoUrl!)}" style="max-height:55px;max-width:120px;object-fit:contain" onerror="this.style.display='none'" /><div style="font-size:9px;color:#94a3b8;margin-top:4px">${esc(l!.name)}</div></div>`).join("")}
+    </div>`;
+  })() : "";
+
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<title>ملخص تنفيذي — ${esc(data.projectName)}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;line-height:1.7}
+@media print{@page{size:A4 portrait;margin:15mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none!important}}
+.container{max-width:750px;margin:0 auto;padding:20px}
+.toolbar{position:fixed;top:0;left:0;right:0;background:rgba(15,23,42,.92);backdrop-filter:blur(8px);padding:10px 20px;display:flex;gap:12px;z-index:999;justify-content:center}
+.toolbar button{background:rgba(255,255,255,.15);color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px}
+.toolbar button:hover{background:rgba(255,255,255,.25)}
+.header{text-align:center;margin-bottom:24px;padding:20px 0;border-bottom:3px solid #1e3a5f}
+.header h1{font-size:22px;font-weight:800;color:#1e3a5f;margin-bottom:4px}
+.header p{font-size:13px;color:#64748b}
+.section{margin-bottom:20px}
+.section-title{font-size:14px;font-weight:700;color:#1e3a5f;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e2e8f0;display:flex;align-items:center;gap:8px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px}
+.info-item{display:flex;justify-content:space-between;padding:6px 10px;background:#f8fafc;border-radius:6px;font-size:12px}
+.info-item span:first-child{color:#64748b;font-weight:500}
+.info-item span:last-child{font-weight:600}
+.metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.metric{text-align:center;padding:16px 10px;border-radius:10px;border:1px solid #e2e8f0}
+.metric .value{font-size:28px;font-weight:800;line-height:1.2}
+.metric .label{font-size:11px;color:#64748b;margin-top:4px}
+.progress-bar{height:14px;background:#f1f5f9;border-radius:8px;overflow:hidden;margin:6px 0;position:relative}
+.progress-fill{height:100%;border-radius:8px;transition:width .3s}
+.activity-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
+.activity-table th{background:#1e3a5f;color:#fff;padding:8px 10px;text-align:right;font-weight:600}
+.activity-table td{padding:7px 10px;border-bottom:1px solid #e2e8f0}
+.activity-table tr:nth-child(even){background:#f8fafc}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}
+.footer{text-align:center;padding:16px 0;margin-top:24px;border-top:2px solid #e2e8f0;color:#94a3b8;font-size:10px}
+</style></head><body>
+<div class="toolbar no-print">
+  <button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+  <button onclick="window.close()">✕ إغلاق</button>
+</div>
+<div style="height:50px" class="no-print"></div>
+<div class="container">
+  ${logosHtml}
+  <div class="header">
+    <h1>ملخص تنفيذي</h1>
+    <p style="font-size:16px;font-weight:700;margin-top:6px">${esc(data.projectName)}</p>
+    <p>تاريخ الإعداد: ${fmtDate(new Date().toISOString())}</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📋 معلومات المشروع</div>
+    <div class="info-grid">
+      <div class="info-item"><span>المالك</span><span>${esc(data.ownerEntity ?? "—")}</span></div>
+      <div class="info-item"><span>المقاول</span><span>${esc(data.contractor ?? "—")}</span></div>
+      <div class="info-item"><span>جهة الإشراف</span><span>${esc(data.supervisorEntity ?? "—")}</span></div>
+      <div class="info-item"><span>الموقع</span><span>${esc(data.location ?? "—")}</span></div>
+      <div class="info-item"><span>تاريخ البدء</span><span>${fmtDate(data.startDate)}</span></div>
+      <div class="info-item"><span>تاريخ الانتهاء المتوقع</span><span>${fmtDate(data.expectedEndDate)}</span></div>
+      <div class="info-item"><span>حالة المشروع</span><span>${esc(statusLbl)}</span></div>
+      ${data.contractValue ? `<div class="info-item"><span>قيمة العقد</span><span>${fmtMoney(data.contractValue)} ر.س</span></div>` : ""}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📊 مؤشرات الأداء الرئيسية</div>
+    <div class="metric-grid">
+      <div class="metric" style="border-color:#10b981">
+        <div class="value" style="color:#10b981">${data.overallProgress.toFixed(0)}%</div>
+        <div class="label">الإنجاز الفعلي</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${data.overallProgress}%;background:#10b981"></div></div>
+      </div>
+      <div class="metric" style="border-color:#3b82f6">
+        <div class="value" style="color:#3b82f6">${data.plannedProgress.toFixed(0)}%</div>
+        <div class="label">الإنجاز المخطط</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${data.plannedProgress}%;background:#3b82f6"></div></div>
+      </div>
+      <div class="metric" style="border-color:${deviation >= 0 ? '#10b981' : '#ef4444'}">
+        <div class="value" style="color:${deviation >= 0 ? '#10b981' : '#ef4444'}">${deviation > 0 ? '+' : ''}${deviation.toFixed(1)}%</div>
+        <div class="label">${deviation >= 0 ? 'متقدم عن الخطة' : 'متأخر عن الخطة'}</div>
+      </div>
+    </div>
+    <div class="metric-grid">
+      <div class="metric">
+        <div class="value" style="color:#1e3a5f">${totalDays ?? "—"}</div>
+        <div class="label">إجمالي أيام المشروع</div>
+      </div>
+      <div class="metric">
+        <div class="value" style="color:${delayDays > 0 ? '#ef4444' : '#3b82f6'}">${delayDays > 0 ? delayDays : (remaining ?? '—')}</div>
+        <div class="label">${delayDays > 0 ? 'أيام التأخير' : 'أيام متبقية'}</div>
+      </div>
+      <div class="metric">
+        <div class="value" style="color:#1e3a5f">${data.reportsCount}</div>
+        <div class="label">عدد التقارير</div>
+      </div>
+    </div>
+    ${data.suspensionDays ? `<div class="info-item" style="margin-top:8px"><span>أيام التوقف المعتمدة</span><span>${data.suspensionDays} يوم</span></div>` : ""}
+    ${data.extensionDays ? `<div class="info-item" style="margin-top:4px"><span>أيام التمديد</span><span>${data.extensionDays} يوم</span></div>` : ""}
+  </div>
+
+  <div class="section">
+    <div class="section-title">📈 ملخص الأنشطة (${total} نشاط)</div>
+    <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
+      <div class="metric" style="border-color:#10b981;padding:10px">
+        <div class="value" style="color:#10b981;font-size:22px">${completed}</div>
+        <div class="label">مكتمل</div>
+      </div>
+      <div class="metric" style="border-color:#3b82f6;padding:10px">
+        <div class="value" style="color:#3b82f6;font-size:22px">${inProgress}</div>
+        <div class="label">قيد التنفيذ</div>
+      </div>
+      <div class="metric" style="border-color:#ef4444;padding:10px">
+        <div class="value" style="color:#ef4444;font-size:22px">${delayed}</div>
+        <div class="label">متأخر</div>
+      </div>
+      <div class="metric" style="border-color:#94a3b8;padding:10px">
+        <div class="value" style="color:#94a3b8;font-size:22px">${notStarted}</div>
+        <div class="label">لم يبدأ</div>
+      </div>
+    </div>
+
+    ${total > 0 ? `<table class="activity-table">
+      <thead><tr><th>#</th><th>اسم النشاط</th><th>المخطط</th><th>الفعلي</th><th>الفرق</th><th>الحالة</th></tr></thead>
+      <tbody>${data.activities.map((a, i) => {
+        const diff = a.actualProgress - a.plannedProgress;
+        return `<tr>
+          <td style="text-align:center;color:#94a3b8">${i + 1}</td>
+          <td>${esc(a.name)}</td>
+          <td style="text-align:center">${a.plannedProgress}%</td>
+          <td style="text-align:center">${a.actualProgress}%</td>
+          <td style="text-align:center;color:${diff >= 0 ? '#10b981' : '#ef4444'};font-weight:600">${diff > 0 ? '+' : ''}${diff.toFixed(0)}%</td>
+          <td style="text-align:center"><span class="status-badge" style="color:${statusColor(a.status)};background:${statusBg(a.status)}">${statusLabel(a.status)}</span></td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table>` : ""}
+  </div>
+
+  <div class="footer">
+    <span>تم إنشاؤه آلياً بواسطة إدارة الإشراف والمتابعة — ${fmtDate(new Date().toISOString())}</span>
+  </div>
+</div>
+</body></html>`;
+}
+
+export function previewExecutiveSummary(data: ExecutiveSummaryData): void {
+  const html = buildExecutiveSummaryHTML(data);
+  const win = window.open("", "_blank", "width=900,height=780,scrollbars=yes");
+  if (!win) {
+    alert("يرجى السماح بالنوافذ المنبثقة لاستخدام خاصية المعاينة");
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}

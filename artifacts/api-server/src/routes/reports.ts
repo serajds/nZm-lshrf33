@@ -88,6 +88,9 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), a
     createdById: req.user?.userId ?? null,
   }).returning();
 
+  const { logAudit } = await import("../lib/audit");
+  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "create", entityType: "report", entityId: report.id, entityName: `تقرير #${nextNumber}`, projectId });
+
   res.status(201).json(report);
 });
 
@@ -141,6 +144,9 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
     return;
   }
 
+  const { logAudit: logAudit2 } = await import("../lib/audit");
+  logAudit2({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "update", entityType: "report", entityId: report.id, entityName: `تقرير #${report.reportNumber}`, projectId });
+
   res.json(report);
 });
 
@@ -158,6 +164,9 @@ router.delete("/projects/:projectId/reports/:id", requireProjectAccess("projectI
     res.status(404).json({ error: "التقرير غير موجود" });
     return;
   }
+
+  const { logAudit: logAudit3 } = await import("../lib/audit");
+  logAudit3({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "delete", entityType: "report", entityId: id, entityName: `تقرير #${report.reportNumber}`, projectId });
 
   res.sendStatus(204);
 });

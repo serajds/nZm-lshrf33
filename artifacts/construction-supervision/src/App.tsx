@@ -17,6 +17,7 @@ import ProjectExtensions from "@/pages/projects/[id]/extensions";
 import ProjectSuspensions from "@/pages/projects/[id]/suspensions";
 import Users from "@/pages/users";
 import Companies from "@/pages/companies";
+import AuditLog from "@/pages/audit-log";
 import OwnerPortal from "@/pages/owner/[token]";
 import NotFound from "@/pages/not-found";
 
@@ -79,6 +80,9 @@ function Router() {
       </Route>
       <Route path="/companies">
         <ProtectedRoute component={Companies} />
+      </Route>
+      <Route path="/audit-log">
+        <ProtectedRoute component={AuditLog} />
       </Route>
       
       <Route component={NotFound} />

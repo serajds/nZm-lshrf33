@@ -5,6 +5,7 @@ import {
   useGetProject,
   useGetProjectSummary,
   useGenerateOwnerLink,
+  useListActivities,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
@@ -16,10 +17,11 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   Building2, MapPin, Calendar, ActivitySquare, CheckCircle2,
-  AlertTriangle, ArrowRight, Share2, Copy, Clock, ArrowBigRightDash, PauseCircle
+  AlertTriangle, ArrowRight, Share2, Copy, Clock, ArrowBigRightDash, PauseCircle, FileText
 } from "lucide-react";
 import { ProjectNav } from "@/components/project-nav";
 import { ProjectMembers } from "@/components/project-members";
+import { previewExecutiveSummary, type ActivityForReport } from "@/lib/report-pdf";
 
 interface ProjectExtension {
   id: number;
@@ -54,6 +56,7 @@ export default function ProjectDetails() {
   const { data: summary, isLoading: isSummaryLoading } = useGetProjectSummary(projectId, {
     query: { enabled: !!projectId }
   });
+  const { data: activities = [] } = useListActivities(projectId, { query: { enabled: !!projectId } });
   const { data: extensions = [] } = useQuery<ProjectExtension[]>({
     queryKey: [`/api/projects/${projectId}/extensions`],
     queryFn: async () => {
@@ -70,6 +73,43 @@ export default function ProjectDetails() {
     : null;
 
   const generateLink = useGenerateOwnerLink();
+
+  const handleExecutiveSummary = async () => {
+    if (!project) return;
+    const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
+    const token = localStorage.getItem("auth_token");
+    let companyLogos: any;
+    try {
+      const r = await fetch(`${API_BASE}/projects/${projectId}/company-logos`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (r.ok) companyLogos = await r.json();
+    } catch {}
+    const actList: ActivityForReport[] = (activities as any[]).map((a: any) => ({
+      name: a.name,
+      plannedProgress: a.plannedProgress ?? 0,
+      actualProgress: a.actualProgress ?? 0,
+      status: a.status ?? "not_started",
+    }));
+    previewExecutiveSummary({
+      projectName: project.name,
+      ownerEntity: project.ownerEntity,
+      contractor: project.contractor,
+      supervisorEntity: project.supervisorEntity,
+      location: project.location,
+      startDate: project.startDate,
+      expectedEndDate: project.expectedEndDate,
+      actualEndDate: (project as any).actualEndDate,
+      status: project.status,
+      overallProgress: summary?.overallProgress ?? project.overallProgress ?? 0,
+      plannedProgress: summary?.plannedProgress ?? 0,
+      activities: actList,
+      reportsCount: summary?.reportsCount ?? 0,
+      contractValue: (project as any).contractValue,
+      companyLogos,
+      apiBase: import.meta.env.BASE_URL.replace(/\/$/, ""),
+      suspensionDays: summary?.suspensionDays ?? 0,
+      extensionDays: totalExtDays,
+    });
+  };
 
   const handleGenerateLink = async () => {
     try {
@@ -142,6 +182,10 @@ export default function ProjectDetails() {
               setOwnerSlug((project as any)?.ownerAccessToken || "");
             }
           }}>
+            <Button variant="outline" size="sm" className="gap-2" onClick={handleExecutiveSummary}>
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">ملخص تنفيذي</span>
+            </Button>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
                 <Share2 className="h-4 w-4" />
