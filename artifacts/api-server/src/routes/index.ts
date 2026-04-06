@@ -13,6 +13,7 @@ import extensionsRouter from "./extensions";
 import suspensionsRouter from "./suspensions";
 import companiesRouter from "./companies";
 import projectMembersRouter from "./project-members";
+import auditLogRouter from "./audit-log";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(usersRouter);
 router.use(ownerRouter);
 router.use(dashboardRouter);
 router.use(companiesRouter);
+router.use(auditLogRouter);
 
 export default router;

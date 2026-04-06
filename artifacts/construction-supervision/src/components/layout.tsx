@@ -11,6 +11,7 @@ import {
   Menu,
   X,
   Landmark,
+  ClipboardList,
 } from "lucide-react";
 
 const SIDEBAR_FULL = 256;
@@ -32,7 +33,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { name: "المشاريع", href: "/projects", icon: Building2 },
     { name: "الشركات", href: "/companies", icon: Landmark },
     ...(user?.role === "admin"
-      ? [{ name: "المستخدمون", href: "/users", icon: Users }]
+      ? [
+          { name: "المستخدمون", href: "/users", icon: Users },
+          { name: "سجل العمليات", href: "/audit-log", icon: ClipboardList },
+        ]
       : []),
   ];
 

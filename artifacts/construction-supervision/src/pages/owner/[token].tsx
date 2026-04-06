@@ -342,14 +342,14 @@ export default function OwnerPortal() {
   }));
 
   const statusCounts = {
-    active: activities.filter((a: Activity) => a.status === "active").length,
+    in_progress: activities.filter((a: Activity) => a.status === "in_progress").length,
     completed: activities.filter((a: Activity) => a.status === "completed").length,
     delayed: activities.filter((a: Activity) => a.status === "delayed").length,
     not_started: activities.filter((a: Activity) => a.status === "not_started").length,
   };
   const pieData = [
     { name: "مكتمل", value: statusCounts.completed, fill: "hsl(160, 84%, 39%)" },
-    { name: "نشط", value: statusCounts.active, fill: "hsl(217, 91%, 60%)" },
+    { name: "قيد التنفيذ", value: statusCounts.in_progress, fill: "hsl(217, 91%, 60%)" },
     { name: "متأخر", value: statusCounts.delayed, fill: "hsl(0, 84%, 60%)" },
     { name: "لم يبدأ", value: statusCounts.not_started, fill: "hsl(var(--muted-foreground))" },
   ].filter(d => d.value > 0);
@@ -466,7 +466,7 @@ export default function OwnerPortal() {
               <div className="text-3xl font-black">{sm.activitiesCompleted}<span className="text-lg font-normal text-muted-foreground"> / {sm.activitiesTotal}</span></div>
               <div className="flex gap-2 mt-2 text-xs">
                 {statusCounts.delayed > 0 && <span className="text-red-500">{statusCounts.delayed} متأخر</span>}
-                {statusCounts.active > 0 && <span className="text-blue-500">{statusCounts.active} نشط</span>}
+                {statusCounts.in_progress > 0 && <span className="text-blue-500">{statusCounts.in_progress} قيد التنفيذ</span>}
               </div>
             </CardContent>
           </Card>
@@ -639,40 +639,108 @@ export default function OwnerPortal() {
           </TabsList>
 
           <TabsContent value="progress" className="space-y-4">
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Card className="shadow-md border-0 lg:col-span-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <BarChart3 className="h-5 w-5 text-primary" />
+                    مقارنة الإنجاز — المخطط مقابل الفعلي
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4 text-xs mb-2 justify-end">
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" /> المخطط
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 rounded-sm bg-emerald-500 inline-block" /> الفعلي
+                    </span>
+                  </div>
+                  <div className="h-[350px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={ganttData} margin={{ top: 10, right: 10, left: 10, bottom: 60 }} barCategoryGap="20%">
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                        <XAxis dataKey="name" angle={-40} textAnchor="end" height={80} interval={0} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} reversed />
+                        <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} orientation="right" />
+                        <Tooltip
+                          contentStyle={{ textAlign: 'right', direction: 'rtl', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', fontSize: '12px' }}
+                          formatter={(v: number, name: string) => [`${v}%`, name === 'planned' ? 'المخطط' : 'الفعلي']}
+                          labelFormatter={(label: string) => {
+                            const item = ganttData.find((c: any) => c.name === label);
+                            return item?.fullName || label;
+                          }}
+                        />
+                        <Bar dataKey="planned" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} name="planned" />
+                        <Bar dataKey="actual" fill="hsl(160, 84%, 39%)" radius={[4, 4, 0, 0]} name="actual" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-md border-0">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <ActivityIcon className="h-5 w-5 text-primary" />
+                    توزيع حالة الأنشطة
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {pieData.length > 0 ? (
+                    <>
+                      <div className="h-[250px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={90} paddingAngle={3} label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
+                              {pieData.map((entry: any, index: number) => (
+                                <Cell key={index} fill={entry.fill} />
+                              ))}
+                            </Pie>
+                            <Tooltip contentStyle={{ textAlign: 'right', direction: 'rtl', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', fontSize: '12px' }} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="flex flex-wrap gap-3 justify-center mt-2">
+                        {pieData.map((d: any) => (
+                          <span key={d.name} className="flex items-center gap-1.5 text-xs">
+                            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: d.fill }} />
+                            {d.name}: {d.value}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-10 text-muted-foreground text-sm">لا توجد أنشطة</div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
             <Card className="shadow-md border-0">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <BarChart3 className="h-5 w-5 text-primary" />
-                  مقارنة الإنجاز — المخطط مقابل الفعلي
+                  <TrendingUp className="h-5 w-5 text-primary" />
+                  ملخص التقدم الزمني
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center gap-4 text-xs mb-2 justify-end">
-                  <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" /> المخطط
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-sm bg-emerald-500 inline-block" /> الفعلي
-                  </span>
-                </div>
-                <div className="h-[350px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={ganttData} margin={{ top: 10, right: 10, left: 10, bottom: 60 }} barCategoryGap="20%">
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                      <XAxis dataKey="name" angle={-40} textAnchor="end" height={80} interval={0} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} reversed />
-                      <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} orientation="right" />
-                      <Tooltip
-                        contentStyle={{ textAlign: 'right', direction: 'rtl', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', fontSize: '12px' }}
-                        formatter={(v: number, name: string) => [`${v}%`, name === 'planned' ? 'المخطط' : 'الفعلي']}
-                        labelFormatter={(label: string) => {
-                          const item = ganttData.find((c: any) => c.name === label);
-                          return item?.fullName || label;
-                        }}
-                      />
-                      <Bar dataKey="planned" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} name="planned" />
-                      <Bar dataKey="actual" fill="hsl(160, 84%, 39%)" radius={[4, 4, 0, 0]} name="actual" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="text-center p-4 rounded-lg bg-blue-50 border border-blue-100">
+                    <div className="text-3xl font-black text-blue-600">{sm.plannedProgress?.toFixed(0) ?? 0}%</div>
+                    <div className="text-sm text-blue-600/80 mt-1">الإنجاز المخطط</div>
+                  </div>
+                  <div className="text-center p-4 rounded-lg bg-emerald-50 border border-emerald-100">
+                    <div className="text-3xl font-black text-emerald-600">{sm.overallProgress ?? 0}%</div>
+                    <div className="text-sm text-emerald-600/80 mt-1">الإنجاز الفعلي</div>
+                  </div>
+                  <div className={`text-center p-4 rounded-lg ${progressDiff >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+                    <div className={`text-3xl font-black ${progressDiff >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {progressDiff > 0 ? '+' : ''}{progressDiff.toFixed(1)}%
+                    </div>
+                    <div className={`text-sm mt-1 ${progressDiff >= 0 ? 'text-emerald-600/80' : 'text-red-600/80'}`}>
+                      {progressDiff >= 0 ? 'متقدم عن الخطة' : 'متأخر عن الخطة'}
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
