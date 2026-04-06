@@ -38,6 +38,7 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Full Arabic RTL layout with Noto Kufi Arabic font
 - JWT authentication (stored in `localStorage` as `auth_token`)
 - Dashboard with project statistics and charts (Recharts)
+- Delay calculation uses activity-weighted planned progress (`lib/progress.ts`), falls back to linear time ratio when no activities exist
 - Projects management with CRUD operations
 - Project detail tabs: Summary, Activities (Gantt), Reports, Files, Deviation Analysis
 - Owner portal (`/owner/:token`) — public password-protected read-only view
@@ -81,7 +82,7 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - `GET /api/auth/me` — current user (requires Bearer token)
 - `GET/POST /api/projects` — projects list/create
 - `GET/PUT/DELETE /api/projects/:id` — project detail
-- `GET /api/projects/:id/summary` — computed summary with deviations
+- `GET /api/projects/:id/summary` — computed summary with activity-weighted planned progress
 - `GET /api/projects/:id/company-logos` — get linked company logos
 - `GET/POST /api/projects/:id/activities` — Gantt activities
 - `GET/POST /api/projects/:id/reports` — periodic reports

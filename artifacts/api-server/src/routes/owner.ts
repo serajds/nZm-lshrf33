@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectExtensionsTable, projectSuspensionsTable, companiesTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
+import { calcPlannedProgressForProject, calcDelayDays } from "../lib/progress";
 
 const router: IRouter = Router();
 
@@ -67,8 +68,10 @@ router.post("/owner/verify", async (req, res): Promise<void> => {
   const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const rawDaysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   const daysRemaining = Math.max(0, rawDaysRemaining);
-  const delayDays = rawDaysRemaining < 0 ? Math.abs(rawDaysRemaining) : 0;
-  const plannedProgress = Math.min(100, (daysElapsed / totalDays) * 100);
+  const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays);
+  const calendarDelayDays = rawDaysRemaining < 0 ? Math.abs(rawDaysRemaining) : 0;
+  const progressDelayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
+  const delayDays = Math.max(calendarDelayDays, progressDelayDays);
   const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
   const netDelayDays = Math.max(0, delayDays - suspensionDays);
 

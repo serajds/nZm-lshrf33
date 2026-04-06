@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectSuspensionsTable, projectMembersTable } from "@workspace/db";
 import { eq, count, avg, sql, desc, inArray } from "drizzle-orm";
 import { requireEngineerOrAdmin, requireProjectAccess } from "../middlewares/auth";
+import { calcPlannedProgressForProject, calcDelayDays } from "../lib/progress";
 
 const router: IRouter = Router();
 
@@ -106,13 +107,27 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
 
   const today = new Date();
 
+  const allActivities = allProjects.length > 0
+    ? await db.select().from(activitiesTable).where(
+        inArray(activitiesTable.projectId, allProjects.map(p => p.id))
+      )
+    : [];
+
+  const activitiesByProject = new Map<number, typeof allActivities>();
+  for (const a of allActivities) {
+    const list = activitiesByProject.get(a.projectId) ?? [];
+    list.push(a);
+    activitiesByProject.set(a.projectId, list);
+  }
+
   const projectsWithPlanned = allProjects.map(p => {
     const startDate = new Date(p.startDate);
     const endDate = new Date(p.expectedEndDate);
     const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
     const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const plannedProgress = Math.min(100, Math.round((daysElapsed / totalDays) * 100));
     const daysRemaining = Math.max(0, totalDays - daysElapsed);
+    const projActivities = activitiesByProject.get(p.id) ?? [];
+    const plannedProgress = Math.round(calcPlannedProgressForProject(projActivities, daysElapsed, totalDays));
     return {
       id: p.id,
       name: p.name,
@@ -165,15 +180,15 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
   const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const daysRemaining = Math.max(0, totalDays - daysElapsed);
-  const plannedProgress = Math.min(100, (daysElapsed / totalDays) * 100);
-  const delayDays = project.overallProgress < plannedProgress ? Math.round((plannedProgress - project.overallProgress) / 100 * totalDays) : 0;
+  const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays);
+  const delayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
   const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
   const netDelayDays = Math.max(0, delayDays - suspensionDays);
 
   res.json({
     projectId,
     overallProgress: project.overallProgress,
-    plannedProgress,
+    plannedProgress: Math.round(plannedProgress * 100) / 100,
     activitiesTotal: activities.length,
     activitiesCompleted: activities.filter(a => a.status === "completed").length,
     activitiesDelayed: activities.filter(a => a.status === "delayed").length,
@@ -206,12 +221,12 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   const endDate = new Date(project.expectedEndDate);
   const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-  const plannedProgress = Math.min(100, (daysElapsed / totalDays) * 100);
+  const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays);
 
   const progressDeviation = project.overallProgress - plannedProgress;
   const timeDeviation = progressDeviation < -10 ? (plannedProgress - project.overallProgress) / 100 * totalDays : 0;
   const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
-  const grossDelayDays = progressDeviation < 0 ? Math.round(Math.abs(progressDeviation) / 100 * totalDays) : 0;
+  const grossDelayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
   const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
 
   let overallStatus: "on_track" | "slightly_delayed" | "significantly_delayed" | "ahead";
