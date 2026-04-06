@@ -9,7 +9,10 @@ import { hashPassword as hashPw } from "../lib/auth";
 const router: IRouter = Router();
 
 router.get("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> => {
-  const { status, search } = req.query;
+  const rawStatus = req.query.status;
+  const rawSearch = req.query.search;
+  const status = typeof rawStatus === "string" && rawStatus !== "null" && rawStatus !== "" ? rawStatus : undefined;
+  const search = typeof rawSearch === "string" && rawSearch !== "null" && rawSearch !== "" ? rawSearch : undefined;
   const userRole = req.user?.role;
   const userId = req.user?.userId;
 
@@ -34,10 +37,10 @@ router.get("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> 
     conditions.push(inArray(projectsTable.id, projectIds));
   }
 
-  if (status && typeof status === "string") {
+  if (status) {
     conditions.push(eq(projectsTable.status, status as "active" | "completed" | "delayed" | "suspended"));
   }
-  if (search && typeof search === "string") {
+  if (search) {
     conditions.push(
       or(
         ilike(projectsTable.name, `%${search}%`),
