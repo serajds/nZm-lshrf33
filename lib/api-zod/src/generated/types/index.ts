@@ -43,6 +43,7 @@ export * from "./projectMemberRole";
 export * from "./projectStatus";
 export * from "./projectSummary";
 export * from "./report";
+export * from "./reportActivitiesSnapshotItem";
 export * from "./reportType";
 export * from "./updateActivityBody";
 export * from "./updateActivityBodyStatus";

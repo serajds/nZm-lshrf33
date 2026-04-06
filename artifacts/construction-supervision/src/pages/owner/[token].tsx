@@ -289,7 +289,9 @@ export default function OwnerPortal() {
     const imageUrls = (report.imageUrls ?? []).map((url) =>
       url.includes("?") ? url : `${url}?token=${ownerJwt}`
     );
-    const activityList: ActivityForReport[] = (activities as Activity[]).map((a) => ({
+    const snapshotActivities = (report as any).activitiesSnapshot as any[] | null;
+    const sourceActivities = snapshotActivities ?? (activities as Activity[]);
+    const activityList: ActivityForReport[] = sourceActivities.map((a: any) => ({
       name: a.name,
       plannedProgress: a.plannedProgress ?? 0,
       actualProgress: a.actualProgress ?? 0,
@@ -797,45 +799,52 @@ export default function OwnerPortal() {
                         </div>
                       )}
 
-                      {activities.length > 0 && (
-                        <div className="pt-3 border-t">
-                          <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
-                            <ActivityIcon className="h-4 w-4 text-blue-500" /> الأنشطة ({activities.length})
-                          </h4>
-                          <div className="overflow-x-auto rounded-lg border">
-                            <Table className="min-w-[500px]">
-                              <TableHeader>
-                                <TableRow className="bg-muted/40">
-                                  <TableHead className="text-right text-xs py-2">النشاط</TableHead>
-                                  <TableHead className="text-center text-xs py-2 w-24">المخطط %</TableHead>
-                                  <TableHead className="text-center text-xs py-2 w-24">الفعلي %</TableHead>
-                                  <TableHead className="text-center text-xs py-2 w-28">الحالة</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {(activities as Activity[]).map((act) => (
-                                  <TableRow key={act.id}>
-                                    <TableCell className="text-sm py-1.5">{act.name}</TableCell>
-                                    <TableCell className="text-center text-sm py-1.5 tabular-nums">{act.plannedProgress}%</TableCell>
-                                    <TableCell className="text-center text-sm py-1.5 tabular-nums font-medium">{act.actualProgress}%</TableCell>
-                                    <TableCell className="text-center py-1.5">
-                                      {act.status === "completed" ? (
-                                        <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] px-1.5">مكتمل</Badge>
-                                      ) : act.status === "in_progress" ? (
-                                        <Badge className="bg-blue-100 text-blue-700 border border-blue-300 text-[10px] px-1.5">قيد التنفيذ</Badge>
-                                      ) : act.status === "delayed" ? (
-                                        <Badge className="bg-red-100 text-red-700 border border-red-300 text-[10px] px-1.5">متأخر</Badge>
-                                      ) : (
-                                        <Badge className="bg-gray-100 text-gray-600 border border-gray-300 text-[10px] px-1.5">لم يبدأ</Badge>
-                                      )}
-                                    </TableCell>
+                      {(() => {
+                        const reportActivities = (report.activitiesSnapshot as any[] | null) ?? activities;
+                        if (reportActivities.length === 0) return null;
+                        return (
+                          <div className="pt-3 border-t">
+                            <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                              <ActivityIcon className="h-4 w-4 text-blue-500" /> الأنشطة ({reportActivities.length})
+                              {!report.activitiesSnapshot && (
+                                <span className="text-[10px] text-muted-foreground font-normal">(بيانات حالية)</span>
+                              )}
+                            </h4>
+                            <div className="overflow-x-auto rounded-lg border">
+                              <Table className="min-w-[500px]">
+                                <TableHeader>
+                                  <TableRow className="bg-muted/40">
+                                    <TableHead className="text-right text-xs py-2">النشاط</TableHead>
+                                    <TableHead className="text-center text-xs py-2 w-24">المخطط %</TableHead>
+                                    <TableHead className="text-center text-xs py-2 w-24">الفعلي %</TableHead>
+                                    <TableHead className="text-center text-xs py-2 w-28">الحالة</TableHead>
                                   </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
+                                </TableHeader>
+                                <TableBody>
+                                  {reportActivities.map((act: any) => (
+                                    <TableRow key={act.id}>
+                                      <TableCell className="text-sm py-1.5">{act.name}</TableCell>
+                                      <TableCell className="text-center text-sm py-1.5 tabular-nums">{act.plannedProgress}%</TableCell>
+                                      <TableCell className="text-center text-sm py-1.5 tabular-nums font-medium">{act.actualProgress}%</TableCell>
+                                      <TableCell className="text-center py-1.5">
+                                        {act.status === "completed" ? (
+                                          <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] px-1.5">مكتمل</Badge>
+                                        ) : act.status === "in_progress" ? (
+                                          <Badge className="bg-blue-100 text-blue-700 border border-blue-300 text-[10px] px-1.5">قيد التنفيذ</Badge>
+                                        ) : act.status === "delayed" ? (
+                                          <Badge className="bg-red-100 text-red-700 border border-red-300 text-[10px] px-1.5">متأخر</Badge>
+                                        ) : (
+                                          <Badge className="bg-gray-100 text-gray-600 border border-gray-300 text-[10px] px-1.5">لم يبدأ</Badge>
+                                        )}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {(report.technicalNotes || report.recommendations) && (
                         <div className="grid md:grid-cols-2 gap-3">
