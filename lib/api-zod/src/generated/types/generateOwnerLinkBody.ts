@@ -7,5 +7,6 @@
  */
 
 export interface GenerateOwnerLinkBody {
-  password: string;
+  password?: string;
+  customSlug?: string;
 }

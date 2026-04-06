@@ -101,14 +101,14 @@ router.get("/owner/access/:token", async (req, res): Promise<void> => {
     }
   }
 
-  res.json({ exists: true, projectName: project.name, companyLogos });
+  res.json({ exists: true, projectName: project.name, hasPassword: !!project.ownerAccessPassword, companyLogos });
 });
 
 router.post("/owner/verify", async (req, res): Promise<void> => {
   const { token, password } = req.body;
 
-  if (!token || !password) {
-    res.status(400).json({ error: "الرمز وكلمة المرور مطلوبان" });
+  if (!token) {
+    res.status(400).json({ error: "الرمز مطلوب" });
     return;
   }
 
@@ -118,15 +118,16 @@ router.post("/owner/verify", async (req, res): Promise<void> => {
     return;
   }
 
-  if (!project.ownerAccessPassword) {
-    res.status(401).json({ error: "كلمة المرور غير محددة" });
-    return;
-  }
-
-  const valid = await comparePassword(password, project.ownerAccessPassword);
-  if (!valid) {
-    res.status(401).json({ error: "كلمة المرور غير صحيحة" });
-    return;
+  if (project.ownerAccessPassword) {
+    if (!password) {
+      res.status(400).json({ error: "كلمة المرور مطلوبة" });
+      return;
+    }
+    const valid = await comparePassword(password, project.ownerAccessPassword);
+    if (!valid) {
+      res.status(401).json({ error: "كلمة المرور غير صحيحة" });
+      return;
+    }
   }
 
   const ownerJwt = jwt.sign(

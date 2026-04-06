@@ -36,7 +36,7 @@ export default function OwnerPortal() {
   const [showPassword, setShowPassword] = useState(false);
   const [ownerData, setOwnerData] = useState<OwnerProjectView | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
-  const [projectInfo, setProjectInfo] = useState<{ projectName: string; companyLogos: Record<string, { name: string; logoUrl: string | null }> } | null>(null);
+  const [projectInfo, setProjectInfo] = useState<{ projectName: string; hasPassword?: boolean; companyLogos: Record<string, { name: string; logoUrl: string | null }> } | null>(null);
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
   const verifyAccess = useVerifyOwnerAccess();
 
@@ -45,33 +45,59 @@ export default function OwnerPortal() {
     document.title = name ? `${name} | بوابة المالك` : "بوابة المالك";
   }, [ownerData, projectInfo]);
 
-  useEffect(() => {
-    fetch(`${API_BASE}/owner/access/${token}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data) setProjectInfo(data);
-      })
-      .catch(() => {});
-
-    const savedJwt = sessionStorage.getItem(`owner_jwt_${token}`);
-    if (!savedJwt) {
+  const autoLogin = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/owner/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      if (!res.ok) throw new Error("failed");
+      const data = await res.json();
+      if (data.ownerJwt) {
+        sessionStorage.setItem(`owner_jwt_${token}`, data.ownerJwt);
+      }
+      setOwnerData(data as OwnerProjectView);
+    } catch {
       setIsRestoring(false);
-      return;
     }
-    fetch(`${API_BASE}/owner/${token}/data`, {
-      headers: { Authorization: `Bearer ${savedJwt}` }
-    })
-      .then(r => {
-        if (!r.ok) throw new Error("expired");
-        return r.json();
-      })
-      .then(data => {
-        setOwnerData(data as OwnerProjectView);
-      })
-      .catch(() => {
-        sessionStorage.removeItem(`owner_jwt_${token}`);
-      })
-      .finally(() => setIsRestoring(false));
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      let info: any = null;
+      try {
+        const r = await fetch(`${API_BASE}/owner/access/${token}`);
+        if (r.ok) {
+          info = await r.json();
+          setProjectInfo(info);
+        }
+      } catch {}
+
+      const savedJwt = sessionStorage.getItem(`owner_jwt_${token}`);
+      if (savedJwt) {
+        try {
+          const r = await fetch(`${API_BASE}/owner/${token}/data`, {
+            headers: { Authorization: `Bearer ${savedJwt}` }
+          });
+          if (!r.ok) throw new Error("expired");
+          const data = await r.json();
+          setOwnerData(data as OwnerProjectView);
+          setIsRestoring(false);
+          return;
+        } catch {
+          sessionStorage.removeItem(`owner_jwt_${token}`);
+        }
+      }
+
+      if (info && !info.hasPassword) {
+        await autoLogin();
+        return;
+      }
+
+      setIsRestoring(false);
+    };
+    init();
   }, [token]);
 
   const handleLogin = async (e: React.FormEvent) => {

@@ -190,11 +190,6 @@ router.post("/projects/:projectId/generate-owner-link", requireProjectAccess("pr
 
   const { password, customSlug } = req.body;
 
-  if (!password) {
-    res.status(400).json({ error: "كلمة المرور مطلوبة" });
-    return;
-  }
-
   const RESERVED_SLUGS = ["access", "verify", "data", "api", "admin"];
   let token: string;
 
@@ -221,7 +216,7 @@ router.post("/projects/:projectId/generate-owner-link", requireProjectAccess("pr
     return;
   }
 
-  const hashedPw = await hashPw(password);
+  const hashedPw = password ? await hashPw(password) : null;
 
   const [project] = await db.update(projectsTable)
     .set({ ownerAccessToken: token, ownerAccessPassword: hashedPw })

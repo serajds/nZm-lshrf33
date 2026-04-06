@@ -1376,7 +1376,6 @@ components:
           type: string
       required:
         - token
-        - password
 
     OwnerProjectView:
       type: object
@@ -1404,8 +1403,8 @@ components:
       properties:
         password:
           type: string
-      required:
-        - password
+        customSlug:
+          type: string
 
     OwnerLinkResponse:
       type: object

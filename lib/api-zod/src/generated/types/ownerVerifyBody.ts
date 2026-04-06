@@ -8,5 +8,5 @@
 
 export interface OwnerVerifyBody {
   token: string;
-  password: string;
+  password?: string;
 }
