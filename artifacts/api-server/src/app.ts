@@ -34,6 +34,10 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 const uploadsDir = path.join(process.cwd(), "uploads");
 
 app.use("/api/uploads", (req: Request, res: Response, next: NextFunction) => {
+  const reqPath = decodeURIComponent(req.path).replace(/^\//, "");
+  if (reqPath.startsWith("logo-")) {
+    return next();
+  }
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     const tokenParam = typeof req.query.token === "string" ? req.query.token : null;
