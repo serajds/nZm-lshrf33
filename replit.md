@@ -41,7 +41,9 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Projects management with CRUD operations
 - Project detail tabs: Summary, Activities (Gantt), Reports, Files, Deviation Analysis
 - Owner portal (`/owner/:token`) — public password-protected read-only view
-- User management with roles: admin, engineer, owner
+- Role-based access control with project-level permissions
+- User management with roles: admin, project_manager, engineer, owner
+- Project team management (add/remove members, assign project roles)
 - File uploads via multer (served at `/api/uploads/`)
 
 ### Default Credentials (Seed Data)
@@ -49,11 +51,21 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - **Engineer**: username=`engineer1`, password=`eng123`
 - 3 Arabic sample projects seeded automatically
 
-### Auth Flow
+### Auth Flow & Access Control
 - Login → JWT token stored in `localStorage` as `auth_token`
 - `setAuthTokenGetter` configured in `main.tsx` to inject token as Bearer header
 - Protected routes redirect to `/login` when unauthenticated
 - Owner portal uses a separate token in the URL + password verification
+- **Role hierarchy**: admin (full system) > project_manager (full project control) > engineer (project read/limited access) > owner (external portal)
+- **Project-level access**: non-admin users only see projects they are assigned to via `project_members` table
+- **Middleware**: `requireProjectAccess(paramName)` checks DB membership; `requireProjectManager(paramName)` restricts to admin or project manager role
+- Admin users bypass all project membership checks
+
+### DB Schema: project_members
+- Links users to projects with a role (`project_manager` or `engineer`)
+- Unique constraint on `(project_id, user_id)` prevents duplicate assignments
+- Cascading deletes on both project and user FKs
+- File: `lib/db/src/schema/project_members.ts`
 
 ### Companies & Logos
 - Companies management page at `/companies` with CRUD + logo upload
@@ -79,5 +91,6 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - `GET /api/owner/:token/project` — get project for owner
 - `GET /api/dashboard/summary` — overall stats
 - `GET /api/dashboard/deviations` — deviation analysis
-- `GET/POST/PUT/DELETE /api/users` — user management (admin only)
+- `GET/POST/PATCH/DELETE /api/projects/:id/members` — project team membership (admin/PM)
+- `GET/POST/PUT/DELETE /api/users` — user management (admin only, list accessible to all staff)
 - `GET/POST/PATCH/DELETE /api/companies` — companies management with logo upload

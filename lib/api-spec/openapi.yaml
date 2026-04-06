@@ -24,6 +24,8 @@ tags:
     description: User management
   - name: owner-portal
     description: Owner read-only portal
+  - name: project-members
+    description: Project member management
   - name: dashboard
     description: Dashboard analytics
 
@@ -526,6 +528,99 @@ paths:
         "204":
           description: Deleted
 
+  # Project Members
+  /projects/{projectId}/members:
+    get:
+      operationId: listProjectMembers
+      tags: [project-members]
+      summary: List members of a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of project members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectMember"
+    post:
+      operationId: addProjectMember
+      tags: [project-members]
+      summary: Add a member to a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddProjectMemberBody"
+      responses:
+        "201":
+          description: Added member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMember"
+
+  /projects/{projectId}/members/{id}:
+    patch:
+      operationId: updateProjectMember
+      tags: [project-members]
+      summary: Update a project member role
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectMemberBody"
+      responses:
+        "200":
+          description: Updated member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMember"
+    delete:
+      operationId: removeProjectMember
+      tags: [project-members]
+      summary: Remove a member from a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Removed
+
   # Users
   /users:
     get:
@@ -796,7 +891,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, engineer, owner]
+          enum: [admin, project_manager, engineer, owner]
         createdAt:
           type: string
           format: date-time
@@ -821,12 +916,67 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, engineer, owner]
+          enum: [admin, project_manager, engineer, owner]
       required:
         - username
         - password
         - fullName
         - email
+        - role
+
+    ProjectMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        userId:
+          type: integer
+        role:
+          type: string
+          enum: [project_manager, engineer]
+        createdAt:
+          type: string
+          format: date-time
+        fullName:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        userRole:
+          type: string
+      required:
+        - id
+        - projectId
+        - userId
+        - role
+        - createdAt
+        - fullName
+        - username
+        - email
+        - userRole
+
+    AddProjectMemberBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+        role:
+          type: string
+          enum: [project_manager, engineer]
+      required:
+        - userId
+        - role
+
+    UpdateProjectMemberBody:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [project_manager, engineer]
+      required:
         - role
 
     UpdateUserBody:

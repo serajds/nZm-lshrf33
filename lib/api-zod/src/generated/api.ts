@@ -28,7 +28,7 @@ export const LoginResponse = zod.object({
     username: zod.string(),
     fullName: zod.string(),
     email: zod.string(),
-    role: zod.enum(["admin", "engineer", "owner"]),
+    role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
     createdAt: zod.coerce.date(),
   }),
   token: zod.string(),
@@ -49,7 +49,7 @@ export const GetMeResponse = zod.object({
   username: zod.string(),
   fullName: zod.string(),
   email: zod.string(),
-  role: zod.enum(["admin", "engineer", "owner"]),
+  role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
   createdAt: zod.coerce.date(),
 });
 
@@ -449,6 +449,72 @@ export const DeleteFileParams = zod.object({
 });
 
 /**
+ * @summary List members of a project
+ */
+export const ListProjectMembersParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const ListProjectMembersResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  userId: zod.number(),
+  role: zod.enum(["project_manager", "engineer"]),
+  createdAt: zod.coerce.date(),
+  fullName: zod.string(),
+  username: zod.string(),
+  email: zod.string(),
+  userRole: zod.string(),
+});
+export const ListProjectMembersResponse = zod.array(
+  ListProjectMembersResponseItem,
+);
+
+/**
+ * @summary Add a member to a project
+ */
+export const AddProjectMemberParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const AddProjectMemberBody = zod.object({
+  userId: zod.number(),
+  role: zod.enum(["project_manager", "engineer"]),
+});
+
+/**
+ * @summary Update a project member role
+ */
+export const UpdateProjectMemberParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+export const UpdateProjectMemberBody = zod.object({
+  role: zod.enum(["project_manager", "engineer"]),
+});
+
+export const UpdateProjectMemberResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  userId: zod.number(),
+  role: zod.enum(["project_manager", "engineer"]),
+  createdAt: zod.coerce.date(),
+  fullName: zod.string(),
+  username: zod.string(),
+  email: zod.string(),
+  userRole: zod.string(),
+});
+
+/**
+ * @summary Remove a member from a project
+ */
+export const RemoveProjectMemberParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+/**
  * @summary List all users
  */
 export const ListUsersResponseItem = zod.object({
@@ -456,7 +522,7 @@ export const ListUsersResponseItem = zod.object({
   username: zod.string(),
   fullName: zod.string(),
   email: zod.string(),
-  role: zod.enum(["admin", "engineer", "owner"]),
+  role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
   createdAt: zod.coerce.date(),
 });
 export const ListUsersResponse = zod.array(ListUsersResponseItem);
@@ -469,7 +535,7 @@ export const CreateUserBody = zod.object({
   password: zod.string(),
   fullName: zod.string(),
   email: zod.string(),
-  role: zod.enum(["admin", "engineer", "owner"]),
+  role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
 });
 
 /**
@@ -491,7 +557,7 @@ export const UpdateUserResponse = zod.object({
   username: zod.string(),
   fullName: zod.string(),
   email: zod.string(),
-  role: zod.enum(["admin", "engineer", "owner"]),
+  role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
   createdAt: zod.coerce.date(),
 });
 

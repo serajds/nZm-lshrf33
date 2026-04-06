@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectSuspensionsTable, projectsTable, activitiesTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
-import { requireEngineerOrAdmin } from "../middlewares/auth";
+import { requireProjectAccess } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
@@ -41,7 +41,7 @@ async function shiftActivities(projectId: number, suspStartDate: string, calenda
   }
 }
 
-router.get("/projects/:projectId/suspensions", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/suspensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId, 10);
 
   const suspensions = await db.select()
@@ -52,7 +52,7 @@ router.get("/projects/:projectId/suspensions", requireEngineerOrAdmin, async (re
   res.json(suspensions);
 });
 
-router.post("/projects/:projectId/suspensions", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.post("/projects/:projectId/suspensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId, 10);
 
   const { type, title, startDate, endDate, reason, documentRef, approvedBy, notes } = req.body;
@@ -103,7 +103,7 @@ router.post("/projects/:projectId/suspensions", requireEngineerOrAdmin, async (r
   res.status(201).json({ ...suspension, activitiesShifted: (RECALC_TYPES as readonly string[]).includes(type) });
 });
 
-router.delete("/projects/:projectId/suspensions/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/suspensions/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId, 10);
   const id = parseInt(req.params.id, 10);
 

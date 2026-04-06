@@ -2,11 +2,11 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectExtensionsTable, projectsTable } from "@workspace/db";
 import { eq, desc, and, asc } from "drizzle-orm";
-import { requireEngineerOrAdmin } from "../middlewares/auth";
+import { requireProjectAccess } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
-router.get("/projects/:projectId/extensions", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId, 10);
 
   const extensions = await db.select()
@@ -17,7 +17,7 @@ router.get("/projects/:projectId/extensions", requireEngineerOrAdmin, async (req
   res.json(extensions);
 });
 
-router.post("/projects/:projectId/extensions", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.post("/projects/:projectId/extensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId, 10);
 
   const { extensionDate, daysAdded, reason, documentRef, approvedBy, notes } = req.body;
@@ -69,7 +69,7 @@ router.post("/projects/:projectId/extensions", requireEngineerOrAdmin, async (re
   res.status(201).json(updatedExtension);
 });
 
-router.delete("/projects/:projectId/extensions/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/extensions/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId, 10);
   const id = parseInt(req.params.id, 10);
 

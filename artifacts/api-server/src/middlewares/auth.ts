@@ -1,10 +1,14 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken, JwtPayload } from "../lib/auth";
+import { db } from "@workspace/db";
+import { projectMembersTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 
 declare global {
   namespace Express {
     interface Request {
       user?: JwtPayload;
+      projectRole?: string;
     }
   }
 }
@@ -40,10 +44,95 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 export function requireEngineerOrAdmin(req: Request, res: Response, next: NextFunction): void {
   requireAuth(req, res, () => {
     const role = req.user?.role;
-    if (role !== "admin" && role !== "engineer") {
+    if (role !== "admin" && role !== "engineer" && role !== "project_manager") {
       res.status(403).json({ error: "غير مصرح بهذه العملية" });
       return;
     }
     next();
   });
+}
+
+export function requireProjectAccess(paramName: string = "projectId") {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    requireAuth(req, res, async () => {
+      const role = req.user?.role;
+
+      if (role === "admin") {
+        next();
+        return;
+      }
+
+      if (role !== "engineer" && role !== "project_manager") {
+        res.status(403).json({ error: "غير مصرح بهذه العملية" });
+        return;
+      }
+
+      const rawId = req.params[paramName] || req.params.id;
+      if (!rawId) {
+        res.status(400).json({ error: "معرف المشروع مطلوب" });
+        return;
+      }
+
+      const projectId = parseInt(Array.isArray(rawId) ? rawId[0] : rawId, 10);
+      if (isNaN(projectId)) {
+        res.status(400).json({ error: "معرف المشروع غير صالح" });
+        return;
+      }
+
+      const [membership] = await db.select()
+        .from(projectMembersTable)
+        .where(
+          and(
+            eq(projectMembersTable.projectId, projectId),
+            eq(projectMembersTable.userId, req.user!.userId)
+          )
+        );
+
+      if (!membership) {
+        res.status(403).json({ error: "ليس لديك صلاحية الوصول لهذا المشروع" });
+        return;
+      }
+
+      req.projectRole = membership.role;
+      next();
+    });
+  };
+}
+
+export function requireProjectManager(paramName: string = "projectId") {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    requireAuth(req, res, async () => {
+      const role = req.user?.role;
+
+      if (role === "admin") {
+        next();
+        return;
+      }
+
+      const rawId = req.params[paramName] || req.params.id;
+      if (!rawId) {
+        res.status(400).json({ error: "معرف المشروع مطلوب" });
+        return;
+      }
+
+      const projectId = parseInt(Array.isArray(rawId) ? rawId[0] : rawId, 10);
+
+      const [membership] = await db.select()
+        .from(projectMembersTable)
+        .where(
+          and(
+            eq(projectMembersTable.projectId, projectId),
+            eq(projectMembersTable.userId, req.user!.userId)
+          )
+        );
+
+      if (!membership || membership.role !== "project_manager") {
+        res.status(403).json({ error: "يجب أن تكون مدير المشروع للقيام بهذا الإجراء" });
+        return;
+      }
+
+      req.projectRole = membership.role;
+      next();
+    });
+  };
 }

@@ -2,12 +2,12 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requireEngineerOrAdmin } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
 
 const router: IRouter = Router();
 
-router.get("/users", requireAdmin, async (_req, res): Promise<void> => {
+router.get("/users", requireEngineerOrAdmin, async (_req, res): Promise<void> => {
   const users = await db.select({
     id: usersTable.id,
     username: usersTable.username,
