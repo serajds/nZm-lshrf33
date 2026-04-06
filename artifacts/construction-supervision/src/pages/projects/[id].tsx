@@ -7,6 +7,7 @@ import {
   useGenerateOwnerLink,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -274,23 +275,23 @@ export default function ProjectDetails() {
                 { icon: MapPin, label: "الموقع", value: project.location },
                 {
                   icon: Calendar, label: "تاريخ البداية",
-                  value: new Date(project.startDate).toLocaleDateString("ar-SA-u-nu-latn"),
+                  value: fmtDate(project.startDate),
                   ltr: true,
                 },
                 {
                   icon: Calendar, label: "النهاية التعاقدية الأصلية",
-                  value: new Date(project.expectedEndDate).toLocaleDateString("ar-SA-u-nu-latn"),
+                  value: fmtDate(project.expectedEndDate),
                   ltr: true,
                 },
                 ...(latestEndDate ? [{
                   icon: ArrowBigRightDash, label: `النهاية بعد التمديد (+${totalExtDays} يوم)`,
-                  value: new Date(latestEndDate).toLocaleDateString("ar-SA-u-nu-latn"),
+                  value: fmtDate(latestEndDate),
                   ltr: true,
                   highlight: true,
                 }] : []),
                 ...(project.actualEndDate ? [{
                   icon: Clock, label: "النهاية الفعلية",
-                  value: new Date(project.actualEndDate).toLocaleDateString("ar-SA-u-nu-latn"),
+                  value: fmtDate(project.actualEndDate),
                   ltr: true,
                 }] : []),
               ].map((item, i) => (

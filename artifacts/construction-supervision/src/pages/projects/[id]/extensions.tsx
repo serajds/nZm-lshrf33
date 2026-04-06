@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Trash2, ArrowRight, Calendar, FileText, Clock, ArrowBigRightDash
 } from "lucide-react";
+import { fmtDate } from "@/lib/utils";
 
 interface ProjectExtension {
   id: number;
@@ -62,11 +63,6 @@ const extensionSchema = z.object({
 
 type ExtensionFormValues = z.infer<typeof extensionSchema>;
 
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString("ar-SA-u-nu-latn", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-  });
-}
 
 export default function ProjectExtensions() {
   const params = useParams();
@@ -165,7 +161,7 @@ export default function ProjectExtensions() {
               <Calendar className="h-3.5 w-3.5" /> التاريخ الأصلي للإنهاء
             </p>
             <p className="text-lg font-bold tabular-nums" dir="ltr">
-              {project?.expectedEndDate ? formatDate(project.expectedEndDate) : "—"}
+              {project?.expectedEndDate ? fmtDate(project.expectedEndDate) : "—"}
             </p>
           </CardContent>
         </Card>
@@ -176,7 +172,7 @@ export default function ProjectExtensions() {
               <ArrowBigRightDash className="h-3.5 w-3.5 text-amber-500" /> التاريخ الحالي بعد التمديدات
             </p>
             <p className="text-lg font-bold tabular-nums text-amber-600" dir="ltr">
-              {latestEndDate ? formatDate(latestEndDate) : "—"}
+              {latestEndDate ? fmtDate(latestEndDate) : "—"}
             </p>
           </CardContent>
         </Card>
@@ -237,14 +233,14 @@ export default function ProjectExtensions() {
                   {latestEndDate && (
                     <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
                       التاريخ الحالي:{" "}
-                      <span className="font-bold" dir="ltr">{formatDate(latestEndDate)}</span>
+                      <span className="font-bold" dir="ltr">{fmtDate(latestEndDate)}</span>
                       {" "}← سيصبح بعد إضافة{" "}
                       <span className="font-bold">{form.watch("daysAdded") || 0}</span> يوم:{" "}
                       <span className="font-bold" dir="ltr">
                         {(() => {
                           const d = new Date(latestEndDate);
                           d.setDate(d.getDate() + (form.watch("daysAdded") || 0));
-                          return formatDate(d.toISOString().split("T")[0]);
+                          return fmtDate(d.toISOString().split("T")[0]);
                         })()}
                       </span>
                     </div>
@@ -322,12 +318,12 @@ export default function ProjectExtensions() {
                 extensions.map((ext, i) => (
                   <TableRow key={ext.id}>
                     <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
-                    <TableCell dir="ltr" className="text-sm tabular-nums">{formatDate(ext.extensionDate)}</TableCell>
+                    <TableCell dir="ltr" className="text-sm tabular-nums">{fmtDate(ext.extensionDate)}</TableCell>
                     <TableCell className="text-center">
                       <Badge className="bg-amber-500 text-white">+{ext.daysAdded} يوم</Badge>
                     </TableCell>
                     <TableCell dir="ltr" className="text-sm tabular-nums font-medium text-amber-700">
-                      {formatDate(ext.newEndDate)}
+                      {fmtDate(ext.newEndDate)}
                     </TableCell>
                     <TableCell className="text-sm max-w-[160px] truncate" title={ext.reason ?? undefined}>
                       {ext.reason ?? <span className="text-muted-foreground">—</span>}

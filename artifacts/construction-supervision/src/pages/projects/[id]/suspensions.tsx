@@ -27,6 +27,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, ArrowRight, Calendar, FileText, Umbrella, Wind, AlertTriangle } from "lucide-react";
+import { fmtDate } from "@/lib/utils";
 
 function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
@@ -53,11 +54,6 @@ const suspensionSchema = z.object({
 
 type SuspensionFormValues = z.infer<typeof suspensionSchema>;
 
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString("ar-SA-u-nu-latn", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-  });
-}
 
 function computeDays(start: string, end: string): number {
   if (!start || !end) return 0;
@@ -413,8 +409,8 @@ export default function ProjectSuspensions() {
                     <TableCell className="text-sm font-medium max-w-[160px] truncate" title={s.title}>
                       {s.title}
                     </TableCell>
-                    <TableCell dir="ltr" className="text-sm tabular-nums">{formatDate(s.startDate)}</TableCell>
-                    <TableCell dir="ltr" className="text-sm tabular-nums">{formatDate(s.endDate)}</TableCell>
+                    <TableCell className="text-sm font-mono tabular-nums">{fmtDate(s.startDate)}</TableCell>
+                    <TableCell className="text-sm font-mono tabular-nums">{fmtDate(s.endDate)}</TableCell>
                     <TableCell className="text-center">
                       <Badge variant="secondary" className="font-bold">{s.calendarDays}</Badge>
                     </TableCell>

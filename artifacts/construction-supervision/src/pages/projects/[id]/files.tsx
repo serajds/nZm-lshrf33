@@ -8,6 +8,7 @@ import {
 } from "@workspace/api-client-react";
 import type { ProjectFile } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -259,7 +260,7 @@ export default function ProjectFiles() {
                 
                 <div className="mt-auto pt-4 flex items-center justify-between text-xs text-muted-foreground">
                   <span dir="ltr">{formatFileSize(file.fileSize)}</span>
-                  <span dir="ltr">{new Date(file.uploadedAt).toLocaleDateString('ar-SA-u-nu-latn')}</span>
+                  <span className="font-mono">{fmtDate(file.uploadedAt)}</span>
                 </div>
               </CardContent>
               <div className="bg-muted px-4 py-2 border-t flex justify-between gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
