@@ -213,7 +213,7 @@ export default function ProjectExtensions() {
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit((v) => createExt.mutate(v))} className="space-y-4 pt-2">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField control={form.control} name="extensionDate" render={({ field }) => (
                       <FormItem>
                         <FormLabel>تاريخ الاتفاقية</FormLabel>
@@ -253,7 +253,7 @@ export default function ProjectExtensions() {
                       <FormMessage />
                     </FormItem>
                   )} />
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField control={form.control} name="documentRef" render={({ field }) => (
                       <FormItem>
                         <FormLabel>رقم الخطاب المرجعي</FormLabel>

@@ -259,9 +259,9 @@ export default function ProjectReports() {
 
       <ProjectNav projectId={projectId} />
 
-      <div className="flex flex-wrap justify-between items-center bg-card p-4 rounded-lg border shadow-sm gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="w-40">
+      <div className="bg-card p-3 sm:p-4 rounded-lg border shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
+          <div className="w-full sm:w-40">
             <Select value={typeFilter ?? "all"} onValueChange={(v) => setTypeFilter(v)}>
               <SelectTrigger>
                 <SelectValue placeholder="نوع التقرير" />
@@ -275,11 +275,11 @@ export default function ProjectReports() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground whitespace-nowrap">من</span>
-            <Input type="date" className="w-36 text-sm" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <Input type="date" className="flex-1 min-w-0 text-sm" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
             <span className="text-xs text-muted-foreground whitespace-nowrap">إلى</span>
-            <Input type="date" className="w-36 text-sm" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            <Input type="date" className="flex-1 min-w-0 text-sm" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
             {(dateFrom || dateTo) && (
-              <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => { setDateFrom(""); setDateTo(""); }}>مسح</Button>
+              <Button variant="ghost" size="sm" className="h-8 px-2 text-xs shrink-0" onClick={() => { setDateFrom(""); setDateTo(""); }}>مسح</Button>
             )}
           </div>
         </div>
@@ -304,7 +304,7 @@ export default function ProjectReports() {
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="type"
@@ -363,8 +363,8 @@ export default function ProjectReports() {
                     render={({ field }) => {
                       const autoVal = calcAutoProgress();
                       return (
-                        <FormItem className="col-span-2">
-                          <div className="flex items-center justify-between mb-1">
+                        <FormItem className="sm:col-span-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
                             <FormLabel className="mb-0">نسبة الإنجاز حتى تاريخه (%)</FormLabel>
                             {autoVal !== null && (
                               <button
@@ -404,7 +404,7 @@ export default function ProjectReports() {
                     control={form.control}
                     name="workDescription"
                     render={({ field }) => (
-                      <FormItem className="col-span-2">
+                      <FormItem className="sm:col-span-2">
                         <FormLabel>وصف الأعمال المنجزة خلال الفترة</FormLabel>
                         <FormControl><Textarea className="min-h-24" {...field} /></FormControl>
                         <FormMessage />
@@ -415,7 +415,7 @@ export default function ProjectReports() {
                     control={form.control}
                     name="technicalNotes"
                     render={({ field }) => (
-                      <FormItem className="col-span-2">
+                      <FormItem className="sm:col-span-2">
                         <FormLabel>الملاحظات الفنية (اختياري)</FormLabel>
                         <FormControl><Textarea className="min-h-20" {...field} value={field.value ?? ''} /></FormControl>
                         <FormMessage />
@@ -426,7 +426,7 @@ export default function ProjectReports() {
                     control={form.control}
                     name="recommendations"
                     render={({ field }) => (
-                      <FormItem className="col-span-2">
+                      <FormItem className="sm:col-span-2">
                         <FormLabel>التوصيات (اختياري)</FormLabel>
                         <FormControl><Textarea className="min-h-20" {...field} value={field.value ?? ''} /></FormControl>
                         <FormMessage />
@@ -532,10 +532,10 @@ export default function ProjectReports() {
                   </Badge>
                   <div className="text-sm font-semibold font-mono">{fmtDate(report.reportDate)}</div>
                 </div>
-                <div className="flex-1 p-6">
-                  <div className="flex justify-between items-start mb-4">
+                <div className="flex-1 p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
                     <div>
-                      <div className="text-sm text-muted-foreground mb-1">
+                      <div className="text-xs sm:text-sm text-muted-foreground mb-1">
                         الفترة: <span className="font-mono">{fmtDate(report.periodStart)}</span> — <span className="font-mono">{fmtDate(report.periodEnd)}</span>
                       </div>
                       <div className="flex items-center gap-2 mt-2">
@@ -543,21 +543,21 @@ export default function ProjectReports() {
                         <Badge className="bg-primary">{report.progressPercentage}%</Badge>
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-violet-600 hover:bg-violet-50 hover:text-violet-700 border-violet-200 gap-1.5"
+                        className="text-violet-600 hover:bg-violet-50 hover:text-violet-700 border-violet-200 gap-1 h-8 text-xs sm:text-sm sm:gap-1.5"
                         onClick={() => handlePreview(report)}
                         title="معاينة وطباعة"
                       >
-                        <Printer className="h-4 w-4" /> معاينة وطباعة
+                        <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">معاينة و</span>طباعة
                       </Button>
-                      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleEdit(report)}>
-                        <Edit2 className="h-4 w-4" /> تعديل
+                      <Button variant="outline" size="sm" className="gap-1 h-8 text-xs sm:text-sm sm:gap-1.5" onClick={() => handleEdit(report)}>
+                        <Edit2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> تعديل
                       </Button>
-                      <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive hover:text-white gap-1.5" onClick={() => setDeletingId(report.id)}>
-                        <Trash2 className="h-4 w-4" /> حذف
+                      <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive hover:text-white gap-1 h-8 text-xs sm:text-sm sm:gap-1.5" onClick={() => setDeletingId(report.id)}>
+                        <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> حذف
                       </Button>
                     </div>
                   </div>

@@ -38,7 +38,7 @@ export function ProjectNav({ projectId }: ProjectNavProps) {
           return (
             <Link key={item.path} href={href}>
               <span
-                className={`inline-flex items-center px-4 py-3 text-sm font-medium whitespace-nowrap cursor-pointer border-b-2 transition-colors ${
+                className={`inline-flex items-center px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium whitespace-nowrap cursor-pointer border-b-2 transition-colors ${
                   isActive
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground hover:text-foreground"

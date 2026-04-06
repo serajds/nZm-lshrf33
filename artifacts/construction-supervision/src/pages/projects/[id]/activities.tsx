@@ -661,22 +661,24 @@ export default function ProjectActivities() {
 
         {/* Activities Table with Quick Actions */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-base">الأنشطة</CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">انقر على الحالة أو نسبة الإنجاز لتحديثها مباشرةً</p>
+          <CardHeader className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base">الأنشطة</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">انقر على الحالة أو نسبة الإنجاز لتحديثها مباشرةً</p>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" className="gap-2 shrink-0" onClick={exportActivities} disabled={!activities || activities.length === 0}>
-              <Download className="h-4 w-4" /> تصدير Excel
+            <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm" onClick={exportActivities} disabled={!activities || activities.length === 0}>
+              <Download className="h-4 w-4" /> <span className="hidden xs:inline">تصدير</span> <span className="hidden sm:inline">Excel</span>
             </Button>
             <Dialog open={isImportOpen} onOpenChange={(open) => {
               setIsImportOpen(open);
               if (!open) setImportFile(null);
             }}>
               <DialogTrigger asChild>
-                <Button size="sm" variant="outline" className="gap-2 shrink-0">
-                  <Upload className="h-4 w-4" /> استيراد Excel
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm">
+                  <Upload className="h-4 w-4" /> <span className="hidden xs:inline">استيراد</span> <span className="hidden sm:inline">Excel</span>
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[480px]" dir="rtl">
@@ -729,7 +731,7 @@ export default function ProjectActivities() {
               if (!open) { form.reset(); setEditingId(null); }
             }}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-2 shrink-0">
+                <Button size="sm" className="gap-1.5 text-xs sm:text-sm mr-auto">
                   <Plus className="h-4 w-4" /> إضافة نشاط
                 </Button>
               </DialogTrigger>
@@ -746,7 +748,7 @@ export default function ProjectActivities() {
                         <FormMessage />
                       </FormItem>
                     )} />
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <FormField control={form.control} name="plannedStartDate" render={({ field }) => (
                         <FormItem>
                           <FormLabel>بداية مخططة</FormLabel>
@@ -824,7 +826,8 @@ export default function ProjectActivities() {
             </div>
           </CardHeader>
 
-          <CardContent className="p-0 overflow-x-auto">
+          {/* Desktop Table */}
+          <CardContent className="p-0 overflow-x-auto hidden md:block">
             <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
@@ -852,12 +855,9 @@ export default function ProjectActivities() {
                     const delayInfo = calcActivityDelay(a);
                     return (
                       <TableRow key={a.id} className={isBusy ? "opacity-60 pointer-events-none" : ""}>
-                        {/* Name */}
                         <TableCell className="font-medium max-w-[200px]">
                           <span className="block truncate" title={a.name}>{a.name}</span>
                         </TableCell>
-
-                        {/* Date range */}
                         <TableCell className="w-[190px]">
                           <div className="flex flex-col gap-0.5 font-mono text-xs tabular-nums">
                             <div className="flex items-center gap-1.5">
@@ -870,13 +870,9 @@ export default function ProjectActivities() {
                             </div>
                           </div>
                         </TableCell>
-
-                        {/* Delay / Advance */}
                         <TableCell className="text-center">
                           <DelayBadge info={delayInfo} />
                         </TableCell>
-
-                        {/* Progress visual */}
                         <TableCell className="w-[160px]">
                           <div className="space-y-1">
                             <ProgressBar value={a.plannedProgress} color="hsl(var(--muted-foreground)/0.4)" />
@@ -887,8 +883,6 @@ export default function ProjectActivities() {
                             </div>
                           </div>
                         </TableCell>
-
-                        {/* Status - quick change dropdown */}
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -897,7 +891,7 @@ export default function ProjectActivities() {
                                 <ChevronDown className="h-3 w-3 text-muted-foreground" />
                               </button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent dir="rtl" align="start">
+                            <DropdownMenuContent align="start">
                               <DropdownMenuLabel className="text-xs text-muted-foreground">تغيير الحالة</DropdownMenuLabel>
                               <DropdownMenuSeparator />
                               {STATUS_OPTIONS.map(opt => {
@@ -917,37 +911,17 @@ export default function ProjectActivities() {
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
-
-                        {/* Quick Actions */}
                         <TableCell>
                           <div className="flex items-center justify-center gap-1">
-                            {/* -10% */}
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7"
-                              title="تخفيض الإنجاز 10%"
-                              onClick={() => quickIncrement(a, -10)}
-                              disabled={a.actualProgress === 0}
-                            >
+                            <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 10%" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
                               <span className="text-xs font-bold text-muted-foreground">-10</span>
                             </Button>
-                            {/* +10% */}
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7"
-                              title="رفع الإنجاز 10%"
-                              onClick={() => quickIncrement(a, 10)}
-                              disabled={a.actualProgress === 100}
-                            >
+                            <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 10%" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
                               <span className="text-xs font-bold text-primary">+10</span>
                             </Button>
-                            {/* Edit */}
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
                               <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
                             </Button>
-                            {/* Delete */}
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(a.id)}>
                               <Trash2 className="h-3.5 w-3.5 text-destructive" />
                             </Button>
@@ -959,6 +933,78 @@ export default function ProjectActivities() {
                 )}
               </TableBody>
             </Table>
+          </CardContent>
+
+          {/* Mobile Card View */}
+          <CardContent className="md:hidden space-y-3 px-3">
+            {isLoading ? (
+              <div className="text-center py-8 text-muted-foreground">جاري التحميل...</div>
+            ) : (activities ?? []).length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</div>
+            ) : (
+              (activities ?? []).map((a) => {
+                const isBusy = updatingId === a.id;
+                const deviation = a.actualProgress - a.plannedProgress;
+                const delayInfo = calcActivityDelay(a);
+                return (
+                  <div key={a.id} className={`rounded-lg border p-3 space-y-2.5 ${isBusy ? "opacity-60 pointer-events-none" : ""}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-medium leading-tight flex-1">{a.name}</span>
+                      <StatusBadge status={a.status} />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span className="tabular-nums">{fmtDate(a.plannedStartDate)} → {fmtDate(a.plannedEndDate)}</span>
+                      <DelayBadge info={delayInfo} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">مخطط {a.plannedProgress}%</span>
+                        <span className="text-muted-foreground">فعلي {a.actualProgress}%</span>
+                        <span className={deviation < 0 ? 'text-destructive font-medium' : deviation > 0 ? 'text-emerald-600 font-medium' : 'text-muted-foreground'}>
+                          {deviation > 0 ? '+' : ''}{deviation}%
+                        </span>
+                      </div>
+                      <ProgressBar value={a.actualProgress} color="hsl(var(--primary))" />
+                    </div>
+                    <div className="flex items-center gap-1 pt-1 border-t">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="gap-1 h-7 text-xs">
+                            تغيير الحالة <ChevronDown className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuLabel className="text-xs text-muted-foreground">تغيير الحالة</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {STATUS_OPTIONS.map(opt => {
+                            const Icon = opt.icon;
+                            return (
+                              <DropdownMenuItem key={opt.value} className={`gap-2 ${opt.cls} ${a.status === opt.value ? 'font-bold bg-accent' : ''}`} onClick={() => quickUpdateStatus(a, opt.value)}>
+                                <Icon className="h-4 w-4" /> {opt.label}
+                              </DropdownMenuItem>
+                            );
+                          })}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <div className="flex items-center gap-1 mr-auto">
+                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
+                          <span className="text-xs font-bold text-muted-foreground">-10</span>
+                        </Button>
+                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
+                          <span className="text-xs font-bold text-primary">+10</span>
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
+                          <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(a.id)}>
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </CardContent>
         </Card>
       </div>

@@ -51,6 +51,7 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Audit log system: tracks create/update/delete operations on projects, activities, and reports. DB table `audit_log` stores userId, userName, action, entityType, entityId, entityName, projectId, details (jsonb). Admin-only API endpoint `GET /audit-log` with filters (entityType, action, projectId, dateFrom, dateTo). Frontend page at `/audit-log` with filter controls.
 - Owner portal charts: pie chart for activity status distribution (completed, in progress, delayed, not started), progress summary cards showing planned vs actual vs deviation
 - Executive summary PDF: comprehensive print-ready project overview generated from project detail page ("ملخص تنفيذي" button). Includes project info, KPI metrics, activity status breakdown, activity table with per-item deviation. Uses browser print dialog for PDF export.
+- Mobile responsive design: all form dialogs use `grid-cols-1 sm:grid-cols-2` / `sm:col-span-2` pattern; tables use `hidden md:block` (desktop) / `md:hidden` (mobile card view) toggle; dashboard KPI cards scale text/padding on mobile
 - Role-based access control with project-level permissions
 - User management with roles: admin, project_manager, engineer, owner
 - Project team management (add/remove members, assign project roles)
