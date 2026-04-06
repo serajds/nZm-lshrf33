@@ -200,11 +200,12 @@ export default function OwnerPortal() {
                 const logo = companyLogos[key];
                 if (!logo?.logoUrl) return null;
                 return (
-                  <div key={key} className="flex flex-col items-center gap-2">
+                  <div key={key} className="flex flex-col items-center gap-1.5">
                     <div className="w-16 h-16 rounded-xl bg-white/10 backdrop-blur-sm p-2 flex items-center justify-center border border-white/20">
                       <img src={apiBase + logo.logoUrl} alt={logo.name} className="max-w-full max-h-full object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     </div>
-                    <span className="text-[10px] text-white/60 font-medium">{label}</span>
+                    <span className="text-xs text-white/90 font-semibold max-w-[120px] text-center leading-tight">{logo.name}</span>
+                    <span className="text-[10px] text-white/50 font-medium">{label}</span>
                   </div>
                 );
               })}
