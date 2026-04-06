@@ -75,24 +75,10 @@ function buildPrintHTML(data: ReportPdfData): string {
   const plannedPct = data.plannedProgress != null ? Math.min(100, Math.max(0, data.plannedProgress)) : null;
   const deviation = plannedPct != null ? pct - plannedPct : null;
 
-  const metaItems = [
-    data.ownerEntity ? ["جهة المالك", data.ownerEntity] : null,
-    data.contractor ? ["المقاول", data.contractor] : null,
-    data.supervisorEntity ? ["جهة الإشراف", data.supervisorEntity] : null,
-    data.location ? ["الموقع", data.location] : null,
-  ].filter(Boolean) as string[][];
-
-  const infoItems = [
-    ["تاريخ التقرير", fmtDate(data.reportDate)],
-    ["بداية الفترة", fmtDate(data.periodStart)],
-    ["نهاية الفترة", fmtDate(data.periodEnd)],
-    ["رقم التقرير", `#${data.reportId}`],
-  ];
-
   const totalDuration = daysBetween(data.startDate, data.expectedEndDate);
   const elapsed = daysBetween(data.startDate, data.reportDate);
   const remaining = daysBetween(data.reportDate, data.expectedEndDate);
-  const elapsedPct = totalDuration && elapsed != null ? Math.round((elapsed / totalDuration) * 100) : null;
+  const elapsedPct = totalDuration && elapsed != null ? Math.min(100, Math.round((elapsed / totalDuration) * 100)) : null;
 
   const acts = data.activities ?? [];
   const completedCount = acts.filter(a => a.status === "completed").length;
@@ -100,35 +86,40 @@ function buildPrintHTML(data: ReportPdfData): string {
   const delayedCount = acts.filter(a => a.status === "delayed").length;
   const notStartedCount = acts.filter(a => a.status === "not_started").length;
 
-  const activitiesHTML = data.activities && data.activities.length > 0 ? `
-    <div class="card avoid-break">
-      <div class="card-hd card-hd-blue">
-        <span class="card-icon">📋</span> حالة الأنشطة
-      </div>
+  const metaRows = [
+    data.ownerEntity ? ["جهة المالك", data.ownerEntity] : null,
+    data.contractor ? ["المقاول", data.contractor] : null,
+    data.supervisorEntity ? ["جهة الإشراف", data.supervisorEntity] : null,
+    data.location ? ["الموقع", data.location] : null,
+  ].filter(Boolean) as string[][];
+
+  const activitiesHTML = acts.length > 0 ? `
+    <div class="section avoid-break">
+      <div class="section-title blue-title">📋 حالة الأنشطة</div>
       <table class="tbl">
         <thead>
           <tr>
-            <th class="tbl-th" style="text-align:right;width:40%">النشاط</th>
-            <th class="tbl-th tbl-center" style="width:15%">مخطط %</th>
-            <th class="tbl-th tbl-center" style="width:15%">فعلي %</th>
-            <th class="tbl-th tbl-center" style="width:15%">الحالة</th>
-            <th class="tbl-th" style="width:15%">الإنجاز</th>
+            <th class="th" style="text-align:right;width:40%">النشاط</th>
+            <th class="th tc" style="width:12%">مخطط %</th>
+            <th class="th tc" style="width:12%">فعلي %</th>
+            <th class="th tc" style="width:16%">الحالة</th>
+            <th class="th" style="width:20%">الإنجاز</th>
           </tr>
         </thead>
         <tbody>
-          ${data.activities.map((a, i) => {
+          ${acts.map((a, i) => {
             const barW = Math.min(100, Math.max(0, a.actualProgress));
-            return `<tr class="${i % 2 === 0 ? "row-w" : "row-g"}">
-              <td class="tbl-td">${esc(a.name)}</td>
-              <td class="tbl-td tbl-center">${a.plannedProgress}%</td>
-              <td class="tbl-td tbl-center" style="font-weight:700">${a.actualProgress}%</td>
-              <td class="tbl-td tbl-center">
-                <span class="badge" style="background:${statusBg(a.status)};color:${statusColor(a.status)};border-color:${statusColor(a.status)}">
+            return `<tr style="background:${i % 2 === 0 ? "#fff" : "#f8fafc"}">
+              <td class="td">${esc(a.name)}</td>
+              <td class="td tc">${a.plannedProgress}%</td>
+              <td class="td tc" style="font-weight:700">${a.actualProgress}%</td>
+              <td class="td tc">
+                <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;background:${statusBg(a.status)};color:${statusColor(a.status)};border:1px solid ${statusColor(a.status)}">
                   ${statusLabel(a.status)}
                 </span>
               </td>
-              <td class="tbl-td">
-                <div class="bar-track"><div class="bar-fill" style="width:${barW}%;background:${statusColor(a.status)}"></div></div>
+              <td class="td">
+                <div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden"><div style="height:100%;width:${barW}%;background:${statusColor(a.status)};border-radius:4px"></div></div>
               </td>
             </tr>`;
           }).join("")}
@@ -137,32 +128,26 @@ function buildPrintHTML(data: ReportPdfData): string {
     </div>` : "";
 
   const notesHTML = data.technicalNotes ? `
-    <div class="card avoid-break card-warn">
-      <div class="card-hd card-hd-warn">
-        <span class="card-icon">⚠️</span> الملاحظات الفنية
-      </div>
-      <p class="card-text">${esc(data.technicalNotes)}</p>
+    <div class="section avoid-break" style="background:#fffbeb;border-color:#fcd34d">
+      <div class="section-title" style="color:#92400e;border-color:#fcd34d">⚠️ الملاحظات الفنية</div>
+      <p class="body-text">${esc(data.technicalNotes)}</p>
     </div>` : "";
 
   const recsHTML = data.recommendations ? `
-    <div class="card avoid-break card-success">
-      <div class="card-hd card-hd-success">
-        <span class="card-icon">✅</span> التوصيات
-      </div>
-      <p class="card-text">${esc(data.recommendations)}</p>
+    <div class="section avoid-break" style="background:#f0fdf4;border-color:#86efac">
+      <div class="section-title" style="color:#166534;border-color:#86efac">✅ التوصيات</div>
+      <p class="body-text">${esc(data.recommendations)}</p>
     </div>` : "";
 
   const images = data.imageUrls ?? [];
   const imagesHTML = images.length > 0 ? `
-    <div class="images-section">
-      <h3 class="images-title avoid-break">
-        <span class="card-icon">📷</span> صور الموقع (${images.length} صورة)
-      </h3>
-      <div class="img-grid">
+    <div style="break-before:page;page-break-before:always">
+      <div class="section-title blue-title avoid-break" style="border:none;padding:0 0 10px 0;margin-bottom:16px;border-bottom:2px solid #bfdbfe">📷 صور الموقع (${images.length} صورة)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         ${images.map((url, i) => { const safe = escAttr(url); return safe ? `
-          <div class="img-card avoid-break">
-            <img src="${safe}" class="img-photo" onerror="this.parentNode.style.display='none'" />
-            <div class="img-label">صورة ${i + 1} من ${images.length}</div>
+          <div class="avoid-break" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#f8fafc">
+            <img src="${safe}" style="width:100%;height:200px;object-fit:cover;display:block" onerror="this.parentNode.style.display='none'" />
+            <div style="font-size:11px;color:#64748b;text-align:center;padding:6px;background:#f1f5f9">صورة ${i + 1} من ${images.length}</div>
           </div>` : ""; }).join("")}
       </div>
     </div>` : "";
@@ -171,21 +156,16 @@ function buildPrintHTML(data: ReportPdfData): string {
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>تقرير ${typeLbl} — ${esc(data.projectName)}</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
-  @page {
-    size: A4 portrait;
-    margin: 15mm 18mm 18mm 18mm;
-  }
-
+  @page { size: A4 portrait; margin: 12mm 14mm 14mm 14mm; }
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: 'Noto Kufi Arabic', 'Segoe UI', Tahoma, sans-serif;
-    font-size: 11pt;
-    line-height: 1.7;
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
     color: #1e293b;
     direction: rtl;
     text-align: right;
@@ -194,533 +174,230 @@ function buildPrintHTML(data: ReportPdfData): string {
     print-color-adjust: exact;
   }
 
-  .avoid-break {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
+  .avoid-break { break-inside: avoid; page-break-inside: avoid; }
 
-  /* ═══════ HEADER ═══════ */
-  .report-header {
-    background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #475569 100%);
+  /* ── HEADER ── */
+  .header {
+    background: linear-gradient(135deg, #1e293b, #334155, #475569);
     color: #fff;
-    padding: 20pt 24pt 16pt;
-    border-radius: 8pt;
-    margin-bottom: 14pt;
-    break-inside: avoid;
-    page-break-inside: avoid;
+    padding: 24px 28px 20px;
+    border-radius: 10px;
+    margin-bottom: 16px;
     position: relative;
     overflow: hidden;
   }
-  .report-header::before {
+  .header::before {
     content: '';
     position: absolute;
-    top: -40pt;
-    left: -40pt;
-    width: 120pt;
-    height: 120pt;
+    top: -50px; left: -50px;
+    width: 150px; height: 150px;
     background: rgba(255,255,255,0.04);
     border-radius: 50%;
   }
-  .report-header::after {
-    content: '';
-    position: absolute;
-    bottom: -30pt;
-    right: -30pt;
-    width: 100pt;
-    height: 100pt;
-    background: rgba(255,255,255,0.03);
-    border-radius: 50%;
-  }
-  .hdr-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    position: relative;
-    z-index: 1;
-  }
-  .hdr-info { flex: 1; }
-  .hdr-sys {
-    font-size: 8pt;
-    text-transform: uppercase;
-    letter-spacing: 2pt;
-    color: rgba(255,255,255,0.5);
-    margin-bottom: 6pt;
-  }
-  .hdr-title {
-    font-size: 18pt;
-    font-weight: 800;
-    line-height: 1.3;
-    margin-bottom: 10pt;
-  }
-  .hdr-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6pt;
-  }
-  .hdr-pill {
-    display: inline-block;
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 20pt;
-    padding: 2pt 10pt;
-    font-size: 8pt;
-    color: rgba(255,255,255,0.8);
-  }
-  .hdr-badge {
-    background: rgba(255,255,255,0.12);
-    border: 1.5pt solid rgba(255,255,255,0.25);
-    border-radius: 10pt;
-    padding: 10pt 16pt;
-    text-align: center;
-    min-width: 80pt;
-  }
-  .hdr-badge-label { font-size: 7pt; color: rgba(255,255,255,0.5); margin-bottom: 3pt; }
-  .hdr-badge-value { font-size: 16pt; font-weight: 800; }
+  .header-row { display: flex; justify-content: space-between; align-items: flex-start; position: relative; z-index: 1; }
+  .header-info { flex: 1; }
+  .header-sys { font-size: 10px; text-transform: uppercase; letter-spacing: 3px; color: rgba(255,255,255,0.45); margin-bottom: 6px; }
+  .header-name { font-size: 22px; font-weight: 800; line-height: 1.3; margin-bottom: 12px; }
+  .header-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill { display: inline-block; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 3px 12px; font-size: 11px; color: rgba(255,255,255,0.8); }
+  .header-badge { background: rgba(255,255,255,0.12); border: 1.5px solid rgba(255,255,255,0.25); border-radius: 12px; padding: 12px 20px; text-align: center; min-width: 90px; }
+  .badge-lbl { font-size: 9px; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+  .badge-val { font-size: 20px; font-weight: 800; }
 
-  /* ═══════ INFO STRIP ═══════ */
-  .info-strip {
-    display: flex;
-    background: #f1f5f9;
-    border: 1pt solid #e2e8f0;
-    border-radius: 6pt;
-    margin-bottom: 14pt;
-    overflow: hidden;
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-  .info-cell {
-    flex: 1;
-    text-align: center;
-    padding: 10pt 6pt;
-    border-right: 1pt solid #e2e8f0;
-  }
-  .info-cell:last-child { border-right: none; }
-  .info-lbl { font-size: 7pt; color: #64748b; font-weight: 600; margin-bottom: 2pt; text-transform: uppercase; letter-spacing: 0.5pt; }
-  .info-val { font-size: 12pt; font-weight: 800; color: #1e293b; }
+  /* ── INFO STRIP ── */
+  .info-strip { display: flex; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+  .info-cell { flex: 1; text-align: center; padding: 12px 8px; border-left: 1px solid #e2e8f0; }
+  .info-cell:first-child { border-left: none; }
+  .info-lbl { font-size: 10px; color: #64748b; font-weight: 600; margin-bottom: 3px; }
+  .info-val { font-size: 15px; font-weight: 800; color: #1e293b; }
 
-  /* ═══════ PROGRESS ═══════ */
-  .progress-box {
-    margin-bottom: 14pt;
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-  .progress-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 5pt;
-  }
-  .progress-lbl { font-size: 10pt; font-weight: 600; color: #475569; }
-  .progress-num { font-size: 22pt; font-weight: 800; color: #2563eb; }
-  .progress-track {
-    height: 10pt;
-    background: #e2e8f0;
-    border-radius: 5pt;
-    overflow: hidden;
-  }
-  .progress-fill {
-    height: 100%;
-    width: ${pct}%;
-    background: linear-gradient(90deg, #2563eb, #60a5fa);
-    border-radius: 5pt;
-    transition: width 0.3s;
-  }
+  /* ── DUAL PROGRESS ── */
+  .dual-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px; background: #fafbfc; }
+  .dual-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .dual-title { font-size: 15px; font-weight: 700; color: #334155; }
+  .dev-badge { font-size: 12px; font-weight: 700; padding: 3px 14px; border-radius: 14px; }
+  .dev-ok { background: #f0fdf4; color: #16a34a; border: 1px solid #86efac; }
+  .dev-warn { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+  .dp-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .dp-row:last-child { margin-bottom: 0; }
+  .dp-lbl { font-size: 12px; font-weight: 600; color: #64748b; width: 45px; }
+  .dp-track { flex: 1; height: 16px; background: #e2e8f0; border-radius: 8px; overflow: hidden; }
+  .dp-fill-blue { height: 100%; border-radius: 8px; background: linear-gradient(90deg, #2563eb, #60a5fa); }
+  .dp-fill-gray { height: 100%; border-radius: 8px; background: linear-gradient(90deg, #94a3b8, #cbd5e1); }
+  .dp-val { font-size: 16px; font-weight: 800; width: 50px; text-align: left; }
 
-  /* ═══════ CARDS ═══════ */
-  .card {
-    border: 1pt solid #e2e8f0;
-    border-radius: 8pt;
-    padding: 14pt 16pt;
-    margin-bottom: 12pt;
-    background: #fafbfc;
-  }
-  .card-warn { background: #fffbeb; border-color: #fcd34d; }
-  .card-success { background: #f0fdf4; border-color: #86efac; }
-  .card-hd {
-    font-size: 11pt;
-    font-weight: 700;
-    color: #334155;
-    margin-bottom: 8pt;
-    padding-bottom: 6pt;
-    border-bottom: 1.5pt solid #e2e8f0;
-    display: flex;
-    align-items: center;
-    gap: 6pt;
-  }
-  .card-hd-blue { color: #1e40af; border-bottom-color: #bfdbfe; }
-  .card-hd-warn { color: #b45309; border-bottom-color: #fcd34d; }
-  .card-hd-success { color: #166534; border-bottom-color: #86efac; }
-  .card-icon { font-size: 12pt; }
-  .card-text {
-    font-size: 10.5pt;
-    color: #475569;
-    line-height: 2;
-    white-space: pre-wrap;
-  }
+  /* ── STATS ── */
+  .stats-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
+  .stat { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
+  .stat-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .stat-lbl { font-size: 11px; color: #64748b; font-weight: 600; }
+  .stat-val { font-size: 16px; font-weight: 800; color: #1e293b; }
+  .stat-unit { font-size: 11px; font-weight: 600; color: #94a3b8; }
 
-  /* ═══════ TABLE ═══════ */
-  .tbl { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
-  .tbl-th {
-    background: #f1f5f9;
-    padding: 6pt 8pt;
-    font-size: 8pt;
-    font-weight: 700;
-    color: #475569;
-    border-bottom: 2pt solid #cbd5e1;
-    text-align: right;
-  }
-  .tbl-center { text-align: center !important; }
-  .tbl-td {
-    padding: 7pt 8pt;
-    border-bottom: 1pt solid #f1f5f9;
-    color: #334155;
-    vertical-align: middle;
-  }
-  .row-w { background: #fff; }
-  .row-g { background: #f8fafc; }
-  .badge {
-    display: inline-block;
-    padding: 1pt 8pt;
-    border-radius: 10pt;
-    font-size: 8pt;
-    font-weight: 700;
-    border: 1pt solid;
-  }
-  .bar-track { height: 6pt; background: #e2e8f0; border-radius: 3pt; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 3pt; }
+  /* ── TIMELINE ── */
+  .tl-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 20px; margin-bottom: 16px; background: #fafbfc; }
+  .tl-title { font-size: 14px; font-weight: 700; color: #334155; margin-bottom: 8px; }
+  .tl-dates { display: flex; justify-content: space-between; font-size: 12px; color: #475569; margin-bottom: 8px; }
+  .tl-track { height: 12px; background: #e2e8f0; border-radius: 6px; overflow: hidden; margin-bottom: 6px; }
+  .tl-fill { height: 100%; background: linear-gradient(90deg, #1e40af, #3b82f6); border-radius: 6px; }
+  .tl-legend { display: flex; gap: 20px; font-size: 10px; color: #64748b; }
 
-  /* ═══════ DUAL PROGRESS ═══════ */
-  .dual-progress {
-    border: 1pt solid #e2e8f0;
-    border-radius: 8pt;
-    padding: 12pt 16pt;
-    margin-bottom: 14pt;
-    background: #fafbfc;
-  }
-  .dp-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10pt;
-  }
-  .dp-title { font-size: 11pt; font-weight: 700; color: #334155; }
-  .dp-dev {
-    font-size: 9pt;
-    font-weight: 700;
-    padding: 2pt 10pt;
-    border-radius: 12pt;
-  }
-  .dp-dev-ok { background: #f0fdf4; color: #16a34a; border: 1pt solid #86efac; }
-  .dp-dev-warn { background: #fef2f2; color: #dc2626; border: 1pt solid #fca5a5; }
-  .dp-bars { display: flex; flex-direction: column; gap: 6pt; }
-  .dp-row { display: flex; align-items: center; gap: 8pt; }
-  .dp-lbl { font-size: 8pt; font-weight: 600; color: #64748b; width: 35pt; }
-  .dp-track { flex: 1; height: 12pt; background: #e2e8f0; border-radius: 6pt; overflow: hidden; }
-  .dp-fill { height: 100%; border-radius: 6pt; }
-  .dp-fill-actual { background: linear-gradient(90deg, #2563eb, #60a5fa); }
-  .dp-fill-planned { background: linear-gradient(90deg, #94a3b8, #cbd5e1); }
-  .dp-val { font-size: 11pt; font-weight: 800; color: #475569; width: 35pt; text-align: left; }
-  .dp-val-actual { color: #2563eb; }
+  /* ── ACTIVITY SUMMARY ── */
+  .act-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 20px; margin-bottom: 16px; background: #fafbfc; }
+  .act-title { font-size: 14px; font-weight: 700; color: #334155; margin-bottom: 12px; }
+  .act-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .act-item { text-align: center; }
+  .act-num { font-size: 26px; font-weight: 800; line-height: 1.1; }
+  .act-dot { width: 10px; height: 10px; border-radius: 50%; margin: 4px auto; }
+  .act-lbl { font-size: 11px; color: #64748b; font-weight: 600; }
+  .act-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; gap: 2px; }
+  .act-seg { border-radius: 3px; }
 
-  /* ═══════ STATS GRID ═══════ */
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8pt;
-    margin-bottom: 14pt;
-  }
-  .stat-card {
-    display: flex;
-    align-items: center;
-    gap: 8pt;
-    padding: 10pt;
-    border: 1pt solid #e2e8f0;
-    border-radius: 8pt;
-    background: #fff;
-  }
-  .stat-icon {
-    width: 32pt;
-    height: 32pt;
-    border-radius: 8pt;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14pt;
-    flex-shrink: 0;
-  }
-  .stat-body { flex: 1; min-width: 0; }
-  .stat-lbl { font-size: 7pt; color: #64748b; font-weight: 600; }
-  .stat-val { font-size: 11pt; font-weight: 800; color: #1e293b; }
-  .stat-unit { font-size: 8pt; font-weight: 600; color: #94a3b8; }
+  /* ── SECTIONS / CARDS ── */
+  .section { border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; background: #fafbfc; }
+  .section-title { font-size: 15px; font-weight: 700; color: #334155; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+  .blue-title { color: #1e40af; border-bottom-color: #bfdbfe; }
+  .body-text { font-size: 14px; color: #475569; line-height: 1.9; white-space: pre-wrap; }
 
-  /* ═══════ TIMELINE ═══════ */
-  .timeline-box {
-    border: 1pt solid #e2e8f0;
-    border-radius: 8pt;
-    padding: 12pt 16pt;
-    margin-bottom: 14pt;
-    background: #fafbfc;
-  }
-  .tl-header { font-size: 10pt; font-weight: 700; color: #334155; margin-bottom: 8pt; }
-  .tl-dates { display: flex; justify-content: space-between; font-size: 9pt; color: #475569; margin-bottom: 6pt; }
-  .tl-track { height: 10pt; background: #e2e8f0; border-radius: 5pt; position: relative; overflow: visible; margin-bottom: 6pt; }
-  .tl-elapsed { height: 100%; background: linear-gradient(90deg, #1e40af, #3b82f6); border-radius: 5pt 0 0 5pt; }
-  .tl-marker { position: absolute; top: -3pt; transform: translateX(50%); }
-  .tl-dot { width: 8pt; height: 16pt; background: #1e40af; border: 2pt solid #fff; border-radius: 4pt; box-shadow: 0 1pt 3pt rgba(0,0,0,0.3); }
-  .tl-legend { display: flex; gap: 16pt; font-size: 7.5pt; color: #64748b; }
+  /* ── TABLE ── */
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .th { background: #f1f5f9; padding: 8px 10px; font-size: 12px; font-weight: 700; color: #475569; border-bottom: 2px solid #cbd5e1; text-align: right; }
+  .tc { text-align: center !important; }
+  .td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; }
 
-  /* ═══════ ACTIVITY SUMMARY ═══════ */
-  .act-summary {
-    border: 1pt solid #e2e8f0;
-    border-radius: 8pt;
-    padding: 12pt 16pt;
-    margin-bottom: 14pt;
-    background: #fafbfc;
-  }
-  .acts-header { font-size: 10pt; font-weight: 700; color: #334155; margin-bottom: 10pt; }
-  .acts-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8pt; margin-bottom: 10pt; }
-  .acts-item { text-align: center; }
-  .acts-count { font-size: 18pt; font-weight: 800; line-height: 1.2; }
-  .acts-dot { width: 8pt; height: 8pt; border-radius: 50%; margin: 3pt auto; }
-  .acts-lbl { font-size: 7.5pt; color: #64748b; font-weight: 600; }
-  .acts-bar-row { display: flex; height: 8pt; border-radius: 4pt; overflow: hidden; gap: 1pt; }
-  .acts-bar-seg { border-radius: 2pt; }
+  /* ── FOOTER ── */
+  .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; }
 
-  /* ═══════ IMAGES ═══════ */
-  .images-section {
-    break-before: page;
-    page-break-before: always;
-  }
-  .images-title {
-    font-size: 12pt;
-    font-weight: 700;
-    color: #1e40af;
-    margin-bottom: 12pt;
-    padding-bottom: 8pt;
-    border-bottom: 2pt solid #bfdbfe;
-    display: flex;
-    align-items: center;
-    gap: 6pt;
-  }
-  .img-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12pt;
-  }
-  .img-card {
-    border: 1pt solid #e2e8f0;
-    border-radius: 6pt;
-    overflow: hidden;
-    background: #f8fafc;
-  }
-  .img-photo {
-    width: 100%;
-    height: 140pt;
-    object-fit: cover;
-    display: block;
-  }
-  .img-label {
-    font-size: 8pt;
-    color: #64748b;
-    text-align: center;
-    padding: 4pt;
-    background: #f1f5f9;
-  }
-
-  /* ═══════ FOOTER ═══════ */
-  .report-footer {
-    margin-top: 18pt;
-    padding-top: 8pt;
-    border-top: 1pt solid #e2e8f0;
-    display: flex;
-    justify-content: space-between;
-    font-size: 8pt;
-    color: #94a3b8;
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  /* ═══════ PRINT BUTTON ═══════ */
-  .print-toolbar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(135deg, #1e293b, #334155);
-    padding: 10pt 20pt;
-    display: flex;
-    justify-content: center;
-    gap: 12pt;
-    z-index: 9999;
-    box-shadow: 0 4pt 12pt rgba(0,0,0,0.3);
-  }
-  .btn-print {
-    background: #2563eb;
-    color: #fff;
-    border: none;
-    border-radius: 6pt;
-    padding: 8pt 28pt;
-    font-size: 11pt;
-    font-weight: 700;
-    font-family: inherit;
-    cursor: pointer;
-  }
+  /* ── TOOLBAR ── */
+  .toolbar { position: fixed; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e293b, #334155); padding: 12px 24px; display: flex; justify-content: center; gap: 14px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+  .btn-print { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer; }
   .btn-print:hover { background: #1d4ed8; }
-  .btn-close {
-    background: #64748b;
-    color: #fff;
-    border: none;
-    border-radius: 6pt;
-    padding: 8pt 20pt;
-    font-size: 11pt;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-  }
+  .btn-close { background: #64748b; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; }
   .btn-close:hover { background: #475569; }
 
   @media print {
-    .print-toolbar { display: none !important; }
+    .toolbar { display: none !important; }
     body { padding-top: 0 !important; }
   }
   @media screen {
-    body { padding-top: 50pt; max-width: 210mm; margin: 0 auto; }
+    body { padding-top: 56px; max-width: 210mm; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
   }
 </style>
 </head>
 <body>
 
-<!-- PRINT TOOLBAR (screen only) -->
-<div class="print-toolbar">
+<div class="toolbar">
   <button class="btn-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
   <button class="btn-close" onclick="window.close()">✕ إغلاق</button>
 </div>
 
 <!-- HEADER -->
-<div class="report-header">
-  <div class="hdr-row">
-    <div class="hdr-info">
-      <div class="hdr-sys">نظام الإشراف الهندسي</div>
-      <div class="hdr-title">${esc(data.projectName)}</div>
-      <div class="hdr-meta">
-        ${metaItems.map(([l, v]) => `<span class="hdr-pill">${l}: ${esc(v)}</span>`).join("")}
+<div class="header avoid-break">
+  <div class="header-row">
+    <div class="header-info">
+      <div class="header-sys">نظام الإشراف الهندسي</div>
+      <div class="header-name">${esc(data.projectName)}</div>
+      <div class="header-pills">
+        ${metaRows.map(([l, v]) => `<span class="pill">${l}: ${esc(v)}</span>`).join("")}
       </div>
     </div>
-    <div class="hdr-badge">
-      <div class="hdr-badge-label">نوع التقرير</div>
-      <div class="hdr-badge-value">${typeLbl}</div>
+    <div class="header-badge">
+      <div class="badge-lbl">نوع التقرير</div>
+      <div class="badge-val">${typeLbl}</div>
     </div>
   </div>
 </div>
 
 <!-- INFO STRIP -->
-<div class="info-strip">
-  ${infoItems.map(([l, v]) => `
-    <div class="info-cell">
-      <div class="info-lbl">${l}</div>
-      <div class="info-val">${v}</div>
-    </div>`).join("")}
+<div class="info-strip avoid-break">
+  <div class="info-cell"><div class="info-lbl">تاريخ التقرير</div><div class="info-val">${fmtDate(data.reportDate)}</div></div>
+  <div class="info-cell"><div class="info-lbl">بداية الفترة</div><div class="info-val">${fmtDate(data.periodStart)}</div></div>
+  <div class="info-cell"><div class="info-lbl">نهاية الفترة</div><div class="info-val">${fmtDate(data.periodEnd)}</div></div>
+  <div class="info-cell"><div class="info-lbl">رقم التقرير</div><div class="info-val">#${data.reportId}</div></div>
 </div>
 
-<!-- PROGRESS COMPARISON -->
-<div class="dual-progress avoid-break">
-  <div class="dp-header">
-    <span class="dp-title">مقارنة الإنجاز</span>
-    ${deviation != null ? `<span class="dp-dev ${deviation >= 0 ? "dp-dev-ok" : "dp-dev-warn"}">${deviation >= 0 ? "+" : ""}${deviation}% ${deviation >= 0 ? "متقدم" : "متأخر"}</span>` : ""}
+<!-- DUAL PROGRESS -->
+<div class="dual-box avoid-break">
+  <div class="dual-head">
+    <span class="dual-title">مقارنة الإنجاز</span>
+    ${deviation != null ? `<span class="dev-badge ${deviation >= 0 ? "dev-ok" : "dev-warn"}">${deviation >= 0 ? "+" : ""}${deviation}% ${deviation >= 0 ? "متقدم" : "متأخر"}</span>` : ""}
   </div>
-  <div class="dp-bars">
-    <div class="dp-row">
-      <span class="dp-lbl">الفعلي</span>
-      <div class="dp-track"><div class="dp-fill dp-fill-actual" style="width:${pct}%"></div></div>
-      <span class="dp-val dp-val-actual">${pct}%</span>
-    </div>
-    ${plannedPct != null ? `<div class="dp-row">
-      <span class="dp-lbl">المخطط</span>
-      <div class="dp-track"><div class="dp-fill dp-fill-planned" style="width:${plannedPct}%"></div></div>
-      <span class="dp-val">${plannedPct}%</span>
-    </div>` : ""}
+  <div class="dp-row">
+    <span class="dp-lbl">الفعلي</span>
+    <div class="dp-track"><div class="dp-fill-blue" style="width:${pct}%"></div></div>
+    <span class="dp-val" style="color:#2563eb">${pct}%</span>
   </div>
+  ${plannedPct != null ? `<div class="dp-row">
+    <span class="dp-lbl">المخطط</span>
+    <div class="dp-track"><div class="dp-fill-gray" style="width:${plannedPct}%"></div></div>
+    <span class="dp-val">${plannedPct}%</span>
+  </div>` : ""}
 </div>
 
-<!-- QUICK STATS -->
-<div class="stats-grid avoid-break">
-  ${data.contractValue ? `<div class="stat-card">
+<!-- STATS -->
+<div class="stats-row avoid-break">
+  ${data.contractValue ? `<div class="stat">
     <div class="stat-icon" style="background:#eff6ff;color:#2563eb">💰</div>
-    <div class="stat-body">
-      <div class="stat-lbl">قيمة العقد</div>
-      <div class="stat-val">${fmtMoney(data.contractValue)} <span class="stat-unit">د.ل</span></div>
-    </div>
+    <div><div class="stat-lbl">قيمة العقد</div><div class="stat-val">${fmtMoney(data.contractValue)} <span class="stat-unit">د.ل</span></div></div>
   </div>` : ""}
-  ${totalDuration != null ? `<div class="stat-card">
+  ${totalDuration != null ? `<div class="stat">
     <div class="stat-icon" style="background:#f0fdf4;color:#16a34a">📅</div>
-    <div class="stat-body">
-      <div class="stat-lbl">مدة المشروع</div>
-      <div class="stat-val">${totalDuration} <span class="stat-unit">يوم</span></div>
-    </div>
+    <div><div class="stat-lbl">مدة المشروع</div><div class="stat-val">${totalDuration} <span class="stat-unit">يوم</span></div></div>
   </div>` : ""}
-  ${elapsed != null ? `<div class="stat-card">
+  ${elapsed != null ? `<div class="stat">
     <div class="stat-icon" style="background:#fefce8;color:#ca8a04">⏱️</div>
-    <div class="stat-body">
-      <div class="stat-lbl">المنقضي</div>
-      <div class="stat-val">${elapsed} <span class="stat-unit">يوم${elapsedPct != null ? ` (${elapsedPct}%)` : ""}</span></div>
-    </div>
+    <div><div class="stat-lbl">الأيام المنقضية</div><div class="stat-val">${elapsed} <span class="stat-unit">يوم (${elapsedPct ?? 0}%)</span></div></div>
   </div>` : ""}
-  ${remaining != null ? `<div class="stat-card">
+  ${remaining != null ? `<div class="stat">
     <div class="stat-icon" style="background:${remaining < 180 ? "#fef2f2" : "#f0f9ff"};color:${remaining < 180 ? "#dc2626" : "#0284c7"}">⏳</div>
-    <div class="stat-body">
-      <div class="stat-lbl">المتبقي</div>
-      <div class="stat-val">${remaining} <span class="stat-unit">يوم</span></div>
-    </div>
+    <div><div class="stat-lbl">الأيام المتبقية</div><div class="stat-val">${remaining} <span class="stat-unit">يوم</span></div></div>
   </div>` : ""}
 </div>
 
 <!-- TIMELINE -->
-${data.startDate && data.expectedEndDate ? `<div class="timeline-box avoid-break">
-  <div class="tl-header">الجدول الزمني</div>
+${data.startDate && data.expectedEndDate ? `<div class="tl-box avoid-break">
+  <div class="tl-title">الجدول الزمني للمشروع</div>
   <div class="tl-dates">
     <span>بداية: <strong>${fmtDate(data.startDate)}</strong></span>
     <span>نهاية: <strong>${fmtDate(data.expectedEndDate)}</strong></span>
   </div>
-  <div class="tl-track">
-    <div class="tl-elapsed" style="width:${elapsedPct ?? 0}%"></div>
-    <div class="tl-marker" style="right:${elapsedPct ?? 0}%"><div class="tl-dot"></div></div>
-  </div>
+  <div class="tl-track"><div class="tl-fill" style="width:${elapsedPct ?? 0}%"></div></div>
   <div class="tl-legend">
     <span>🟦 الزمن المنقضي (${elapsedPct ?? 0}%)</span>
-    <span>⬜ الزمن المتبقي (${100 - (elapsedPct ?? 0)}%)</span>
+    <span>⬜ المتبقي (${100 - (elapsedPct ?? 0)}%)</span>
   </div>
 </div>` : ""}
 
 <!-- ACTIVITY SUMMARY -->
-${acts.length > 0 ? `<div class="act-summary avoid-break">
-  <div class="acts-header">ملخص حالة الأنشطة (${acts.length} نشاط)</div>
-  <div class="acts-grid">
-    <div class="acts-item">
-      <div class="acts-count" style="color:#16a34a">${completedCount}</div>
-      <div class="acts-dot" style="background:#16a34a"></div>
-      <div class="acts-lbl">مكتمل</div>
+${acts.length > 0 ? `<div class="act-box avoid-break">
+  <div class="act-title">ملخص حالة الأنشطة (${acts.length} نشاط)</div>
+  <div class="act-grid">
+    <div class="act-item">
+      <div class="act-num" style="color:#16a34a">${completedCount}</div>
+      <div class="act-dot" style="background:#16a34a"></div>
+      <div class="act-lbl">مكتمل</div>
     </div>
-    <div class="acts-item">
-      <div class="acts-count" style="color:#2563eb">${inProgressCount}</div>
-      <div class="acts-dot" style="background:#2563eb"></div>
-      <div class="acts-lbl">قيد التنفيذ</div>
+    <div class="act-item">
+      <div class="act-num" style="color:#2563eb">${inProgressCount}</div>
+      <div class="act-dot" style="background:#2563eb"></div>
+      <div class="act-lbl">قيد التنفيذ</div>
     </div>
-    <div class="acts-item">
-      <div class="acts-count" style="color:#dc2626">${delayedCount}</div>
-      <div class="acts-dot" style="background:#dc2626"></div>
-      <div class="acts-lbl">متأخر</div>
+    <div class="act-item">
+      <div class="act-num" style="color:#dc2626">${delayedCount}</div>
+      <div class="act-dot" style="background:#dc2626"></div>
+      <div class="act-lbl">متأخر</div>
     </div>
-    <div class="acts-item">
-      <div class="acts-count" style="color:#6b7280">${notStartedCount}</div>
-      <div class="acts-dot" style="background:#6b7280"></div>
-      <div class="acts-lbl">لم يبدأ</div>
+    <div class="act-item">
+      <div class="act-num" style="color:#6b7280">${notStartedCount}</div>
+      <div class="act-dot" style="background:#6b7280"></div>
+      <div class="act-lbl">لم يبدأ</div>
     </div>
   </div>
-  <div class="acts-bar-row">
-    ${completedCount > 0 ? `<div class="acts-bar-seg" style="flex:${completedCount};background:#16a34a" title="مكتمل: ${completedCount}"></div>` : ""}
-    ${inProgressCount > 0 ? `<div class="acts-bar-seg" style="flex:${inProgressCount};background:#2563eb" title="قيد التنفيذ: ${inProgressCount}"></div>` : ""}
-    ${delayedCount > 0 ? `<div class="acts-bar-seg" style="flex:${delayedCount};background:#dc2626" title="متأخر: ${delayedCount}"></div>` : ""}
-    ${notStartedCount > 0 ? `<div class="acts-bar-seg" style="flex:${notStartedCount};background:#d1d5db" title="لم يبدأ: ${notStartedCount}"></div>` : ""}
+  <div class="act-bar">
+    ${completedCount > 0 ? `<div class="act-seg" style="flex:${completedCount};background:#16a34a"></div>` : ""}
+    ${inProgressCount > 0 ? `<div class="act-seg" style="flex:${inProgressCount};background:#2563eb"></div>` : ""}
+    ${delayedCount > 0 ? `<div class="act-seg" style="flex:${delayedCount};background:#dc2626"></div>` : ""}
+    ${notStartedCount > 0 ? `<div class="act-seg" style="flex:${notStartedCount};background:#d1d5db"></div>` : ""}
   </div>
 </div>` : ""}
 
@@ -728,11 +405,9 @@ ${acts.length > 0 ? `<div class="act-summary avoid-break">
 ${activitiesHTML}
 
 <!-- WORK DESCRIPTION -->
-<div class="card avoid-break">
-  <div class="card-hd">
-    <span class="card-icon">📝</span> وصف الأعمال المنجزة خلال الفترة
-  </div>
-  <p class="card-text">${esc(data.workDescription)}</p>
+<div class="section avoid-break">
+  <div class="section-title">📝 وصف الأعمال المنجزة خلال الفترة</div>
+  <p class="body-text">${esc(data.workDescription)}</p>
 </div>
 
 <!-- NOTES -->
@@ -745,7 +420,7 @@ ${recsHTML}
 ${imagesHTML}
 
 <!-- FOOTER -->
-<div class="report-footer">
+<div class="footer avoid-break">
   <span>تم إنشاؤه آلياً بواسطة نظام الإشراف الهندسي — ${fmtDate(new Date().toISOString())}</span>
   <span style="font-weight:700;color:#64748b">تقرير ${typeLbl} #${data.reportId}</span>
 </div>
