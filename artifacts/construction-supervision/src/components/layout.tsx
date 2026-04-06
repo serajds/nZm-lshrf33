@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   Menu,
   X,
+  Landmark,
 } from "lucide-react";
 
 const SIDEBAR_FULL = 256;
@@ -29,6 +30,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navigation = [
     { name: "لوحة التحكم", href: "/", icon: LayoutDashboard },
     { name: "المشاريع", href: "/projects", icon: Building2 },
+    { name: "الشركات", href: "/companies", icon: Landmark },
     ...(user?.role === "admin"
       ? [{ name: "المستخدمون", href: "/users", icon: Users }]
       : []),

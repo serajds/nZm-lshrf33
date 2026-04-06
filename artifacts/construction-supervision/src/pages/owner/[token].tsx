@@ -99,6 +99,7 @@ export default function OwnerPortal() {
   const totalSuspDays = (suspensions as ProjectSuspension[]).reduce((s, x) => s + x.calendarDays, 0);
 
   const handlePreview = (report: Report) => {
+    const apiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
     previewReport({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -119,6 +120,8 @@ export default function OwnerPortal() {
       startDate: (project as any).startDate ?? null,
       expectedEndDate: (project as any).expectedEndDate ?? null,
       plannedProgress: (project as any).plannedProgress ?? null,
+      companyLogos: (ownerData as any)?.companyLogos,
+      apiBase,
     });
   };
 

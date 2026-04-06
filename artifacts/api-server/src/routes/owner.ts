@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectExtensionsTable, projectSuspensionsTable } from "@workspace/db";
+import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectExtensionsTable, projectSuspensionsTable, companiesTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
 
@@ -94,9 +94,22 @@ router.post("/owner/verify", async (req, res): Promise<void> => {
     filesCount: filesCountResult?.count ?? 0,
   };
 
+  const companyLogos: Record<string, { name: string; logoUrl: string | null }> = {};
+  const companyIds = [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId].filter(Boolean) as number[];
+  if (companyIds.length > 0) {
+    const companies = await db.select().from(companiesTable);
+    for (const c of companies) {
+      if (companyIds.includes(c.id)) {
+        if (c.id === project.ownerCompanyId) companyLogos.owner = { name: c.name, logoUrl: c.logoUrl };
+        if (c.id === project.contractorCompanyId) companyLogos.contractor = { name: c.name, logoUrl: c.logoUrl };
+        if (c.id === project.supervisorCompanyId) companyLogos.supervisor = { name: c.name, logoUrl: c.logoUrl };
+      }
+    }
+  }
+
   const { ownerAccessPassword: _, ...safeProject } = project;
 
-  res.json({ project: safeProject, activities, reports, extensions, suspensions, summary });
+  res.json({ project: safeProject, activities, reports, extensions, suspensions, summary, companyLogos });
 });
 
 export default router;

@@ -11,6 +11,7 @@ import dashboardRouter from "./dashboard";
 import pdfRouter from "./pdf";
 import extensionsRouter from "./extensions";
 import suspensionsRouter from "./suspensions";
+import companiesRouter from "./companies";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(filesRouter);
 router.use(usersRouter);
 router.use(ownerRouter);
 router.use(dashboardRouter);
+router.use(companiesRouter);
 
 export default router;
