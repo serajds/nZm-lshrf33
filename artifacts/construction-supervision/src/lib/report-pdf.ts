@@ -158,12 +158,15 @@ function buildPrintHTML(data: ReportPdfData): string {
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>تقرير ${typeLbl} — ${esc(data.projectName)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
   @page { size: A4 portrait; margin: 12mm 14mm 14mm 14mm; }
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    font-family: 'Noto Kufi Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
     font-size: 14px;
     line-height: 1.6;
     color: #1e293b;
