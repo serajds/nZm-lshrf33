@@ -41,6 +41,11 @@ export default function OwnerPortal() {
   const verifyAccess = useVerifyOwnerAccess();
 
   useEffect(() => {
+    const name = ownerData?.project?.name || projectInfo?.projectName;
+    document.title = name ? `${name} | بوابة المالك` : "بوابة المالك";
+  }, [ownerData, projectInfo]);
+
+  useEffect(() => {
     fetch(`${API_BASE}/owner/access/${token}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
