@@ -42,6 +42,7 @@ export default function ProjectDetails() {
   const { toast } = useToast();
 
   const [ownerPassword, setOwnerPassword] = useState("");
+  const [ownerSlug, setOwnerSlug] = useState("");
   const [ownerLink, setOwnerLink] = useState("");
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
 
@@ -74,11 +75,16 @@ export default function ProjectDetails() {
       return;
     }
     try {
-      const res = await generateLink.mutateAsync({ projectId, data: { password: ownerPassword } });
+      const payload: any = { password: ownerPassword };
+      if (ownerSlug.trim()) {
+        payload.customSlug = ownerSlug.trim();
+      }
+      const res = await generateLink.mutateAsync({ projectId, data: payload });
       setOwnerLink(`${window.location.origin}/owner/${res.token}`);
       toast({ title: "تم إنشاء الرابط بنجاح" });
-    } catch {
-      toast({ variant: "destructive", title: "فشل إنشاء الرابط" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "فشل إنشاء الرابط";
+      toast({ variant: "destructive", title: msg });
     }
   };
 
@@ -136,9 +142,37 @@ export default function ProjectDetails() {
             </DialogTrigger>
             <DialogContent dir="rtl">
               <DialogHeader>
-                <DialogTitle>إنشاء رابط للمالك</DialogTitle>
+                <DialogTitle>{(project as any)?.ownerAccessToken && !ownerLink ? "رابط المالك" : "إنشاء رابط للمالك"}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
+                {(project as any)?.ownerAccessToken && !ownerLink && (
+                  <div className="space-y-2 p-3 rounded-lg bg-muted/50 border">
+                    <Label className="text-sm font-medium">الرابط الحالي</Label>
+                    <div className="flex gap-2">
+                      <Input value={`${window.location.origin}/owner/${(project as any).ownerAccessToken}`} readOnly dir="ltr" className="text-left text-xs" />
+                      <Button variant="secondary" onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/owner/${(project as any).ownerAccessToken}`);
+                        toast({ title: "تم نسخ الرابط" });
+                      }}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>اسم الرابط المخصص (اختياري)</Label>
+                  <div className="flex items-center gap-2" dir="ltr">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">/owner/</span>
+                    <Input
+                      value={ownerSlug}
+                      onChange={(e) => setOwnerSlug(e.target.value)}
+                      placeholder="مثال: project-name"
+                      dir="ltr"
+                      className="text-left"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">اتركه فارغاً لإنشاء رابط تلقائي</p>
+                </div>
                 <div className="space-y-2">
                   <Label>كلمة مرور للرابط</Label>
                   <Input
@@ -150,11 +184,11 @@ export default function ProjectDetails() {
                 </div>
                 {!ownerLink ? (
                   <Button onClick={handleGenerateLink} disabled={generateLink.isPending} className="w-full">
-                    إنشاء الرابط
+                    {(project as any)?.ownerAccessToken ? "تحديث الرابط" : "إنشاء الرابط"}
                   </Button>
                 ) : (
                   <div className="space-y-2 mt-4">
-                    <Label>الرابط الخاص بالمالك</Label>
+                    <Label>الرابط الجديد</Label>
                     <div className="flex gap-2">
                       <Input value={ownerLink} readOnly dir="ltr" className="text-left text-xs" />
                       <Button variant="secondary" onClick={copyLink}>

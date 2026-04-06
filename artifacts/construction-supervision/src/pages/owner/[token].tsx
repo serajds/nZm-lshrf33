@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { useVerifyOwnerAccess } from "@workspace/api-client-react";
 import type { OwnerProjectView, Activity, Report, ProjectExtension, ProjectSuspension } from "@workspace/api-client-react";
@@ -25,6 +25,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
 } from "recharts";
 
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
+
 export default function OwnerPortal() {
   const params = useParams();
   const token = params.token ?? "";
@@ -33,7 +35,30 @@ export default function OwnerPortal() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [ownerData, setOwnerData] = useState<OwnerProjectView | null>(null);
+  const [isRestoring, setIsRestoring] = useState(true);
   const verifyAccess = useVerifyOwnerAccess();
+
+  useEffect(() => {
+    const savedJwt = sessionStorage.getItem(`owner_jwt_${token}`);
+    if (!savedJwt) {
+      setIsRestoring(false);
+      return;
+    }
+    fetch(`${API_BASE}/owner/${token}/data`, {
+      headers: { Authorization: `Bearer ${savedJwt}` }
+    })
+      .then(r => {
+        if (!r.ok) throw new Error("expired");
+        return r.json();
+      })
+      .then(data => {
+        setOwnerData(data as OwnerProjectView);
+      })
+      .catch(() => {
+        sessionStorage.removeItem(`owner_jwt_${token}`);
+      })
+      .finally(() => setIsRestoring(false));
+  }, [token]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +68,10 @@ export default function OwnerPortal() {
       const res = await verifyAccess.mutateAsync({
         data: { token, password }
       });
+      const jwt = (res as any).ownerJwt;
+      if (jwt) {
+        sessionStorage.setItem(`owner_jwt_${token}`, jwt);
+      }
       setOwnerData(res);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "الرجاء التأكد من كلمة المرور";
@@ -53,6 +82,17 @@ export default function OwnerPortal() {
       });
     }
   };
+
+  if (isRestoring) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" dir="rtl">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+          <span className="text-muted-foreground text-sm">جاري التحميل...</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!ownerData) {
     return (

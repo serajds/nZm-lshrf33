@@ -3,47 +3,13 @@ import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectExtensionsTable, projectSuspensionsTable, companiesTable } from "@workspace/db";
 import { eq, count, desc } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
+import jwt from "jsonwebtoken";
 import { calcPlannedProgressForProject, calcDelayDays } from "../lib/progress";
 
 const router: IRouter = Router();
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
 
-router.get("/owner/access/:token", async (req, res): Promise<void> => {
-  const { token } = req.params;
-
-  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.ownerAccessToken, token));
-  if (!project) {
-    res.status(404).json({ error: "الرابط غير صحيح أو منتهي الصلاحية" });
-    return;
-  }
-
-  res.json({ exists: true, projectName: project.name });
-});
-
-router.post("/owner/verify", async (req, res): Promise<void> => {
-  const { token, password } = req.body;
-
-  if (!token || !password) {
-    res.status(400).json({ error: "الرمز وكلمة المرور مطلوبان" });
-    return;
-  }
-
-  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.ownerAccessToken, token));
-  if (!project) {
-    res.status(404).json({ error: "الرابط غير صحيح" });
-    return;
-  }
-
-  if (!project.ownerAccessPassword) {
-    res.status(401).json({ error: "كلمة المرور غير محددة" });
-    return;
-  }
-
-  const valid = await comparePassword(password, project.ownerAccessPassword);
-  if (!valid) {
-    res.status(401).json({ error: "كلمة المرور غير صحيحة" });
-    return;
-  }
-
+async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect) {
   const activities = await db.select().from(activitiesTable)
     .where(eq(activitiesTable.projectId, project.id))
     .orderBy(activitiesTable.sortOrder);
@@ -60,7 +26,6 @@ router.post("/owner/verify", async (req, res): Promise<void> => {
     .where(eq(projectSuspensionsTable.projectId, project.id))
     .orderBy(projectSuspensionsTable.startDate);
 
-  // Build summary
   const today = new Date();
   const startDate = new Date(project.startDate);
   const endDate = new Date(project.expectedEndDate);
@@ -112,7 +77,85 @@ router.post("/owner/verify", async (req, res): Promise<void> => {
 
   const { ownerAccessPassword: _, ...safeProject } = project;
 
-  res.json({ project: safeProject, activities, reports, extensions, suspensions, summary, companyLogos });
+  return { project: safeProject, activities, reports, extensions, suspensions, summary, companyLogos };
+}
+
+router.get("/owner/access/:token", async (req, res): Promise<void> => {
+  const { token } = req.params;
+
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.ownerAccessToken, token));
+  if (!project) {
+    res.status(404).json({ error: "الرابط غير صحيح أو منتهي الصلاحية" });
+    return;
+  }
+
+  res.json({ exists: true, projectName: project.name });
+});
+
+router.post("/owner/verify", async (req, res): Promise<void> => {
+  const { token, password } = req.body;
+
+  if (!token || !password) {
+    res.status(400).json({ error: "الرمز وكلمة المرور مطلوبان" });
+    return;
+  }
+
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.ownerAccessToken, token));
+  if (!project) {
+    res.status(404).json({ error: "الرابط غير صحيح" });
+    return;
+  }
+
+  if (!project.ownerAccessPassword) {
+    res.status(401).json({ error: "كلمة المرور غير محددة" });
+    return;
+  }
+
+  const valid = await comparePassword(password, project.ownerAccessPassword);
+  if (!valid) {
+    res.status(401).json({ error: "كلمة المرور غير صحيحة" });
+    return;
+  }
+
+  const ownerJwt = jwt.sign(
+    { ownerToken: token, projectId: project.id },
+    JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+
+  const data = await buildOwnerProjectData(project);
+
+  res.json({ ...data, ownerJwt });
+});
+
+router.get("/owner/:token/data", async (req, res): Promise<void> => {
+  const { token } = req.params;
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "غير مصرح" });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET) as { ownerToken: string; projectId: number };
+    if (decoded.ownerToken !== token) {
+      res.status(401).json({ error: "غير مصرح" });
+      return;
+    }
+  } catch {
+    res.status(401).json({ error: "انتهت صلاحية الجلسة" });
+    return;
+  }
+
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.ownerAccessToken, token));
+  if (!project) {
+    res.status(404).json({ error: "الرابط غير صحيح" });
+    return;
+  }
+
+  const data = await buildOwnerProjectData(project);
+  res.json(data);
 });
 
 export default router;
