@@ -223,9 +223,6 @@ export default function ProjectReports() {
               </SelectContent>
             </Select>
           </div>
-          <Button variant="outline" className="gap-2" onClick={handleExportPdf}>
-            <Download className="h-4 w-4" /> تصدير PDF
-          </Button>
         </div>
         
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
