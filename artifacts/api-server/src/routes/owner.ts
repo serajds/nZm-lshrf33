@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectExtensionsTable, projectSuspensionsTable, companiesTable } from "@workspace/db";
-import { eq, count } from "drizzle-orm";
+import { eq, count, desc } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
 import { calcPlannedProgressForProject, calcDelayDays } from "../lib/progress";
 
@@ -50,7 +50,7 @@ router.post("/owner/verify", async (req, res): Promise<void> => {
 
   const reports = await db.select().from(reportsTable)
     .where(eq(reportsTable.projectId, project.id))
-    .orderBy(reportsTable.reportDate);
+    .orderBy(desc(reportsTable.reportDate));
 
   const extensions = await db.select().from(projectExtensionsTable)
     .where(eq(projectExtensionsTable.projectId, project.id))
