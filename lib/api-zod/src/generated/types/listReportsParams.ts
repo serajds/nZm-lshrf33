@@ -11,4 +11,12 @@ export type ListReportsParams = {
    * @nullable
    */
   type?: string | null;
+  /**
+   * @nullable
+   */
+  dateFrom?: string | null;
+  /**
+   * @nullable
+   */
+  dateTo?: string | null;
 };

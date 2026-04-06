@@ -45,6 +45,9 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Owner portal (`/owner/:token`) — public password-protected read-only view with JWT session persistence (avoids re-entering password on refresh)
 - Custom slug support for owner links (e.g., `/owner/project-name` instead of UUID); validated server-side (alphanumeric + hyphens/underscores, 2-60 chars, reserved words blocked)
 - Excel import for activities: upload an xlsx file with 3 columns (name, start date, end date) to bulk-create activities. Includes downloadable template. Uses `xlsx` library on both server (parsing) and client (template generation). Strict calendar date validation rejects impossible dates like Feb 31.
+- Excel export for activities: downloads all project activities as an xlsx file with name, dates, progress, and status columns (Arabic headers)
+- Dashboard delay notifications: shows top 10 delayed activities (past planned end date, not completed) with project name, delay days, and progress; clicking navigates to the project's activities page
+- Reports date range filter: filter reports by `dateFrom`/`dateTo` query params (YYYY-MM-DD validated) in addition to existing type filter
 - Role-based access control with project-level permissions
 - User management with roles: admin, project_manager, engineer, owner
 - Project team management (add/remove members, assign project roles)

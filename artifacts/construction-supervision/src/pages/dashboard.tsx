@@ -148,6 +148,12 @@ export default function Dashboard() {
   const delayedActs       = (summary as any)?.delayedActivities    ?? 0;
   const inProgressActs    = (summary as any)?.inProgressActivities ?? 0;
 
+  type DelayedActivity = {
+    id: number; name: string; projectId: number; projectName: string;
+    plannedEndDate: string; actualProgress: number; delayDays: number;
+  };
+  const delayedActivitiesList: DelayedActivity[] = (summary as any)?.delayedActivitiesList ?? [];
+
   const actPct = (n: number) => totalActivities > 0 ? Math.round(n / totalActivities * 100) : 0;
 
   return (
@@ -323,6 +329,46 @@ export default function Dashboard() {
                     <div className={`h-full ${a.color} rounded-full transition-all`} style={{ width: `${a.pct}%` }} />
                   </div>
                 </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Delayed Activities Alert ── */}
+      {delayedActivitiesList.length > 0 && (
+        <Card className="shadow-sm border-red-200 bg-red-50/30">
+          <CardHeader className="pb-2 flex flex-row items-center gap-2">
+            <div className="p-2 rounded-lg bg-red-100">
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+            </div>
+            <div>
+              <CardTitle className="text-sm font-semibold text-red-700">
+                تنبيهات التأخر — {delayedActivitiesList.length} نشاط متأخر
+              </CardTitle>
+              <p className="text-xs text-red-500/80 mt-0.5">أنشطة تجاوزت موعد انتهائها المخطط</p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {delayedActivitiesList.map(a => (
+                <Link key={`${a.projectId}-${a.id}`} href={`/projects/${a.projectId}/activities`} className="block group">
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-white border border-red-100 hover:border-red-300 transition-all">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate group-hover:text-red-700 transition-colors">{a.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{a.projectName}</p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-left">
+                        <span className="text-xs text-muted-foreground">الإنجاز</span>
+                        <p className="text-sm font-bold tabular-nums">{a.actualProgress}%</p>
+                      </div>
+                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold bg-red-100 text-red-700 border border-red-200 whitespace-nowrap">
+                        <Clock className="h-3 w-3" /> متأخر {a.delayDays} يوم
+                      </span>
+                    </div>
+                  </div>
+                </Link>
               ))}
             </div>
           </CardContent>

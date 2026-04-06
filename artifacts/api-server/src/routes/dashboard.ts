@@ -106,6 +106,7 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
   };
 
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   const allActivities = allProjects.length > 0
     ? await db.select().from(activitiesTable).where(
@@ -119,6 +120,31 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
     list.push(a);
     activitiesByProject.set(a.projectId, list);
   }
+
+  const projectNameMap = new Map(allProjects.map(p => [p.id, p.name]));
+  const delayedActivitiesList = allActivities
+    .filter(a => {
+      if (a.status === "completed") return false;
+      const plannedEnd = new Date(a.plannedEndDate);
+      plannedEnd.setHours(0, 0, 0, 0);
+      return today > plannedEnd;
+    })
+    .map(a => {
+      const plannedEnd = new Date(a.plannedEndDate);
+      plannedEnd.setHours(0, 0, 0, 0);
+      const delayDays = Math.ceil((today.getTime() - plannedEnd.getTime()) / 86400000);
+      return {
+        id: a.id,
+        name: a.name,
+        projectId: a.projectId,
+        projectName: projectNameMap.get(a.projectId) ?? "",
+        plannedEndDate: a.plannedEndDate,
+        actualProgress: a.actualProgress,
+        delayDays,
+      };
+    })
+    .sort((a, b) => b.delayDays - a.delayDays)
+    .slice(0, 10);
 
   const projectsWithPlanned = allProjects.map(p => {
     const startDate = new Date(p.startDate);
@@ -156,6 +182,7 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
     recentProjects,
     allProjects: projectsWithPlanned,
     recentReports,
+    delayedActivitiesList,
   });
 });
 
