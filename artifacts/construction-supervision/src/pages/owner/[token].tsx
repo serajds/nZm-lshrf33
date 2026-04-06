@@ -17,7 +17,7 @@ import {
   Building2, MapPin, HardHat, Lock, Eye,
   CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock, PauseCircle, Printer,
   BarChart3, Activity as ActivityIcon, TrendingUp, TrendingDown, FileText,
-  CalendarDays, Gauge, Timer, ShieldCheck, CircleDot
+  CalendarDays, Gauge, Timer, ShieldCheck, CircleDot, ChevronLeft, ChevronRight, X, ZoomIn
 } from "lucide-react";
 import { previewReport } from "@/lib/report-pdf";
 
@@ -37,6 +37,7 @@ export default function OwnerPortal() {
   const [ownerData, setOwnerData] = useState<OwnerProjectView | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
   const [projectInfo, setProjectInfo] = useState<{ projectName: string; companyLogos: Record<string, { name: string; logoUrl: string | null }> } | null>(null);
+  const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
   const verifyAccess = useVerifyOwnerAccess();
 
   useEffect(() => {
@@ -246,6 +247,11 @@ export default function OwnerPortal() {
   const progressDiff = (sm.overallProgress ?? 0) - (sm.plannedProgress ?? 0);
 
   const ownerJwt = sessionStorage.getItem(`owner_jwt_${token}`) ?? "";
+
+  const openLightbox = (images: string[], index: number) => setLightbox({ images, index });
+  const closeLightbox = () => setLightbox(null);
+  const lightboxPrev = () => setLightbox(prev => prev ? { ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length } : null);
+  const lightboxNext = () => setLightbox(prev => prev ? { ...prev, index: (prev.index + 1) % prev.images.length } : null);
 
   const handlePreview = (report: Report) => {
     const apiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -774,42 +780,38 @@ export default function OwnerPortal() {
                         </div>
                       )}
 
-                      {report.imageUrls && report.imageUrls.length > 0 && (
-                        <div className="pt-3 border-t">
-                          <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
-                            <Eye className="h-4 w-4 text-muted-foreground" />
-                            صور الموقع
-                            <span className="text-xs text-muted-foreground font-normal">({report.imageUrls.length} صورة)</span>
-                          </h4>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                            {report.imageUrls.map((url, idx) => {
-                              const authUrl = url.includes("?") ? url : `${url}?token=${ownerJwt}`;
-                              return (
-                                <a
+                      {report.imageUrls && report.imageUrls.length > 0 && (() => {
+                        const authImages = report.imageUrls!.map(url => url.includes("?") ? url : `${url}?token=${ownerJwt}`);
+                        return (
+                          <div className="pt-3 border-t">
+                            <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                              <ZoomIn className="h-4 w-4 text-muted-foreground" />
+                              صور الموقع
+                              <span className="text-xs text-muted-foreground font-normal">({report.imageUrls!.length} صورة)</span>
+                            </h4>
+                            <div className="flex flex-wrap gap-2">
+                              {authImages.map((authUrl, idx) => (
+                                <button
                                   key={idx}
-                                  href={authUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="group relative aspect-square rounded-lg overflow-hidden border bg-muted cursor-pointer"
+                                  type="button"
+                                  onClick={() => openLightbox(authImages, idx)}
+                                  className="group relative w-16 h-16 rounded-lg overflow-hidden border bg-muted cursor-pointer flex-shrink-0 hover:ring-2 hover:ring-emerald-500 transition-all"
                                 >
                                   <img
                                     src={authUrl}
                                     alt={`صورة ${idx + 1}`}
-                                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                    className="w-full h-full object-cover"
                                     loading="lazy"
                                   />
-                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                    <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                                    <ZoomIn className="h-3.5 w-3.5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                                   </div>
-                                  <div className="absolute bottom-1.5 right-1.5 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">
-                                    {idx + 1}/{report.imageUrls!.length}
-                                  </div>
-                                </a>
-                              );
-                            })}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </CardContent>
                   </Card>
                 ))
@@ -1008,6 +1010,65 @@ export default function OwnerPortal() {
           <p className="text-xs text-muted-foreground">نظام الإشراف الهندسي — بوابة المالك (قراءة فقط)</p>
         </div>
       </div>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          onClick={closeLightbox}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") closeLightbox();
+            if (e.key === "ArrowLeft") lightboxNext();
+            if (e.key === "ArrowRight") lightboxPrev();
+          }}
+          tabIndex={0}
+          ref={(el) => el?.focus()}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`عرض صورة ${lightbox.index + 1} من ${lightbox.images.length}`}
+        >
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); closeLightbox(); }}
+            className="absolute top-4 left-4 z-10 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+            aria-label="إغلاق"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="absolute top-4 right-4 z-10 bg-white/10 text-white text-sm px-3 py-1.5 rounded-full">
+            {lightbox.index + 1} / {lightbox.images.length}
+          </div>
+
+          {lightbox.images.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); lightboxPrev(); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                aria-label="الصورة السابقة"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); lightboxNext(); }}
+                className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                aria-label="الصورة التالية"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+            </>
+          )}
+
+          <div className="max-w-[90vw] max-h-[85vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={lightbox.images[lightbox.index]}
+              alt={`صورة ${lightbox.index + 1}`}
+              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
