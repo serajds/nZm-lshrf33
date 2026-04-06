@@ -344,10 +344,13 @@ export default function OwnerPortal() {
               </div>
               <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-white/70">
                 <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {project.location}</span>
-                <span className="flex items-center gap-1.5"><HardHat className="h-4 w-4" /> {project.contractor}</span>
-                {project.supervisorEntity && (
-                  <span className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4" /> {project.supervisorEntity}</span>
+                {(project as any).ownerEntity && (
+                  <span className="flex items-center gap-1.5"><Building2 className="h-4 w-4" /> الجهة المالكة: {(project as any).ownerEntity}</span>
                 )}
+                {project.supervisorEntity && (
+                  <span className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4" /> جهة الإشراف: {project.supervisorEntity}</span>
+                )}
+                <span className="flex items-center gap-1.5"><HardHat className="h-4 w-4" /> المقاول: {project.contractor}</span>
               </div>
             </div>
             <div className="flex items-center gap-3">
