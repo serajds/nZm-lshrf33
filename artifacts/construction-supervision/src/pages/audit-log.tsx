@@ -136,9 +136,9 @@ export default function AuditLogPage() {
                       return (
                         <TableRow key={log.id}>
                           <TableCell className="text-sm whitespace-nowrap tabular-nums">
-                            {new Date(log.createdAt).toLocaleDateString("ar-SA")}
+                            {new Date(log.createdAt).toLocaleDateString("en-GB")}
                             <span className="text-muted-foreground mr-1 text-xs">
-                              {new Date(log.createdAt).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" })}
+                              {new Date(log.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
                             </span>
                           </TableCell>
                           <TableCell className="text-sm">{log.userName ?? "—"}</TableCell>
@@ -180,8 +180,8 @@ export default function AuditLogPage() {
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>{log.userName ?? "—"}</span>
                         <span className="tabular-nums">
-                          {new Date(log.createdAt).toLocaleDateString("ar-SA")}{" "}
-                          {new Date(log.createdAt).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" })}
+                          {new Date(log.createdAt).toLocaleDateString("en-GB")}{" "}
+                          {new Date(log.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
                         </span>
                       </div>
                       {log.projectName && (
