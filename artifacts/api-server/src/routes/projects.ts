@@ -41,11 +41,12 @@ router.get("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> 
     conditions.push(eq(projectsTable.status, status as "active" | "completed" | "delayed" | "suspended"));
   }
   if (search) {
+    const escaped = search.replace(/[%_\\]/g, (c: string) => `\\${c}`);
     conditions.push(
       or(
-        ilike(projectsTable.name, `%${search}%`),
-        ilike(projectsTable.location, `%${search}%`),
-        ilike(projectsTable.contractor, `%${search}%`)
+        ilike(projectsTable.name, `%${escaped}%`),
+        ilike(projectsTable.location, `%${escaped}%`),
+        ilike(projectsTable.contractor, `%${escaped}%`)
       )
     );
   }
