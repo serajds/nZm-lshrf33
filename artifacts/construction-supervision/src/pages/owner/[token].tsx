@@ -15,8 +15,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { 
   Building2, MapPin, HardHat, Lock, 
-  CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock, PauseCircle
+  CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock, PauseCircle, Download, Loader2
 } from "lucide-react";
+import { generateReportPDF } from "@/lib/report-pdf";
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -29,6 +30,7 @@ export default function OwnerPortal() {
   
   const [password, setPassword] = useState("");
   const [ownerData, setOwnerData] = useState<OwnerProjectView | null>(null);
+  const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
   
   const verifyAccess = useVerifyOwnerAccess();
 
@@ -97,6 +99,33 @@ export default function OwnerPortal() {
   const totalExtDays = extensions.reduce((s, e) => s + e.daysAdded, 0);
   const latestExt = extensions.length > 0 ? extensions[extensions.length - 1] : null;
   const totalSuspDays = (suspensions as ProjectSuspension[]).reduce((s, x) => s + x.calendarDays, 0);
+
+  const handleDownloadPDF = async (report: Report) => {
+    setPdfLoadingId(report.id);
+    try {
+      await generateReportPDF({
+        projectName: project.name,
+        ownerEntity: project.ownerEntity,
+        contractor: project.contractor,
+        supervisorEntity: project.supervisorEntity,
+        location: project.location,
+        reportType: report.type,
+        reportDate: report.reportDate,
+        periodStart: report.periodStart,
+        periodEnd: report.periodEnd,
+        progressPercentage: report.progressPercentage,
+        workDescription: report.workDescription,
+        technicalNotes: report.technicalNotes,
+        recommendations: report.recommendations,
+        imageUrls: report.imageUrls ?? [],
+        reportId: report.id,
+      });
+    } catch {
+      toast({ variant: "destructive", title: "فشل تصدير PDF" });
+    } finally {
+      setPdfLoadingId(null);
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -204,13 +233,27 @@ export default function OwnerPortal() {
                 reports.map((report: Report) => (
                   <Card key={report.id}>
                     <CardHeader className="pb-3 border-b">
-                      <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-center gap-3">
                         <CardTitle className="text-lg">
                           تقرير {report.type === 'weekly' ? 'أسبوعي' : 'شهري'} 
                         </CardTitle>
-                        <span className="text-sm text-muted-foreground font-mono">
-                          {fmtDate(report.reportDate)}
-                        </span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-sm text-muted-foreground font-mono">
+                            {fmtDate(report.reportDate)}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-blue-600 hover:bg-blue-50 hover:text-blue-700 border-blue-200 gap-1"
+                            onClick={() => handleDownloadPDF(report)}
+                            disabled={pdfLoadingId === report.id}
+                          >
+                            {pdfLoadingId === report.id
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Download className="h-3.5 w-3.5" />}
+                            PDF
+                          </Button>
+                        </div>
                       </div>
                     </CardHeader>
                     <CardContent className="pt-4 space-y-4">

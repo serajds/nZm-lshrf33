@@ -27,6 +27,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, Download, ImagePlus, X, Loader2 } from "lucide-react";
+import { generateReportPDF } from "@/lib/report-pdf";
 
 const reportSchema = z.object({
   type: z.enum(["weekly", "monthly"]),
@@ -53,6 +54,7 @@ export default function ProjectReports() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
@@ -108,22 +110,36 @@ export default function ProjectReports() {
     }
   };
 
-  const handleExportPdf = async () => {
-    const token = localStorage.getItem("auth_token");
-    const response = await fetch(`/api/projects/${projectId}/reports/export-pdf`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) {
-      toast({ variant: "destructive", title: "فشل تصدير التقرير" });
-      return;
+  const handleDownloadPDF = async (report: Report) => {
+    if (!project) return;
+    setPdfLoadingId(report.id);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const imageUrls = (report.imageUrls ?? []).map((url) =>
+        url.includes("?") ? url : `${url}?token=${token}`
+      );
+      await generateReportPDF({
+        projectName: project.name,
+        ownerEntity: project.ownerEntity,
+        contractor: project.contractor,
+        supervisorEntity: project.supervisorEntity,
+        location: project.location,
+        reportType: report.type,
+        reportDate: report.reportDate,
+        periodStart: report.periodStart,
+        periodEnd: report.periodEnd,
+        progressPercentage: report.progressPercentage,
+        workDescription: report.workDescription,
+        technicalNotes: report.technicalNotes,
+        recommendations: report.recommendations,
+        imageUrls,
+        reportId: report.id,
+      });
+    } catch {
+      toast({ variant: "destructive", title: "فشل تصدير PDF" });
+    } finally {
+      setPdfLoadingId(null);
     }
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `project-${projectId}-reports.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -434,6 +450,19 @@ export default function ProjectReports() {
                       </div>
                     </div>
                     <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 hover:bg-blue-50 hover:text-blue-700 border-blue-200"
+                        onClick={() => handleDownloadPDF(report)}
+                        disabled={pdfLoadingId === report.id}
+                        title="تحميل PDF"
+                      >
+                        {pdfLoadingId === report.id
+                          ? <Loader2 className="h-4 w-4 animate-spin ml-1" />
+                          : <Download className="h-4 w-4 ml-1" />}
+                        PDF
+                      </Button>
                       <Button variant="outline" size="sm" onClick={() => handleEdit(report)}>
                         <Edit2 className="h-4 w-4 ml-1" /> تعديل
                       </Button>
