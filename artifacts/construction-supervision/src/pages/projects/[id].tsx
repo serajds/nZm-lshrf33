@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useGetProject,
   useGetProjectSummary,
@@ -40,11 +40,13 @@ export default function ProjectDetails() {
   const [, setLocation] = useLocation();
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [ownerPassword, setOwnerPassword] = useState("");
   const [ownerSlug, setOwnerSlug] = useState("");
   const [ownerLink, setOwnerLink] = useState("");
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
+  const [showRegenerateForm, setShowRegenerateForm] = useState(false);
 
   const { data: project, isLoading: isProjectLoading } = useGetProject(projectId, {
     query: { enabled: !!projectId }
@@ -81,6 +83,7 @@ export default function ProjectDetails() {
       }
       const res = await generateLink.mutateAsync({ projectId, data: payload });
       setOwnerLink(`${window.location.origin}/owner/${res.token}`);
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
       toast({ title: "تم إنشاء الرابط بنجاح" });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "فشل إنشاء الرابط";
@@ -133,7 +136,15 @@ export default function ProjectDetails() {
         </div>
 
         <div className="shrink-0">
-          <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
+          <Dialog open={isLinkDialogOpen} onOpenChange={(open) => {
+            setIsLinkDialogOpen(open);
+            if (open) {
+              setOwnerLink("");
+              setOwnerPassword("");
+              setShowRegenerateForm(!(project as any)?.ownerAccessToken);
+              setOwnerSlug((project as any)?.ownerAccessToken || "");
+            }
+          }}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
                 <Share2 className="h-4 w-4" />
@@ -142,12 +153,12 @@ export default function ProjectDetails() {
             </DialogTrigger>
             <DialogContent dir="rtl">
               <DialogHeader>
-                <DialogTitle>{(project as any)?.ownerAccessToken && !ownerLink ? "رابط المالك" : "إنشاء رابط للمالك"}</DialogTitle>
+                <DialogTitle>{(project as any)?.ownerAccessToken ? "رابط المالك" : "إنشاء رابط للمالك"}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
                 {(project as any)?.ownerAccessToken && !ownerLink && (
-                  <div className="space-y-2 p-3 rounded-lg bg-muted/50 border">
-                    <Label className="text-sm font-medium">الرابط الحالي</Label>
+                  <div className="space-y-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
+                    <Label className="text-sm font-medium text-emerald-700 dark:text-emerald-400">الرابط الحالي</Label>
                     <div className="flex gap-2">
                       <Input value={`${window.location.origin}/owner/${(project as any).ownerAccessToken}`} readOnly dir="ltr" className="text-left text-xs" />
                       <Button variant="secondary" onClick={() => {
@@ -157,38 +168,13 @@ export default function ProjectDetails() {
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
+                    <p className="text-xs text-muted-foreground">شارك هذا الرابط وكلمة المرور مع المالك</p>
                   </div>
                 )}
-                <div className="space-y-2">
-                  <Label>اسم الرابط المخصص (اختياري)</Label>
-                  <div className="flex items-center gap-2" dir="ltr">
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">/owner/</span>
-                    <Input
-                      value={ownerSlug}
-                      onChange={(e) => setOwnerSlug(e.target.value)}
-                      placeholder="مثال: project-name"
-                      dir="ltr"
-                      className="text-left"
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">اتركه فارغاً لإنشاء رابط تلقائي</p>
-                </div>
-                <div className="space-y-2">
-                  <Label>كلمة مرور للرابط</Label>
-                  <Input
-                    type="password"
-                    value={ownerPassword}
-                    onChange={(e) => setOwnerPassword(e.target.value)}
-                    placeholder="أدخل كلمة مرور لحماية الرابط"
-                  />
-                </div>
-                {!ownerLink ? (
-                  <Button onClick={handleGenerateLink} disabled={generateLink.isPending} className="w-full">
-                    {(project as any)?.ownerAccessToken ? "تحديث الرابط" : "إنشاء الرابط"}
-                  </Button>
-                ) : (
-                  <div className="space-y-2 mt-4">
-                    <Label>الرابط الجديد</Label>
+
+                {ownerLink && (
+                  <div className="space-y-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
+                    <Label className="text-sm font-medium text-emerald-700 dark:text-emerald-400">الرابط الجديد</Label>
                     <div className="flex gap-2">
                       <Input value={ownerLink} readOnly dir="ltr" className="text-left text-xs" />
                       <Button variant="secondary" onClick={copyLink}>
@@ -199,6 +185,48 @@ export default function ProjectDetails() {
                       شارك هذا الرابط وكلمة المرور مع المالك لمتابعة حالة المشروع.
                     </p>
                   </div>
+                )}
+
+                {!ownerLink && (project as any)?.ownerAccessToken && !showRegenerateForm && (
+                  <Button variant="outline" onClick={() => setShowRegenerateForm(true)} className="w-full text-muted-foreground">
+                    تغيير الرابط أو كلمة المرور
+                  </Button>
+                )}
+
+                {(showRegenerateForm && !ownerLink) && (
+                  <>
+                    {(project as any)?.ownerAccessToken && (
+                      <div className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                        <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">تنبيه: إنشاء رابط جديد سيلغي الرابط الحالي ولن يعمل بعد ذلك.</p>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label>اسم الرابط المخصص (اختياري)</Label>
+                      <div className="flex items-center gap-2" dir="ltr">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">/owner/</span>
+                        <Input
+                          value={ownerSlug}
+                          onChange={(e) => setOwnerSlug(e.target.value)}
+                          placeholder="مثال: project-name"
+                          dir="ltr"
+                          className="text-left"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">اتركه فارغاً لإنشاء رابط تلقائي</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>كلمة مرور للرابط</Label>
+                      <Input
+                        type="password"
+                        value={ownerPassword}
+                        onChange={(e) => setOwnerPassword(e.target.value)}
+                        placeholder="أدخل كلمة مرور لحماية الرابط"
+                      />
+                    </div>
+                    <Button onClick={handleGenerateLink} disabled={generateLink.isPending} className="w-full">
+                      {(project as any)?.ownerAccessToken ? "تحديث الرابط" : "إنشاء الرابط"}
+                    </Button>
+                  </>
                 )}
               </div>
             </DialogContent>
