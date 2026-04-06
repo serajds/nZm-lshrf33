@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { reportsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -36,8 +36,14 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), a
     return;
   }
 
+  const [maxResult] = await db.select({ maxNum: sql<number>`COALESCE(MAX(${reportsTable.reportNumber}), 0)` })
+    .from(reportsTable)
+    .where(eq(reportsTable.projectId, projectId));
+  const nextNumber = (maxResult?.maxNum ?? 0) + 1;
+
   const [report] = await db.insert(reportsTable).values({
     projectId,
+    reportNumber: nextNumber,
     type,
     reportDate,
     periodStart,

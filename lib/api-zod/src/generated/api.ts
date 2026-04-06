@@ -289,6 +289,7 @@ export const ListReportsQueryParams = zod.object({
 export const ListReportsResponseItem = zod.object({
   id: zod.number(),
   projectId: zod.number(),
+  reportNumber: zod.number().optional(),
   type: zod.enum(["weekly", "monthly"]),
   reportDate: zod.coerce.date(),
   periodStart: zod.coerce.date(),
@@ -334,6 +335,7 @@ export const GetReportParams = zod.object({
 export const GetReportResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
+  reportNumber: zod.number().optional(),
   type: zod.enum(["weekly", "monthly"]),
   reportDate: zod.coerce.date(),
   periodStart: zod.coerce.date(),
@@ -373,6 +375,7 @@ export const UpdateReportBody = zod.object({
 export const UpdateReportResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
+  reportNumber: zod.number().optional(),
   type: zod.enum(["weekly", "monthly"]),
   reportDate: zod.coerce.date(),
   periodStart: zod.coerce.date(),
@@ -625,6 +628,7 @@ export const VerifyOwnerAccessResponse = zod.object({
     zod.object({
       id: zod.number(),
       projectId: zod.number(),
+      reportNumber: zod.number().optional(),
       type: zod.enum(["weekly", "monthly"]),
       reportDate: zod.coerce.date(),
       periodStart: zod.coerce.date(),

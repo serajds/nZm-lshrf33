@@ -1219,6 +1219,8 @@ components:
           type: integer
         projectId:
           type: integer
+        reportNumber:
+          type: integer
         type:
           type: string
           enum: [weekly, monthly]

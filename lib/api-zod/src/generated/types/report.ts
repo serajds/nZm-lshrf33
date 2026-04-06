@@ -10,6 +10,7 @@ import type { ReportType } from "./reportType";
 export interface Report {
   id: number;
   projectId: number;
+  reportNumber?: number;
   type: ReportType;
   reportDate: Date;
   periodStart: Date;

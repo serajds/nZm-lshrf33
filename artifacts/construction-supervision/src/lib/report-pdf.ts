@@ -26,6 +26,7 @@ export interface ReportPdfData {
   recommendations?: string | null;
   imageUrls?: string[];
   reportId: number;
+  reportNumber?: number;
   activities?: ActivityForReport[];
   contractValue?: number | null;
   startDate?: string | null;
@@ -399,7 +400,7 @@ ${(() => {
   <div class="info-cell"><div class="info-lbl">تاريخ التقرير</div><div class="info-val">${fmtDate(data.reportDate)}</div></div>
   <div class="info-cell"><div class="info-lbl">بداية الفترة</div><div class="info-val">${fmtDate(data.periodStart)}</div></div>
   <div class="info-cell"><div class="info-lbl">نهاية الفترة</div><div class="info-val">${fmtDate(data.periodEnd)}</div></div>
-  <div class="info-cell"><div class="info-lbl">رقم التقرير</div><div class="info-val">#${data.reportId}</div></div>
+  <div class="info-cell"><div class="info-lbl">رقم التقرير</div><div class="info-val">#${data.reportNumber ?? data.reportId}</div></div>
 </div>
 
 <!-- DUAL PROGRESS -->
@@ -508,7 +509,7 @@ ${imagesHTML}
 <!-- FOOTER -->
 <div class="footer avoid-break">
   <span>تم إنشاؤه آلياً بواسطة نظام الإشراف الهندسي — ${fmtDate(new Date().toISOString())}</span>
-  <span style="font-weight:700;color:#64748b">تقرير ${typeLbl} #${data.reportId}</span>
+  <span style="font-weight:700;color:#64748b">تقرير ${typeLbl} #${data.reportNumber ?? data.reportId}</span>
 </div>
 
 </body>

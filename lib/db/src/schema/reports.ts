@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 export const reportsTable = pgTable("reports", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
+  reportNumber: integer("report_number").notNull().default(0),
   type: text("type", { enum: ["weekly", "monthly"] }).notNull(),
   reportDate: date("report_date").notNull(),
   periodStart: date("period_start").notNull(),
