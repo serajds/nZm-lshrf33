@@ -21,12 +21,13 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, ArrowRight, Calendar, FileText, Umbrella, Wind, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, ArrowRight, Calendar, FileText, Umbrella, Wind, AlertTriangle, CalendarClock } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { fmtDate } from "@/lib/utils";
 
 function authFetch(url: string, init?: RequestInit) {
@@ -50,6 +51,7 @@ const suspensionSchema = z.object({
   documentRef: z.string().optional(),
   approvedBy: z.string().optional(),
   notes: z.string().optional(),
+  shiftDates: z.boolean().default(true),
 });
 
 type SuspensionFormValues = z.infer<typeof suspensionSchema>;
@@ -127,9 +129,9 @@ export default function ProjectSuspensions() {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       if (data?.activitiesShifted) {
-        toast({ title: "تم إضافة التوقف وتحديث الجدول الزمني", description: "تم ترحيل تواريخ الأنشطة وتاريخ نهاية المشروع تلقائياً" });
+        toast({ title: "تم إضافة التوقف وترحيل الجدول الزمني", description: "تم تأجيل تواريخ الأنشطة اللاحقة وتاريخ نهاية المشروع" });
       } else {
-        toast({ title: "تم إضافة التوقف بنجاح", description: "لم يتم تعديل الجدول الزمني (توقف من المقاول)" });
+        toast({ title: "تم إضافة التوقف بنجاح", description: "لم يتم ترحيل الجدول الزمني" });
       }
       setIsDialogOpen(false);
       form.reset();
@@ -147,7 +149,7 @@ export default function ProjectSuspensions() {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/activities`] });
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      toast({ title: "تم حذف التوقف", description: "تم إعادة ضبط تواريخ الأنشطة وتاريخ نهاية المشروع إن كان التوقف رسمياً" });
+      toast({ title: "تم حذف التوقف", description: "تم إعادة التواريخ لوضعها السابق إن كان الترحيل مفعّلاً" });
       setDeletingId(null);
     },
     onError: () => toast({ variant: "destructive", title: "فشل حذف التوقف" }),
@@ -164,12 +166,15 @@ export default function ProjectSuspensions() {
       documentRef: "",
       approvedBy: "",
       notes: "",
+      shiftDates: true,
     },
   });
 
   const watchedStart = form.watch("startDate");
   const watchedEnd = form.watch("endDate");
+  const watchedType = form.watch("type");
   const previewDays = computeDays(watchedStart, watchedEnd);
+  const isShiftable = watchedType !== "contractor_delay";
 
   const holidayDays = suspensions
     .filter(s => s.type === "official_holiday")
@@ -333,6 +338,31 @@ export default function ProjectSuspensions() {
                     </div>
                   )}
 
+                  {isShiftable && (
+                    <FormField control={form.control} name="shiftDates" render={({ field }) => (
+                      <FormItem className="rounded-md border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800 px-3 py-3">
+                        <div className="flex items-start gap-3">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                              className="mt-0.5"
+                            />
+                          </FormControl>
+                          <div className="space-y-1 leading-none flex-1">
+                            <FormLabel className="text-sm font-medium cursor-pointer flex items-center gap-1.5">
+                              <CalendarClock className="h-4 w-4 text-blue-600" />
+                              ترحيل الجدول الزمني
+                            </FormLabel>
+                            <p className="text-xs text-muted-foreground">
+                              تأجيل تواريخ الأنشطة اللاحقة وتاريخ نهاية المشروع بعدد أيام التوقف
+                            </p>
+                          </div>
+                        </div>
+                      </FormItem>
+                    )} />
+                  )}
+
                   <FormField control={form.control} name="reason" render={({ field }) => (
                     <FormItem>
                       <FormLabel>السبب / الوصف</FormLabel>
@@ -388,6 +418,7 @@ export default function ProjectSuspensions() {
                 <TableHead className="text-right">من</TableHead>
                 <TableHead className="text-right">إلى</TableHead>
                 <TableHead className="text-center">الأيام</TableHead>
+                <TableHead className="text-center">الترحيل</TableHead>
                 <TableHead className="text-right">الوثيقة</TableHead>
                 <TableHead className="text-right">الجهة الموثِّقة</TableHead>
                 <TableHead className="text-left"></TableHead>
@@ -396,11 +427,11 @@ export default function ProjectSuspensions() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">جاري التحميل...</TableCell>
+                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">جاري التحميل...</TableCell>
                 </TableRow>
               ) : suspensions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
                     <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
                     لا توجد توقفات مسجّلة — كل التأخير يُحسب على المقاول
                   </TableCell>
@@ -417,6 +448,15 @@ export default function ProjectSuspensions() {
                     <TableCell className="text-sm font-mono tabular-nums">{fmtDate(s.endDate)}</TableCell>
                     <TableCell className="text-center">
                       <Badge variant="secondary" className="font-bold">{s.calendarDays}</Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {"datesShifted" in s && s.datesShifted ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-blue-600">
+                          <CalendarClock className="h-3 w-3" /> نعم
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">لا</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm font-mono">
                       {s.documentRef ?? <span className="text-muted-foreground">—</span>}

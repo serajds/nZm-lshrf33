@@ -55,7 +55,7 @@ router.get("/projects/:projectId/suspensions", requireProjectAccess("projectId")
 router.post("/projects/:projectId/suspensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId, 10);
 
-  const { type, title, startDate, endDate, reason, documentRef, approvedBy, notes } = req.body;
+  const { type, title, startDate, endDate, reason, documentRef, approvedBy, notes, shiftDates } = req.body;
 
   if (!type || !title || !startDate || !endDate) {
     res.status(400).json({ error: "النوع والعنوان وتاريخ البداية والنهاية مطلوبة" });
@@ -82,6 +82,8 @@ router.post("/projects/:projectId/suspensions", requireProjectAccess("projectId"
 
   const calendarDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
+  const shouldShift = shiftDates === true && (RECALC_TYPES as readonly string[]).includes(type);
+
   const [suspension] = await db.insert(projectSuspensionsTable).values({
     projectId,
     type: type as typeof ALL_TYPES[number],
@@ -93,17 +95,17 @@ router.post("/projects/:projectId/suspensions", requireProjectAccess("projectId"
     documentRef: documentRef ?? null,
     approvedBy: approvedBy ?? null,
     notes: notes ?? null,
+    datesShifted: shouldShift,
   }).returning();
 
-  // Shift activity planned dates and project end date for legitimate suspensions (not contractor delay)
-  if ((RECALC_TYPES as readonly string[]).includes(type)) {
+  if (shouldShift) {
     await shiftActivities(projectId, startDate, calendarDays, 1);
     await db.update(projectsTable)
       .set({ expectedEndDate: addDays(project.expectedEndDate, calendarDays) })
       .where(eq(projectsTable.id, projectId));
   }
 
-  res.status(201).json({ ...suspension, activitiesShifted: (RECALC_TYPES as readonly string[]).includes(type) });
+  res.status(201).json({ ...suspension, activitiesShifted: shouldShift });
 });
 
 router.delete("/projects/:projectId/suspensions/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
@@ -124,8 +126,7 @@ router.delete("/projects/:projectId/suspensions/:id", requireProjectAccess("proj
   await db.delete(projectSuspensionsTable)
     .where(and(eq(projectSuspensionsTable.id, id), eq(projectSuspensionsTable.projectId, projectId)));
 
-  // Reverse activity shift and project end date for legitimate suspensions (not contractor delay)
-  if ((RECALC_TYPES as readonly string[]).includes(susp.type)) {
+  if (susp.datesShifted) {
     await shiftActivities(projectId, susp.startDate, susp.calendarDays, -1);
     if (project) {
       await db.update(projectsTable)

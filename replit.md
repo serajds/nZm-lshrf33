@@ -77,6 +77,15 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - DB table: `companies` (id, name, type, logo_url, phone, email, address)
 - DB columns added to `projects`: `owner_company_id`, `contractor_company_id`, `supervisor_company_id`
 
+### Suspensions & Date Shifting
+- Suspensions tab on each project tracks stoppages (official holidays, force majeure, contractor delays)
+- `shiftDates` flag on create: optionally shifts activity planned dates and project `expectedEndDate` forward by suspension duration
+- Checkbox UI appears only for non-contractor-delay types (official_holiday, force_majeure)
+- `datesShifted` boolean column in DB tracks whether shifting was applied; used during delete to decide whether to reverse
+- Delete reversal: if `datesShifted=true`, shifts dates back by the same number of days
+- Table shows "الترحيل" (shift) column with yes/no indicator per suspension
+- Route: `GET/POST/DELETE /api/projects/:id/suspensions`
+
 ### API Routes
 - `POST /api/auth/login` — login
 - `GET /api/auth/me` — current user (requires Bearer token)
