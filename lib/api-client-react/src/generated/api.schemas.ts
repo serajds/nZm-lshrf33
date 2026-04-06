@@ -26,6 +26,7 @@ export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
 export const UserRole = {
   admin: "admin",
+  project_manager: "project_manager",
   engineer: "engineer",
   owner: "owner",
 } as const;
@@ -49,6 +50,7 @@ export type CreateUserBodyRole =
 
 export const CreateUserBodyRole = {
   admin: "admin",
+  project_manager: "project_manager",
   engineer: "engineer",
   owner: "owner",
 } as const;
@@ -59,6 +61,51 @@ export interface CreateUserBody {
   fullName: string;
   email: string;
   role: CreateUserBodyRole;
+}
+
+export type ProjectMemberRole =
+  (typeof ProjectMemberRole)[keyof typeof ProjectMemberRole];
+
+export const ProjectMemberRole = {
+  project_manager: "project_manager",
+  engineer: "engineer",
+} as const;
+
+export interface ProjectMember {
+  id: number;
+  projectId: number;
+  userId: number;
+  role: ProjectMemberRole;
+  createdAt: string;
+  fullName: string;
+  username: string;
+  email: string;
+  userRole: string;
+}
+
+export type AddProjectMemberBodyRole =
+  (typeof AddProjectMemberBodyRole)[keyof typeof AddProjectMemberBodyRole];
+
+export const AddProjectMemberBodyRole = {
+  project_manager: "project_manager",
+  engineer: "engineer",
+} as const;
+
+export interface AddProjectMemberBody {
+  userId: number;
+  role: AddProjectMemberBodyRole;
+}
+
+export type UpdateProjectMemberBodyRole =
+  (typeof UpdateProjectMemberBodyRole)[keyof typeof UpdateProjectMemberBodyRole];
+
+export const UpdateProjectMemberBodyRole = {
+  project_manager: "project_manager",
+  engineer: "engineer",
+} as const;
+
+export interface UpdateProjectMemberBody {
+  role: UpdateProjectMemberBodyRole;
 }
 
 export interface UpdateUserBody {
@@ -366,46 +413,14 @@ export interface ProjectSummary {
   totalDays: number;
   daysRemaining: number;
   delayDays: number;
-  suspensionDays: number;
-  netDelayDays: number;
   reportsCount: number;
   filesCount: number;
-}
-
-export interface ProjectSuspension {
-  id: number;
-  projectId: number;
-  type: "official_holiday" | "force_majeure" | "contractor_delay";
-  title: string;
-  startDate: string;
-  endDate: string;
-  calendarDays: number;
-  reason: string | null;
-  documentRef: string | null;
-  approvedBy: string | null;
-  notes: string | null;
-  createdAt: string;
-}
-
-export interface ProjectExtension {
-  id: number;
-  projectId: number;
-  extensionDate: string;
-  daysAdded: number;
-  newEndDate: string;
-  reason: string | null;
-  documentRef: string | null;
-  approvedBy: string | null;
-  notes: string | null;
-  createdAt: string;
 }
 
 export interface OwnerProjectView {
   project: Project;
   activities: Activity[];
   reports: Report[];
-  extensions: ProjectExtension[];
-  suspensions: ProjectSuspension[];
   summary: ProjectSummary;
 }
 

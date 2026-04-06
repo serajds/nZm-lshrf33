@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable } from "@workspace/db";
-import { eq, ilike, or, sql } from "drizzle-orm";
-import { requireEngineerOrAdmin } from "../middlewares/auth";
+import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable } from "@workspace/db";
+import { eq, ilike, or, sql, inArray } from "drizzle-orm";
+import { requireEngineerOrAdmin, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
 
@@ -10,10 +10,30 @@ const router: IRouter = Router();
 
 router.get("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> => {
   const { status, search } = req.query;
+  const userRole = req.user?.role;
+  const userId = req.user?.userId;
 
-  let query = db.select().from(projectsTable);
+  let projectIds: number[] | null = null;
+
+  if (userRole !== "admin" && userId) {
+    const memberships = await db.select({ projectId: projectMembersTable.projectId })
+      .from(projectMembersTable)
+      .where(eq(projectMembersTable.userId, userId));
+
+    projectIds = memberships.map(m => m.projectId);
+
+    if (projectIds.length === 0) {
+      res.json([]);
+      return;
+    }
+  }
 
   const conditions = [];
+
+  if (projectIds) {
+    conditions.push(inArray(projectsTable.id, projectIds));
+  }
+
   if (status && typeof status === "string") {
     conditions.push(eq(projectsTable.status, status as "active" | "completed" | "delayed" | "suspended"));
   }
@@ -27,14 +47,20 @@ router.get("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> 
     );
   }
 
+  let query = db.select().from(projectsTable);
+
   const projects = conditions.length > 0
-    ? await query.where(conditions.length === 1 ? conditions[0] : sql`${conditions[0]} AND ${conditions[1]}`)
+    ? await query.where(
+        conditions.length === 1
+          ? conditions[0]
+          : sql`${conditions.map((c, i) => i === 0 ? c : sql` AND ${c}`).reduce((acc, curr) => sql`${acc}${curr}`)}`
+      )
     : await query.orderBy(projectsTable.createdAt);
 
   res.json(projects);
 });
 
-router.post("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
   const {
     name, location, ownerEntity, supervisorEntity, contractor,
     startDate, expectedEndDate, status,
@@ -59,7 +85,7 @@ router.post("/projects", requireEngineerOrAdmin, async (req, res): Promise<void>
   res.status(201).json(project);
 });
 
-router.get("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.get("/projects/:id", requireProjectAccess("id"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
@@ -72,7 +98,7 @@ router.get("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise<vo
   res.json(project);
 });
 
-router.get("/projects/:id/company-logos", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.get("/projects/:id/company-logos", requireProjectAccess("id"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
@@ -93,9 +119,14 @@ router.get("/projects/:id/company-logos", requireEngineerOrAdmin, async (req, re
   res.json(logos);
 });
 
-router.patch("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
+
+  if (req.user?.role !== "admin" && req.projectRole !== "project_manager") {
+    res.status(403).json({ error: "يجب أن تكون مدير المشروع أو مدير النظام لتعديل المشروع" });
+    return;
+  }
 
   const updateData: Record<string, unknown> = {};
   const allowed = ["name", "location", "ownerEntity", "supervisorEntity", "contractor", "startDate", "expectedEndDate", "actualEndDate", "status", "overallProgress", "ownerCompanyId", "contractorCompanyId", "supervisorCompanyId"];
@@ -126,7 +157,7 @@ router.patch("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise<
   res.json(project);
 });
 
-router.delete("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.delete("/projects/:id", requireAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
@@ -136,6 +167,7 @@ router.delete("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise
     return;
   }
 
+  await db.delete(projectMembersTable).where(eq(projectMembersTable.projectId, id));
   await db.delete(activitiesTable).where(eq(activitiesTable.projectId, id));
   await db.delete(reportsTable).where(eq(reportsTable.projectId, id));
   await db.delete(projectFilesTable).where(eq(projectFilesTable.projectId, id));
@@ -144,9 +176,15 @@ router.delete("/projects/:id", requireEngineerOrAdmin, async (req, res): Promise
   res.sendStatus(204);
 });
 
-router.post("/projects/:projectId/generate-owner-link", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.post("/projects/:projectId/generate-owner-link", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
+
+  if (req.user?.role !== "admin" && req.projectRole !== "project_manager") {
+    res.status(403).json({ error: "يجب أن تكون مدير المشروع أو مدير النظام" });
+    return;
+  }
+
   const { password } = req.body;
 
   if (!password) {

@@ -12,12 +12,14 @@ import pdfRouter from "./pdf";
 import extensionsRouter from "./extensions";
 import suspensionsRouter from "./suspensions";
 import companiesRouter from "./companies";
+import projectMembersRouter from "./project-members";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
 router.use(projectsRouter);
+router.use(projectMembersRouter);
 router.use(activitiesRouter);
 router.use(extensionsRouter);
 router.use(suspensionsRouter);

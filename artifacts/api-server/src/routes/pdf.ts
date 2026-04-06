@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable, projectSuspensionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireEngineerOrAdmin } from "../middlewares/auth";
+import { requireProjectAccess } from "../middlewares/auth";
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
@@ -77,7 +77,7 @@ function ensurePage(doc: InstanceType<typeof PDFDocument>, neededHeight: number)
 // ─────────────────────────────────────────────
 // Route
 // ─────────────────────────────────────────────
-router.get("/projects/:projectId/reports/export-pdf", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 

@@ -6,12 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CreateUserBodyRole =
-  (typeof CreateUserBodyRole)[keyof typeof CreateUserBodyRole];
+export type AddProjectMemberBodyRole =
+  (typeof AddProjectMemberBodyRole)[keyof typeof AddProjectMemberBodyRole];
 
-export const CreateUserBodyRole = {
-  admin: "admin",
+export const AddProjectMemberBodyRole = {
   project_manager: "project_manager",
   engineer: "engineer",
-  owner: "owner",
 } as const;

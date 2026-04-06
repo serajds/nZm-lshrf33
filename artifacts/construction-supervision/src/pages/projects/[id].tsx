@@ -19,6 +19,7 @@ import {
   AlertTriangle, ArrowRight, Share2, Copy, Clock, ArrowBigRightDash, PauseCircle
 } from "lucide-react";
 import { ProjectNav } from "@/components/project-nav";
+import { ProjectMembers } from "@/components/project-members";
 
 interface ProjectExtension {
   id: number;
@@ -308,6 +309,9 @@ export default function ProjectDetails() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Team Members */}
+        <ProjectMembers projectId={project.id} />
       </div>
     </div>
   );

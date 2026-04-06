@@ -234,7 +234,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 className="text-[11px] truncate"
                 style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.5 }}
               >
-                {user?.role === "admin" ? "مدير النظام" : "مهندس مشرف"}
+                {user?.role === "admin" ? "مدير النظام" : user?.role === "project_manager" ? "مدير مشروع" : "مهندس مشرف"}
               </p>
             </div>
             <button

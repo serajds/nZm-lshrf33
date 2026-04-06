@@ -1,50 +1,98 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectSuspensionsTable } from "@workspace/db";
-import { eq, count, avg, sql, desc } from "drizzle-orm";
-import { requireEngineerOrAdmin } from "../middlewares/auth";
+import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectSuspensionsTable, projectMembersTable } from "@workspace/db";
+import { eq, count, avg, sql, desc, inArray } from "drizzle-orm";
+import { requireEngineerOrAdmin, requireProjectAccess } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
 router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Promise<void> => {
-  const [totals] = await db.select({
-    total: count(),
-    avgProgress: avg(projectsTable.overallProgress),
-  }).from(projectsTable);
+  const userRole = _req.user?.role;
+  const userId = _req.user?.userId;
 
-  const statusCounts = await db.select({
-    status: projectsTable.status,
-    cnt: count(),
-  }).from(projectsTable).groupBy(projectsTable.status);
+  let projectFilter: number[] | null = null;
+  if (userRole !== "admin" && userId) {
+    const memberships = await db.select({ projectId: projectMembersTable.projectId })
+      .from(projectMembersTable)
+      .where(eq(projectMembersTable.userId, userId));
+    projectFilter = memberships.map(m => m.projectId);
+  }
 
-  const [reportCount] = await db.select({ count: count() }).from(reportsTable);
+  const baseProjectQuery = projectFilter && projectFilter.length > 0
+    ? db.select().from(projectsTable).where(inArray(projectsTable.id, projectFilter))
+    : projectFilter && projectFilter.length === 0
+    ? null
+    : db.select().from(projectsTable);
 
-  const activityCounts = await db.select({
-    status: activitiesTable.status,
-    cnt: count(),
-  }).from(activitiesTable).groupBy(activitiesTable.status);
+  if (!baseProjectQuery) {
+    res.json({
+      totalProjects: 0, activeProjects: 0, completedProjects: 0,
+      delayedProjects: 0, suspendedProjects: 0, averageProgress: 0,
+      totalReports: 0, totalActivities: 0, completedActivities: 0,
+      delayedActivities: 0, inProgressActivities: 0,
+      recentProjects: [], allProjects: [], recentReports: [],
+    });
+    return;
+  }
 
-  const recentProjects = await db.select().from(projectsTable)
-    .orderBy(sql`${projectsTable.updatedAt} DESC`)
-    .limit(8);
+  const [totals] = projectFilter
+    ? await db.select({
+        total: count(),
+        avgProgress: avg(projectsTable.overallProgress),
+      }).from(projectsTable).where(inArray(projectsTable.id, projectFilter))
+    : await db.select({
+        total: count(),
+        avgProgress: avg(projectsTable.overallProgress),
+      }).from(projectsTable);
 
-  const allProjects = await db.select({
-    id: projectsTable.id,
-    name: projectsTable.name,
-    overallProgress: projectsTable.overallProgress,
-    status: projectsTable.status,
-    startDate: projectsTable.startDate,
-    expectedEndDate: projectsTable.expectedEndDate,
-    ownerEntity: projectsTable.ownerEntity,
-  }).from(projectsTable).orderBy(desc(projectsTable.overallProgress));
+  const statusCounts = projectFilter
+    ? await db.select({ status: projectsTable.status, cnt: count() })
+        .from(projectsTable).where(inArray(projectsTable.id, projectFilter)).groupBy(projectsTable.status)
+    : await db.select({ status: projectsTable.status, cnt: count() })
+        .from(projectsTable).groupBy(projectsTable.status);
 
-  const recentReports = await db.select({
-    id: reportsTable.id,
-    projectId: reportsTable.projectId,
-    type: reportsTable.type,
-    reportDate: reportsTable.reportDate,
-    progressPercentage: reportsTable.progressPercentage,
-  }).from(reportsTable).orderBy(desc(reportsTable.reportDate)).limit(5);
+  const [reportCount] = projectFilter
+    ? await db.select({ count: count() }).from(reportsTable).where(inArray(reportsTable.projectId, projectFilter))
+    : await db.select({ count: count() }).from(reportsTable);
+
+  const activityCounts = projectFilter
+    ? await db.select({ status: activitiesTable.status, cnt: count() })
+        .from(activitiesTable).where(inArray(activitiesTable.projectId, projectFilter)).groupBy(activitiesTable.status)
+    : await db.select({ status: activitiesTable.status, cnt: count() })
+        .from(activitiesTable).groupBy(activitiesTable.status);
+
+  const recentProjects = projectFilter
+    ? await db.select().from(projectsTable)
+        .where(inArray(projectsTable.id, projectFilter))
+        .orderBy(sql`${projectsTable.updatedAt} DESC`).limit(8)
+    : await db.select().from(projectsTable)
+        .orderBy(sql`${projectsTable.updatedAt} DESC`).limit(8);
+
+  const allProjects = projectFilter
+    ? await db.select({
+        id: projectsTable.id, name: projectsTable.name,
+        overallProgress: projectsTable.overallProgress, status: projectsTable.status,
+        startDate: projectsTable.startDate, expectedEndDate: projectsTable.expectedEndDate,
+        ownerEntity: projectsTable.ownerEntity,
+      }).from(projectsTable).where(inArray(projectsTable.id, projectFilter)).orderBy(desc(projectsTable.overallProgress))
+    : await db.select({
+        id: projectsTable.id, name: projectsTable.name,
+        overallProgress: projectsTable.overallProgress, status: projectsTable.status,
+        startDate: projectsTable.startDate, expectedEndDate: projectsTable.expectedEndDate,
+        ownerEntity: projectsTable.ownerEntity,
+      }).from(projectsTable).orderBy(desc(projectsTable.overallProgress));
+
+  const recentReports = projectFilter
+    ? await db.select({
+        id: reportsTable.id, projectId: reportsTable.projectId,
+        type: reportsTable.type, reportDate: reportsTable.reportDate,
+        progressPercentage: reportsTable.progressPercentage,
+      }).from(reportsTable).where(inArray(reportsTable.projectId, projectFilter)).orderBy(desc(reportsTable.reportDate)).limit(5)
+    : await db.select({
+        id: reportsTable.id, projectId: reportsTable.projectId,
+        type: reportsTable.type, reportDate: reportsTable.reportDate,
+        progressPercentage: reportsTable.progressPercentage,
+      }).from(reportsTable).orderBy(desc(reportsTable.reportDate)).limit(5);
 
   const countByStatus = (status: string) => {
     const found = statusCounts.find(s => s.status === status);
@@ -96,7 +144,7 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
   });
 });
 
-router.get("/projects/:projectId/summary", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -140,7 +188,7 @@ router.get("/projects/:projectId/summary", requireEngineerOrAdmin, async (req, r
   });
 });
 
-router.get("/projects/:projectId/deviation", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 

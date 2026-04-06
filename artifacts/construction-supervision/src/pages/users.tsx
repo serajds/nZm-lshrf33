@@ -7,10 +7,9 @@ import {
   getListUsersQueryKey
 } from "@workspace/api-client-react";
 import type { User } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
@@ -33,7 +32,7 @@ const userSchema = z.object({
   fullName: z.string().min(1, "الاسم الكامل مطلوب"),
   username: z.string().min(1, "اسم المستخدم مطلوب"),
   email: z.string().email("البريد الإلكتروني غير صالح"),
-  role: z.enum(["admin", "engineer", "owner"]),
+  role: z.enum(["admin", "project_manager", "engineer", "owner"]),
   password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل").optional().or(z.literal('')),
 });
 
@@ -73,7 +72,7 @@ export default function Users() {
       fullName: u.fullName,
       username: u.username,
       email: u.email,
-      role: u.role as "admin" | "engineer" | "owner",
+      role: u.role as "admin" | "project_manager" | "engineer" | "owner",
       password: "",
     });
     setIsDialogOpen(true);
@@ -118,6 +117,7 @@ export default function Users() {
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'admin': return <Badge className="bg-destructive hover:bg-destructive">مدير نظام</Badge>;
+      case 'project_manager': return <Badge className="bg-amber-600 hover:bg-amber-600">مدير مشروع</Badge>;
       case 'engineer': return <Badge className="bg-primary hover:bg-primary">مهندس</Badge>;
       case 'owner': return <Badge className="bg-emerald-600 hover:bg-emerald-600">مالك</Badge>;
       default: return <Badge variant="outline">{role}</Badge>;
@@ -188,6 +188,7 @@ export default function Users() {
                           </FormControl>
                           <SelectContent dir="rtl">
                             <SelectItem value="admin">مدير نظام</SelectItem>
+                            <SelectItem value="project_manager">مدير مشروع</SelectItem>
                             <SelectItem value="engineer">مهندس</SelectItem>
                             <SelectItem value="owner">مالك</SelectItem>
                           </SelectContent>

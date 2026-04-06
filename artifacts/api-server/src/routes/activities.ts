@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { activitiesTable, projectsTable } from "@workspace/db";
 import { eq, and, avg } from "drizzle-orm";
-import { requireEngineerOrAdmin } from "../middlewares/auth";
+import { requireProjectAccess } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
@@ -20,7 +20,7 @@ async function syncProjectProgress(projectId: number) {
     .where(eq(projectsTable.id, projectId));
 }
 
-router.get("/projects/:projectId/activities", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/activities", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -31,7 +31,7 @@ router.get("/projects/:projectId/activities", requireEngineerOrAdmin, async (req
   res.json(activities);
 });
 
-router.post("/projects/:projectId/activities", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.post("/projects/:projectId/activities", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -63,7 +63,7 @@ router.post("/projects/:projectId/activities", requireEngineerOrAdmin, async (re
   res.status(201).json(activity);
 });
 
-router.patch("/projects/:projectId/activities/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
@@ -98,7 +98,7 @@ router.patch("/projects/:projectId/activities/:id", requireEngineerOrAdmin, asyn
   res.json(activity);
 });
 
-router.delete("/projects/:projectId/activities/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
