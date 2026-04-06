@@ -22,6 +22,10 @@ export interface ReportPdfData {
   imageUrls?: string[];
   reportId: number;
   activities?: ActivityForReport[];
+  contractValue?: number | null;
+  startDate?: string | null;
+  expectedEndDate?: string | null;
+  plannedProgress?: number | null;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -53,9 +57,23 @@ function statusBg(s: string): string {
   return ({ completed: "#f0fdf4", in_progress: "#eff6ff", delayed: "#fef2f2", not_started: "#f9fafb" } as Record<string, string>)[s] ?? "#f9fafb";
 }
 
+function fmtMoney(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return v.toLocaleString("ar-u-nu-latn", { maximumFractionDigits: 0 });
+}
+
+function daysBetween(a: string | null | undefined, b: string | null | undefined): number | null {
+  if (!a || !b) return null;
+  const da = new Date(a), db = new Date(b);
+  if (isNaN(da.getTime()) || isNaN(db.getTime())) return null;
+  return Math.round((db.getTime() - da.getTime()) / 86400000);
+}
+
 function buildPrintHTML(data: ReportPdfData): string {
   const typeLbl = data.reportType === "weekly" ? "أسبوعي" : "شهري";
   const pct = Math.min(100, Math.max(0, data.progressPercentage));
+  const plannedPct = data.plannedProgress != null ? Math.min(100, Math.max(0, data.plannedProgress)) : null;
+  const deviation = plannedPct != null ? pct - plannedPct : null;
 
   const metaItems = [
     data.ownerEntity ? ["جهة المالك", data.ownerEntity] : null,
@@ -70,6 +88,17 @@ function buildPrintHTML(data: ReportPdfData): string {
     ["نهاية الفترة", fmtDate(data.periodEnd)],
     ["رقم التقرير", `#${data.reportId}`],
   ];
+
+  const totalDuration = daysBetween(data.startDate, data.expectedEndDate);
+  const elapsed = daysBetween(data.startDate, data.reportDate);
+  const remaining = daysBetween(data.reportDate, data.expectedEndDate);
+  const elapsedPct = totalDuration && elapsed != null ? Math.round((elapsed / totalDuration) * 100) : null;
+
+  const acts = data.activities ?? [];
+  const completedCount = acts.filter(a => a.status === "completed").length;
+  const inProgressCount = acts.filter(a => a.status === "in_progress").length;
+  const delayedCount = acts.filter(a => a.status === "delayed").length;
+  const notStartedCount = acts.filter(a => a.status === "not_started").length;
 
   const activitiesHTML = data.activities && data.activities.length > 0 ? `
     <div class="card avoid-break">
@@ -360,6 +389,103 @@ function buildPrintHTML(data: ReportPdfData): string {
   .bar-track { height: 6pt; background: #e2e8f0; border-radius: 3pt; overflow: hidden; }
   .bar-fill { height: 100%; border-radius: 3pt; }
 
+  /* ═══════ DUAL PROGRESS ═══════ */
+  .dual-progress {
+    border: 1pt solid #e2e8f0;
+    border-radius: 8pt;
+    padding: 12pt 16pt;
+    margin-bottom: 14pt;
+    background: #fafbfc;
+  }
+  .dp-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10pt;
+  }
+  .dp-title { font-size: 11pt; font-weight: 700; color: #334155; }
+  .dp-dev {
+    font-size: 9pt;
+    font-weight: 700;
+    padding: 2pt 10pt;
+    border-radius: 12pt;
+  }
+  .dp-dev-ok { background: #f0fdf4; color: #16a34a; border: 1pt solid #86efac; }
+  .dp-dev-warn { background: #fef2f2; color: #dc2626; border: 1pt solid #fca5a5; }
+  .dp-bars { display: flex; flex-direction: column; gap: 6pt; }
+  .dp-row { display: flex; align-items: center; gap: 8pt; }
+  .dp-lbl { font-size: 8pt; font-weight: 600; color: #64748b; width: 35pt; }
+  .dp-track { flex: 1; height: 12pt; background: #e2e8f0; border-radius: 6pt; overflow: hidden; }
+  .dp-fill { height: 100%; border-radius: 6pt; }
+  .dp-fill-actual { background: linear-gradient(90deg, #2563eb, #60a5fa); }
+  .dp-fill-planned { background: linear-gradient(90deg, #94a3b8, #cbd5e1); }
+  .dp-val { font-size: 11pt; font-weight: 800; color: #475569; width: 35pt; text-align: left; }
+  .dp-val-actual { color: #2563eb; }
+
+  /* ═══════ STATS GRID ═══════ */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8pt;
+    margin-bottom: 14pt;
+  }
+  .stat-card {
+    display: flex;
+    align-items: center;
+    gap: 8pt;
+    padding: 10pt;
+    border: 1pt solid #e2e8f0;
+    border-radius: 8pt;
+    background: #fff;
+  }
+  .stat-icon {
+    width: 32pt;
+    height: 32pt;
+    border-radius: 8pt;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14pt;
+    flex-shrink: 0;
+  }
+  .stat-body { flex: 1; min-width: 0; }
+  .stat-lbl { font-size: 7pt; color: #64748b; font-weight: 600; }
+  .stat-val { font-size: 11pt; font-weight: 800; color: #1e293b; }
+  .stat-unit { font-size: 8pt; font-weight: 600; color: #94a3b8; }
+
+  /* ═══════ TIMELINE ═══════ */
+  .timeline-box {
+    border: 1pt solid #e2e8f0;
+    border-radius: 8pt;
+    padding: 12pt 16pt;
+    margin-bottom: 14pt;
+    background: #fafbfc;
+  }
+  .tl-header { font-size: 10pt; font-weight: 700; color: #334155; margin-bottom: 8pt; }
+  .tl-dates { display: flex; justify-content: space-between; font-size: 9pt; color: #475569; margin-bottom: 6pt; }
+  .tl-track { height: 10pt; background: #e2e8f0; border-radius: 5pt; position: relative; overflow: visible; margin-bottom: 6pt; }
+  .tl-elapsed { height: 100%; background: linear-gradient(90deg, #1e40af, #3b82f6); border-radius: 5pt 0 0 5pt; }
+  .tl-marker { position: absolute; top: -3pt; transform: translateX(50%); }
+  .tl-dot { width: 8pt; height: 16pt; background: #1e40af; border: 2pt solid #fff; border-radius: 4pt; box-shadow: 0 1pt 3pt rgba(0,0,0,0.3); }
+  .tl-legend { display: flex; gap: 16pt; font-size: 7.5pt; color: #64748b; }
+
+  /* ═══════ ACTIVITY SUMMARY ═══════ */
+  .act-summary {
+    border: 1pt solid #e2e8f0;
+    border-radius: 8pt;
+    padding: 12pt 16pt;
+    margin-bottom: 14pt;
+    background: #fafbfc;
+  }
+  .acts-header { font-size: 10pt; font-weight: 700; color: #334155; margin-bottom: 10pt; }
+  .acts-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8pt; margin-bottom: 10pt; }
+  .acts-item { text-align: center; }
+  .acts-count { font-size: 18pt; font-weight: 800; line-height: 1.2; }
+  .acts-dot { width: 8pt; height: 8pt; border-radius: 50%; margin: 3pt auto; }
+  .acts-lbl { font-size: 7.5pt; color: #64748b; font-weight: 600; }
+  .acts-bar-row { display: flex; height: 8pt; border-radius: 4pt; overflow: hidden; gap: 1pt; }
+  .acts-bar-seg { border-radius: 2pt; }
+
   /* ═══════ IMAGES ═══════ */
   .images-section {
     break-before: page;
@@ -496,16 +622,109 @@ function buildPrintHTML(data: ReportPdfData): string {
     </div>`).join("")}
 </div>
 
-<!-- PROGRESS -->
-<div class="progress-box">
-  <div class="progress-row">
-    <span class="progress-lbl">نسبة الإنجاز التراكمية</span>
-    <span class="progress-num">${pct}%</span>
+<!-- PROGRESS COMPARISON -->
+<div class="dual-progress avoid-break">
+  <div class="dp-header">
+    <span class="dp-title">مقارنة الإنجاز</span>
+    ${deviation != null ? `<span class="dp-dev ${deviation >= 0 ? "dp-dev-ok" : "dp-dev-warn"}">${deviation >= 0 ? "+" : ""}${deviation}% ${deviation >= 0 ? "متقدم" : "متأخر"}</span>` : ""}
   </div>
-  <div class="progress-track"><div class="progress-fill"></div></div>
+  <div class="dp-bars">
+    <div class="dp-row">
+      <span class="dp-lbl">الفعلي</span>
+      <div class="dp-track"><div class="dp-fill dp-fill-actual" style="width:${pct}%"></div></div>
+      <span class="dp-val dp-val-actual">${pct}%</span>
+    </div>
+    ${plannedPct != null ? `<div class="dp-row">
+      <span class="dp-lbl">المخطط</span>
+      <div class="dp-track"><div class="dp-fill dp-fill-planned" style="width:${plannedPct}%"></div></div>
+      <span class="dp-val">${plannedPct}%</span>
+    </div>` : ""}
+  </div>
 </div>
 
-<!-- ACTIVITIES -->
+<!-- QUICK STATS -->
+<div class="stats-grid avoid-break">
+  ${data.contractValue ? `<div class="stat-card">
+    <div class="stat-icon" style="background:#eff6ff;color:#2563eb">💰</div>
+    <div class="stat-body">
+      <div class="stat-lbl">قيمة العقد</div>
+      <div class="stat-val">${fmtMoney(data.contractValue)} <span class="stat-unit">د.ل</span></div>
+    </div>
+  </div>` : ""}
+  ${totalDuration != null ? `<div class="stat-card">
+    <div class="stat-icon" style="background:#f0fdf4;color:#16a34a">📅</div>
+    <div class="stat-body">
+      <div class="stat-lbl">مدة المشروع</div>
+      <div class="stat-val">${totalDuration} <span class="stat-unit">يوم</span></div>
+    </div>
+  </div>` : ""}
+  ${elapsed != null ? `<div class="stat-card">
+    <div class="stat-icon" style="background:#fefce8;color:#ca8a04">⏱️</div>
+    <div class="stat-body">
+      <div class="stat-lbl">المنقضي</div>
+      <div class="stat-val">${elapsed} <span class="stat-unit">يوم${elapsedPct != null ? ` (${elapsedPct}%)` : ""}</span></div>
+    </div>
+  </div>` : ""}
+  ${remaining != null ? `<div class="stat-card">
+    <div class="stat-icon" style="background:${remaining < 180 ? "#fef2f2" : "#f0f9ff"};color:${remaining < 180 ? "#dc2626" : "#0284c7"}">⏳</div>
+    <div class="stat-body">
+      <div class="stat-lbl">المتبقي</div>
+      <div class="stat-val">${remaining} <span class="stat-unit">يوم</span></div>
+    </div>
+  </div>` : ""}
+</div>
+
+<!-- TIMELINE -->
+${data.startDate && data.expectedEndDate ? `<div class="timeline-box avoid-break">
+  <div class="tl-header">الجدول الزمني</div>
+  <div class="tl-dates">
+    <span>بداية: <strong>${fmtDate(data.startDate)}</strong></span>
+    <span>نهاية: <strong>${fmtDate(data.expectedEndDate)}</strong></span>
+  </div>
+  <div class="tl-track">
+    <div class="tl-elapsed" style="width:${elapsedPct ?? 0}%"></div>
+    <div class="tl-marker" style="right:${elapsedPct ?? 0}%"><div class="tl-dot"></div></div>
+  </div>
+  <div class="tl-legend">
+    <span>🟦 الزمن المنقضي (${elapsedPct ?? 0}%)</span>
+    <span>⬜ الزمن المتبقي (${100 - (elapsedPct ?? 0)}%)</span>
+  </div>
+</div>` : ""}
+
+<!-- ACTIVITY SUMMARY -->
+${acts.length > 0 ? `<div class="act-summary avoid-break">
+  <div class="acts-header">ملخص حالة الأنشطة (${acts.length} نشاط)</div>
+  <div class="acts-grid">
+    <div class="acts-item">
+      <div class="acts-count" style="color:#16a34a">${completedCount}</div>
+      <div class="acts-dot" style="background:#16a34a"></div>
+      <div class="acts-lbl">مكتمل</div>
+    </div>
+    <div class="acts-item">
+      <div class="acts-count" style="color:#2563eb">${inProgressCount}</div>
+      <div class="acts-dot" style="background:#2563eb"></div>
+      <div class="acts-lbl">قيد التنفيذ</div>
+    </div>
+    <div class="acts-item">
+      <div class="acts-count" style="color:#dc2626">${delayedCount}</div>
+      <div class="acts-dot" style="background:#dc2626"></div>
+      <div class="acts-lbl">متأخر</div>
+    </div>
+    <div class="acts-item">
+      <div class="acts-count" style="color:#6b7280">${notStartedCount}</div>
+      <div class="acts-dot" style="background:#6b7280"></div>
+      <div class="acts-lbl">لم يبدأ</div>
+    </div>
+  </div>
+  <div class="acts-bar-row">
+    ${completedCount > 0 ? `<div class="acts-bar-seg" style="flex:${completedCount};background:#16a34a" title="مكتمل: ${completedCount}"></div>` : ""}
+    ${inProgressCount > 0 ? `<div class="acts-bar-seg" style="flex:${inProgressCount};background:#2563eb" title="قيد التنفيذ: ${inProgressCount}"></div>` : ""}
+    ${delayedCount > 0 ? `<div class="acts-bar-seg" style="flex:${delayedCount};background:#dc2626" title="متأخر: ${delayedCount}"></div>` : ""}
+    ${notStartedCount > 0 ? `<div class="acts-bar-seg" style="flex:${notStartedCount};background:#d1d5db" title="لم يبدأ: ${notStartedCount}"></div>` : ""}
+  </div>
+</div>` : ""}
+
+<!-- ACTIVITIES TABLE -->
 ${activitiesHTML}
 
 <!-- WORK DESCRIPTION -->

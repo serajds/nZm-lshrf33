@@ -115,6 +115,10 @@ export default function OwnerPortal() {
       recommendations: report.recommendations,
       imageUrls: report.imageUrls ?? [],
       reportId: report.id,
+      contractValue: (project as any).contractValue ?? null,
+      startDate: (project as any).startDate ?? null,
+      expectedEndDate: (project as any).expectedEndDate ?? null,
+      plannedProgress: (project as any).plannedProgress ?? null,
     });
   };
 

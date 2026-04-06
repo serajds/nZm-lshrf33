@@ -150,6 +150,10 @@ export default function ProjectReports() {
       imageUrls,
       reportId: report.id,
       activities: activityList,
+      contractValue: (project as any).contractValue ?? null,
+      startDate: (project as any).startDate ?? null,
+      expectedEndDate: (project as any).expectedEndDate ?? null,
+      plannedProgress: (project as any).plannedProgress ?? null,
     });
   };
 
