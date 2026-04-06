@@ -414,8 +414,8 @@ export default function ProjectActivities() {
                             key={pct}
                             className="absolute bottom-0 text-[10px] font-mono text-muted-foreground"
                             style={{
-                              left: `${pct}%`,
-                              transform: pct === 0 ? "none" : pct === 100 ? "translateX(-100%)" : "translateX(-50%)",
+                              right: `${pct}%`,
+                              transform: pct === 0 ? "none" : pct === 100 ? "translateX(100%)" : "translateX(50%)",
                               whiteSpace: "nowrap",
                             }}
                           >
@@ -457,14 +457,14 @@ export default function ProjectActivities() {
 
                             {/* Grid lines */}
                             {[25, 50, 75].map(p => (
-                              <div key={p} className="absolute inset-y-0 w-px bg-border/50" style={{ left: `${p}%` }} />
+                              <div key={p} className="absolute inset-y-0 w-px bg-border/50" style={{ right: `${p}%` }} />
                             ))}
 
                             {/* Today marker */}
                             {todayPct > 0 && todayPct < 100 && (
                               <div
                                 className="absolute inset-y-0 w-px z-20 pointer-events-none"
-                                style={{ left: `${todayPct}%`, borderLeft: "2px dashed #ef4444", opacity: 0.75 }}
+                                style={{ right: `${todayPct}%`, borderRight: "2px dashed #ef4444", opacity: 0.75 }}
                                 title={`اليوم: ${fmtDate(today.toISOString().split("T")[0])}`}
                               />
                             )}
@@ -488,7 +488,7 @@ export default function ProjectActivities() {
                                 <div
                                   key={susp.id}
                                   className="absolute inset-y-0 z-0"
-                                  style={{ left: `${sl}%`, width: `${sw}%`, background: bg, borderLeft: bd, borderRight: bd }}
+                                  style={{ right: `${sl}%`, width: `${sw}%`, background: bg, borderLeft: bd, borderRight: bd }}
                                   title={`${suspLabel(susp.type)}: ${susp.startDate} ← ${susp.endDate} (${susp.calendarDays} يوم)`}
                                 />
                               );
@@ -505,7 +505,7 @@ export default function ProjectActivities() {
                                   return (
                                     <div
                                       className="absolute h-full rounded-full bg-blue-400/70"
-                                      style={{ left: `${sl}%`, width: `${w}%` }}
+                                      style={{ right: `${sl}%`, width: `${w}%` }}
                                       title={`مخطط: ${fmtDate(a.plannedStartDate)} → ${fmtDate(a.plannedEndDate)}`}
                                     />
                                   );
@@ -524,10 +524,10 @@ export default function ProjectActivities() {
                                       <div
                                         className="absolute h-full rounded-full flex items-center overflow-hidden"
                                         style={{
-                                          left: `${sl}%`,
+                                          right: `${sl}%`,
                                           width: `${w}%`,
                                           backgroundColor: barColor,
-                                          ...(ongoing ? { borderRight: "3px solid white" } : {}),
+                                          ...(ongoing ? { borderLeft: "3px solid white" } : {}),
                                         }}
                                         title={`فعلي: ${fmtDate(a.actualStartDate)} → ${a.actualEndDate ? fmtDate(a.actualEndDate) : "جارٍ"} (${a.actualProgress}%)`}
                                       >
