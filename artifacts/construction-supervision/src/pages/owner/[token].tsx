@@ -109,108 +109,96 @@ export default function OwnerPortal() {
     const hasLogos = !!(ownerLogo?.logoUrl || supervisorLogo?.logoUrl);
 
     return (
-      <div className="min-h-screen relative overflow-hidden bg-[#0a1628]" dir="rtl">
-        <div className="absolute inset-0">
-          <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] rounded-full bg-emerald-600/[0.07] blur-[120px]" />
-          <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-sky-600/[0.05] blur-[120px]" />
-          <div className="absolute top-[40%] left-[30%] w-[300px] h-[300px] rounded-full bg-emerald-400/[0.03] blur-[80px]" />
-        </div>
+      <div className="min-h-screen bg-stone-50" dir="rtl">
+        <div className="min-h-screen flex flex-col">
 
-        <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-10">
-          <div className="flex items-center gap-2 text-white/30 text-xs">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>بوابة آمنة</span>
-          </div>
-        </div>
-
-        <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 py-12">
-
-          {hasLogos && (
-            <div className="flex items-center gap-6 sm:gap-10 mb-8">
-              {[ownerLogo, supervisorLogo].map((logo, i) => {
-                if (!logo?.logoUrl) return null;
-                return (
-                  <div key={i} className="flex flex-col items-center gap-2.5">
-                    <div className="w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] rounded-2xl bg-white/[0.08] backdrop-blur-sm border border-white/[0.08] p-2.5 flex items-center justify-center transition-transform hover:scale-105">
-                      <img src={apiBase + logo.logoUrl} alt={logo.name} className="max-w-full max-h-full object-contain drop-shadow-lg" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                    </div>
-                    <span className="text-[13px] font-semibold text-white/70 max-w-[120px] text-center leading-snug">{logo.name}</span>
-                  </div>
-                );
-              })}
-              {ownerLogo?.logoUrl && supervisorLogo?.logoUrl && (
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 hidden" />
-              )}
-            </div>
-          )}
-
-          {!hasLogos && (
-            <div className="mb-8">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-xl shadow-emerald-500/20">
-                <Building2 className="w-8 h-8 text-white" />
-              </div>
-            </div>
-          )}
-
-          <h1 className="text-3xl sm:text-4xl font-black text-white mb-3 text-center leading-tight">
-            {projectInfo?.projectName || "بوابة المالك"}
-          </h1>
-          <p className="text-white/30 text-sm mb-10">نظام الإشراف الهندسي</p>
-
-          <div className="w-full max-w-[400px]">
-            <div className="rounded-3xl bg-white/[0.06] backdrop-blur-xl border border-white/[0.08] p-6 sm:p-8 shadow-2xl">
-              <div className="text-center mb-6">
-                <h2 className="text-lg font-bold text-white/90 mb-1">تسجيل الدخول</h2>
-                <p className="text-sm text-white/35">أدخل كلمة المرور للوصول لبيانات المشروع</p>
-              </div>
-
-              <form onSubmit={handleLogin} className="space-y-5">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-white/50">كلمة المرور</Label>
-                  <div className="relative group">
-                    <Lock className="absolute right-3.5 top-3.5 h-4 w-4 text-white/25 pointer-events-none transition-colors group-focus-within:text-emerald-400/60" />
-                    <Input
-                      type={showPassword ? "text" : "password"}
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="h-12 pr-10 pl-10 text-right rounded-xl bg-white/[0.06] border-white/[0.08] text-white placeholder:text-white/20 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:bg-white/[0.08] transition-all"
-                      dir="ltr"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute left-3.5 top-3.5 text-white/25 hover:text-white/50 transition-colors"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
-                  </div>
+          <header className="w-full border-b border-stone-200/80 bg-white">
+            <div className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+              {hasLogos ? (
+                <div className="flex items-center gap-8">
+                  {[ownerLogo, supervisorLogo].map((logo, i) => {
+                    if (!logo?.logoUrl) return null;
+                    return (
+                      <div key={i} className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-lg bg-white border border-stone-200 p-1.5 flex items-center justify-center shadow-sm">
+                          <img src={apiBase + logo.logoUrl} alt={logo.name} className="max-w-full max-h-full object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        </div>
+                        <span className="text-sm font-semibold text-stone-700 hidden sm:block">{logo.name}</span>
+                      </div>
+                    );
+                  })}
                 </div>
-                <Button
-                  type="submit"
-                  className="w-full h-12 rounded-xl text-base font-bold bg-gradient-to-l from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-lg shadow-emerald-600/20 transition-all duration-200 hover:shadow-xl hover:shadow-emerald-500/25"
-                  disabled={verifyAccess.isPending}
-                >
-                  {verifyAccess.isPending ? (
-                    <span className="flex items-center gap-2">
-                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      جاري التحقق...
-                    </span>
-                  ) : (
-                    <span className="flex items-center justify-center gap-2">
-                      عرض المشروع
-                      <ArrowBigRightDash className="w-5 h-5 rotate-180" />
-                    </span>
-                  )}
-                </Button>
-              </form>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-600 flex items-center justify-center">
+                    <Building2 className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="text-sm font-semibold text-stone-700">نظام الإشراف الهندسي</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 text-stone-400 text-xs">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>بوابة آمنة</span>
+              </div>
             </div>
-          </div>
+          </header>
 
-          <div className="mt-10 flex items-center gap-3 text-white/15 text-[11px]">
-            <Lock className="w-3 h-3" />
-            <span>جميع البيانات محمية ومشفرة</span>
-          </div>
+          <main className="flex-1 flex items-center justify-center px-4 py-16">
+            <div className="w-full max-w-[420px]">
+
+              <div className="text-center mb-10">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-medium mb-5">
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>بوابة المالك</span>
+                </div>
+                <h1 className="text-[28px] sm:text-[32px] font-extrabold text-stone-900 leading-tight mb-2">
+                  {projectInfo?.projectName || "بوابة المالك"}
+                </h1>
+                <p className="text-stone-400 text-[15px]">الوصول الآمن لمتابعة سير المشروع</p>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-stone-200/80 shadow-sm shadow-stone-200/50 p-7 sm:p-8">
+                <form onSubmit={handleLogin} className="space-y-5">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-stone-600">كلمة المرور</Label>
+                    <div className="relative group">
+                      <Lock className="absolute right-3.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-stone-300 pointer-events-none transition-colors group-focus-within:text-emerald-500" />
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="أدخل كلمة المرور"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="h-12 pr-11 pl-11 text-right rounded-xl border-stone-200 bg-stone-50/50 text-stone-800 placeholder:text-stone-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 focus:bg-white transition-all text-[15px]"
+                        dir="ltr"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-300 hover:text-stone-500 transition-colors"
+                      >
+                        <Eye className="h-[18px] w-[18px]" />
+                      </button>
+                    </div>
+                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full h-12 rounded-xl text-[15px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors duration-150"
+                    disabled={verifyAccess.isPending}
+                  >
+                    {verifyAccess.isPending ? (
+                      <span className="flex items-center gap-2">
+                        <span className="h-4.5 w-4.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        جاري التحقق...
+                      </span>
+                    ) : "الدخول للمشروع"}
+                  </Button>
+                </form>
+              </div>
+
+              <p className="text-center text-stone-300 text-xs mt-8">نظام الإشراف الهندسي — للقراءة فقط</p>
+            </div>
+          </main>
+
         </div>
       </div>
     );
