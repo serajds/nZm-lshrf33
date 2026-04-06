@@ -245,8 +245,13 @@ export default function OwnerPortal() {
   const sm = summary as any;
   const progressDiff = (sm.overallProgress ?? 0) - (sm.plannedProgress ?? 0);
 
+  const ownerJwt = sessionStorage.getItem(`owner_jwt_${token}`) ?? "";
+
   const handlePreview = (report: Report) => {
     const apiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const imageUrls = (report.imageUrls ?? []).map((url) =>
+      url.includes("?") ? url : `${url}?token=${ownerJwt}`
+    );
     previewReport({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -261,7 +266,7 @@ export default function OwnerPortal() {
       workDescription: report.workDescription,
       technicalNotes: report.technicalNotes,
       recommendations: report.recommendations,
-      imageUrls: report.imageUrls ?? [],
+      imageUrls,
       reportId: report.id,
       reportNumber: report.reportNumber,
       contractValue: (project as any).contractValue ?? null,
@@ -766,6 +771,43 @@ export default function OwnerPortal() {
                               <p className="text-sm text-muted-foreground leading-relaxed">{report.recommendations}</p>
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {report.imageUrls && report.imageUrls.length > 0 && (
+                        <div className="pt-3 border-t">
+                          <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                            <Eye className="h-4 w-4 text-muted-foreground" />
+                            صور الموقع
+                            <span className="text-xs text-muted-foreground font-normal">({report.imageUrls.length} صورة)</span>
+                          </h4>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            {report.imageUrls.map((url, idx) => {
+                              const authUrl = url.includes("?") ? url : `${url}?token=${ownerJwt}`;
+                              return (
+                                <a
+                                  key={idx}
+                                  href={authUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group relative aspect-square rounded-lg overflow-hidden border bg-muted cursor-pointer"
+                                >
+                                  <img
+                                    src={authUrl}
+                                    alt={`صورة ${idx + 1}`}
+                                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                    loading="lazy"
+                                  />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                    <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </div>
+                                  <div className="absolute bottom-1.5 right-1.5 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">
+                                    {idx + 1}/{report.imageUrls!.length}
+                                  </div>
+                                </a>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </CardContent>
