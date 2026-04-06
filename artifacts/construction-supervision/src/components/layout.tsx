@@ -135,13 +135,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               className="text-sm font-bold leading-tight truncate"
               style={{ color: "hsl(var(--sidebar-accent-foreground))" }}
             >
-              نظام الإشراف الهندسي
-            </p>
-            <p
-              className="text-[11px] leading-tight truncate mt-0.5"
-              style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.5 }}
-            >
-              إدارة مشاريع البناء
+              إدارة الإشراف والمتابعة
             </p>
           </div>
         )}
@@ -338,7 +332,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               style={{ backgroundColor: "hsl(var(--primary))", opacity: 0.7 }}
             />
             <h1 className="font-semibold text-base text-foreground truncate">
-              {currentPage?.name || "نظام الإشراف الهندسي"}
+              {currentPage?.name || "إدارة الإشراف والمتابعة"}
             </h1>
           </header>
 

@@ -382,7 +382,7 @@ ${(() => {
 <div class="header avoid-break">
   <div class="header-row">
     <div class="header-info">
-      <div class="header-sys">نظام الإشراف الهندسي</div>
+      <div class="header-sys">إدارة الإشراف والمتابعة</div>
       <div class="header-name">${esc(data.projectName)}</div>
       <div class="header-pills">
         ${metaRows.map(([l, v]) => `<span class="pill">${l}: ${esc(v)}</span>`).join("")}
@@ -508,7 +508,7 @@ ${imagesHTML}
 
 <!-- FOOTER -->
 <div class="footer avoid-break">
-  <span>تم إنشاؤه آلياً بواسطة نظام الإشراف الهندسي — ${fmtDate(new Date().toISOString())}</span>
+  <span>تم إنشاؤه آلياً بواسطة إدارة الإشراف والمتابعة — ${fmtDate(new Date().toISOString())}</span>
   <span style="font-weight:700;color:#64748b">تقرير ${typeLbl} #${data.reportNumber ?? data.reportId}</span>
 </div>
 

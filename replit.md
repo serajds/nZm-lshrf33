@@ -26,7 +26,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
 
-## Application: نظام الإشراف الهندسي على مشاريع البناء
+## Application: إدارة الإشراف والمتابعة
 
 A full-stack Arabic RTL engineering supervision system for construction projects.
 

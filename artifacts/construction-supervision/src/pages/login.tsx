@@ -22,7 +22,7 @@ const loginSchema = z.object({
 });
 
 const features = [
-  { icon: Building2, text: "إدارة مشاريع البناء" },
+  { icon: Building2, text: "إدارة الإشراف والمتابعة" },
   { icon: ClipboardList, text: "التقارير الدورية والمرفقات" },
   { icon: BarChart3, text: "لوحة تحليلات شاملة" },
 ];
@@ -71,7 +71,7 @@ export default function Login() {
             className="text-base font-bold"
             style={{ color: "hsl(var(--sidebar-accent-foreground))" }}
           >
-            نظام الإشراف الهندسي
+            إدارة الإشراف والمتابعة
           </span>
         </div>
 
@@ -83,7 +83,7 @@ export default function Login() {
           >
             منصة متكاملة
             <br />
-            لإدارة مشاريع البناء
+            للإشراف والمتابعة
           </h2>
           <p
             className="text-sm leading-relaxed mb-10"
@@ -122,7 +122,7 @@ export default function Login() {
           className="text-xs"
           style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.35 }}
         >
-          &copy; {new Date().getFullYear()} نظام الإشراف الهندسي. جميع الحقوق محفوظة.
+          &copy; {new Date().getFullYear()} إدارة الإشراف والمتابعة. جميع الحقوق محفوظة.
         </p>
       </div>
 
@@ -136,7 +136,7 @@ export default function Login() {
           >
             <HardHat className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-foreground">نظام الإشراف الهندسي</h1>
+          <h1 className="text-xl font-bold text-foreground">إدارة الإشراف والمتابعة</h1>
         </div>
 
         <div className="w-full max-w-sm">
@@ -206,7 +206,7 @@ export default function Login() {
 
           {/* Footer mobile */}
           <p className="mt-10 text-center text-xs text-muted-foreground lg:hidden">
-            &copy; {new Date().getFullYear()} نظام الإشراف الهندسي. جميع الحقوق محفوظة.
+            &copy; {new Date().getFullYear()} إدارة الإشراف والمتابعة. جميع الحقوق محفوظة.
           </p>
         </div>
       </div>

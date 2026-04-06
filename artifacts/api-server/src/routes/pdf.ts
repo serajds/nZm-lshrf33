@@ -111,7 +111,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     size: "A4",
     info: {
       Title: `تقرير المشروع الشامل - ${project.name}`,
-      Author: "نظام الإشراف الهندسي على مشاريع البناء",
+      Author: "إدارة الإشراف والمتابعة",
     },
     bufferPages: true,
   });
@@ -133,7 +133,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   // Top header band
   doc.rect(0, 0, PAGE_W, 90).fill(C.primary);
   setFont(9, C.white);
-  doc.text("نظام الإشراف الهندسي على مشاريع البناء", MARGIN, 18, { width: CONTENT_W, align: "center" });
+  doc.text("إدارة الإشراف والمتابعة", MARGIN, 18, { width: CONTENT_W, align: "center" });
   setFont(18, C.white);
   doc.text("تقرير المشروع الشامل", MARGIN, 38, { width: CONTENT_W, align: "center" });
   setFont(9, "#93c5fd");
@@ -644,7 +644,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   y = sigBoxY + sigBoxH + 30;
   doc.roundedRect(MARGIN, y, CONTENT_W, 50, 4).fill(C.light).stroke(C.border);
   setFont(8, C.textMuted);
-  doc.text("صدر هذا التقرير من نظام الإشراف الهندسي على مشاريع البناء", MARGIN + 8, y + 10, { width: CONTENT_W - 16, align: "center" });
+  doc.text("صدر هذا التقرير من إدارة الإشراف والمتابعة", MARGIN + 8, y + 10, { width: CONTENT_W - 16, align: "center" });
   setFont(9, C.textDark);
   doc.text(`تاريخ الإصدار: ${formatDate(new Date())}  |  المشروع: ${project.name}`, MARGIN + 8, y + 27, { width: CONTENT_W - 16, align: "center" });
 

@@ -101,13 +101,16 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
   const id = parseInt(rawId, 10);
 
   const updateData: Record<string, unknown> = {};
-  const allowed = ["type", "reportDate", "periodStart", "periodEnd", "workDescription", "progressPercentage", "technicalNotes", "recommendations", "imageUrls"];
-
-  for (const key of allowed) {
-    if (req.body[key] !== undefined) {
-      updateData[key] = req.body[key];
-    }
-  }
+  const body = req.body;
+  if (body.type !== undefined) updateData.type = body.type;
+  if (body.reportDate !== undefined) updateData.reportDate = body.reportDate;
+  if (body.periodStart !== undefined) updateData.periodStart = body.periodStart;
+  if (body.periodEnd !== undefined) updateData.periodEnd = body.periodEnd;
+  if (body.workDescription !== undefined) updateData.workDescription = body.workDescription;
+  if (body.progressPercentage !== undefined) updateData.progressPercentage = body.progressPercentage;
+  if (body.technicalNotes !== undefined) updateData.technicalNotes = body.technicalNotes;
+  if (body.recommendations !== undefined) updateData.recommendations = body.recommendations;
+  if (body.imageUrls !== undefined) updateData.imageUrls = body.imageUrls;
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });
