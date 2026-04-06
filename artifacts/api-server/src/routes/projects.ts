@@ -188,14 +188,39 @@ router.post("/projects/:projectId/generate-owner-link", requireProjectAccess("pr
     return;
   }
 
-  const { password } = req.body;
+  const { password, customSlug } = req.body;
 
   if (!password) {
     res.status(400).json({ error: "كلمة المرور مطلوبة" });
     return;
   }
 
-  const token = uuidv4();
+  const RESERVED_SLUGS = ["access", "verify", "data", "api", "admin"];
+  let token: string;
+
+  if (customSlug && typeof customSlug === "string" && customSlug.trim()) {
+    const slug = customSlug.trim();
+    if (!/^[a-zA-Z0-9_-]{2,60}$/.test(slug)) {
+      res.status(400).json({ error: "الرابط يجب أن يحتوي فقط على حروف إنجليزية وأرقام وشرطات (2-60 حرف)" });
+      return;
+    }
+    if (RESERVED_SLUGS.includes(slug.toLowerCase())) {
+      res.status(400).json({ error: "هذا الاسم محجوز، الرجاء اختيار اسم آخر" });
+      return;
+    }
+    token = slug;
+  } else {
+    token = uuidv4();
+  }
+
+  const existing = await db.select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(eq(projectsTable.ownerAccessToken, token));
+  if (existing.length > 0 && existing[0].id !== projectId) {
+    res.status(400).json({ error: "هذا الرابط مستخدم بالفعل في مشروع آخر" });
+    return;
+  }
+
   const hashedPw = await hashPw(password);
 
   const [project] = await db.update(projectsTable)

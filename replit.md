@@ -41,7 +41,8 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Delay calculation uses activity-weighted planned progress (`lib/progress.ts`), falls back to linear time ratio when no activities exist
 - Projects management with CRUD operations
 - Project detail tabs: Summary, Activities (Gantt), Reports, Files, Deviation Analysis
-- Owner portal (`/owner/:token`) — public password-protected read-only view
+- Owner portal (`/owner/:token`) — public password-protected read-only view with JWT session persistence (avoids re-entering password on refresh)
+- Custom slug support for owner links (e.g., `/owner/project-name` instead of UUID); validated server-side (alphanumeric + hyphens/underscores, 2-60 chars, reserved words blocked)
 - Role-based access control with project-level permissions
 - User management with roles: admin, project_manager, engineer, owner
 - Project team management (add/remove members, assign project roles)
@@ -97,8 +98,9 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - `GET/POST /api/projects/:id/reports` — periodic reports
 - `GET/POST /api/projects/:id/files` — file upload/list
 - `POST /api/projects/:id/generate-owner-link` — create owner access token
-- `POST /api/owner/:token/verify` — verify owner password
-- `GET /api/owner/:token/project` — get project for owner
+- `POST /api/owner/verify` — verify owner password (returns ownerJwt for session persistence)
+- `GET /api/owner/:token/data` — get owner project data (JWT authenticated, no password needed)
+- `GET /api/owner/:token/project` — get project for owner (legacy)
 - `GET /api/dashboard/summary` — overall stats
 - `GET /api/dashboard/deviations` — deviation analysis
 - `GET/POST/PATCH/DELETE /api/projects/:id/members` — project team membership (admin/PM)
