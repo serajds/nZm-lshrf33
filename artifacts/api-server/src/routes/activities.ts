@@ -70,13 +70,16 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   const id = parseInt(rawId, 10);
 
   const updateData: Record<string, unknown> = {};
-  const allowed = ["name", "plannedStartDate", "plannedEndDate", "actualStartDate", "actualEndDate", "plannedProgress", "actualProgress", "status", "sortOrder"];
-
-  for (const key of allowed) {
-    if (req.body[key] !== undefined) {
-      updateData[key] = req.body[key];
-    }
-  }
+  const body = req.body;
+  if (body.name !== undefined) updateData.name = body.name;
+  if (body.plannedStartDate !== undefined) updateData.plannedStartDate = body.plannedStartDate;
+  if (body.plannedEndDate !== undefined) updateData.plannedEndDate = body.plannedEndDate;
+  if (body.actualStartDate !== undefined) updateData.actualStartDate = body.actualStartDate;
+  if (body.actualEndDate !== undefined) updateData.actualEndDate = body.actualEndDate;
+  if (body.plannedProgress !== undefined) updateData.plannedProgress = body.plannedProgress;
+  if (body.actualProgress !== undefined) updateData.actualProgress = body.actualProgress;
+  if (body.status !== undefined) updateData.status = body.status;
+  if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder;
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });

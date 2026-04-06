@@ -53,13 +53,10 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(raw, 10);
 
   const updateData: Record<string, unknown> = {};
-  const allowed = ["fullName", "email", "role"];
-
-  for (const key of allowed) {
-    if (req.body[key] !== undefined) {
-      updateData[key] = req.body[key];
-    }
-  }
+  const body = req.body;
+  if (body.fullName !== undefined) updateData.fullName = body.fullName;
+  if (body.email !== undefined) updateData.email = body.email;
+  if (body.role !== undefined) updateData.role = body.role;
 
   if (req.body.password) {
     updateData.passwordHash = await hashPassword(req.body.password);

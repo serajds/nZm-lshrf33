@@ -132,19 +132,21 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
   }
 
   const updateData: Record<string, unknown> = {};
-  const allowed = ["name", "location", "ownerEntity", "supervisorEntity", "contractor", "startDate", "expectedEndDate", "actualEndDate", "status", "overallProgress", "ownerCompanyId", "contractorCompanyId", "supervisorCompanyId"];
-
-  const companyIdFields = ["ownerCompanyId", "contractorCompanyId", "supervisorCompanyId"];
-  for (const key of allowed) {
-    if (req.body[key] !== undefined) {
-      if (companyIdFields.includes(key)) {
-        const val = req.body[key];
-        updateData[key] = val && val !== "none" && !isNaN(Number(val)) ? parseInt(val, 10) : null;
-      } else {
-        updateData[key] = req.body[key];
-      }
-    }
-  }
+  const body = req.body;
+  const parseCompanyId = (val: unknown) => val && val !== "none" && !isNaN(Number(val)) ? parseInt(String(val), 10) : null;
+  if (body.name !== undefined) updateData.name = body.name;
+  if (body.location !== undefined) updateData.location = body.location;
+  if (body.ownerEntity !== undefined) updateData.ownerEntity = body.ownerEntity;
+  if (body.supervisorEntity !== undefined) updateData.supervisorEntity = body.supervisorEntity;
+  if (body.contractor !== undefined) updateData.contractor = body.contractor;
+  if (body.startDate !== undefined) updateData.startDate = body.startDate;
+  if (body.expectedEndDate !== undefined) updateData.expectedEndDate = body.expectedEndDate;
+  if (body.actualEndDate !== undefined) updateData.actualEndDate = body.actualEndDate;
+  if (body.status !== undefined) updateData.status = body.status;
+  if (body.overallProgress !== undefined) updateData.overallProgress = body.overallProgress;
+  if (body.ownerCompanyId !== undefined) updateData.ownerCompanyId = parseCompanyId(body.ownerCompanyId);
+  if (body.contractorCompanyId !== undefined) updateData.contractorCompanyId = parseCompanyId(body.contractorCompanyId);
+  if (body.supervisorCompanyId !== undefined) updateData.supervisorCompanyId = parseCompanyId(body.supervisorCompanyId);
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });

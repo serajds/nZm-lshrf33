@@ -75,13 +75,12 @@ router.patch("/companies/:id", requireEngineerOrAdmin, upload.single("logo"), as
   const id = parseInt(raw, 10);
 
   const updateData: Record<string, unknown> = {};
-  const allowed = ["name", "type", "phone", "email", "address"];
-
-  for (const key of allowed) {
-    if (req.body[key] !== undefined) {
-      updateData[key] = req.body[key] || null;
-    }
-  }
+  const body = req.body;
+  if (body.name !== undefined) updateData.name = body.name || null;
+  if (body.type !== undefined) updateData.type = body.type || null;
+  if (body.phone !== undefined) updateData.phone = body.phone || null;
+  if (body.email !== undefined) updateData.email = body.email || null;
+  if (body.address !== undefined) updateData.address = body.address || null;
 
   if (req.file) {
     updateData.logoUrl = `/api/uploads/${req.file.filename}`;

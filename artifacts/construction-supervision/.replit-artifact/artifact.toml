@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "نظام الإشراف الهندسي"
+title = "إدارة الإشراف والمتابعة"
 version = "1.0.0"
 id = "artifacts/construction-supervision"
 router = "path"
