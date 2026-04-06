@@ -225,6 +225,17 @@ export const CreateActivityBody = zod.object({
 });
 
 /**
+ * @summary Import activities from Excel file
+ */
+export const ImportActivitiesParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const ImportActivitiesBody = zod.object({
+  file: zod.instanceof(File),
+});
+
+/**
  * @summary Update an activity
  */
 export const UpdateActivityParams = zod.object({

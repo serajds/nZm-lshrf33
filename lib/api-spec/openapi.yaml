@@ -249,6 +249,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/Activity"
 
+  /projects/{projectId}/activities/import:
+    post:
+      operationId: importActivities
+      tags: [activities]
+      summary: Import activities from Excel file
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportActivitiesResponse"
+        "400":
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  errors:
+                    type: array
+                    items:
+                      type: string
+
   /projects/{projectId}/activities/{id}:
     patch:
       operationId: updateActivity
@@ -853,6 +897,23 @@ components:
           type: string
       required:
         - message
+
+    ImportActivitiesResponse:
+      type: object
+      properties:
+        imported:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+        activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/Activity"
+      required:
+        - imported
+        - activities
 
     # Auth
     LoginBody:
