@@ -3,6 +3,7 @@ import { useParams } from "wouter";
 import { useVerifyOwnerAccess } from "@workspace/api-client-react";
 import type { OwnerProjectView, Activity, Report, ProjectExtension, ProjectSuspension } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -96,10 +97,6 @@ export default function OwnerPortal() {
   const totalExtDays = extensions.reduce((s, e) => s + e.daysAdded, 0);
   const latestExt = extensions.length > 0 ? extensions[extensions.length - 1] : null;
   const totalSuspDays = (suspensions as ProjectSuspension[]).reduce((s, x) => s + x.calendarDays, 0);
-
-  function formatDate(d: string) {
-    return new Date(d).toLocaleDateString("ar-SA-u-nu-latn", { year: "numeric", month: "2-digit", day: "2-digit" });
-  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -211,8 +208,8 @@ export default function OwnerPortal() {
                         <CardTitle className="text-lg">
                           تقرير {report.type === 'weekly' ? 'أسبوعي' : 'شهري'} 
                         </CardTitle>
-                        <span className="text-sm text-muted-foreground" dir="ltr">
-                          {new Date(report.reportDate).toLocaleDateString('ar-SA-u-nu-latn')}
+                        <span className="text-sm text-muted-foreground font-mono">
+                          {fmtDate(report.reportDate)}
                         </span>
                       </div>
                     </CardHeader>
@@ -272,7 +269,7 @@ export default function OwnerPortal() {
                           <Calendar className="h-3.5 w-3.5" /> التاريخ الأصلي للإنهاء
                         </p>
                         <p className="text-lg font-bold tabular-nums" dir="ltr">
-                          {formatDate(project.expectedEndDate)}
+                          {fmtDate(project.expectedEndDate)}
                         </p>
                       </CardContent>
                     </Card>
@@ -282,7 +279,7 @@ export default function OwnerPortal() {
                           <ArrowBigRightDash className="h-3.5 w-3.5 text-amber-500" /> التاريخ الحالي بعد التمديدات
                         </p>
                         <p className="text-lg font-bold tabular-nums text-amber-600" dir="ltr">
-                          {latestExt ? formatDate(latestExt.newEndDate) : "—"}
+                          {latestExt ? fmtDate(latestExt.newEndDate) : "—"}
                         </p>
                       </CardContent>
                     </Card>
@@ -319,12 +316,12 @@ export default function OwnerPortal() {
                           {extensions.map((ext, i) => (
                             <TableRow key={ext.id}>
                               <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
-                              <TableCell dir="ltr" className="text-sm tabular-nums">{formatDate(ext.extensionDate)}</TableCell>
+                              <TableCell dir="ltr" className="text-sm tabular-nums">{fmtDate(ext.extensionDate)}</TableCell>
                               <TableCell className="text-center">
                                 <Badge className="bg-amber-500 text-white">+{ext.daysAdded} يوم</Badge>
                               </TableCell>
                               <TableCell dir="ltr" className="text-sm tabular-nums font-medium text-amber-700">
-                                {formatDate(ext.newEndDate)}
+                                {fmtDate(ext.newEndDate)}
                               </TableCell>
                               <TableCell className="text-sm max-w-[160px] truncate" title={ext.reason ?? undefined}>
                                 {ext.reason ?? <span className="text-muted-foreground">—</span>}
@@ -409,8 +406,8 @@ export default function OwnerPortal() {
                                   <Badge className="bg-orange-100 text-orange-700 border border-orange-300">توقف مقاول</Badge>
                                 )}
                               </TableCell>
-                              <TableCell dir="ltr" className="text-sm tabular-nums">{formatDate(susp.startDate)}</TableCell>
-                              <TableCell dir="ltr" className="text-sm tabular-nums">{formatDate(susp.endDate)}</TableCell>
+                              <TableCell dir="ltr" className="text-sm tabular-nums">{fmtDate(susp.startDate)}</TableCell>
+                              <TableCell dir="ltr" className="text-sm tabular-nums">{fmtDate(susp.endDate)}</TableCell>
                               <TableCell className="text-center">
                                 <Badge className="bg-amber-500 text-white">{susp.calendarDays} يوم</Badge>
                               </TableCell>

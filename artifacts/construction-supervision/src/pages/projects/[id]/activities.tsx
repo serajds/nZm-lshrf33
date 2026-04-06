@@ -11,6 +11,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Activity, ProjectSuspension } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -163,13 +164,6 @@ function DelayBadge({ info }: { info: DelayInfo }) {
   );
 }
 
-function fmtDate(iso: string) {
-  const d = new Date(iso);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}/${m}/${day}`;
-}
 
 function ProgressBar({ value, max = 100, color }: { value: number; max?: number; color: string }) {
   const pct = Math.min(100, (value / max) * 100);

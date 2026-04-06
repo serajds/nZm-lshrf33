@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useListProjects, useCreateProject, useUpdateProject, useDeleteProject, getListProjectsQueryKey } from "@workspace/api-client-react";
 import type { Project } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
@@ -356,7 +357,7 @@ export default function Projects() {
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Calendar className="h-4 w-4 shrink-0" />
-                    <span>النهاية: {new Date(project.expectedEndDate).toLocaleDateString('ar-SA-u-nu-latn')}</span>
+                    <span>النهاية: <span className="font-mono">{fmtDate(project.expectedEndDate)}</span></span>
                   </div>
                 </div>
                 
