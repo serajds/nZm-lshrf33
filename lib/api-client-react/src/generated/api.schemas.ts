@@ -301,6 +301,7 @@ export const ReportType = {
 export interface Report {
   id: number;
   projectId: number;
+  reportNumber?: number;
   type: ReportType;
   reportDate: string;
   periodStart: string;

@@ -175,6 +175,7 @@ export default function ProjectReports() {
       recommendations: report.recommendations,
       imageUrls,
       reportId: report.id,
+      reportNumber: report.reportNumber,
       activities: activityList,
       contractValue: (project as any).contractValue ?? null,
       startDate: (project as any).startDate ?? null,
@@ -510,6 +511,7 @@ export default function ProjectReports() {
               <div className="flex flex-col md:flex-row">
                 <div className="bg-muted p-4 md:w-48 flex flex-col justify-center items-center text-center border-b md:border-b-0 md:border-l">
                   <FileText className={`h-8 w-8 mb-2 ${report.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
+                  <div className="text-lg font-bold mb-1">#{report.reportNumber}</div>
                   <Badge variant="outline" className="mb-2 bg-background">
                     {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
                   </Badge>
