@@ -298,6 +298,21 @@ export const ReportType = {
   monthly: "monthly",
 } as const;
 
+export type ReportActivitiesSnapshotItem = {
+  id?: number;
+  name?: string;
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  /** @nullable */
+  actualStartDate?: string | null;
+  /** @nullable */
+  actualEndDate?: string | null;
+  plannedProgress?: number;
+  actualProgress?: number;
+  status?: string;
+  sortOrder?: number;
+};
+
 export interface Report {
   id: number;
   projectId: number;
@@ -313,6 +328,8 @@ export interface Report {
   /** @nullable */
   recommendations?: string | null;
   imageUrls: string[];
+  /** @nullable */
+  activitiesSnapshot?: ReportActivitiesSnapshotItem[] | null;
   /** @nullable */
   createdById?: number | null;
   createdAt: string;

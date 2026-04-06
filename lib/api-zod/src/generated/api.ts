@@ -299,6 +299,22 @@ export const ListReportsResponseItem = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
+  activitiesSnapshot: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        name: zod.string().optional(),
+        plannedStartDate: zod.string().optional(),
+        plannedEndDate: zod.string().optional(),
+        actualStartDate: zod.string().nullish(),
+        actualEndDate: zod.string().nullish(),
+        plannedProgress: zod.number().optional(),
+        actualProgress: zod.number().optional(),
+        status: zod.string().optional(),
+        sortOrder: zod.number().optional(),
+      }),
+    )
+    .nullish(),
   createdById: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -345,6 +361,22 @@ export const GetReportResponse = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
+  activitiesSnapshot: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        name: zod.string().optional(),
+        plannedStartDate: zod.string().optional(),
+        plannedEndDate: zod.string().optional(),
+        actualStartDate: zod.string().nullish(),
+        actualEndDate: zod.string().nullish(),
+        plannedProgress: zod.number().optional(),
+        actualProgress: zod.number().optional(),
+        status: zod.string().optional(),
+        sortOrder: zod.number().optional(),
+      }),
+    )
+    .nullish(),
   createdById: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -385,6 +417,22 @@ export const UpdateReportResponse = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
+  activitiesSnapshot: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        name: zod.string().optional(),
+        plannedStartDate: zod.string().optional(),
+        plannedEndDate: zod.string().optional(),
+        actualStartDate: zod.string().nullish(),
+        actualEndDate: zod.string().nullish(),
+        plannedProgress: zod.number().optional(),
+        actualProgress: zod.number().optional(),
+        status: zod.string().optional(),
+        sortOrder: zod.number().optional(),
+      }),
+    )
+    .nullish(),
   createdById: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -638,6 +686,22 @@ export const VerifyOwnerAccessResponse = zod.object({
       technicalNotes: zod.string().nullish(),
       recommendations: zod.string().nullish(),
       imageUrls: zod.array(zod.string()),
+      activitiesSnapshot: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            name: zod.string().optional(),
+            plannedStartDate: zod.string().optional(),
+            plannedEndDate: zod.string().optional(),
+            actualStartDate: zod.string().nullish(),
+            actualEndDate: zod.string().nullish(),
+            plannedProgress: zod.number().optional(),
+            actualProgress: zod.number().optional(),
+            status: zod.string().optional(),
+            sortOrder: zod.number().optional(),
+          }),
+        )
+        .nullish(),
       createdById: zod.number().nullish(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),

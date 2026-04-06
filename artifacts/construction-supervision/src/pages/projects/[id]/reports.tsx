@@ -152,7 +152,9 @@ export default function ProjectReports() {
     const imageUrls = (report.imageUrls ?? []).map((url) =>
       url.includes("?") ? url : `${url}?token=${token}`
     );
-    const activityList: ActivityForReport[] = ((activities ?? []) as Activity[]).map((a) => ({
+    const snapshotActivities = (report as any).activitiesSnapshot as any[] | null;
+    const sourceActivities = snapshotActivities ?? ((activities ?? []) as Activity[]);
+    const activityList: ActivityForReport[] = sourceActivities.map((a: any) => ({
       name: a.name,
       plannedProgress: a.plannedProgress ?? 0,
       actualProgress: a.actualProgress ?? 0,

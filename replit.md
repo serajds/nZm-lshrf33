@@ -41,6 +41,7 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Delay calculation uses activity-weighted planned progress (`lib/progress.ts`), falls back to linear time ratio when no activities exist
 - Projects management with CRUD operations
 - Project detail tabs: Summary, Activities (Gantt), Reports, Files, Deviation Analysis
+- **Activities Snapshot per Report**: When a report is created, a JSON snapshot of all project activities (name, progress, status, dates) is saved in `activitiesSnapshot` column. Report views use the snapshot instead of live activities, so editing activities later doesn't change older reports. Legacy reports without a snapshot fall back to live data.
 - Owner portal (`/owner/:token`) — public password-protected read-only view with JWT session persistence (avoids re-entering password on refresh)
 - Custom slug support for owner links (e.g., `/owner/project-name` instead of UUID); validated server-side (alphanumeric + hyphens/underscores, 2-60 chars, reserved words blocked)
 - Role-based access control with project-level permissions

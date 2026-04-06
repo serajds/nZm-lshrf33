@@ -5,6 +5,7 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { ReportActivitiesSnapshotItem } from "./reportActivitiesSnapshotItem";
 import type { ReportType } from "./reportType";
 
 export interface Report {
@@ -22,6 +23,8 @@ export interface Report {
   /** @nullable */
   recommendations?: string | null;
   imageUrls: string[];
+  /** @nullable */
+  activitiesSnapshot?: ReportActivitiesSnapshotItem[] | null;
   /** @nullable */
   createdById?: number | null;
   createdAt: Date;

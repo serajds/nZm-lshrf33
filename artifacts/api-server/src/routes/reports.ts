@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { reportsTable } from "@workspace/db";
+import { reportsTable, activitiesTable } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
 
@@ -41,6 +41,23 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), a
     .where(eq(reportsTable.projectId, projectId));
   const nextNumber = (maxResult?.maxNum ?? 0) + 1;
 
+  const currentActivities = await db.select().from(activitiesTable)
+    .where(eq(activitiesTable.projectId, projectId))
+    .orderBy(activitiesTable.sortOrder);
+
+  const snapshot = currentActivities.map(a => ({
+    id: a.id,
+    name: a.name,
+    plannedStartDate: a.plannedStartDate,
+    plannedEndDate: a.plannedEndDate,
+    actualStartDate: a.actualStartDate,
+    actualEndDate: a.actualEndDate,
+    plannedProgress: a.plannedProgress,
+    actualProgress: a.actualProgress,
+    status: a.status,
+    sortOrder: a.sortOrder,
+  }));
+
   const [report] = await db.insert(reportsTable).values({
     projectId,
     reportNumber: nextNumber,
@@ -53,6 +70,7 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), a
     technicalNotes: technicalNotes ?? null,
     recommendations: recommendations ?? null,
     imageUrls: imageUrls ?? [],
+    activitiesSnapshot: snapshot,
     createdById: req.user?.userId ?? null,
   }).returning();
 
