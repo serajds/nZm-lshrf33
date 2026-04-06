@@ -150,7 +150,7 @@ export default function OwnerPortal() {
               </h1>
               <div className="h-[3px] w-12 bg-emerald-500 rounded-full mx-auto mb-5" />
               <p className="text-emerald-800/50 text-[15px] leading-relaxed">
-                بوابة إلكترونية آمنة لمتابعة سير العمل<br />والاطلاع على التقارير الدورية
+                بوابة إلكترونية لمتابعة سير العمل<br />والاطلاع على التقارير الدورية
               </p>
             </div>
 
@@ -227,9 +227,8 @@ export default function OwnerPortal() {
                 </Button>
               </form>
 
-              <div className="mt-10 pt-6 border-t border-gray-100 flex items-center justify-center gap-2 text-gray-300 text-[12px]">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>بوابة آمنة للقراءة فقط — البيانات محمية ومشفرة</span>
+              <div className="mt-10 pt-6 border-t border-gray-100 flex items-center justify-center text-gray-300 text-[12px]">
+                <a href="https://about.me/seraj" target="_blank" rel="noopener noreferrer" className="hover:text-emerald-500 transition-colors">Developed By : Eng. Seraj Elajtel</a>
               </div>
             </div>
           </div>
