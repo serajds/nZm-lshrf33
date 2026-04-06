@@ -196,19 +196,19 @@ export default function OwnerPortal() {
                 <div className="space-y-2.5">
                   <Label className="text-[13px] font-semibold text-gray-500 tracking-wide">كلمة المرور</Label>
                   <div className="relative group">
-                    <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-300 pointer-events-none transition-colors group-focus-within:text-emerald-500" />
+                    <Lock className="absolute end-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-300 pointer-events-none transition-colors group-focus-within:text-emerald-500" />
                     <Input
                       type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="h-[52px] pr-11 pl-11 text-right rounded-xl border-gray-200 bg-gray-50/60 text-gray-800 placeholder:text-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 focus:bg-white transition-all text-[15px]"
+                      className="h-[52px] pe-11 ps-11 text-right rounded-xl border-gray-200 bg-gray-50/60 text-gray-800 placeholder:text-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 focus:bg-white transition-all text-[15px]"
                       dir="ltr"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors"
+                      className="absolute start-4 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors"
                     >
                       <Eye className="h-4 w-4" />
                     </button>
@@ -325,8 +325,8 @@ export default function OwnerPortal() {
   const apiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" dir="rtl">
-      <div className="bg-gradient-to-l from-slate-800 via-slate-900 to-slate-800 text-white">
+    <div className="min-h-screen bg-gradient-to-bl from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" dir="rtl">
+      <div className="bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-6">
           {companyLogos && (companyLogos.owner?.logoUrl || companyLogos.contractor?.logoUrl || companyLogos.supervisor?.logoUrl) && (
             <div className="flex items-center justify-center gap-8 mb-6 pb-5 border-b border-white/10">
@@ -381,19 +381,19 @@ export default function OwnerPortal() {
       <div className="max-w-7xl mx-auto px-4 md:px-8 -mt-4">
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-6">
           <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-l from-emerald-400 to-emerald-600" />
+            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-l from-emerald-400 to-emerald-600" />
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <Gauge className="h-4 w-4" />
                 <span className="text-xs font-medium">الإنجاز الفعلي</span>
               </div>
               <div className="text-3xl font-black text-emerald-600">{sm.overallProgress}%</div>
-              <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden">
+              <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden" dir="ltr">
                 <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${sm.overallProgress}%` }} />
               </div>
               <div className="flex justify-between mt-1.5 text-xs text-muted-foreground">
                 <span>المخطط: {sm.plannedProgress?.toFixed(0)}%</span>
-                <span className={progressDiff >= 0 ? 'text-emerald-600' : 'text-red-500'} dir="ltr">
+                <span className={progressDiff >= 0 ? 'text-emerald-600' : 'text-red-500'}>
                   {progressDiff > 0 ? '+' : ''}{progressDiff.toFixed(1)}%
                 </span>
               </div>
@@ -401,7 +401,7 @@ export default function OwnerPortal() {
           </Card>
 
           <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm relative overflow-hidden">
-            <div className={`absolute top-0 left-0 right-0 h-1 ${sm.delayDays > 0 ? 'bg-gradient-to-l from-red-400 to-red-600' : 'bg-gradient-to-l from-blue-400 to-blue-600'}`} />
+            <div className={`absolute top-0 inset-x-0 h-1 ${sm.delayDays > 0 ? 'bg-gradient-to-l from-red-400 to-red-600' : 'bg-gradient-to-l from-blue-400 to-blue-600'}`} />
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <Timer className="h-4 w-4" />
@@ -424,7 +424,7 @@ export default function OwnerPortal() {
           </Card>
 
           <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-l from-violet-400 to-violet-600" />
+            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-l from-violet-400 to-violet-600" />
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <ActivityIcon className="h-4 w-4" />
@@ -439,7 +439,7 @@ export default function OwnerPortal() {
           </Card>
 
           <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-l from-amber-400 to-amber-600" />
+            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-l from-amber-400 to-amber-600" />
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <FileText className="h-4 w-4" />
@@ -547,7 +547,7 @@ export default function OwnerPortal() {
                     <span className="text-muted-foreground">التقدم الزمني</span>
                     <span className="font-medium">{Math.round((sm.daysElapsed / sm.totalDays) * 100)}%</span>
                   </div>
-                  <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-2.5 rounded-full bg-muted overflow-hidden" dir="ltr">
                     <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${Math.min(100, (sm.daysElapsed / sm.totalDays) * 100)}%` }} />
                   </div>
                 </div>
@@ -556,7 +556,7 @@ export default function OwnerPortal() {
                     <span className="text-muted-foreground">الإنجاز الفعلي</span>
                     <span className="font-medium">{sm.overallProgress}%</span>
                   </div>
-                  <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-2.5 rounded-full bg-muted overflow-hidden" dir="ltr">
                     <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${sm.overallProgress}%` }} />
                   </div>
                 </div>
@@ -565,7 +565,7 @@ export default function OwnerPortal() {
                     <span className="text-muted-foreground">الأنشطة المكتملة</span>
                     <span className="font-medium">{sm.activitiesTotal > 0 ? Math.round((sm.activitiesCompleted / sm.activitiesTotal) * 100) : 0}%</span>
                   </div>
-                  <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-2.5 rounded-full bg-muted overflow-hidden" dir="ltr">
                     <div className="h-full rounded-full bg-violet-500 transition-all" style={{ width: `${sm.activitiesTotal > 0 ? (sm.activitiesCompleted / sm.activitiesTotal) * 100 : 0}%` }} />
                   </div>
                 </div>
@@ -593,15 +593,15 @@ export default function OwnerPortal() {
             <TabsTrigger value="activities" className="gap-1.5"><ActivityIcon className="h-3.5 w-3.5" />الأنشطة</TabsTrigger>
             <TabsTrigger value="reports" className="gap-1.5">
               <FileText className="h-3.5 w-3.5" />التقارير
-              {reports.length > 0 && <Badge className="mr-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0">{reports.length}</Badge>}
+              {reports.length > 0 && <Badge className="ms-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0">{reports.length}</Badge>}
             </TabsTrigger>
             <TabsTrigger value="extensions" className="gap-1.5">
               <ArrowBigRightDash className="h-3.5 w-3.5" />التمديدات
-              {extensions.length > 0 && <Badge className="mr-1 bg-amber-500 text-white text-[10px] px-1.5 py-0">{extensions.length}</Badge>}
+              {extensions.length > 0 && <Badge className="ms-1 bg-amber-500 text-white text-[10px] px-1.5 py-0">{extensions.length}</Badge>}
             </TabsTrigger>
             <TabsTrigger value="suspensions" className="gap-1.5">
               <PauseCircle className="h-3.5 w-3.5" />التوقفات
-              {(suspensions as ProjectSuspension[]).length > 0 && <Badge className="mr-1 bg-violet-500 text-white text-[10px] px-1.5 py-0">{(suspensions as ProjectSuspension[]).length}</Badge>}
+              {(suspensions as ProjectSuspension[]).length > 0 && <Badge className="ms-1 bg-violet-500 text-white text-[10px] px-1.5 py-0">{(suspensions as ProjectSuspension[]).length}</Badge>}
             </TabsTrigger>
           </TabsList>
 
@@ -688,7 +688,7 @@ export default function OwnerPortal() {
                           <TableCell className="text-center text-sm" dir="ltr">{a.actualProgress}%</TableCell>
                           <TableCell className={`text-center text-sm font-bold ${devColor}`} dir="ltr">{dev > 0 ? '+' : ''}{dev}%</TableCell>
                           <TableCell>
-                            <div className="h-2 rounded-full bg-muted overflow-hidden">
+                            <div className="h-2 rounded-full bg-muted overflow-hidden" dir="ltr">
                               <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${Math.min(100, a.actualProgress)}%` }} />
                             </div>
                           </TableCell>
@@ -745,12 +745,12 @@ export default function OwnerPortal() {
                             <span className="text-xs font-medium text-muted-foreground">نسبة الإنجاز للفترة</span>
                             <span className="text-sm font-bold text-primary">{report.progressPercentage}%</span>
                           </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div className="h-2 bg-muted rounded-full overflow-hidden" dir="ltr">
                             <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${report.progressPercentage}%` }} />
                           </div>
                         </div>
                         {report.periodStart && report.periodEnd && (
-                          <div className="text-xs text-muted-foreground border-r pr-4">
+                          <div className="text-xs text-muted-foreground border-s ps-4">
                             <div>من: <span className="tabular-nums" dir="ltr">{fmtDate(report.periodStart)}</span></div>
                             <div>إلى: <span className="tabular-nums" dir="ltr">{fmtDate(report.periodEnd)}</span></div>
                           </div>
@@ -880,7 +880,7 @@ export default function OwnerPortal() {
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <Card className="shadow-md border-0 relative overflow-hidden">
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-slate-400" />
+                      <div className="absolute top-0 inset-x-0 h-1 bg-slate-400" />
                       <CardContent className="pt-5">
                         <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
                           <Calendar className="h-3.5 w-3.5" /> التاريخ الأصلي للإنهاء
@@ -891,7 +891,7 @@ export default function OwnerPortal() {
                       </CardContent>
                     </Card>
                     <Card className="shadow-md border-0 relative overflow-hidden border-amber-200">
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
+                      <div className="absolute top-0 inset-x-0 h-1 bg-amber-500" />
                       <CardContent className="pt-5">
                         <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
                           <ArrowBigRightDash className="h-3.5 w-3.5 text-amber-500" /> بعد التمديدات
@@ -902,7 +902,7 @@ export default function OwnerPortal() {
                       </CardContent>
                     </Card>
                     <Card className="shadow-md border-0 relative overflow-hidden">
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-amber-400" />
+                      <div className="absolute top-0 inset-x-0 h-1 bg-amber-400" />
                       <CardContent className="pt-5">
                         <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
                           <Clock className="h-3.5 w-3.5" /> إجمالي أيام التمديد
@@ -979,7 +979,7 @@ export default function OwnerPortal() {
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Card className="shadow-md border-0 relative overflow-hidden">
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-violet-500" />
+                      <div className="absolute top-0 inset-x-0 h-1 bg-violet-500" />
                       <CardContent className="pt-5">
                         <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
                           <PauseCircle className="h-3.5 w-3.5 text-violet-500" /> عدد التوقفات المسجلة
@@ -990,7 +990,7 @@ export default function OwnerPortal() {
                       </CardContent>
                     </Card>
                     <Card className="shadow-md border-0 relative overflow-hidden">
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
+                      <div className="absolute top-0 inset-x-0 h-1 bg-amber-500" />
                       <CardContent className="pt-5">
                         <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
                           <Clock className="h-3.5 w-3.5 text-amber-500" /> إجمالي أيام التوقف
@@ -1076,13 +1076,13 @@ export default function OwnerPortal() {
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); closeLightbox(); }}
-            className="absolute top-4 left-4 z-10 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+            className="absolute top-4 start-4 z-10 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
             aria-label="إغلاق"
           >
             <X className="w-5 h-5" />
           </button>
 
-          <div className="absolute top-4 right-4 z-10 bg-white/10 text-white text-sm px-3 py-1.5 rounded-full">
+          <div className="absolute top-4 end-4 z-10 bg-white/10 text-white text-sm px-3 py-1.5 rounded-full" dir="ltr">
             {lightbox.index + 1} / {lightbox.images.length}
           </div>
 
