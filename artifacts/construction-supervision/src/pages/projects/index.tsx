@@ -91,8 +91,8 @@ export default function Projects() {
   }, [search]);
 
   const { data: projects, isLoading } = useListProjects({
-    search: debouncedSearch || null,
-    status: statusFilter && statusFilter !== "all" ? statusFilter : null,
+    search: debouncedSearch || undefined,
+    status: statusFilter && statusFilter !== "all" ? statusFilter : undefined,
   });
 
   const createProject = useCreateProject();
