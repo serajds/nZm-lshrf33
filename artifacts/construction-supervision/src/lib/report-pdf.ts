@@ -143,8 +143,19 @@ function buildReportHTML(data: ReportPdfData, forPrint = false): string {
     ? `@media print {
         @page { size: A4; margin: 0; }
         .no-print { display: none !important; }
-        .image-page { page-break-before: always; }
-        .main-page { page-break-after: ${images.length > 0 ? "always" : "auto"}; }
+        .image-page { page-break-before: always; break-before: always; }
+        .main-page { page-break-after: ${images.length > 0 ? "always" : "auto"}; break-after: ${images.length > 0 ? "always" : "auto"}; }
+        .section-box {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+        .acts-table { break-inside: avoid; page-break-inside: avoid; }
+        .acts-table tr { break-inside: avoid; page-break-inside: avoid; }
+        .info-bar { break-inside: avoid; page-break-inside: avoid; }
+        .progress-section { break-inside: avoid; page-break-inside: avoid; }
+        .header { break-inside: avoid; page-break-inside: avoid; }
+        .footer { break-inside: avoid; page-break-inside: avoid; }
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       }`
     : "";
 
@@ -226,7 +237,7 @@ function buildReportHTML(data: ReportPdfData, forPrint = false): string {
   /* ── Body ── */
   .body { padding: 24px 40px 40px; }
 
-  .section-box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px 22px; margin-bottom: 16px; background: #fafafa; }
+  .section-box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px 22px; margin-bottom: 16px; background: #fafafa; break-inside: avoid; page-break-inside: avoid; }
   .section-box.warning { background: #fff7ed; border-color: #fed7aa; }
   .section-box.success { background: #f0fdf4; border-color: #bbf7d0; }
   .activities-box { background: #f8faff; border-color: #c7d7f0; }
