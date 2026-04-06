@@ -72,12 +72,9 @@ export default function ProjectDetails() {
   const generateLink = useGenerateOwnerLink();
 
   const handleGenerateLink = async () => {
-    if (!ownerPassword) {
-      toast({ variant: "destructive", title: "الرجاء إدخال كلمة مرور للرابط" });
-      return;
-    }
     try {
-      const payload: any = { password: ownerPassword };
+      const payload: any = {};
+      if (ownerPassword) payload.password = ownerPassword;
       if (ownerSlug.trim()) {
         payload.customSlug = ownerSlug.trim();
       }
@@ -168,7 +165,7 @@ export default function ProjectDetails() {
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground">شارك هذا الرابط وكلمة المرور مع المالك</p>
+                    <p className="text-xs text-muted-foreground">شارك هذا الرابط مع المالك لمتابعة حالة المشروع</p>
                   </div>
                 )}
 
@@ -182,7 +179,7 @@ export default function ProjectDetails() {
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      شارك هذا الرابط وكلمة المرور مع المالك لمتابعة حالة المشروع.
+                      شارك هذا الرابط مع المالك لمتابعة حالة المشروع.
                     </p>
                   </div>
                 )}
@@ -215,12 +212,12 @@ export default function ProjectDetails() {
                       <p className="text-xs text-muted-foreground">اتركه فارغاً لإنشاء رابط تلقائي</p>
                     </div>
                     <div className="space-y-2">
-                      <Label>كلمة مرور للرابط</Label>
+                      <Label>كلمة مرور للرابط (اختياري)</Label>
                       <Input
                         type="password"
                         value={ownerPassword}
                         onChange={(e) => setOwnerPassword(e.target.value)}
-                        placeholder="أدخل كلمة مرور لحماية الرابط"
+                        placeholder="اتركه فارغاً للدخول بدون كلمة مرور"
                       />
                     </div>
                     <Button onClick={handleGenerateLink} disabled={generateLink.isPending} className="w-full">

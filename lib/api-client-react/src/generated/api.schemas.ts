@@ -400,7 +400,7 @@ export interface ProjectFile {
 
 export interface OwnerVerifyBody {
   token: string;
-  password: string;
+  password?: string;
 }
 
 export interface ProjectSummary {
@@ -426,7 +426,8 @@ export interface OwnerProjectView {
 }
 
 export interface GenerateOwnerLinkBody {
-  password: string;
+  password?: string;
+  customSlug?: string;
 }
 
 export interface OwnerLinkResponse {

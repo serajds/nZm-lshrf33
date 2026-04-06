@@ -588,7 +588,7 @@ export const GetOwnerProjectByTokenResponse = zod.object({
  */
 export const VerifyOwnerAccessBody = zod.object({
   token: zod.string(),
-  password: zod.string(),
+  password: zod.string().optional(),
 });
 
 export const VerifyOwnerAccessResponse = zod.object({
@@ -748,7 +748,8 @@ export const GenerateOwnerLinkParams = zod.object({
 });
 
 export const GenerateOwnerLinkBody = zod.object({
-  password: zod.string(),
+  password: zod.string().optional(),
+  customSlug: zod.string().optional(),
 });
 
 export const GenerateOwnerLinkResponse = zod.object({
