@@ -17,6 +17,39 @@ export interface MessageResponse {
   message: string;
 }
 
+export type ActivityStatus =
+  (typeof ActivityStatus)[keyof typeof ActivityStatus];
+
+export const ActivityStatus = {
+  not_started: "not_started",
+  in_progress: "in_progress",
+  completed: "completed",
+  delayed: "delayed",
+} as const;
+
+export interface Activity {
+  id: number;
+  projectId: number;
+  name: string;
+  plannedStartDate: string;
+  plannedEndDate: string;
+  /** @nullable */
+  actualStartDate?: string | null;
+  /** @nullable */
+  actualEndDate?: string | null;
+  plannedProgress: number;
+  actualProgress: number;
+  status: ActivityStatus;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface ImportActivitiesResponse {
+  imported: number;
+  errors?: string[];
+  activities: Activity[];
+}
+
 export interface LoginBody {
   username: string;
   password: string;
@@ -203,33 +236,6 @@ export interface UpdateProjectBody {
   status?: UpdateProjectBodyStatus;
   /** @nullable */
   overallProgress?: number | null;
-}
-
-export type ActivityStatus =
-  (typeof ActivityStatus)[keyof typeof ActivityStatus];
-
-export const ActivityStatus = {
-  not_started: "not_started",
-  in_progress: "in_progress",
-  completed: "completed",
-  delayed: "delayed",
-} as const;
-
-export interface Activity {
-  id: number;
-  projectId: number;
-  name: string;
-  plannedStartDate: string;
-  plannedEndDate: string;
-  /** @nullable */
-  actualStartDate?: string | null;
-  /** @nullable */
-  actualEndDate?: string | null;
-  plannedProgress: number;
-  actualProgress: number;
-  status: ActivityStatus;
-  sortOrder: number;
-  createdAt: string;
 }
 
 export type CreateActivityBodyStatus =
@@ -499,6 +505,15 @@ export type ListProjectsParams = {
    * @nullable
    */
   search?: string | null;
+};
+
+export type ImportActivitiesBody = {
+  file: Blob;
+};
+
+export type ImportActivities400 = {
+  error?: string;
+  errors?: string[];
 };
 
 export type ListReportsParams = {

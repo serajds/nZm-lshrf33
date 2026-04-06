@@ -44,6 +44,7 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - **Activities Snapshot per Report**: When a report is created, a JSON snapshot of all project activities (name, progress, status, dates) is saved in `activitiesSnapshot` column. Report views use the snapshot instead of live activities, so editing activities later doesn't change older reports. Legacy reports without a snapshot fall back to live data.
 - Owner portal (`/owner/:token`) — public password-protected read-only view with JWT session persistence (avoids re-entering password on refresh)
 - Custom slug support for owner links (e.g., `/owner/project-name` instead of UUID); validated server-side (alphanumeric + hyphens/underscores, 2-60 chars, reserved words blocked)
+- Excel import for activities: upload an xlsx file with 3 columns (name, start date, end date) to bulk-create activities. Includes downloadable template. Uses `xlsx` library on both server (parsing) and client (template generation). Strict calendar date validation rejects impossible dates like Feb 31.
 - Role-based access control with project-level permissions
 - User management with roles: admin, project_manager, engineer, owner
 - Project team management (add/remove members, assign project roles)

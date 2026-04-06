@@ -209,6 +209,9 @@ importers:
       uuid:
         specifier: ^13.0.0
         version: 13.0.0
+      xlsx:
+        specifier: 0.18.5
+        version: 0.18.5
     devDependencies:
       '@types/bcryptjs':
         specifier: ^3.0.0
@@ -251,6 +254,10 @@ importers:
         version: 3.1.0
 
   artifacts/construction-supervision:
+    dependencies:
+      xlsx:
+        specifier: 0.18.5
+        version: 0.18.5
     devDependencies:
       '@hookform/resolvers':
         specifier: ^3.10.0

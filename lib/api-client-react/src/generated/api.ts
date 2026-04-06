@@ -29,6 +29,9 @@ import type {
   GenerateOwnerLinkBody,
   GetOwnerProjectByToken200,
   HealthStatus,
+  ImportActivities400,
+  ImportActivitiesBody,
+  ImportActivitiesResponse,
   ListFilesParams,
   ListProjectsParams,
   ListReportsParams,
@@ -977,6 +980,98 @@ export const useCreateActivity = <
   TContext
 > => {
   return useMutation(getCreateActivityMutationOptions(options));
+};
+
+/**
+ * @summary Import activities from Excel file
+ */
+export const getImportActivitiesUrl = (projectId: number) => {
+  return `/api/projects/${projectId}/activities/import`;
+};
+
+export const importActivities = async (
+  projectId: number,
+  importActivitiesBody: ImportActivitiesBody,
+  options?: RequestInit,
+): Promise<ImportActivitiesResponse> => {
+  const formData = new FormData();
+  formData.append(`file`, importActivitiesBody.file);
+
+  return customFetch<ImportActivitiesResponse>(
+    getImportActivitiesUrl(projectId),
+    {
+      ...options,
+      method: "POST",
+      body: formData,
+    },
+  );
+};
+
+export const getImportActivitiesMutationOptions = <
+  TError = ErrorType<ImportActivities400>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importActivities>>,
+    TError,
+    { projectId: number; data: BodyType<ImportActivitiesBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof importActivities>>,
+  TError,
+  { projectId: number; data: BodyType<ImportActivitiesBody> },
+  TContext
+> => {
+  const mutationKey = ["importActivities"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof importActivities>>,
+    { projectId: number; data: BodyType<ImportActivitiesBody> }
+  > = (props) => {
+    const { projectId, data } = props ?? {};
+
+    return importActivities(projectId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ImportActivitiesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof importActivities>>
+>;
+export type ImportActivitiesMutationBody = BodyType<ImportActivitiesBody>;
+export type ImportActivitiesMutationError = ErrorType<ImportActivities400>;
+
+/**
+ * @summary Import activities from Excel file
+ */
+export const useImportActivities = <
+  TError = ErrorType<ImportActivities400>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importActivities>>,
+    TError,
+    { projectId: number; data: BodyType<ImportActivitiesBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof importActivities>>,
+  TError,
+  { projectId: number; data: BodyType<ImportActivitiesBody> },
+  TContext
+> => {
+  return useMutation(getImportActivitiesMutationOptions(options));
 };
 
 /**

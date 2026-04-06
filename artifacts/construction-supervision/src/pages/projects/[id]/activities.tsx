@@ -51,7 +51,8 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   Plus, Edit2, Trash2, ArrowRight, ChevronDown,
   CheckCircle2, Clock, AlertTriangle, PlayCircle, 
-  TrendingUp, TrendingDown, Minus, Timer, CalendarCheck, CalendarX, Hourglass
+  TrendingUp, TrendingDown, Minus, Timer, CalendarCheck, CalendarX, Hourglass,
+  Upload, Download, FileSpreadsheet
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -188,6 +189,9 @@ export default function ProjectActivities() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: activities, isLoading } = useListActivities(projectId, { query: { enabled: !!projectId } });
@@ -217,6 +221,55 @@ export default function ProjectActivities() {
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(projectId) });
+
+  const downloadTemplate = async () => {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    const data = [
+      ["اسم البند", "تاريخ البداية", "تاريخ النهاية"],
+      ["أعمال الحفر والترابية", "2025-01-15", "2025-03-15"],
+      ["أعمال الأساسات", "2025-03-01", "2025-05-30"],
+      ["أعمال الهيكل الخرساني", "2025-05-15", "2025-09-30"],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws["!cols"] = [{ wch: 30 }, { wch: 16 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, ws, "بنود الأعمال");
+    XLSX.writeFile(wb, "قالب_بنود_الأعمال.xlsx");
+  };
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", importFile);
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`/api/projects/${projectId}/activities/import`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        const errorMsg = result.errors?.length
+          ? result.errors.join("\n")
+          : result.error || "فشل الاستيراد";
+        toast({ variant: "destructive", title: "خطأ في الاستيراد", description: errorMsg });
+        return;
+      }
+      invalidate();
+      setIsImportOpen(false);
+      setImportFile(null);
+      const msg = result.errors?.length
+        ? `تم استيراد ${result.imported} بند مع ${result.errors.length} تحذير`
+        : `تم استيراد ${result.imported} بند بنجاح`;
+      toast({ title: msg });
+    } catch {
+      toast({ variant: "destructive", title: "فشل الاستيراد" });
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const handleEdit = (a: Activity) => {
     setEditingId(a.id);
@@ -585,6 +638,61 @@ export default function ProjectActivities() {
               <CardTitle className="text-base">الأنشطة</CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">انقر على الحالة أو نسبة الإنجاز لتحديثها مباشرةً</p>
             </div>
+            <div className="flex items-center gap-2">
+            <Dialog open={isImportOpen} onOpenChange={(open) => {
+              setIsImportOpen(open);
+              if (!open) setImportFile(null);
+            }}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-2 shrink-0">
+                  <Upload className="h-4 w-4" /> استيراد Excel
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[480px]" dir="rtl">
+                <DialogHeader>
+                  <DialogTitle>استيراد بنود من ملف Excel</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-6 text-center">
+                    <FileSpreadsheet className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
+                    <p className="text-sm text-muted-foreground mb-3">
+                      اختر ملف Excel يحتوي على بنود الأعمال
+                    </p>
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                      className="block w-full text-sm text-muted-foreground file:me-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
+                    />
+                    {importFile && (
+                      <p className="text-sm text-emerald-600 mt-2">{importFile.name}</p>
+                    )}
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground mb-2">
+                      يجب أن يحتوي الملف على 3 أعمدة: <strong>اسم البند</strong>، <strong>تاريخ البداية</strong>، <strong>تاريخ النهاية</strong>
+                    </p>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="gap-1 p-0 h-auto text-xs"
+                      onClick={downloadTemplate}
+                    >
+                      <Download className="h-3 w-3" /> تحميل ملف عينة
+                    </Button>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={() => { setIsImportOpen(false); setImportFile(null); }}>
+                      إلغاء
+                    </Button>
+                    <Button onClick={handleImport} disabled={!importFile || isImporting} className="gap-2">
+                      {isImporting ? "جاري الاستيراد..." : "استيراد"}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
             <Dialog open={isDialogOpen} onOpenChange={(open) => {
               setIsDialogOpen(open);
               if (!open) { form.reset(); setEditingId(null); }
@@ -682,6 +790,7 @@ export default function ProjectActivities() {
                 </Form>
               </DialogContent>
             </Dialog>
+            </div>
           </CardHeader>
 
           <CardContent className="p-0 overflow-x-auto">
