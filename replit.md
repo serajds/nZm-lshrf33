@@ -63,6 +63,8 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - **Project-level access**: non-admin users only see projects they are assigned to via `project_members` table
 - **Middleware**: `requireProjectAccess(paramName)` checks DB membership; `requireProjectManager(paramName)` restricts to admin or project manager role
 - Admin users bypass all project membership checks
+- **User management security**: role validation against allowed enum, duplicate username/email checks (pre-check + DB constraint catch), self-deletion protection, self-role-demotion protection, email normalization (trim + lowercase), NaN ID guard
+- **Search security**: LIKE metacharacters (`%`, `_`, `\`) escaped in project search to prevent pattern injection
 
 ### DB Schema: project_members
 - Links users to projects with a role (`project_manager` or `engineer`)
