@@ -219,12 +219,12 @@ export default function Projects() {
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="name"
                     render={({ field }) => (
-                      <FormItem className="col-span-2">
+                      <FormItem className="sm:col-span-2">
                         <FormLabel>اسم المشروع</FormLabel>
                         <FormControl><Input {...field} /></FormControl>
                         <FormMessage />
@@ -316,7 +316,7 @@ export default function Projects() {
                     control={form.control}
                     name="location"
                     render={({ field }) => (
-                      <FormItem className="col-span-2">
+                      <FormItem className="sm:col-span-2">
                         <FormLabel>موقع المشروع</FormLabel>
                         <FormControl><Input {...field} /></FormControl>
                         <FormMessage />
@@ -349,7 +349,7 @@ export default function Projects() {
                     control={form.control}
                     name="status"
                     render={({ field }) => (
-                      <FormItem className="col-span-2">
+                      <FormItem className="sm:col-span-2">
                         <FormLabel>حالة المشروع</FormLabel>
                         <Select value={field.value} onValueChange={field.onChange} dir="rtl">
                           <FormControl>

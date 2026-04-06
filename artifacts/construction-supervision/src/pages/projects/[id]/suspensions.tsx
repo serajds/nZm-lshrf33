@@ -311,7 +311,7 @@ export default function ProjectSuspensions() {
                     </FormItem>
                   )} />
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField control={form.control} name="startDate" render={({ field }) => (
                       <FormItem>
                         <FormLabel>تاريخ البداية</FormLabel>
@@ -371,7 +371,7 @@ export default function ProjectSuspensions() {
                     </FormItem>
                   )} />
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField control={form.control} name="documentRef" render={({ field }) => (
                       <FormItem>
                         <FormLabel>رقم الوثيقة / الخطاب</FormLabel>

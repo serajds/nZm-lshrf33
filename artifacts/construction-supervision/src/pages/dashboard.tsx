@@ -67,14 +67,14 @@ function KpiCard({ label, value, icon: Icon, gradient, sub }: KpiCardProps) {
   return (
     <Card className="overflow-hidden border-0 shadow-md">
       <CardContent className="p-0">
-        <div className={`${gradient} p-4 flex items-center justify-between`}>
-          <div>
-            <p className="text-xs font-medium text-white/80 mb-1">{label}</p>
-            <p className="text-3xl font-extrabold text-white tabular-nums">{value}</p>
-            {sub && <p className="text-xs text-white/70 mt-1">{sub}</p>}
+        <div className={`${gradient} p-3 sm:p-4 flex items-center justify-between`}>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] sm:text-xs font-medium text-white/80 mb-0.5 sm:mb-1 truncate">{label}</p>
+            <p className="text-2xl sm:text-3xl font-extrabold text-white tabular-nums">{value}</p>
+            {sub && <p className="text-[10px] sm:text-xs text-white/70 mt-0.5 sm:mt-1 truncate">{sub}</p>}
           </div>
-          <div className="bg-white/20 rounded-xl p-3">
-            <Icon className="h-6 w-6 text-white" />
+          <div className="bg-white/20 rounded-lg sm:rounded-xl p-2 sm:p-3 shrink-0">
+            <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
           </div>
         </div>
       </CardContent>
@@ -159,18 +159,18 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start sm:items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold text-foreground">لوحة التحكم الرئيسية</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{dateStr}</p>
+          <h1 className="text-lg sm:text-xl font-bold text-foreground">لوحة التحكم الرئيسية</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{dateStr}</p>
         </div>
-        <Link href="/projects" className="flex items-center gap-1 text-sm text-primary hover:text-primary/80 font-medium transition-colors">
-          عرض جميع المشاريع <ChevronLeft className="h-4 w-4" />
+        <Link href="/projects" className="flex items-center gap-1 text-xs sm:text-sm text-primary hover:text-primary/80 font-medium transition-colors shrink-0">
+          <span className="hidden sm:inline">عرض جميع</span> المشاريع <ChevronLeft className="h-4 w-4" />
         </Link>
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard
           label="إجمالي المشاريع"
           value={totalProjects}
@@ -353,7 +353,7 @@ export default function Dashboard() {
             <div className="space-y-2">
               {delayedActivitiesList.map(a => (
                 <Link key={`${a.projectId}-${a.id}`} href={`/projects/${a.projectId}/activities`} className="block group">
-                  <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-white border border-red-100 hover:border-red-300 transition-all">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 p-3 rounded-lg bg-white border border-red-100 hover:border-red-300 transition-all">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate group-hover:text-red-700 transition-colors">{a.name}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">{a.projectName}</p>
@@ -363,7 +363,7 @@ export default function Dashboard() {
                         <span className="text-xs text-muted-foreground">الإنجاز</span>
                         <p className="text-sm font-bold tabular-nums">{a.actualProgress}%</p>
                       </div>
-                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold bg-red-100 text-red-700 border border-red-200 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-semibold bg-red-100 text-red-700 border border-red-200 whitespace-nowrap">
                         <Clock className="h-3 w-3" /> متأخر {a.delayDays} يوم
                       </span>
                     </div>

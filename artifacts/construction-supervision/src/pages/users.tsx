@@ -163,12 +163,12 @@ export default function Users() {
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="fullName"
                     render={({ field }) => (
-                      <FormItem className="col-span-2">
+                      <FormItem className="sm:col-span-2">
                         <FormLabel>الاسم الكامل</FormLabel>
                         <FormControl><Input {...field} /></FormControl>
                         <FormMessage />
@@ -213,7 +213,7 @@ export default function Users() {
                     control={form.control}
                     name="email"
                     render={({ field }) => (
-                      <FormItem className="col-span-2">
+                      <FormItem className="sm:col-span-2">
                         <FormLabel>البريد الإلكتروني</FormLabel>
                         <FormControl><Input type="email" {...field} dir="ltr" className="text-right" /></FormControl>
                         <FormMessage />
@@ -224,7 +224,7 @@ export default function Users() {
                     control={form.control}
                     name="password"
                     render={({ field }) => (
-                      <FormItem className="col-span-2">
+                      <FormItem className="sm:col-span-2">
                         <FormLabel>{editingUserId ? "كلمة المرور (اتركها فارغة لعدم التغيير)" : "كلمة المرور"}</FormLabel>
                         <FormControl><Input type="password" {...field} dir="ltr" className="text-right" /></FormControl>
                         <FormMessage />
@@ -243,7 +243,8 @@ export default function Users() {
       </div>
 
       <Card>
-        <CardContent className="p-0 overflow-x-auto">
+        {/* Desktop Table */}
+        <CardContent className="p-0 overflow-x-auto hidden sm:block">
           <Table className="min-w-[540px]">
             <TableHeader>
               <TableRow>
@@ -285,6 +286,36 @@ export default function Users() {
               )}
             </TableBody>
           </Table>
+        </CardContent>
+
+        {/* Mobile Card View */}
+        <CardContent className="sm:hidden space-y-3 p-3">
+          {isLoading ? (
+            <div className="text-center py-8">جاري التحميل...</div>
+          ) : users?.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">لا يوجد مستخدمين</div>
+          ) : (
+            users?.map(u => (
+              <div key={u.id} className="rounded-lg border p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">{u.fullName}</span>
+                  {getRoleBadge(u.role)}
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span dir="ltr">{u.username}</span>
+                  <span dir="ltr" className="truncate max-w-[180px]">{u.email}</span>
+                </div>
+                <div className="flex justify-end gap-1 pt-1 border-t">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(u)}>
+                    <Edit2 className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDeletingId(u.id)} disabled={user?.id === u.id}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
       <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
