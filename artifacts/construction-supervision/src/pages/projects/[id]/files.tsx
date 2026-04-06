@@ -17,6 +17,16 @@ import { ProjectNav } from "@/components/project-nav";
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -30,6 +40,7 @@ export default function ProjectFiles() {
   const queryClient = useQueryClient();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [uploadCategory, setUploadCategory] = useState("document");
   const [uploadDescription, setUploadDescription] = useState("");
@@ -58,15 +69,16 @@ export default function ProjectFiles() {
     document.body.removeChild(a);
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm("هل أنت متأكد من حذف هذا الملف؟")) {
-      try {
-        await deleteFile.mutateAsync({ projectId, id });
-        queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) });
-        toast({ title: "تم حذف الملف" });
-      } catch {
-        toast({ variant: "destructive", title: "فشل الحذف" });
-      }
+  const handleDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await deleteFile.mutateAsync({ projectId, id: deletingId });
+      queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) });
+      toast({ title: "تم حذف الملف" });
+    } catch {
+      toast({ variant: "destructive", title: "فشل الحذف" });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -267,7 +279,7 @@ export default function ProjectFiles() {
                 <Button variant="secondary" size="sm" className="flex-1 gap-1" onClick={() => handleDownload(file)}>
                   <Download className="h-3 w-3" /> تحميل
                 </Button>
-                <Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleDelete(file.id)}>
+                <Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => setDeletingId(file.id)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -275,6 +287,20 @@ export default function ProjectFiles() {
           ))
         )}
       </div>
+      <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+            <AlertDialogDescription>هل أنت متأكد من حذف هذا الملف؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2">
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              حذف
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
