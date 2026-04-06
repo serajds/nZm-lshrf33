@@ -36,9 +36,17 @@ export default function OwnerPortal() {
   const [showPassword, setShowPassword] = useState(false);
   const [ownerData, setOwnerData] = useState<OwnerProjectView | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
+  const [projectInfo, setProjectInfo] = useState<{ projectName: string; companyLogos: Record<string, { name: string; logoUrl: string | null }> } | null>(null);
   const verifyAccess = useVerifyOwnerAccess();
 
   useEffect(() => {
+    fetch(`${API_BASE}/owner/access/${token}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) setProjectInfo(data);
+      })
+      .catch(() => {});
+
     const savedJwt = sessionStorage.getItem(`owner_jwt_${token}`);
     if (!savedJwt) {
       setIsRestoring(false);
@@ -95,14 +103,38 @@ export default function OwnerPortal() {
   }
 
   if (!ownerData) {
+    const apiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const ownerLogo = projectInfo?.companyLogos?.owner;
+    const supervisorLogo = projectInfo?.companyLogos?.supervisor;
+    const hasLogos = !!(ownerLogo?.logoUrl || supervisorLogo?.logoUrl);
+
     return (
       <div className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-slate-50 via-white to-emerald-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950 p-4" dir="rtl">
         <div className="mb-8 flex flex-col items-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-emerald-700 text-white rounded-3xl flex items-center justify-center shadow-2xl shadow-emerald-500/30 mb-5">
-            <Building2 className="w-10 h-10" />
-          </div>
-          <h1 className="text-3xl font-bold text-foreground">بوابة المالك</h1>
-          <p className="text-muted-foreground mt-2 text-center">متابعة تفاصيل مشاريع البناء والتقارير الدورية</p>
+          {hasLogos ? (
+            <div className="flex items-center justify-center gap-10 mb-6">
+              {[
+                { logo: supervisorLogo, label: "جهة الإشراف" },
+                { logo: ownerLogo, label: "المالك" },
+              ].map(({ logo, label }) => {
+                if (!logo?.logoUrl) return null;
+                return (
+                  <div key={label} className="flex flex-col items-center gap-2">
+                    <div className="w-20 h-20 rounded-2xl bg-white shadow-xl p-2.5 flex items-center justify-center border border-slate-100">
+                      <img src={apiBase + logo.logoUrl} alt={logo.name} className="max-w-full max-h-full object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    </div>
+                    <span className="text-sm font-bold text-foreground max-w-[140px] text-center leading-tight">{logo.name}</span>
+                    <span className="text-[11px] text-muted-foreground font-medium">{label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-emerald-700 text-white rounded-3xl flex items-center justify-center shadow-2xl shadow-emerald-500/30 mb-5">
+              <Building2 className="w-10 h-10" />
+            </div>
+          )}
+          <h1 className="text-3xl font-bold text-foreground">{projectInfo?.projectName || "بوابة المالك"}</h1>
         </div>
 
         <Card className="w-full max-w-md shadow-2xl border-0 bg-card/80 backdrop-blur-sm">
@@ -111,7 +143,6 @@ export default function OwnerPortal() {
               <Lock className="w-6 h-6 text-emerald-600" />
             </div>
             <CardTitle className="text-xl">الوصول للمشروع</CardTitle>
-            <CardDescription>أدخل كلمة المرور المزودة من قبل المهندس المشرف</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-5">
