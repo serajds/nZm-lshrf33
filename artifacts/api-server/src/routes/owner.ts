@@ -89,7 +89,19 @@ router.get("/owner/access/:token", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json({ exists: true, projectName: project.name });
+  const companyLogos: Record<string, { name: string; logoUrl: string | null }> = {};
+  const companyIds = [project.ownerCompanyId, project.supervisorCompanyId].filter(Boolean) as number[];
+  if (companyIds.length > 0) {
+    const companies = await db.select().from(companiesTable);
+    for (const c of companies) {
+      if (companyIds.includes(c.id)) {
+        if (c.id === project.ownerCompanyId) companyLogos.owner = { name: c.name, logoUrl: c.logoUrl };
+        if (c.id === project.supervisorCompanyId) companyLogos.supervisor = { name: c.name, logoUrl: c.logoUrl };
+      }
+    }
+  }
+
+  res.json({ exists: true, projectName: project.name, companyLogos });
 });
 
 router.post("/owner/verify", async (req, res): Promise<void> => {
