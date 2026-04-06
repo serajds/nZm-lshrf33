@@ -101,7 +101,7 @@ export default function Dashboard() {
   const { data: summary, isLoading } = useGetDashboardSummary();
 
   const today = new Date();
-  const dateStr = today.toLocaleDateString("ar-SA", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const dateStr = today.toLocaleDateString("ar-u-nu-latn", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   if (isLoading) {
     return (

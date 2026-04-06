@@ -3,6 +3,17 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
+/* Force Western Arabic (Latin) numerals 0–9 throughout — prevents Arabic-Indic digit substitution */
+@font-face {
+  font-family: 'Latin Digits';
+  src: local('Arial'), local('Helvetica Neue'), local('sans-serif');
+  unicode-range: U+0030-0039, U+002E, U+002C, U+0025, U+002B, U+002D;
+}
+
+html, body, * {
+  font-family: 'Latin Digits', 'Noto Kufi Arabic', 'Noto Sans Arabic', sans-serif;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
