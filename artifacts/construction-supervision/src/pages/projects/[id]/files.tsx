@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import { 
   useListFiles,
@@ -30,8 +30,24 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, ArrowRight, FileText, Image as ImageIcon, File as FileIcon, UploadCloud, Download } from "lucide-react";
+import { 
+  Trash2, ArrowRight, FileText, File as FileIcon, 
+  UploadCloud, Download, Search, FolderOpen, FileImage, FileSpreadsheet,
+  FileCheck2, Eye, HardDrive
+} from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
+
+const CATEGORY_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string; bg: string; border: string }> = {
+  image:       { label: "صور",            icon: FileImage,       color: "text-blue-600",    bg: "bg-blue-50",     border: "border-blue-200" },
+  pdf:         { label: "مخططات (PDF)",   icon: FileText,        color: "text-red-600",     bg: "bg-red-50",      border: "border-red-200" },
+  test_result: { label: "نتائج فحوصات",  icon: FileCheck2,      color: "text-emerald-600", bg: "bg-emerald-50",  border: "border-emerald-200" },
+  document:    { label: "مستندات",        icon: FileSpreadsheet, color: "text-amber-600",   bg: "bg-amber-50",    border: "border-amber-200" },
+  other:       { label: "أخرى",           icon: FileIcon,        color: "text-slate-600",   bg: "bg-slate-50",    border: "border-slate-200" },
+};
+
+function getCategoryConfig(category: string) {
+  return CATEGORY_CONFIG[category] ?? CATEGORY_CONFIG.other;
+}
 
 export default function ProjectFiles() {
   const params = useParams();
@@ -41,21 +57,37 @@ export default function ProjectFiles() {
   const queryClient = useQueryClient();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [previewFile, setPreviewFile] = useState<ProjectFile | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [uploadCategory, setUploadCategory] = useState("document");
   const [uploadDescription, setUploadDescription] = useState("");
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   
-  const { data: files, isLoading } = useListFiles(projectId, {
-    category: categoryFilter && categoryFilter !== "all" ? categoryFilter : undefined
-  }, { query: { enabled: !!projectId } });
+  const { data: allFiles, isLoading } = useListFiles(projectId, {}, { query: { enabled: !!projectId } });
   
   const deleteFile = useDeleteFile();
+
+  const categoryFiltered = (allFiles ?? []).filter((f: ProjectFile) =>
+    !categoryFilter || categoryFilter === "all" || f.category === categoryFilter
+  );
+
+  const filteredFiles = categoryFiltered.filter((f: ProjectFile) =>
+    !searchQuery || f.originalName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const categoryCounts = (allFiles ?? []).reduce((acc: Record<string, number>, f: ProjectFile) => {
+    acc[f.category] = (acc[f.category] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const totalSize = (allFiles ?? []).reduce((s: number, f: ProjectFile) => s + f.fileSize, 0);
 
   const handleDownload = async (file: ProjectFile) => {
     const token = localStorage.getItem("auth_token");
@@ -121,31 +153,48 @@ export default function ProjectFiles() {
     }
   };
 
-  const getFileIcon = (category: string) => {
-    switch (category) {
-      case 'image': return <ImageIcon className="h-8 w-8 text-blue-500" />;
-      case 'pdf': return <FileText className="h-8 w-8 text-destructive" />;
-      case 'test_result': return <FileText className="h-8 w-8 text-emerald-600" />;
-      default: return <FileIcon className="h-8 w-8 text-muted-foreground" />;
-    }
-  };
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
 
-  const getCategoryLabel = (category: string) => {
-    switch (category) {
-      case 'image': return 'صورة';
-      case 'pdf': return 'مخطط / PDF';
-      case 'test_result': return 'نتيجة فحص';
-      case 'document': return 'مستند';
-      default: return 'أخرى';
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile) {
+      setFileToUpload(droppedFile);
+      const ext = droppedFile.name.split('.').pop()?.toLowerCase();
+      if (['jpg','jpeg','png','gif','webp','svg'].includes(ext ?? '')) {
+        setUploadCategory('image');
+      } else if (ext === 'pdf') {
+        setUploadCategory('pdf');
+      } else if (['doc','docx','xls','xlsx','ppt','pptx'].includes(ext ?? '')) {
+        setUploadCategory('document');
+      }
     }
-  };
+  }, []);
 
   const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return '0 B';
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const isImageFile = (file: ProjectFile) => {
+    return file.category === 'image' || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.originalName);
+  };
+
+  const getFileUrl = (file: ProjectFile) => {
+    const token = localStorage.getItem("auth_token");
+    return token ? `${file.fileUrl}?token=${encodeURIComponent(token)}` : file.fileUrl;
   };
 
   return (
@@ -156,40 +205,82 @@ export default function ProjectFiles() {
         </Button>
         <div className="flex-1 min-w-0">
           <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">الملفات</p>
+          <p className="text-sm text-muted-foreground mt-0.5">الملفات والمستندات</p>
         </div>
       </div>
 
       <ProjectNav projectId={projectId} />
 
-      <div className="flex flex-wrap justify-between items-center bg-card p-4 rounded-lg border shadow-sm gap-3">
-        <div className="w-full sm:w-48">
-          <Select value={categoryFilter ?? "all"} onValueChange={(v) => setCategoryFilter(v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="تصنيف الملف" />
-            </SelectTrigger>
-            <SelectContent dir="rtl">
-              <SelectItem value="all">الكل</SelectItem>
-              <SelectItem value="image">صور</SelectItem>
-              <SelectItem value="pdf">مخططات (PDF)</SelectItem>
-              <SelectItem value="test_result">نتائج فحوصات</SelectItem>
-              <SelectItem value="document">مستندات</SelectItem>
-              <SelectItem value="other">أخرى</SelectItem>
-            </SelectContent>
-          </Select>
+      {!isLoading && (allFiles ?? []).length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <Card 
+            className={`cursor-pointer transition-all hover:shadow-md ${!categoryFilter || categoryFilter === 'all' ? 'ring-2 ring-primary shadow-md' : ''}`}
+            onClick={() => setCategoryFilter("all")}
+          >
+            <CardContent className="p-3 flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                <FolderOpen className="h-5 w-5 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xl font-bold tabular-nums">{(allFiles ?? []).length}</p>
+                <p className="text-[11px] text-muted-foreground truncate">جميع الملفات</p>
+              </div>
+            </CardContent>
+          </Card>
+          {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => {
+            const count = categoryCounts[key] || 0;
+            if (count === 0) return null;
+            const Icon = cfg.icon;
+            const isActive = categoryFilter === key;
+            return (
+              <Card 
+                key={key}
+                className={`cursor-pointer transition-all hover:shadow-md ${isActive ? `ring-2 ring-primary shadow-md` : ''}`}
+                onClick={() => setCategoryFilter(isActive ? "all" : key)}
+              >
+                <CardContent className="p-3 flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${cfg.bg} shrink-0`}>
+                    <Icon className={`h-5 w-5 ${cfg.color}`} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xl font-bold tabular-nums">{count}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{cfg.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
-        
+      )}
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input 
+            placeholder="بحث في الملفات..." 
+            className="pr-9"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        {totalSize > 0 && (
+          <div className="hidden sm:flex items-center gap-1.5 text-sm text-muted-foreground px-3 border rounded-md bg-muted/30">
+            <HardDrive className="h-3.5 w-3.5" />
+            <span>{formatFileSize(totalSize)}</span>
+          </div>
+        )}
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           setIsDialogOpen(open);
           if (!open) { 
             setFileToUpload(null); 
             setUploadDescription(""); 
             setUploadCategory("document");
+            setIsDragOver(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
           }
         }}>
           <DialogTrigger asChild>
-            <Button className="gap-2">
+            <Button className="gap-2 shrink-0">
               <UploadCloud className="h-4 w-4" /> رفع ملف
             </Button>
           </DialogTrigger>
@@ -197,41 +288,85 @@ export default function ProjectFiles() {
             <DialogHeader>
               <DialogTitle>رفع ملف جديد</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleUpload} className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label>الملف</Label>
-                <Input 
+            <form onSubmit={handleUpload} className="space-y-4 pt-2">
+              <div
+                className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${
+                  isDragOver ? 'border-primary bg-primary/5' : fileToUpload ? 'border-emerald-400 bg-emerald-50' : 'border-muted-foreground/25 hover:border-primary/50'
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input 
                   type="file" 
                   ref={fileInputRef}
-                  onChange={(e) => setFileToUpload(e.target.files?.[0] ?? null)}
-                  className="cursor-pointer"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    setFileToUpload(f);
+                    if (f) {
+                      const ext = f.name.split('.').pop()?.toLowerCase();
+                      if (['jpg','jpeg','png','gif','webp','svg'].includes(ext ?? '')) setUploadCategory('image');
+                      else if (ext === 'pdf') setUploadCategory('pdf');
+                    }
+                  }}
+                  className="hidden"
                 />
+                {fileToUpload ? (
+                  <div className="space-y-2">
+                    <FileCheck2 className="h-10 w-10 text-emerald-500 mx-auto" />
+                    <p className="font-medium text-sm truncate">{fileToUpload.name}</p>
+                    <p className="text-xs text-muted-foreground">{formatFileSize(fileToUpload.size)}</p>
+                    <Button type="button" variant="ghost" size="sm" className="text-xs"
+                      onClick={(e) => { e.stopPropagation(); setFileToUpload(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}>
+                      تغيير الملف
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <UploadCloud className={`h-10 w-10 mx-auto ${isDragOver ? 'text-primary' : 'text-muted-foreground/40'}`} />
+                    <p className="text-sm font-medium">اسحب الملف هنا أو انقر للاختيار</p>
+                    <p className="text-xs text-muted-foreground">يدعم جميع أنواع الملفات</p>
+                  </div>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label>التصنيف</Label>
-                <Select value={uploadCategory} onValueChange={setUploadCategory}>
-                  <SelectTrigger dir="rtl"><SelectValue /></SelectTrigger>
-                  <SelectContent dir="rtl">
-                    <SelectItem value="image">صورة</SelectItem>
-                    <SelectItem value="pdf">مخطط (PDF)</SelectItem>
-                    <SelectItem value="test_result">نتيجة فحص</SelectItem>
-                    <SelectItem value="document">مستند</SelectItem>
-                    <SelectItem value="other">أخرى</SelectItem>
-                  </SelectContent>
-                </Select>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>التصنيف</Label>
+                  <Select value={uploadCategory} onValueChange={setUploadCategory}>
+                    <SelectTrigger dir="rtl"><SelectValue /></SelectTrigger>
+                    <SelectContent dir="rtl">
+                      {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
+                        <SelectItem key={key} value={key}>{cfg.label.replace(/\s*\(.*\)/, '')}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>الوصف <span className="text-muted-foreground text-xs">(اختياري)</span></Label>
+                  <Input 
+                    value={uploadDescription} 
+                    onChange={(e) => setUploadDescription(e.target.value)} 
+                    placeholder="وصف مختصر"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>الوصف (اختياري)</Label>
-                <Input 
-                  value={uploadDescription} 
-                  onChange={(e) => setUploadDescription(e.target.value)} 
-                  placeholder="أدخل وصفاً قصيراً للملف"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-4">
+
+              <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
-                <Button type="submit" disabled={isUploading || !fileToUpload}>
-                  {isUploading ? "جاري الرفع..." : "رفع الملف"}
+                <Button type="submit" disabled={isUploading || !fileToUpload} className="gap-2 min-w-[100px]">
+                  {isUploading ? (
+                    <>
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      جاري الرفع...
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="h-4 w-4" />
+                      رفع الملف
+                    </>
+                  )}
                 </Button>
               </div>
             </form>
@@ -241,55 +376,107 @@ export default function ProjectFiles() {
 
       {isLoading ? (
         <LoadingSpinner text="جاري تحميل الملفات..." />
-      ) : (files ?? []).length === 0 ? (
+      ) : filteredFiles.length === 0 ? (
         <Card className="border-dashed">
           <EmptyState
-            icon={<FileIcon className="h-7 w-7 text-muted-foreground/60" />}
-            title="لا توجد ملفات"
-            description="لم يتم رفع أي ملفات مطابقة للبحث"
+            icon={<FolderOpen className="h-7 w-7 text-muted-foreground/60" />}
+            title={searchQuery ? "لا توجد نتائج" : "لا توجد ملفات"}
+            description={searchQuery ? `لم يتم العثور على ملفات تطابق "${searchQuery}"` : "ارفع ملفات المشروع مثل المخططات والصور والمستندات"}
           />
         </Card>
       ) : (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {(files ?? []).map((file: ProjectFile) => (
-            <Card key={file.id} className="overflow-hidden flex flex-col group">
-              <CardContent className="p-4 flex-1 flex flex-col">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="p-2 bg-muted rounded-lg shrink-0">
-                    {getFileIcon(file.category)}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filteredFiles.map((file: ProjectFile) => {
+            const cfg = getCategoryConfig(file.category);
+            const Icon = cfg.icon;
+            const showPreview = isImageFile(file);
+            return (
+              <Card key={file.id} className="overflow-hidden flex flex-col group hover:shadow-lg transition-all duration-200">
+                {showPreview ? (
+                  <div 
+                    className="h-36 bg-muted/30 flex items-center justify-center overflow-hidden cursor-pointer relative"
+                    onClick={() => setPreviewFile(file)}
+                  >
+                    <img 
+                      src={getFileUrl(file)} 
+                      alt={file.originalName}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      onError={(e) => { (e.target as HTMLImageElement).src = ''; (e.target as HTMLImageElement).className = 'hidden'; }}
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                      <Eye className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+                    </div>
                   </div>
-                  <Badge variant="secondary" className="text-xs">
-                    {getCategoryLabel(file.category)}
-                  </Badge>
-                </div>
-                
-                <h4 className="font-medium text-sm line-clamp-2 mb-1" title={file.originalName}>
-                  {file.originalName}
-                </h4>
-                
-                {file.description && (
-                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1 mb-2">
-                    {file.description}
-                  </p>
+                ) : (
+                  <div className={`h-24 ${cfg.bg} flex items-center justify-center`}>
+                    <Icon className={`h-12 w-12 ${cfg.color} opacity-60`} />
+                  </div>
                 )}
                 
-                <div className="mt-auto pt-4 flex items-center justify-between text-xs text-muted-foreground">
-                  <span dir="ltr">{formatFileSize(file.fileSize)}</span>
-                  <span className="font-mono">{fmtDate(file.uploadedAt)}</span>
+                <CardContent className="p-4 flex-1 flex flex-col gap-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <h4 className="font-medium text-sm line-clamp-2 flex-1 leading-snug" title={file.originalName}>
+                      {file.originalName}
+                    </h4>
+                    <Badge variant="outline" className={`text-[10px] shrink-0 ${cfg.color} ${cfg.border} border`}>
+                      {cfg.label.replace(/\s*\(.*\)/, '')}
+                    </Badge>
+                  </div>
+                  
+                  {file.description && (
+                    <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                      {file.description}
+                    </p>
+                  )}
+                  
+                  <div className="mt-auto pt-3 flex items-center justify-between text-[11px] text-muted-foreground border-t">
+                    <span className="tabular-nums font-medium" dir="ltr">{formatFileSize(file.fileSize)}</span>
+                    <span className="tabular-nums">{fmtDate(file.uploadedAt)}</span>
+                  </div>
+                </CardContent>
+
+                <div className="px-3 pb-3 flex gap-2">
+                  <Button variant="outline" size="sm" className="flex-1 gap-1.5 h-8 text-xs" onClick={() => handleDownload(file)}>
+                    <Download className="h-3.5 w-3.5" /> تحميل
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => setDeletingId(file.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
-              </CardContent>
-              <div className="bg-muted px-4 py-2 border-t flex justify-between gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                <Button variant="secondary" size="sm" className="flex-1 gap-1" onClick={() => handleDownload(file)}>
-                  <Download className="h-3 w-3" /> تحميل
-                </Button>
-                <Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => setDeletingId(file.id)}>
-                  <Trash2 className="h-4 w-4" />
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <Dialog open={!!previewFile} onOpenChange={(open) => { if (!open) setPreviewFile(null); }}>
+        <DialogContent className="max-w-3xl p-0 overflow-hidden" dir="rtl">
+          {previewFile && (
+            <>
+              <div className="bg-black flex items-center justify-center max-h-[70vh] min-h-[300px]">
+                <img 
+                  src={getFileUrl(previewFile)} 
+                  alt={previewFile.originalName} 
+                  className="max-w-full max-h-[70vh] object-contain"
+                />
+              </div>
+              <div className="p-4 flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm truncate">{previewFile.originalName}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formatFileSize(previewFile.fileSize)} · {fmtDate(previewFile.uploadedAt)}
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={() => handleDownload(previewFile)}>
+                  <Download className="h-3.5 w-3.5" /> تحميل
                 </Button>
               </div>
-            </Card>
-          ))}
-      </div>
-      )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
