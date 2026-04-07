@@ -8,27 +8,28 @@ import { requireAuth } from "../middlewares/auth";
 const router: IRouter = Router();
 
 router.post("/auth/login", async (req, res): Promise<void> => {
-  const { username, password } = req.body;
+  const { phone, password } = req.body;
 
-  if (!username || !password) {
-    res.status(400).json({ error: "اسم المستخدم وكلمة المرور مطلوبان" });
+  if (!phone || !password) {
+    res.status(400).json({ error: "رقم الهاتف وكلمة المرور مطلوبان" });
     return;
   }
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.username, username));
+  const trimmedPhone = (phone as string).trim();
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.phone, trimmedPhone));
 
   if (!user) {
-    res.status(401).json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة" });
+    res.status(401).json({ error: "رقم الهاتف أو كلمة المرور غير صحيحة" });
     return;
   }
 
   const valid = await comparePassword(password, user.passwordHash);
   if (!valid) {
-    res.status(401).json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة" });
+    res.status(401).json({ error: "رقم الهاتف أو كلمة المرور غير صحيحة" });
     return;
   }
 
-  const token = signToken({ userId: user.id, username: user.username, role: user.role });
+  const token = signToken({ userId: user.id, phone: user.phone, role: user.role });
 
   const { passwordHash: _, ...safeUser } = user;
   res.json({ user: safeUser, token });

@@ -292,7 +292,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                     <TableCell>
                       <div>
                         <p className="font-medium">{member.fullName}</p>
-                        <p className="text-xs text-muted-foreground" dir="ltr">{member.email}</p>
+                        <p className="text-xs text-muted-foreground" dir="ltr">{member.phone}</p>
                       </div>
                     </TableCell>
                     <TableCell>

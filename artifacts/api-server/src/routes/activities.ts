@@ -99,7 +99,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
   await recalcExpectedEndDate(projectId);
 
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "create", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId });
+  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "create", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId });
 
   res.status(201).json(activity);
 });
@@ -161,7 +161,7 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   await recalcExpectedEndDate(projectId);
 
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "update", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId, details: updateData });
+  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "update", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId, details: updateData });
 
   res.json(activity);
 });
@@ -331,7 +331,7 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
   await recalcExpectedEndDate(projectId);
 
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "delete", entityType: "activity", entityId: id, entityName: activity.name, projectId });
+  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "delete", entityType: "activity", entityId: id, entityName: activity.name, projectId });
 
   res.sendStatus(204);
 });

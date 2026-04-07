@@ -14,8 +14,7 @@ export interface ProjectMember {
   role: ProjectMemberRole;
   createdAt: Date;
   fullName: string;
-  username: string;
-  email: string;
+  phone: string;
   userRole: string;
   /** @nullable */
   companyName?: string | null;

@@ -45,8 +45,7 @@ async function getMemberWithUser(memberId: number) {
     role: projectMembersTable.role,
     createdAt: projectMembersTable.createdAt,
     fullName: usersTable.fullName,
-    username: usersTable.username,
-    email: usersTable.email,
+    phone: usersTable.phone,
     userRole: usersTable.role,
     companyName: companiesTable.name,
   })
@@ -72,8 +71,7 @@ router.get("/projects/:projectId/members", requireProjectAccess("projectId"), as
     role: projectMembersTable.role,
     createdAt: projectMembersTable.createdAt,
     fullName: usersTable.fullName,
-    username: usersTable.username,
-    email: usersTable.email,
+    phone: usersTable.phone,
     userRole: usersTable.role,
     companyName: companiesTable.name,
   })
@@ -125,9 +123,8 @@ router.get("/projects/:projectId/eligible-users", requireProjectManager("project
   if (companyIds.length > 0) {
     users = await db.select({
       id: usersTable.id,
-      username: usersTable.username,
+      phone: usersTable.phone,
       fullName: usersTable.fullName,
-      email: usersTable.email,
       role: usersTable.role,
       companyId: usersTable.companyId,
       companyName: companiesTable.name,
@@ -139,9 +136,8 @@ router.get("/projects/:projectId/eligible-users", requireProjectManager("project
   } else {
     users = await db.select({
       id: usersTable.id,
-      username: usersTable.username,
+      phone: usersTable.phone,
       fullName: usersTable.fullName,
-      email: usersTable.email,
       role: usersTable.role,
       companyId: usersTable.companyId,
       companyName: companiesTable.name,

@@ -56,8 +56,7 @@ interface Company {
 
 const userSchema = z.object({
   fullName: z.string().min(1, "الاسم الكامل مطلوب"),
-  username: z.string().min(1, "اسم المستخدم مطلوب"),
-  email: z.string().email("البريد الإلكتروني غير صالح"),
+  phone: z.string().min(1, "رقم الهاتف مطلوب"),
   role: z.enum(["admin", "project_manager", "engineer", "owner"]),
   password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل").optional().or(z.literal('')),
   companyId: z.string().optional(),
@@ -91,8 +90,7 @@ export default function Users() {
     resolver: zodResolver(userSchema),
     defaultValues: {
       fullName: "",
-      username: "",
-      email: "",
+      phone: "",
       role: "engineer",
       password: "",
       companyId: "",
@@ -108,8 +106,7 @@ export default function Users() {
     setEditingUserId(u.id);
     form.reset({
       fullName: u.fullName,
-      username: u.username,
-      email: u.email,
+      phone: u.phone,
       role: u.role as "admin" | "project_manager" | "engineer" | "owner",
       password: "",
       companyId: u.companyId ? String(u.companyId) : "",
@@ -208,11 +205,11 @@ export default function Users() {
                   />
                   <FormField
                     control={form.control}
-                    name="username"
+                    name="phone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>اسم المستخدم</FormLabel>
-                        <FormControl><Input {...field} dir="ltr" className="text-right" /></FormControl>
+                        <FormLabel>رقم الهاتف</FormLabel>
+                        <FormControl><Input type="tel" {...field} dir="ltr" className="text-right" placeholder="05XXXXXXXX" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -236,17 +233,6 @@ export default function Users() {
                             <SelectItem value="owner">مالك</SelectItem>
                           </SelectContent>
                         </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem className="sm:col-span-2">
-                        <FormLabel>البريد الإلكتروني</FormLabel>
-                        <FormControl><Input type="email" {...field} dir="ltr" className="text-right" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -305,8 +291,7 @@ export default function Users() {
             <TableHeader>
               <TableRow>
                 <TableHead className="text-right">الاسم</TableHead>
-                <TableHead className="text-right">اسم المستخدم</TableHead>
-                <TableHead className="text-right">البريد الإلكتروني</TableHead>
+                <TableHead className="text-right">رقم الهاتف</TableHead>
                 <TableHead className="text-right">الشركة</TableHead>
                 <TableHead className="text-right">الصلاحية</TableHead>
                 <TableHead className="text-left">الإجراءات</TableHead>
@@ -315,18 +300,17 @@ export default function Users() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">جاري التحميل...</TableCell>
+                  <TableCell colSpan={5} className="text-center py-8">جاري التحميل...</TableCell>
                 </TableRow>
               ) : users?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد مستخدمين</TableCell>
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">لا يوجد مستخدمين</TableCell>
                 </TableRow>
               ) : (
                 users?.map(u => (
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">{u.fullName}</TableCell>
-                    <TableCell dir="ltr" className="text-right">{u.username}</TableCell>
-                    <TableCell dir="ltr" className="text-right">{u.email}</TableCell>
+                    <TableCell dir="ltr" className="text-right">{u.phone}</TableCell>
                     <TableCell>
                       {(u as any).companyName ? (
                         <Badge variant="outline" className="gap-1">
@@ -368,9 +352,8 @@ export default function Users() {
                   <span className="text-sm font-medium">{u.fullName}</span>
                   {getRoleBadge(u.role)}
                 </div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span dir="ltr">{u.username}</span>
-                  <span dir="ltr" className="truncate max-w-[180px]">{u.email}</span>
+                <div className="text-xs text-muted-foreground" dir="ltr">
+                  {u.phone}
                 </div>
                 {(u as any).companyName && (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">

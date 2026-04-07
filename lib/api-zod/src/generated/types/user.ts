@@ -9,9 +9,8 @@ import type { UserRole } from "./userRole";
 
 export interface User {
   id: number;
-  username: string;
+  phone: string;
   fullName: string;
-  email: string;
   role: UserRole;
   /** @nullable */
   companyId?: number | null;

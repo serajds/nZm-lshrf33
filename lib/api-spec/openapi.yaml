@@ -48,7 +48,7 @@ paths:
     post:
       operationId: login
       tags: [auth]
-      summary: Login with username and password
+      summary: Login with phone and password
       requestBody:
         required: true
         content:
@@ -1009,12 +1009,12 @@ components:
     LoginBody:
       type: object
       properties:
-        username:
+        phone:
           type: string
         password:
           type: string
       required:
-        - username
+        - phone
         - password
 
     LoginResponse:
@@ -1034,11 +1034,9 @@ components:
       properties:
         id:
           type: integer
-        username:
+        phone:
           type: string
         fullName:
-          type: string
-        email:
           type: string
         role:
           type: string
@@ -1052,22 +1050,19 @@ components:
           format: date-time
       required:
         - id
-        - username
+        - phone
         - fullName
-        - email
         - role
         - createdAt
 
     CreateUserBody:
       type: object
       properties:
-        username:
+        phone:
           type: string
         password:
           type: string
         fullName:
-          type: string
-        email:
           type: string
         role:
           type: string
@@ -1075,10 +1070,9 @@ components:
         companyId:
           type: ["integer", "null"]
       required:
-        - username
+        - phone
         - password
         - fullName
-        - email
         - role
 
     ProjectMember:
@@ -1098,9 +1092,7 @@ components:
           format: date-time
         fullName:
           type: string
-        username:
-          type: string
-        email:
+        phone:
           type: string
         userRole:
           type: string
@@ -1117,8 +1109,7 @@ components:
         - role
         - createdAt
         - fullName
-        - username
-        - email
+        - phone
         - userRole
 
     AddProjectMemberBody:
@@ -1170,7 +1161,7 @@ components:
       properties:
         fullName:
           type: ["string", "null"]
-        email:
+        phone:
           type: ["string", "null"]
         role:
           type: ["string", "null"]

@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       toast({
         variant: "destructive",
         title: "فشل تسجيل الدخول",
-        description: e?.error || "تأكد من اسم المستخدم وكلمة المرور",
+        description: e?.error || "تأكد من رقم الهاتف وكلمة المرور",
       });
       throw err;
     }

@@ -143,7 +143,7 @@ export function useHealthCheck<
 }
 
 /**
- * @summary Login with username and password
+ * @summary Login with phone and password
  */
 export const getLoginUrl = () => {
   return `/api/auth/login`;
@@ -206,7 +206,7 @@ export type LoginMutationBody = BodyType<LoginBody>;
 export type LoginMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Login with username and password
+ * @summary Login with phone and password
  */
 export const useLogin = <
   TError = ErrorType<ErrorResponse>,

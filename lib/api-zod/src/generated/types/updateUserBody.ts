@@ -10,7 +10,7 @@ export interface UpdateUserBody {
   /** @nullable */
   fullName?: string | null;
   /** @nullable */
-  email?: string | null;
+  phone?: string | null;
   /** @nullable */
   role?: string | null;
   /** @nullable */
