@@ -154,9 +154,22 @@ router.patch("/projects/:projectId/members/:id", requireProjectManager("projectI
   const projectId = parseInt(raw, 10);
   const memberId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const { role, assignedGroupIds } = req.body;
+  const user = (req as any).user;
 
   if (role && role !== "project_manager" && role !== "engineer") {
     res.status(400).json({ error: "الدور يجب أن يكون مدير مشروع أو مهندس" });
+    return;
+  }
+
+  const [targetMember] = await db.select().from(projectMembersTable)
+    .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)));
+  if (!targetMember) {
+    res.status(404).json({ error: "العضو غير موجود" });
+    return;
+  }
+
+  if (role && targetMember.userId === user?.userId) {
+    res.status(403).json({ error: "لا يمكنك تغيير دورك بنفسك" });
     return;
   }
 
@@ -261,6 +274,14 @@ router.delete("/projects/:projectId/members/:id", requireProjectManager("project
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const memberId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const user = (req as any).user;
+
+  const [targetMember] = await db.select().from(projectMembersTable)
+    .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)));
+  if (targetMember && targetMember.userId === user?.userId) {
+    res.status(403).json({ error: "لا يمكنك إزالة نفسك من المشروع" });
+    return;
+  }
 
   const [deleted] = await db.delete(projectMembersTable)
     .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)))
