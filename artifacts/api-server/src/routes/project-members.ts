@@ -37,11 +37,17 @@ async function setGroupsForMember(memberId: number, groupIds: number[], projectI
   }
 }
 
-async function getCompanyNamesForUser(userId: number): Promise<string[]> {
-  const rows = await db.select({ name: companiesTable.name })
+async function getCompanyNamesForUser(userId: number, projectCompanyIds?: number[]): Promise<string[]> {
+  const rows = await db.select({
+    name: companiesTable.name,
+    companyId: userCompaniesTable.companyId,
+  })
     .from(userCompaniesTable)
     .innerJoin(companiesTable, eq(userCompaniesTable.companyId, companiesTable.id))
     .where(eq(userCompaniesTable.userId, userId));
+  if (projectCompanyIds && projectCompanyIds.length > 0) {
+    return rows.filter(r => projectCompanyIds.includes(r.companyId)).map(r => r.name);
+  }
   return rows.map(r => r.name);
 }
 
@@ -62,8 +68,13 @@ async function getMemberWithUser(memberId: number) {
 
   if (!memberWithUser) return null;
 
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, memberWithUser.projectId));
+  const projectCompanyIds = project
+    ? [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId].filter((id): id is number => id != null)
+    : [];
+
   const assignedGroupIds = await getGroupIdsForMember(memberId);
-  const companyNames = await getCompanyNamesForUser(memberWithUser.userId);
+  const companyNames = await getCompanyNamesForUser(memberWithUser.userId, projectCompanyIds);
   return { ...memberWithUser, companyNames, assignedGroupIds };
 }
 
@@ -100,11 +111,17 @@ router.get("/projects/:projectId/members", requireProjectAccess("projectId"), as
     assignmentMap.set(a.memberId, list);
   }
 
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+  const projectCompanyIds = project
+    ? [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId].filter((id): id is number => id != null)
+    : [];
+
   const userIds = members.map(m => m.userId);
   let companyMap = new Map<number, string[]>();
   if (userIds.length > 0) {
     const ucRows = await db.select({
       userId: userCompaniesTable.userId,
+      companyId: userCompaniesTable.companyId,
       companyName: companiesTable.name,
     })
       .from(userCompaniesTable)
@@ -112,6 +129,7 @@ router.get("/projects/:projectId/members", requireProjectAccess("projectId"), as
       .where(inArray(userCompaniesTable.userId, userIds));
 
     for (const r of ucRows) {
+      if (projectCompanyIds.length > 0 && !projectCompanyIds.includes(r.companyId)) continue;
       const list = companyMap.get(r.userId) || [];
       list.push(r.companyName);
       companyMap.set(r.userId, list);
