@@ -6,10 +6,19 @@ import { requireProjectAccess } from "../middlewares/auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import sharp from "sharp";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tiff", ".tif"];
+const MAX_IMAGE_WIDTH = 1920;
+const IMAGE_QUALITY = 80;
+
+function isImageFile(filename: string): boolean {
+  return IMAGE_EXTENSIONS.includes(path.extname(filename).toLowerCase());
 }
 
 const storage = multer.diskStorage({
@@ -26,6 +35,27 @@ const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 },
 });
+
+async function compressImage(filePath: string): Promise<{ size: number; filename: string }> {
+  const baseName = path.basename(filePath, path.extname(filePath));
+  const compressedName = baseName + "-compressed.jpg";
+  const compressedPath = path.join(path.dirname(filePath), compressedName);
+
+  const metadata = await sharp(filePath).metadata();
+  let pipeline = sharp(filePath).rotate();
+
+  if (metadata.width && metadata.width > MAX_IMAGE_WIDTH) {
+    pipeline = pipeline.resize(MAX_IMAGE_WIDTH, undefined, { withoutEnlargement: true });
+  }
+
+  pipeline = pipeline.jpeg({ quality: IMAGE_QUALITY, mozjpeg: true });
+  await pipeline.toFile(compressedPath);
+
+  fs.unlinkSync(filePath);
+
+  const stats = fs.statSync(compressedPath);
+  return { size: stats.size, filename: compressedName };
+}
 
 const router: IRouter = Router();
 
@@ -63,17 +93,35 @@ router.post("/projects/:projectId/files", requireProjectAccess("projectId"), upl
     return;
   }
 
+  let finalFilename = req.file.filename;
+  let finalSize = req.file.size;
+  let finalMimeType = req.file.mimetype;
+
+  if (isImageFile(req.file.originalname)) {
+    try {
+      const originalSize = req.file.size;
+      const result = await compressImage(path.join(uploadsDir, req.file.filename));
+      finalFilename = result.filename;
+      finalSize = result.size;
+      finalMimeType = "image/jpeg";
+      const savedPercent = Math.round((1 - result.size / originalSize) * 100);
+      console.log(`Image compressed: ${req.file.originalname} ${(originalSize / 1024).toFixed(0)}KB → ${(result.size / 1024).toFixed(0)}KB (${savedPercent}% saved)`);
+    } catch (err) {
+      console.warn("Image compression failed, using original:", err);
+    }
+  }
+
   const baseUrl = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "localhost";
-  const fileUrl = `https://${baseUrl}/api/uploads/${req.file.filename}`;
+  const fileUrl = `https://${baseUrl}/api/uploads/${finalFilename}`;
 
   const [file] = await db.insert(projectFilesTable).values({
     projectId,
-    filename: req.file.filename,
+    filename: finalFilename,
     originalName: req.file.originalname,
     category: category as "image" | "pdf" | "test_result" | "document" | "other",
     fileUrl,
-    fileSize: req.file.size,
-    mimeType: req.file.mimetype,
+    fileSize: finalSize,
+    mimeType: finalMimeType,
     description: description ?? null,
   }).returning();
 
