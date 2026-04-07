@@ -139,6 +139,9 @@ export default function Login() {
           </Form>
         </div>
 
+        <p className="mt-8 text-center text-xs text-slate-400">
+          Developed By : Eng. Seraj Elajtel
+        </p>
       </div>
     </div>
   );
