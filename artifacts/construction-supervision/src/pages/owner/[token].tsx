@@ -621,20 +621,39 @@ export default function OwnerPortal() {
         </div>
 
         <Tabs defaultValue="progress" className="w-full mb-8" dir="rtl">
-          <TabsList className="w-full justify-start mb-4 flex-wrap gap-1 bg-muted/50 p-1">
-            <TabsTrigger value="progress" className="gap-1.5"><BarChart3 className="h-3.5 w-3.5" />سير العمل</TabsTrigger>
-            <TabsTrigger value="activities" className="gap-1.5"><ActivityIcon className="h-3.5 w-3.5" />الأنشطة</TabsTrigger>
-            <TabsTrigger value="reports" className="gap-1.5">
-              <FileText className="h-3.5 w-3.5" />التقارير
-              {reports.length > 0 && <Badge className="ms-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0">{reports.length}</Badge>}
+          <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-5 gap-2 bg-transparent p-0 mb-6">
+            <TabsTrigger value="progress" className="flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-blue-500 data-[state=active]:bg-blue-50 data-[state=active]:shadow-md transition-all h-auto">
+              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                <BarChart3 className="h-5 w-5 text-blue-600" />
+              </div>
+              <span className="text-xs font-semibold">سير العمل</span>
             </TabsTrigger>
-            <TabsTrigger value="extensions" className="gap-1.5">
-              <ArrowBigRightDash className="h-3.5 w-3.5" />التمديدات
-              {extensions.length > 0 && <Badge className="ms-1 bg-amber-500 text-white text-[10px] px-1.5 py-0">{extensions.length}</Badge>}
+            <TabsTrigger value="activities" className="flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-emerald-500 data-[state=active]:bg-emerald-50 data-[state=active]:shadow-md transition-all h-auto">
+              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+                <ActivityIcon className="h-5 w-5 text-emerald-600" />
+              </div>
+              <span className="text-xs font-semibold">الأنشطة</span>
             </TabsTrigger>
-            <TabsTrigger value="suspensions" className="gap-1.5">
-              <PauseCircle className="h-3.5 w-3.5" />التوقفات
-              {(suspensions as ProjectSuspension[]).length > 0 && <Badge className="ms-1 bg-violet-500 text-white text-[10px] px-1.5 py-0">{(suspensions as ProjectSuspension[]).length}</Badge>}
+            <TabsTrigger value="reports" className="flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-indigo-500 data-[state=active]:bg-indigo-50 data-[state=active]:shadow-md transition-all h-auto relative">
+              <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <FileText className="h-5 w-5 text-indigo-600" />
+              </div>
+              <span className="text-xs font-semibold">التقارير</span>
+              {reports.length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-indigo-600 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{reports.length}</Badge>}
+            </TabsTrigger>
+            <TabsTrigger value="extensions" className="flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-amber-500 data-[state=active]:bg-amber-50 data-[state=active]:shadow-md transition-all h-auto relative">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                <ArrowBigRightDash className="h-5 w-5 text-amber-600" />
+              </div>
+              <span className="text-xs font-semibold">التمديدات</span>
+              {extensions.length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-amber-500 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{extensions.length}</Badge>}
+            </TabsTrigger>
+            <TabsTrigger value="suspensions" className="flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-violet-500 data-[state=active]:bg-violet-50 data-[state=active]:shadow-md transition-all h-auto relative">
+              <div className="w-10 h-10 rounded-lg bg-violet-100 flex items-center justify-center">
+                <PauseCircle className="h-5 w-5 text-violet-600" />
+              </div>
+              <span className="text-xs font-semibold">التوقفات</span>
+              {(suspensions as ProjectSuspension[]).length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-violet-500 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{(suspensions as ProjectSuspension[]).length}</Badge>}
             </TabsTrigger>
           </TabsList>
 
