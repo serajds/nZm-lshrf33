@@ -66,15 +66,17 @@ export const UserRole = {
   owner: "owner",
 } as const;
 
+export interface UserCompany {
+  companyId: number;
+  companyName: string;
+}
+
 export interface User {
   id: number;
   phone: string;
   fullName: string;
   role: UserRole;
-  /** @nullable */
-  companyId?: number | null;
-  /** @nullable */
-  companyName?: string | null;
+  companies?: UserCompany[];
   createdAt: string;
 }
 
@@ -98,8 +100,7 @@ export interface CreateUserBody {
   password: string;
   fullName: string;
   role: CreateUserBodyRole;
-  /** @nullable */
-  companyId?: number | null;
+  companyIds?: number[];
 }
 
 export type ProjectMemberRole =
@@ -119,8 +120,7 @@ export interface ProjectMember {
   fullName: string;
   phone: string;
   userRole: string;
-  /** @nullable */
-  companyName?: string | null;
+  companyNames?: string[];
   assignedGroupIds?: number[];
 }
 
@@ -167,8 +167,7 @@ export interface UpdateUserBody {
   role?: string | null;
   /** @nullable */
   password?: string | null;
-  /** @nullable */
-  companyId?: number | null;
+  companyIds?: number[];
 }
 
 export type ProjectStatus = (typeof ProjectStatus)[keyof typeof ProjectStatus];

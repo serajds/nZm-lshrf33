@@ -16,7 +16,6 @@ export interface ProjectMember {
   fullName: string;
   phone: string;
   userRole: string;
-  /** @nullable */
-  companyName?: string | null;
+  companyNames?: string[];
   assignedGroupIds?: number[];
 }

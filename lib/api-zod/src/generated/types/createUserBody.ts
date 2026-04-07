@@ -12,6 +12,5 @@ export interface CreateUserBody {
   password: string;
   fullName: string;
   role: CreateUserBodyRole;
-  /** @nullable */
-  companyId?: number | null;
+  companyIds?: number[];
 }

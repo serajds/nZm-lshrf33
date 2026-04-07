@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectMembersTable, usersTable, memberGroupAssignmentsTable, activityGroupsTable, projectsTable, companiesTable } from "@workspace/db";
-import { eq, and, inArray, or } from "drizzle-orm";
+import { projectMembersTable, usersTable, memberGroupAssignmentsTable, activityGroupsTable, projectsTable, companiesTable, userCompaniesTable } from "@workspace/db";
+import { eq, and, inArray } from "drizzle-orm";
 import { requireProjectManager, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -37,6 +37,14 @@ async function setGroupsForMember(memberId: number, groupIds: number[], projectI
   }
 }
 
+async function getCompanyNamesForUser(userId: number): Promise<string[]> {
+  const rows = await db.select({ name: companiesTable.name })
+    .from(userCompaniesTable)
+    .innerJoin(companiesTable, eq(userCompaniesTable.companyId, companiesTable.id))
+    .where(eq(userCompaniesTable.userId, userId));
+  return rows.map(r => r.name);
+}
+
 async function getMemberWithUser(memberId: number) {
   const [memberWithUser] = await db.select({
     id: projectMembersTable.id,
@@ -47,17 +55,16 @@ async function getMemberWithUser(memberId: number) {
     fullName: usersTable.fullName,
     phone: usersTable.phone,
     userRole: usersTable.role,
-    companyName: companiesTable.name,
   })
     .from(projectMembersTable)
     .innerJoin(usersTable, eq(projectMembersTable.userId, usersTable.id))
-    .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
     .where(eq(projectMembersTable.id, memberId));
 
   if (!memberWithUser) return null;
 
   const assignedGroupIds = await getGroupIdsForMember(memberId);
-  return { ...memberWithUser, assignedGroupIds };
+  const companyNames = await getCompanyNamesForUser(memberWithUser.userId);
+  return { ...memberWithUser, companyNames, assignedGroupIds };
 }
 
 router.get("/projects/:projectId/members", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
@@ -73,11 +80,9 @@ router.get("/projects/:projectId/members", requireProjectAccess("projectId"), as
     fullName: usersTable.fullName,
     phone: usersTable.phone,
     userRole: usersTable.role,
-    companyName: companiesTable.name,
   })
     .from(projectMembersTable)
     .innerJoin(usersTable, eq(projectMembersTable.userId, usersTable.id))
-    .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
     .where(eq(projectMembersTable.projectId, projectId));
 
   const allAssignments = await db.select()
@@ -95,8 +100,27 @@ router.get("/projects/:projectId/members", requireProjectAccess("projectId"), as
     assignmentMap.set(a.memberId, list);
   }
 
+  const userIds = members.map(m => m.userId);
+  let companyMap = new Map<number, string[]>();
+  if (userIds.length > 0) {
+    const ucRows = await db.select({
+      userId: userCompaniesTable.userId,
+      companyName: companiesTable.name,
+    })
+      .from(userCompaniesTable)
+      .innerJoin(companiesTable, eq(userCompaniesTable.companyId, companiesTable.id))
+      .where(inArray(userCompaniesTable.userId, userIds));
+
+    for (const r of ucRows) {
+      const list = companyMap.get(r.userId) || [];
+      list.push(r.companyName);
+      companyMap.set(r.userId, list);
+    }
+  }
+
   const result = members.map(m => ({
     ...m,
+    companyNames: companyMap.get(m.userId) || [],
     assignedGroupIds: assignmentMap.get(m.id) || [],
   }));
 
@@ -117,21 +141,28 @@ router.get("/projects/:projectId/eligible-users", requireProjectManager("project
     return;
   }
 
-  const companyIds = [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId].filter((id): id is number => id != null);
+  const projectCompanyIds = [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId].filter((id): id is number => id != null);
 
   let users;
-  if (companyIds.length > 0) {
+  if (projectCompanyIds.length > 0) {
+    const eligibleUserIds = await db.selectDistinct({ userId: userCompaniesTable.userId })
+      .from(userCompaniesTable)
+      .where(inArray(userCompaniesTable.companyId, projectCompanyIds));
+
+    const uIds = eligibleUserIds.map(r => r.userId);
+    if (uIds.length === 0) {
+      res.json([]);
+      return;
+    }
+
     users = await db.select({
       id: usersTable.id,
       phone: usersTable.phone,
       fullName: usersTable.fullName,
       role: usersTable.role,
-      companyId: usersTable.companyId,
-      companyName: companiesTable.name,
       createdAt: usersTable.createdAt,
     }).from(usersTable)
-      .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
-      .where(inArray(usersTable.companyId, companyIds))
+      .where(inArray(usersTable.id, uIds))
       .orderBy(usersTable.fullName);
   } else {
     users = await db.select({
@@ -139,15 +170,36 @@ router.get("/projects/:projectId/eligible-users", requireProjectManager("project
       phone: usersTable.phone,
       fullName: usersTable.fullName,
       role: usersTable.role,
-      companyId: usersTable.companyId,
-      companyName: companiesTable.name,
       createdAt: usersTable.createdAt,
     }).from(usersTable)
-      .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
       .orderBy(usersTable.fullName);
   }
 
-  res.json(users);
+  const userIds = users.map(u => u.id);
+  let companiesMap = new Map<number, { companyId: number; companyName: string }[]>();
+  if (userIds.length > 0) {
+    const ucRows = await db.select({
+      userId: userCompaniesTable.userId,
+      companyId: userCompaniesTable.companyId,
+      companyName: companiesTable.name,
+    })
+      .from(userCompaniesTable)
+      .innerJoin(companiesTable, eq(userCompaniesTable.companyId, companiesTable.id))
+      .where(inArray(userCompaniesTable.userId, userIds));
+
+    for (const r of ucRows) {
+      const list = companiesMap.get(r.userId) || [];
+      list.push({ companyId: r.companyId, companyName: r.companyName });
+      companiesMap.set(r.userId, list);
+    }
+  }
+
+  const result = users.map(u => ({
+    ...u,
+    companies: companiesMap.get(u.id) || [],
+  }));
+
+  res.json(result);
 });
 
 router.post("/projects/:projectId/members", requireProjectManager("projectId"), async (req, res): Promise<void> => {
@@ -174,12 +226,17 @@ router.post("/projects/:projectId/members", requireProjectManager("projectId"), 
   const projectCompanyIds = [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId].filter((id): id is number => id != null);
 
   if (projectCompanyIds.length > 0) {
-    const [targetUser] = await db.select({ companyId: usersTable.companyId }).from(usersTable).where(eq(usersTable.id, userId));
+    const [targetUser] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, userId));
     if (!targetUser) {
       res.status(404).json({ error: "المستخدم غير موجود" });
       return;
     }
-    if (!targetUser.companyId || !projectCompanyIds.includes(targetUser.companyId)) {
+    const userCompanyRows = await db.select({ companyId: userCompaniesTable.companyId })
+      .from(userCompaniesTable)
+      .where(eq(userCompaniesTable.userId, userId));
+    const userCompanyIds = userCompanyRows.map(r => r.companyId);
+    const hasMatch = userCompanyIds.some(cid => projectCompanyIds.includes(cid));
+    if (!hasMatch) {
       res.status(403).json({ error: "المستخدم لا ينتمي لإحدى شركات المشروع" });
       return;
     }

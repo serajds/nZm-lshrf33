@@ -215,7 +215,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                       <SelectContent dir="rtl">
                         {availableUsers.map(u => (
                           <SelectItem key={u.id} value={String(u.id)}>
-                            {u.fullName}{(u as any).companyName ? ` — ${(u as any).companyName}` : ""}
+                            {u.fullName}{(u as any).companies?.length > 0 ? ` — ${(u as any).companies.map((c: any) => c.companyName).join("، ")}` : ""}
                           </SelectItem>
                         ))}
                         {availableUsers.length === 0 && (
@@ -296,11 +296,15 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {member.companyName ? (
-                        <Badge variant="outline" className="gap-1 text-xs">
-                          <Building2 className="h-3 w-3" />
-                          {member.companyName}
-                        </Badge>
+                      {(member as any).companyNames?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {(member as any).companyNames.map((name: string, i: number) => (
+                            <Badge key={i} variant="outline" className="gap-1 text-xs">
+                              <Building2 className="h-3 w-3" />
+                              {name}
+                            </Badge>
+                          ))}
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
