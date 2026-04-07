@@ -54,7 +54,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         title: "فشل تسجيل الدخول",
         description: e?.error || "تأكد من رقم الهاتف وكلمة المرور",
       });
-      throw err;
     }
   };
 
