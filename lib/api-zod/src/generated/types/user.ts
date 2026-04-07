@@ -13,5 +13,9 @@ export interface User {
   fullName: string;
   email: string;
   role: UserRole;
+  /** @nullable */
+  companyId?: number | null;
+  /** @nullable */
+  companyName?: string | null;
   createdAt: Date;
 }

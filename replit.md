@@ -95,6 +95,10 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Text fields (`ownerEntity`, `contractor`, `supervisorEntity`) remain for backward compatibility
 - DB table: `companies` (id, name, type, logo_url, phone, email, address)
 - DB columns added to `projects`: `owner_company_id`, `contractor_company_id`, `supervisor_company_id`
+- **User-Company linking**: Users have an optional `companyId` field linking them to a company. Shown in users table and user create/edit dialog.
+- **Eligible users per project**: `GET /api/projects/:id/eligible-users` returns users whose company is one of the project's linked companies (owner/contractor/supervisor). If no companies linked to the project, all users are returned.
+- **Project member add dialog**: Uses eligible users endpoint instead of all users — only users from project-linked companies appear in the dropdown.
+- **Company display**: Users table shows company name badge; project members table shows company name column.
 
 ### Suspensions & Date Shifting
 - Suspensions tab on each project tracks stoppages (official holidays, force majeure, contractor delays)

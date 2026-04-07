@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db";
+import { usersTable, companiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireEngineerOrAdmin } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
@@ -14,8 +14,12 @@ router.get("/users", requireEngineerOrAdmin, async (_req, res): Promise<void> =>
     fullName: usersTable.fullName,
     email: usersTable.email,
     role: usersTable.role,
+    companyId: usersTable.companyId,
+    companyName: companiesTable.name,
     createdAt: usersTable.createdAt,
-  }).from(usersTable).orderBy(usersTable.createdAt);
+  }).from(usersTable)
+    .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
+    .orderBy(usersTable.createdAt);
 
   res.json(users);
 });
@@ -32,7 +36,7 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 router.post("/users", requireAdmin, async (req, res): Promise<void> => {
-  const { username, password, fullName, email, role } = req.body;
+  const { username, password, fullName, email, role, companyId } = req.body;
 
   if (!username || !password || !fullName || !email || !role) {
     res.status(400).json({ error: "جميع الحقول مطلوبة" });
@@ -59,25 +63,47 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
+  const parsedCompanyId = companyId ? parseInt(companyId, 10) : null;
+  if (parsedCompanyId !== null) {
+    if (isNaN(parsedCompanyId) || parsedCompanyId <= 0) {
+      res.status(400).json({ error: "معرف الشركة غير صالح" });
+      return;
+    }
+    const [company] = await db.select({ id: companiesTable.id }).from(companiesTable).where(eq(companiesTable.id, parsedCompanyId));
+    if (!company) {
+      res.status(400).json({ error: "الشركة غير موجودة" });
+      return;
+    }
+  }
+
   const passwordHash = await hashPassword(password);
 
   try {
-    const [user] = await db.insert(usersTable).values({
+    const [inserted] = await db.insert(usersTable).values({
       username: trimmedUsername,
       passwordHash,
       fullName,
       email: trimmedEmail,
       role,
-    }).returning({
-      id: usersTable.id,
-      username: usersTable.username,
-      fullName: usersTable.fullName,
-      email: usersTable.email,
-      role: usersTable.role,
-      createdAt: usersTable.createdAt,
-    });
+      companyId: parsedCompanyId,
+    }).returning();
 
-    res.status(201).json(user);
+    let companyName: string | null = null;
+    if (inserted.companyId) {
+      const [company] = await db.select({ name: companiesTable.name }).from(companiesTable).where(eq(companiesTable.id, inserted.companyId));
+      companyName = company?.name || null;
+    }
+
+    res.status(201).json({
+      id: inserted.id,
+      username: inserted.username,
+      fullName: inserted.fullName,
+      email: inserted.email,
+      role: inserted.role,
+      companyId: inserted.companyId,
+      companyName,
+      createdAt: inserted.createdAt,
+    });
   } catch (err) {
     if (isUniqueViolation(err)) {
       res.status(409).json({ error: "اسم المستخدم أو البريد الإلكتروني مستخدم بالفعل" });
@@ -125,27 +151,51 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
     updateData.passwordHash = await hashPassword(req.body.password);
   }
 
+  if (body.companyId !== undefined) {
+    const cid = body.companyId ? parseInt(body.companyId, 10) : null;
+    if (cid !== null) {
+      if (isNaN(cid) || cid <= 0) {
+        res.status(400).json({ error: "معرف الشركة غير صالح" });
+        return;
+      }
+      const [company] = await db.select({ id: companiesTable.id }).from(companiesTable).where(eq(companiesTable.id, cid));
+      if (!company) {
+        res.status(400).json({ error: "الشركة غير موجودة" });
+        return;
+      }
+    }
+    updateData.companyId = cid;
+  }
+
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });
     return;
   }
 
   try {
-    const [user] = await db.update(usersTable).set(updateData).where(eq(usersTable.id, id)).returning({
-      id: usersTable.id,
-      username: usersTable.username,
-      fullName: usersTable.fullName,
-      email: usersTable.email,
-      role: usersTable.role,
-      createdAt: usersTable.createdAt,
-    });
+    const [updated] = await db.update(usersTable).set(updateData).where(eq(usersTable.id, id)).returning();
 
-    if (!user) {
+    if (!updated) {
       res.status(404).json({ error: "المستخدم غير موجود" });
       return;
     }
 
-    res.json(user);
+    let companyName: string | null = null;
+    if (updated.companyId) {
+      const [company] = await db.select({ name: companiesTable.name }).from(companiesTable).where(eq(companiesTable.id, updated.companyId));
+      companyName = company?.name || null;
+    }
+
+    res.json({
+      id: updated.id,
+      username: updated.username,
+      fullName: updated.fullName,
+      email: updated.email,
+      role: updated.role,
+      companyId: updated.companyId,
+      companyName,
+      createdAt: updated.createdAt,
+    });
   } catch (err) {
     if (isUniqueViolation(err)) {
       res.status(409).json({ error: "البريد الإلكتروني مستخدم بالفعل" });

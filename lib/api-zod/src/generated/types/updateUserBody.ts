@@ -15,4 +15,6 @@ export interface UpdateUserBody {
   role?: string | null;
   /** @nullable */
   password?: string | null;
+  /** @nullable */
+  companyId?: number | null;
 }

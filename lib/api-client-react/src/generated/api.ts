@@ -2268,6 +2268,95 @@ export const useAddProjectMember = <
 };
 
 /**
+ * @summary Get users eligible to be added to this project (from linked companies)
+ */
+export const getGetEligibleUsersUrl = (projectId: number) => {
+  return `/api/projects/${projectId}/eligible-users`;
+};
+
+export const getEligibleUsers = async (
+  projectId: number,
+  options?: RequestInit,
+): Promise<User[]> => {
+  return customFetch<User[]>(getGetEligibleUsersUrl(projectId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetEligibleUsersQueryKey = (projectId: number) => {
+  return [`/api/projects/${projectId}/eligible-users`] as const;
+};
+
+export const getGetEligibleUsersQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEligibleUsers>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEligibleUsers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetEligibleUsersQueryKey(projectId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEligibleUsers>>
+  > = ({ signal }) =>
+    getEligibleUsers(projectId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!projectId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEligibleUsers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEligibleUsersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEligibleUsers>>
+>;
+export type GetEligibleUsersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get users eligible to be added to this project (from linked companies)
+ */
+
+export function useGetEligibleUsers<
+  TData = Awaited<ReturnType<typeof getEligibleUsers>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEligibleUsers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEligibleUsersQueryOptions(projectId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Update a project member role
  */
 export const getUpdateProjectMemberUrl = (projectId: number, id: number) => {

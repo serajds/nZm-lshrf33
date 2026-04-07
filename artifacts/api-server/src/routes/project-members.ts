@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectMembersTable, usersTable, memberGroupAssignmentsTable, activityGroupsTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { projectMembersTable, usersTable, memberGroupAssignmentsTable, activityGroupsTable, projectsTable, companiesTable } from "@workspace/db";
+import { eq, and, inArray, or } from "drizzle-orm";
 import { requireProjectManager, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -48,9 +48,11 @@ async function getMemberWithUser(memberId: number) {
     username: usersTable.username,
     email: usersTable.email,
     userRole: usersTable.role,
+    companyName: companiesTable.name,
   })
     .from(projectMembersTable)
     .innerJoin(usersTable, eq(projectMembersTable.userId, usersTable.id))
+    .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
     .where(eq(projectMembersTable.id, memberId));
 
   if (!memberWithUser) return null;
@@ -73,9 +75,11 @@ router.get("/projects/:projectId/members", requireProjectAccess("projectId"), as
     username: usersTable.username,
     email: usersTable.email,
     userRole: usersTable.role,
+    companyName: companiesTable.name,
   })
     .from(projectMembersTable)
     .innerJoin(usersTable, eq(projectMembersTable.userId, usersTable.id))
+    .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
     .where(eq(projectMembersTable.projectId, projectId));
 
   const allAssignments = await db.select()
@@ -101,6 +105,55 @@ router.get("/projects/:projectId/members", requireProjectAccess("projectId"), as
   res.json(result);
 });
 
+router.get("/projects/:projectId/eligible-users", requireProjectManager("projectId"), async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
+  const projectId = parseInt(raw, 10);
+  if (isNaN(projectId) || projectId <= 0) {
+    res.status(400).json({ error: "معرف المشروع غير صالح" });
+    return;
+  }
+
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!project) {
+    res.status(404).json({ error: "المشروع غير موجود" });
+    return;
+  }
+
+  const companyIds = [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId].filter((id): id is number => id != null);
+
+  let users;
+  if (companyIds.length > 0) {
+    users = await db.select({
+      id: usersTable.id,
+      username: usersTable.username,
+      fullName: usersTable.fullName,
+      email: usersTable.email,
+      role: usersTable.role,
+      companyId: usersTable.companyId,
+      companyName: companiesTable.name,
+      createdAt: usersTable.createdAt,
+    }).from(usersTable)
+      .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
+      .where(inArray(usersTable.companyId, companyIds))
+      .orderBy(usersTable.fullName);
+  } else {
+    users = await db.select({
+      id: usersTable.id,
+      username: usersTable.username,
+      fullName: usersTable.fullName,
+      email: usersTable.email,
+      role: usersTable.role,
+      companyId: usersTable.companyId,
+      companyName: companiesTable.name,
+      createdAt: usersTable.createdAt,
+    }).from(usersTable)
+      .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
+      .orderBy(usersTable.fullName);
+  }
+
+  res.json(users);
+});
+
 router.post("/projects/:projectId/members", requireProjectManager("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
@@ -114,6 +167,26 @@ router.post("/projects/:projectId/members", requireProjectManager("projectId"), 
   if (role !== "project_manager" && role !== "engineer") {
     res.status(400).json({ error: "الدور يجب أن يكون مدير مشروع أو مهندس" });
     return;
+  }
+
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!project) {
+    res.status(404).json({ error: "المشروع غير موجود" });
+    return;
+  }
+
+  const projectCompanyIds = [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId].filter((id): id is number => id != null);
+
+  if (projectCompanyIds.length > 0) {
+    const [targetUser] = await db.select({ companyId: usersTable.companyId }).from(usersTable).where(eq(usersTable.id, userId));
+    if (!targetUser) {
+      res.status(404).json({ error: "المستخدم غير موجود" });
+      return;
+    }
+    if (!targetUser.companyId || !projectCompanyIds.includes(targetUser.companyId)) {
+      res.status(403).json({ error: "المستخدم لا ينتمي لإحدى شركات المشروع" });
+      return;
+    }
   }
 
   const [existing] = await db.select()
@@ -130,23 +203,22 @@ router.post("/projects/:projectId/members", requireProjectManager("projectId"), 
     return;
   }
 
-  const [member] = await db.insert(projectMembersTable).values({
-    projectId,
-    userId,
-    role,
-  }).returning();
+  try {
+    const [member] = await db.insert(projectMembersTable).values({
+      projectId,
+      userId,
+      role,
+    }).returning();
 
-  if (Array.isArray(assignedGroupIds) && assignedGroupIds.length > 0) {
-    try {
+    if (Array.isArray(assignedGroupIds) && assignedGroupIds.length > 0) {
       await setGroupsForMember(member.id, assignedGroupIds, projectId);
-    } catch (e: any) {
-      res.status(400).json({ error: e.message });
-      return;
     }
-  }
 
-  const memberWithUser = await getMemberWithUser(member.id);
-  res.status(201).json(memberWithUser);
+    const memberWithUser = await getMemberWithUser(member.id);
+    res.status(201).json(memberWithUser);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "فشل إضافة العضو" });
+  }
 });
 
 router.patch("/projects/:projectId/members/:id", requireProjectManager("projectId"), async (req, res): Promise<void> => {

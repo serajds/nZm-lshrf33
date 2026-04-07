@@ -625,6 +625,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProjectMember"
 
+  /projects/{projectId}/eligible-users:
+    get:
+      operationId: getEligibleUsers
+      tags: [project-members]
+      summary: Get users eligible to be added to this project (from linked companies)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of eligible users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
   /projects/{projectId}/members/{id}:
     patch:
       operationId: updateProjectMember
@@ -1022,6 +1043,10 @@ components:
         role:
           type: string
           enum: [admin, project_manager, engineer, owner]
+        companyId:
+          type: ["integer", "null"]
+        companyName:
+          type: ["string", "null"]
         createdAt:
           type: string
           format: date-time
@@ -1047,6 +1072,8 @@ components:
         role:
           type: string
           enum: [admin, project_manager, engineer, owner]
+        companyId:
+          type: ["integer", "null"]
       required:
         - username
         - password
@@ -1077,6 +1104,8 @@ components:
           type: string
         userRole:
           type: string
+        companyName:
+          type: ["string", "null"]
         assignedGroupIds:
           type: array
           items:
@@ -1147,6 +1176,8 @@ components:
           type: ["string", "null"]
         password:
           type: ["string", "null"]
+        companyId:
+          type: ["integer", "null"]
 
     # Projects
     Project:

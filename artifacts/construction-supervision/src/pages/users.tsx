@@ -32,11 +32,27 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Edit2, Trash2, Users as UsersIcon } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { Plus, Edit2, Trash2, Users as UsersIcon, Building2 } from "lucide-react";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
+
+const API = import.meta.env.VITE_API_URL || "/api";
+
+function authFetch(url: string, init?: RequestInit) {
+  const token = localStorage.getItem("auth_token");
+  return fetch(url, {
+    ...init,
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
+  });
+}
+
+interface Company {
+  id: number;
+  name: string;
+  type: string;
+}
 
 const userSchema = z.object({
   fullName: z.string().min(1, "الاسم الكامل مطلوب"),
@@ -44,6 +60,7 @@ const userSchema = z.object({
   email: z.string().email("البريد الإلكتروني غير صالح"),
   role: z.enum(["admin", "project_manager", "engineer", "owner"]),
   password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل").optional().or(z.literal('')),
+  companyId: z.string().optional(),
 });
 
 export default function Users() {
@@ -61,6 +78,15 @@ export default function Users() {
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
 
+  const { data: companies = [] } = useQuery<Company[]>({
+    queryKey: ["companies"],
+    queryFn: async () => {
+      const res = await authFetch(`${API}/companies`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const form = useForm<z.infer<typeof userSchema>>({
     resolver: zodResolver(userSchema),
     defaultValues: {
@@ -69,6 +95,7 @@ export default function Users() {
       email: "",
       role: "engineer",
       password: "",
+      companyId: "",
     }
   });
 
@@ -85,6 +112,7 @@ export default function Users() {
       email: u.email,
       role: u.role as "admin" | "project_manager" | "engineer" | "owner",
       password: "",
+      companyId: u.companyId ? String(u.companyId) : "",
     });
     setIsDialogOpen(true);
   };
@@ -104,9 +132,11 @@ export default function Users() {
 
   const onSubmit = async (values: z.infer<typeof userSchema>) => {
     try {
+      const companyId = values.companyId && values.companyId !== "none" ? parseInt(values.companyId) : null;
       if (editingUserId) {
-        const { password, ...rest } = values;
-        const updateData = password ? { ...rest, password } : rest;
+        const { password, companyId: _, ...rest } = values;
+        const updateData: any = { ...rest, companyId };
+        if (password) updateData.password = password;
         await updateUser.mutateAsync({ id: editingUserId, data: updateData });
         toast({ title: "تم تحديث المستخدم بنجاح" });
       } else {
@@ -114,7 +144,8 @@ export default function Users() {
             toast({ variant: "destructive", title: "كلمة المرور مطلوبة للمستخدم الجديد" });
             return;
         }
-        await createUser.mutateAsync({ data: { ...values, password: values.password! } });
+        const { companyId: _, ...rest } = values;
+        await createUser.mutateAsync({ data: { ...rest, password: values.password!, companyId } as any });
         toast({ title: "تم إنشاء المستخدم بنجاح" });
       }
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
@@ -231,6 +262,31 @@ export default function Users() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={form.control}
+                    name="companyId"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel>الشركة</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger dir="rtl">
+                              <SelectValue placeholder="اختر الشركة (اختياري)" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent dir="rtl">
+                            <SelectItem value="none">بدون شركة</SelectItem>
+                            {companies.map(c => (
+                              <SelectItem key={c.id} value={String(c.id)}>
+                                {c.name} ({c.type === "owner" ? "مالك" : c.type === "contractor" ? "مقاول" : "مشرف"})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
@@ -251,6 +307,7 @@ export default function Users() {
                 <TableHead className="text-right">الاسم</TableHead>
                 <TableHead className="text-right">اسم المستخدم</TableHead>
                 <TableHead className="text-right">البريد الإلكتروني</TableHead>
+                <TableHead className="text-right">الشركة</TableHead>
                 <TableHead className="text-right">الصلاحية</TableHead>
                 <TableHead className="text-left">الإجراءات</TableHead>
               </TableRow>
@@ -258,11 +315,11 @@ export default function Users() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">جاري التحميل...</TableCell>
+                  <TableCell colSpan={6} className="text-center py-8">جاري التحميل...</TableCell>
                 </TableRow>
               ) : users?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">لا يوجد مستخدمين</TableCell>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد مستخدمين</TableCell>
                 </TableRow>
               ) : (
                 users?.map(u => (
@@ -270,6 +327,16 @@ export default function Users() {
                     <TableCell className="font-medium">{u.fullName}</TableCell>
                     <TableCell dir="ltr" className="text-right">{u.username}</TableCell>
                     <TableCell dir="ltr" className="text-right">{u.email}</TableCell>
+                    <TableCell>
+                      {(u as any).companyName ? (
+                        <Badge variant="outline" className="gap-1">
+                          <Building2 className="h-3 w-3" />
+                          {(u as any).companyName}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>{getRoleBadge(u.role)}</TableCell>
                     <TableCell className="text-left">
                       <div className="flex justify-end gap-2">
@@ -305,6 +372,12 @@ export default function Users() {
                   <span dir="ltr">{u.username}</span>
                   <span dir="ltr" className="truncate max-w-[180px]">{u.email}</span>
                 </div>
+                {(u as any).companyName && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Building2 className="h-3 w-3" />
+                    <span>{(u as any).companyName}</span>
+                  </div>
+                )}
                 <div className="flex justify-end gap-1 pt-1 border-t">
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(u)}>
                     <Edit2 className="h-4 w-4 text-muted-foreground" />

@@ -29,6 +29,8 @@ export const LoginResponse = zod.object({
     fullName: zod.string(),
     email: zod.string(),
     role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+    companyId: zod.number().nullish(),
+    companyName: zod.string().nullish(),
     createdAt: zod.coerce.date(),
   }),
   token: zod.string(),
@@ -50,6 +52,8 @@ export const GetMeResponse = zod.object({
   fullName: zod.string(),
   email: zod.string(),
   role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+  companyId: zod.number().nullish(),
+  companyName: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
 
@@ -533,6 +537,7 @@ export const ListProjectMembersResponseItem = zod.object({
   username: zod.string(),
   email: zod.string(),
   userRole: zod.string(),
+  companyName: zod.string().nullish(),
   assignedGroupIds: zod.array(zod.number()).optional(),
 });
 export const ListProjectMembersResponse = zod.array(
@@ -551,6 +556,25 @@ export const AddProjectMemberBody = zod.object({
   role: zod.enum(["project_manager", "engineer"]),
   assignedGroupIds: zod.array(zod.number()).optional(),
 });
+
+/**
+ * @summary Get users eligible to be added to this project (from linked companies)
+ */
+export const GetEligibleUsersParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const GetEligibleUsersResponseItem = zod.object({
+  id: zod.number(),
+  username: zod.string(),
+  fullName: zod.string(),
+  email: zod.string(),
+  role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+  companyId: zod.number().nullish(),
+  companyName: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const GetEligibleUsersResponse = zod.array(GetEligibleUsersResponseItem);
 
 /**
  * @summary Update a project member role
@@ -575,6 +599,7 @@ export const UpdateProjectMemberResponse = zod.object({
   username: zod.string(),
   email: zod.string(),
   userRole: zod.string(),
+  companyName: zod.string().nullish(),
   assignedGroupIds: zod.array(zod.number()).optional(),
 });
 
@@ -625,6 +650,8 @@ export const ListUsersResponseItem = zod.object({
   fullName: zod.string(),
   email: zod.string(),
   role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+  companyId: zod.number().nullish(),
+  companyName: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
 export const ListUsersResponse = zod.array(ListUsersResponseItem);
@@ -638,6 +665,7 @@ export const CreateUserBody = zod.object({
   fullName: zod.string(),
   email: zod.string(),
   role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+  companyId: zod.number().nullish(),
 });
 
 /**
@@ -652,6 +680,7 @@ export const UpdateUserBody = zod.object({
   email: zod.string().nullish(),
   role: zod.string().nullish(),
   password: zod.string().nullish(),
+  companyId: zod.number().nullish(),
 });
 
 export const UpdateUserResponse = zod.object({
@@ -660,6 +689,8 @@ export const UpdateUserResponse = zod.object({
   fullName: zod.string(),
   email: zod.string(),
   role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+  companyId: zod.number().nullish(),
+  companyName: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
 

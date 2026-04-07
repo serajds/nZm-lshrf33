@@ -17,5 +17,7 @@ export interface ProjectMember {
   username: string;
   email: string;
   userRole: string;
+  /** @nullable */
+  companyName?: string | null;
   assignedGroupIds?: number[];
 }

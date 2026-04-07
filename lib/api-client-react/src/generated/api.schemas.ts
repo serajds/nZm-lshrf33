@@ -72,6 +72,10 @@ export interface User {
   fullName: string;
   email: string;
   role: UserRole;
+  /** @nullable */
+  companyId?: number | null;
+  /** @nullable */
+  companyName?: string | null;
   createdAt: string;
 }
 
@@ -96,6 +100,8 @@ export interface CreateUserBody {
   fullName: string;
   email: string;
   role: CreateUserBodyRole;
+  /** @nullable */
+  companyId?: number | null;
 }
 
 export type ProjectMemberRole =
@@ -116,6 +122,8 @@ export interface ProjectMember {
   username: string;
   email: string;
   userRole: string;
+  /** @nullable */
+  companyName?: string | null;
   assignedGroupIds?: number[];
 }
 
@@ -162,6 +170,8 @@ export interface UpdateUserBody {
   role?: string | null;
   /** @nullable */
   password?: string | null;
+  /** @nullable */
+  companyId?: number | null;
 }
 
 export type ProjectStatus = (typeof ProjectStatus)[keyof typeof ProjectStatus];
