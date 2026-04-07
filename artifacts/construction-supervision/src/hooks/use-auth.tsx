@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { useGetMe, useLogin, useLogout } from "@workspace/api-client-react";
 import type { User, LoginBody } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
@@ -26,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   });
 
+  const queryClient = useQueryClient();
   const loginMutation = useLogin();
   const logoutMutation = useLogout();
 
@@ -56,24 +58,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     localStorage.removeItem("auth_token");
     setToken(null);
+    queryClient.clear();
     setLocation("/login");
     try {
-      await logoutMutation.mutateAsync();
+      logoutMutation.mutate();
     } catch (e) {
       // ignore
     }
-  };
+  }, [queryClient, setLocation, logoutMutation]);
 
   return (
     <AuthContext.Provider value={{
-      user: user || null,
-      isLoading: isUserLoading,
+      user: token ? (user || null) : null,
+      isLoading: isUserLoading && !!token,
       login,
       logout,
-      isAuthenticated: !!user
+      isAuthenticated: !!token && !!user
     }}>
       {children}
     </AuthContext.Provider>
