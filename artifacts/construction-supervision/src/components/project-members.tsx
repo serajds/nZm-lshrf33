@@ -29,10 +29,27 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Trash2, Shield, Users } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { Checkbox } from "@/components/ui/checkbox";
+import { UserPlus, Trash2, Shield, Users, FolderOpen } from "lucide-react";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+
+interface ActivityGroup {
+  id: number;
+  projectId: number;
+  name: string;
+  color: string;
+  sortOrder: number;
+}
+
+function authFetch(url: string, init?: RequestInit) {
+  const token = localStorage.getItem("auth_token");
+  return fetch(url, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
+  });
+}
 
 interface ProjectMembersProps {
   projectId: number;
@@ -46,11 +63,24 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [selectedRole, setSelectedRole] = useState<string>("engineer");
+  const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
+  const [editingGroupsMemberId, setEditingGroupsMemberId] = useState<number | null>(null);
+  const [editGroupIds, setEditGroupIds] = useState<number[]>([]);
 
   const isAdmin = user?.role === "admin";
 
   const { data: members = [], isLoading } = useListProjectMembers(projectId, {
     query: { enabled: !!projectId }
+  });
+
+  const { data: groups = [] } = useQuery<ActivityGroup[]>({
+    queryKey: [`/api/projects/${projectId}/activity-groups`],
+    queryFn: async () => {
+      const r = await authFetch(`/api/projects/${projectId}/activity-groups`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!projectId,
   });
 
   const isProjectManager = members.some(
@@ -64,6 +94,22 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
   const addMember = useAddProjectMember();
   const updateMember = useUpdateProjectMember();
   const removeMember = useRemoveProjectMember();
+
+  const updateGroupsMutation = useMutation({
+    mutationFn: async ({ memberId, groupIds }: { memberId: number; groupIds: number[] }) => {
+      const r = await authFetch(`/api/projects/${projectId}/members/${memberId}/groups`, {
+        method: "PUT",
+        body: JSON.stringify({ groupIds }),
+      });
+      if (!r.ok) throw new Error("فشل تحديث المجموعات");
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListProjectMembersQueryKey(projectId) });
+      toast({ title: "تم تحديث المجموعات بنجاح" });
+      setEditingGroupsMemberId(null);
+    },
+  });
 
   const availableUsers = allUsers.filter(
     u => !members.some(m => m.userId === u.id) && u.role !== "owner"
@@ -80,6 +126,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
         data: {
           userId: parseInt(selectedUserId),
           role: selectedRole as "project_manager" | "engineer",
+          assignedGroupIds: selectedRole === "engineer" ? selectedGroupIds : undefined,
         }
       });
       queryClient.invalidateQueries({ queryKey: getListProjectMembersQueryKey(projectId) });
@@ -87,6 +134,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
       setIsDialogOpen(false);
       setSelectedUserId("");
       setSelectedRole("engineer");
+      setSelectedGroupIds([]);
     } catch {
       toast({ variant: "destructive", title: "فشل إضافة العضو" });
     }
@@ -119,12 +167,23 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
     }
   };
 
+  const openGroupsEditor = (member: ProjectMember) => {
+    setEditingGroupsMemberId(member.id);
+    setEditGroupIds(member.assignedGroupIds ?? []);
+  };
+
+  const toggleGroupId = (id: number, list: number[], setList: (v: number[]) => void) => {
+    setList(list.includes(id) ? list.filter(x => x !== id) : [...list, id]);
+  };
+
   const getRoleBadge = (role: string) => {
     if (role === "project_manager") {
       return <Badge className="bg-amber-600 hover:bg-amber-600">مدير مشروع</Badge>;
     }
     return <Badge className="bg-primary hover:bg-primary">مهندس</Badge>;
   };
+
+  const sortedGroups = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (
     <Card>
@@ -179,6 +238,24 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                       </SelectContent>
                     </Select>
                   </div>
+                  {selectedRole === "engineer" && sortedGroups.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>المجموعات المسموح بتعديلها</Label>
+                      <p className="text-xs text-muted-foreground">إذا لم تختر أي مجموعة، سيتمكن المهندس من تعديل جميع الأنشطة</p>
+                      <div className="space-y-2 max-h-[160px] overflow-y-auto border rounded-md p-2">
+                        {sortedGroups.map(g => (
+                          <label key={g.id} className="flex items-center gap-2 cursor-pointer">
+                            <Checkbox
+                              checked={selectedGroupIds.includes(g.id)}
+                              onCheckedChange={() => toggleGroupId(g.id, selectedGroupIds, setSelectedGroupIds)}
+                            />
+                            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: g.color }} />
+                            <span className="text-sm">{g.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="flex justify-end gap-2 pt-2">
                     <Button variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
                     <Button onClick={handleAdd} disabled={addMember.isPending}>إضافة</Button>
@@ -200,50 +277,84 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
               <TableRow>
                 <TableHead className="text-right">العضو</TableHead>
                 <TableHead className="text-right">الدور في المشروع</TableHead>
+                <TableHead className="text-right">المجموعات</TableHead>
                 {canManageMembers && <TableHead className="text-left w-[100px]">الإجراءات</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {members.map(member => (
-                <TableRow key={member.id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{member.fullName}</p>
-                      <p className="text-xs text-muted-foreground" dir="ltr">{member.email}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {canManageMembers ? (
-                      <Select
-                        value={member.role}
-                        onValueChange={(val) => handleChangeRole(member, val)}
-                      >
-                        <SelectTrigger className="w-[140px]" dir="rtl">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent dir="rtl">
-                          <SelectItem value="project_manager">مدير مشروع</SelectItem>
-                          <SelectItem value="engineer">مهندس</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      getRoleBadge(member.role)
-                    )}
-                  </TableCell>
-                  {canManageMembers && (
-                    <TableCell className="text-left">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setRemovingId(member.id)}
-                        disabled={removeMember.isPending}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+              {members.map(member => {
+                const memberGroups = (member.assignedGroupIds ?? [])
+                  .map(gid => groups.find(g => g.id === gid))
+                  .filter(Boolean) as ActivityGroup[];
+                return (
+                  <TableRow key={member.id}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{member.fullName}</p>
+                        <p className="text-xs text-muted-foreground" dir="ltr">{member.email}</p>
+                      </div>
                     </TableCell>
-                  )}
-                </TableRow>
-              ))}
+                    <TableCell>
+                      {canManageMembers ? (
+                        <Select
+                          value={member.role}
+                          onValueChange={(val) => handleChangeRole(member, val)}
+                        >
+                          <SelectTrigger className="w-[140px]" dir="rtl">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent dir="rtl">
+                            <SelectItem value="project_manager">مدير مشروع</SelectItem>
+                            <SelectItem value="engineer">مهندس</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        getRoleBadge(member.role)
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {member.role === "engineer" ? (
+                        <div className="flex flex-wrap gap-1">
+                          {memberGroups.length > 0 ? (
+                            memberGroups.map(g => (
+                              <Badge key={g.id} variant="outline" className="gap-1 text-xs">
+                                <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: g.color }} />
+                                {g.name}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-xs text-muted-foreground">جميع المجموعات</span>
+                          )}
+                          {canManageMembers && sortedGroups.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => openGroupsEditor(member)}
+                            >
+                              <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">صلاحية كاملة</span>
+                      )}
+                    </TableCell>
+                    {canManageMembers && (
+                      <TableCell className="text-left">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setRemovingId(member.id)}
+                          disabled={removeMember.isPending}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -262,6 +373,46 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Dialog open={editingGroupsMemberId !== null} onOpenChange={(open) => { if (!open) setEditingGroupsMemberId(null); }}>
+        <DialogContent dir="rtl" className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>تعديل المجموعات المسموحة</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              حدد المجموعات التي يمكن لهذا المهندس تعديل أنشطتها. إذا لم تحدد أي مجموعة، سيتمكن من تعديل جميع الأنشطة.
+            </p>
+            <div className="space-y-2 max-h-[200px] overflow-y-auto border rounded-md p-3">
+              {sortedGroups.map(g => (
+                <label key={g.id} className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={editGroupIds.includes(g.id)}
+                    onCheckedChange={() => toggleGroupId(g.id, editGroupIds, setEditGroupIds)}
+                  />
+                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: g.color }} />
+                  <span className="text-sm">{g.name}</span>
+                </label>
+              ))}
+              {sortedGroups.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-2">لا توجد مجموعات في هذا المشروع</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setEditingGroupsMemberId(null)}>إلغاء</Button>
+              <Button
+                onClick={() => {
+                  if (editingGroupsMemberId) {
+                    updateGroupsMutation.mutate({ memberId: editingGroupsMemberId, groupIds: editGroupIds });
+                  }
+                }}
+                disabled={updateGroupsMutation.isPending}
+              >
+                حفظ
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

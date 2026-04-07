@@ -5,9 +5,10 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
-import type { UpdateProjectMemberBodyRole } from "./updateProjectMemberBodyRole";
 
-export interface UpdateProjectMemberBody {
-  role?: UpdateProjectMemberBodyRole;
+export interface ProjectPermissions {
+  role: string;
+  projectRole?: string;
   assignedGroupIds?: number[];
+  canEditAll: boolean;
 }

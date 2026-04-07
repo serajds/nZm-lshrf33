@@ -44,9 +44,12 @@ import type {
   Project,
   ProjectFile,
   ProjectMember,
+  ProjectPermissions,
   ProjectSummary,
   Report,
   UpdateActivityBody,
+  UpdateMemberGroups200,
+  UpdateMemberGroupsBody,
   UpdateProjectBody,
   UpdateProjectMemberBody,
   UpdateReportBody,
@@ -2436,6 +2439,192 @@ export const useRemoveProjectMember = <
 > => {
   return useMutation(getRemoveProjectMemberMutationOptions(options));
 };
+
+/**
+ * @summary Update assigned groups for a project member
+ */
+export const getUpdateMemberGroupsUrl = (projectId: number, id: number) => {
+  return `/api/projects/${projectId}/members/${id}/groups`;
+};
+
+export const updateMemberGroups = async (
+  projectId: number,
+  id: number,
+  updateMemberGroupsBody: UpdateMemberGroupsBody,
+  options?: RequestInit,
+): Promise<UpdateMemberGroups200> => {
+  return customFetch<UpdateMemberGroups200>(
+    getUpdateMemberGroupsUrl(projectId, id),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updateMemberGroupsBody),
+    },
+  );
+};
+
+export const getUpdateMemberGroupsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMemberGroups>>,
+    TError,
+    { projectId: number; id: number; data: BodyType<UpdateMemberGroupsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateMemberGroups>>,
+  TError,
+  { projectId: number; id: number; data: BodyType<UpdateMemberGroupsBody> },
+  TContext
+> => {
+  const mutationKey = ["updateMemberGroups"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateMemberGroups>>,
+    { projectId: number; id: number; data: BodyType<UpdateMemberGroupsBody> }
+  > = (props) => {
+    const { projectId, id, data } = props ?? {};
+
+    return updateMemberGroups(projectId, id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateMemberGroupsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateMemberGroups>>
+>;
+export type UpdateMemberGroupsMutationBody = BodyType<UpdateMemberGroupsBody>;
+export type UpdateMemberGroupsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update assigned groups for a project member
+ */
+export const useUpdateMemberGroups = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMemberGroups>>,
+    TError,
+    { projectId: number; id: number; data: BodyType<UpdateMemberGroupsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateMemberGroups>>,
+  TError,
+  { projectId: number; id: number; data: BodyType<UpdateMemberGroupsBody> },
+  TContext
+> => {
+  return useMutation(getUpdateMemberGroupsMutationOptions(options));
+};
+
+/**
+ * @summary Get current user group permissions for a project
+ */
+export const getGetMyProjectPermissionsUrl = (projectId: number) => {
+  return `/api/projects/${projectId}/my-permissions`;
+};
+
+export const getMyProjectPermissions = async (
+  projectId: number,
+  options?: RequestInit,
+): Promise<ProjectPermissions> => {
+  return customFetch<ProjectPermissions>(
+    getGetMyProjectPermissionsUrl(projectId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetMyProjectPermissionsQueryKey = (projectId: number) => {
+  return [`/api/projects/${projectId}/my-permissions`] as const;
+};
+
+export const getGetMyProjectPermissionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMyProjectPermissions>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyProjectPermissions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMyProjectPermissionsQueryKey(projectId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMyProjectPermissions>>
+  > = ({ signal }) =>
+    getMyProjectPermissions(projectId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!projectId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMyProjectPermissions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMyProjectPermissionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMyProjectPermissions>>
+>;
+export type GetMyProjectPermissionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get current user group permissions for a project
+ */
+
+export function useGetMyProjectPermissions<
+  TData = Awaited<ReturnType<typeof getMyProjectPermissions>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMyProjectPermissions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMyProjectPermissionsQueryOptions(
+    projectId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List all users

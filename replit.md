@@ -77,11 +77,15 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - **User management security**: role validation against allowed enum, duplicate username/email checks (pre-check + DB constraint catch), self-deletion protection, self-role-demotion protection, email normalization (trim + lowercase), NaN ID guard
 - **Search security**: LIKE metacharacters (`%`, `_`, `\`) escaped in project search to prevent pattern injection
 
-### DB Schema: project_members
+### DB Schema: project_members & member_group_assignments
 - Links users to projects with a role (`project_manager` or `engineer`)
 - Unique constraint on `(project_id, user_id)` prevents duplicate assignments
 - Cascading deletes on both project and user FKs
-- File: `lib/db/src/schema/project_members.ts`
+- **Group-based permissions**: `member_group_assignments` table links engineers to specific activity groups. When assigned, engineers can only edit activities within those groups — other activities appear as read-only. If no groups assigned, the engineer has full access (backward compatible). Admins and project managers always have full access.
+- API: `PUT /api/projects/:id/members/:memberId/groups` — update assigned groups; `GET /api/projects/:id/my-permissions` — get current user's edit permissions (returns `canEditAll`, `assignedGroupIds`).
+- Backend enforcement: `PATCH` and `DELETE` activity routes check group permissions before allowing edits.
+- Frontend: members table shows "المجموعات" column with group badges; group assignment dialog for engineers; activities page conditionally shows/hides edit controls per activity.
+- Files: `lib/db/src/schema/project_members.ts`, `lib/db/src/schema/member_group_assignments.ts`
 
 ### Companies & Logos
 - Companies management page at `/companies` with CRUD + logo upload

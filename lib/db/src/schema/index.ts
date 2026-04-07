@@ -9,3 +9,4 @@ export * from "./project_suspensions";
 export * from "./companies";
 export * from "./project_members";
 export * from "./audit_log";
+export * from "./member_group_assignments";

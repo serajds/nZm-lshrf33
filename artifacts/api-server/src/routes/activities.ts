@@ -1,11 +1,33 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { activitiesTable, projectsTable, activityGroupsTable } from "@workspace/db";
+import { activitiesTable, projectsTable, activityGroupsTable, projectMembersTable, memberGroupAssignmentsTable } from "@workspace/db";
 import { eq, and, avg, max } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
 import multer from "multer";
 import * as XLSX from "xlsx";
+
+async function checkGroupPermission(userId: number, projectId: number, activityId: number): Promise<boolean> {
+  const [membership] = await db.select()
+    .from(projectMembersTable)
+    .where(and(eq(projectMembersTable.projectId, projectId), eq(projectMembersTable.userId, userId)));
+
+  if (!membership || membership.role !== "engineer") return true;
+
+  const assignments = await db.select({ groupId: memberGroupAssignmentsTable.groupId })
+    .from(memberGroupAssignmentsTable)
+    .where(eq(memberGroupAssignmentsTable.memberId, membership.id));
+
+  if (assignments.length === 0) return true;
+
+  const [activity] = await db.select({ groupId: activitiesTable.groupId })
+    .from(activitiesTable)
+    .where(eq(activitiesTable.id, activityId));
+
+  if (!activity || !activity.groupId) return false;
+
+  return assignments.some(a => a.groupId === activity.groupId);
+}
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -87,6 +109,15 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
   const id = parseInt(rawId, 10);
+  const user = (req as any).user;
+
+  if (user?.role !== "admin") {
+    const allowed = await checkGroupPermission(user?.userId, projectId, id);
+    if (!allowed) {
+      res.status(403).json({ error: "ليس لديك صلاحية تعديل هذا النشاط" });
+      return;
+    }
+  }
 
   const updateData: Record<string, unknown> = {};
   const body = req.body;
@@ -99,7 +130,17 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   if (body.actualProgress !== undefined) updateData.actualProgress = body.actualProgress;
   if (body.status !== undefined) updateData.status = body.status;
   if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder;
-  if (body.groupId !== undefined) updateData.groupId = body.groupId === null ? null : body.groupId;
+  if (body.groupId !== undefined) {
+    if (body.groupId !== null) {
+      const [grp] = await db.select().from(activityGroupsTable)
+        .where(and(eq(activityGroupsTable.id, body.groupId), eq(activityGroupsTable.projectId, projectId)));
+      if (!grp) {
+        res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
+        return;
+      }
+    }
+    updateData.groupId = body.groupId === null ? null : body.groupId;
+  }
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });
@@ -267,6 +308,15 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
   const id = parseInt(rawId, 10);
+  const user = (req as any).user;
+
+  if (user?.role !== "admin") {
+    const allowed = await checkGroupPermission(user?.userId, projectId, id);
+    if (!allowed) {
+      res.status(403).json({ error: "ليس لديك صلاحية حذف هذا النشاط" });
+      return;
+    }
+  }
 
   const [activity] = await db.delete(activitiesTable)
     .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))

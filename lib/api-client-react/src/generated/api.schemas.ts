@@ -116,6 +116,7 @@ export interface ProjectMember {
   username: string;
   email: string;
   userRole: string;
+  assignedGroupIds?: number[];
 }
 
 export type AddProjectMemberBodyRole =
@@ -129,6 +130,7 @@ export const AddProjectMemberBodyRole = {
 export interface AddProjectMemberBody {
   userId: number;
   role: AddProjectMemberBodyRole;
+  assignedGroupIds?: number[];
 }
 
 export type UpdateProjectMemberBodyRole =
@@ -140,7 +142,15 @@ export const UpdateProjectMemberBodyRole = {
 } as const;
 
 export interface UpdateProjectMemberBody {
-  role: UpdateProjectMemberBodyRole;
+  role?: UpdateProjectMemberBodyRole;
+  assignedGroupIds?: number[];
+}
+
+export interface ProjectPermissions {
+  role: string;
+  projectRole?: string;
+  assignedGroupIds?: number[];
+  canEditAll: boolean;
 }
 
 export interface UpdateUserBody {
@@ -549,6 +559,14 @@ export type UploadFileBody = {
   category: string;
   /** @nullable */
   description?: string | null;
+};
+
+export type UpdateMemberGroupsBody = {
+  groupIds: number[];
+};
+
+export type UpdateMemberGroups200 = {
+  groupIds?: number[];
 };
 
 export type GetOwnerProjectByToken200 = {

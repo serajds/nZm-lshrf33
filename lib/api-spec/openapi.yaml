@@ -673,6 +673,67 @@ paths:
         "204":
           description: Removed
 
+  /projects/{projectId}/members/{id}/groups:
+    put:
+      operationId: updateMemberGroups
+      tags: [project-members]
+      summary: Update assigned groups for a project member
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                groupIds:
+                  type: array
+                  items:
+                    type: integer
+              required:
+                - groupIds
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groupIds:
+                    type: array
+                    items:
+                      type: integer
+
+  /projects/{projectId}/my-permissions:
+    get:
+      operationId: getMyProjectPermissions
+      tags: [project-members]
+      summary: Get current user group permissions for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPermissions"
+
   # Users
   /users:
     get:
@@ -1016,6 +1077,10 @@ components:
           type: string
         userRole:
           type: string
+        assignedGroupIds:
+          type: array
+          items:
+            type: integer
       required:
         - id
         - projectId
@@ -1035,6 +1100,10 @@ components:
         role:
           type: string
           enum: [project_manager, engineer]
+        assignedGroupIds:
+          type: array
+          items:
+            type: integer
       required:
         - userId
         - role
@@ -1045,8 +1114,27 @@ components:
         role:
           type: string
           enum: [project_manager, engineer]
+        assignedGroupIds:
+          type: array
+          items:
+            type: integer
+
+    ProjectPermissions:
+      type: object
+      properties:
+        role:
+          type: string
+        projectRole:
+          type: string
+        assignedGroupIds:
+          type: array
+          items:
+            type: integer
+        canEditAll:
+          type: boolean
       required:
         - role
+        - canEditAll
 
     UpdateUserBody:
       type: object

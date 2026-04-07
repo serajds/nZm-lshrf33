@@ -10,4 +10,5 @@ import type { AddProjectMemberBodyRole } from "./addProjectMemberBodyRole";
 export interface AddProjectMemberBody {
   userId: number;
   role: AddProjectMemberBodyRole;
+  assignedGroupIds?: number[];
 }

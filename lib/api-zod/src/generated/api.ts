@@ -533,6 +533,7 @@ export const ListProjectMembersResponseItem = zod.object({
   username: zod.string(),
   email: zod.string(),
   userRole: zod.string(),
+  assignedGroupIds: zod.array(zod.number()).optional(),
 });
 export const ListProjectMembersResponse = zod.array(
   ListProjectMembersResponseItem,
@@ -548,6 +549,7 @@ export const AddProjectMemberParams = zod.object({
 export const AddProjectMemberBody = zod.object({
   userId: zod.number(),
   role: zod.enum(["project_manager", "engineer"]),
+  assignedGroupIds: zod.array(zod.number()).optional(),
 });
 
 /**
@@ -559,7 +561,8 @@ export const UpdateProjectMemberParams = zod.object({
 });
 
 export const UpdateProjectMemberBody = zod.object({
-  role: zod.enum(["project_manager", "engineer"]),
+  role: zod.enum(["project_manager", "engineer"]).optional(),
+  assignedGroupIds: zod.array(zod.number()).optional(),
 });
 
 export const UpdateProjectMemberResponse = zod.object({
@@ -572,6 +575,7 @@ export const UpdateProjectMemberResponse = zod.object({
   username: zod.string(),
   email: zod.string(),
   userRole: zod.string(),
+  assignedGroupIds: zod.array(zod.number()).optional(),
 });
 
 /**
@@ -580,6 +584,36 @@ export const UpdateProjectMemberResponse = zod.object({
 export const RemoveProjectMemberParams = zod.object({
   projectId: zod.coerce.number(),
   id: zod.coerce.number(),
+});
+
+/**
+ * @summary Update assigned groups for a project member
+ */
+export const UpdateMemberGroupsParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+export const UpdateMemberGroupsBody = zod.object({
+  groupIds: zod.array(zod.number()),
+});
+
+export const UpdateMemberGroupsResponse = zod.object({
+  groupIds: zod.array(zod.number()).optional(),
+});
+
+/**
+ * @summary Get current user group permissions for a project
+ */
+export const GetMyProjectPermissionsParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const GetMyProjectPermissionsResponse = zod.object({
+  role: zod.string(),
+  projectRole: zod.string().optional(),
+  assignedGroupIds: zod.array(zod.number()).optional(),
+  canEditAll: zod.boolean(),
 });
 
 /**
