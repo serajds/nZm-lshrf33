@@ -139,16 +139,6 @@ export default function Login() {
           </Form>
         </div>
 
-        <div className="mt-8 text-center">
-          <a
-            href="https://about.me/seraj"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-slate-400 hover:text-emerald-600 transition-colors"
-          >
-            Developed By : Eng. Seraj Elajtel
-          </a>
-        </div>
       </div>
     </div>
   );
