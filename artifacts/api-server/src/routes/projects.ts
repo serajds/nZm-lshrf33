@@ -87,7 +87,7 @@ router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
   }).returning();
 
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "create", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name });
+  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "create", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name });
 
   res.status(201).json(project);
 });
@@ -164,7 +164,7 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
   }
 
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "update", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name, details: updateData });
+  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "update", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name, details: updateData });
 
   res.json(project);
 });
@@ -180,7 +180,7 @@ router.delete("/projects/:id", requireAdmin, async (req, res): Promise<void> => 
   }
 
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "delete", entityType: "project", entityId: id, entityName: (existing as any).name, projectId: id, projectName: (existing as any).name });
+  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "delete", entityType: "project", entityId: id, entityName: (existing as any).name, projectId: id, projectName: (existing as any).name });
 
   await db.delete(projectMembersTable).where(eq(projectMembersTable.projectId, id));
   await db.delete(activitiesTable).where(eq(activitiesTable.projectId, id));

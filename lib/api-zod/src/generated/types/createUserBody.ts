@@ -8,10 +8,9 @@
 import type { CreateUserBodyRole } from "./createUserBodyRole";
 
 export interface CreateUserBody {
-  username: string;
+  phone: string;
   password: string;
   fullName: string;
-  email: string;
   role: CreateUserBodyRole;
   /** @nullable */
   companyId?: number | null;

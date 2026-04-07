@@ -53,7 +53,7 @@ export interface ImportActivitiesResponse {
 }
 
 export interface LoginBody {
-  username: string;
+  phone: string;
   password: string;
 }
 
@@ -68,9 +68,8 @@ export const UserRole = {
 
 export interface User {
   id: number;
-  username: string;
+  phone: string;
   fullName: string;
-  email: string;
   role: UserRole;
   /** @nullable */
   companyId?: number | null;
@@ -95,10 +94,9 @@ export const CreateUserBodyRole = {
 } as const;
 
 export interface CreateUserBody {
-  username: string;
+  phone: string;
   password: string;
   fullName: string;
-  email: string;
   role: CreateUserBodyRole;
   /** @nullable */
   companyId?: number | null;
@@ -119,8 +117,7 @@ export interface ProjectMember {
   role: ProjectMemberRole;
   createdAt: string;
   fullName: string;
-  username: string;
-  email: string;
+  phone: string;
   userRole: string;
   /** @nullable */
   companyName?: string | null;
@@ -165,7 +162,7 @@ export interface UpdateUserBody {
   /** @nullable */
   fullName?: string | null;
   /** @nullable */
-  email?: string | null;
+  phone?: string | null;
   /** @nullable */
   role?: string | null;
   /** @nullable */

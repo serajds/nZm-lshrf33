@@ -15,19 +15,18 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * @summary Login with username and password
+ * @summary Login with phone and password
  */
 export const LoginBody = zod.object({
-  username: zod.string(),
+  phone: zod.string(),
   password: zod.string(),
 });
 
 export const LoginResponse = zod.object({
   user: zod.object({
     id: zod.number(),
-    username: zod.string(),
+    phone: zod.string(),
     fullName: zod.string(),
-    email: zod.string(),
     role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
     companyId: zod.number().nullish(),
     companyName: zod.string().nullish(),
@@ -48,9 +47,8 @@ export const LogoutResponse = zod.object({
  */
 export const GetMeResponse = zod.object({
   id: zod.number(),
-  username: zod.string(),
+  phone: zod.string(),
   fullName: zod.string(),
-  email: zod.string(),
   role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
   companyId: zod.number().nullish(),
   companyName: zod.string().nullish(),
@@ -534,8 +532,7 @@ export const ListProjectMembersResponseItem = zod.object({
   role: zod.enum(["project_manager", "engineer"]),
   createdAt: zod.coerce.date(),
   fullName: zod.string(),
-  username: zod.string(),
-  email: zod.string(),
+  phone: zod.string(),
   userRole: zod.string(),
   companyName: zod.string().nullish(),
   assignedGroupIds: zod.array(zod.number()).optional(),
@@ -566,9 +563,8 @@ export const GetEligibleUsersParams = zod.object({
 
 export const GetEligibleUsersResponseItem = zod.object({
   id: zod.number(),
-  username: zod.string(),
+  phone: zod.string(),
   fullName: zod.string(),
-  email: zod.string(),
   role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
   companyId: zod.number().nullish(),
   companyName: zod.string().nullish(),
@@ -596,8 +592,7 @@ export const UpdateProjectMemberResponse = zod.object({
   role: zod.enum(["project_manager", "engineer"]),
   createdAt: zod.coerce.date(),
   fullName: zod.string(),
-  username: zod.string(),
-  email: zod.string(),
+  phone: zod.string(),
   userRole: zod.string(),
   companyName: zod.string().nullish(),
   assignedGroupIds: zod.array(zod.number()).optional(),
@@ -646,9 +641,8 @@ export const GetMyProjectPermissionsResponse = zod.object({
  */
 export const ListUsersResponseItem = zod.object({
   id: zod.number(),
-  username: zod.string(),
+  phone: zod.string(),
   fullName: zod.string(),
-  email: zod.string(),
   role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
   companyId: zod.number().nullish(),
   companyName: zod.string().nullish(),
@@ -660,10 +654,9 @@ export const ListUsersResponse = zod.array(ListUsersResponseItem);
  * @summary Create a new user
  */
 export const CreateUserBody = zod.object({
-  username: zod.string(),
+  phone: zod.string(),
   password: zod.string(),
   fullName: zod.string(),
-  email: zod.string(),
   role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
   companyId: zod.number().nullish(),
 });
@@ -677,7 +670,7 @@ export const UpdateUserParams = zod.object({
 
 export const UpdateUserBody = zod.object({
   fullName: zod.string().nullish(),
-  email: zod.string().nullish(),
+  phone: zod.string().nullish(),
   role: zod.string().nullish(),
   password: zod.string().nullish(),
   companyId: zod.number().nullish(),
@@ -685,9 +678,8 @@ export const UpdateUserBody = zod.object({
 
 export const UpdateUserResponse = zod.object({
   id: zod.number(),
-  username: zod.string(),
+  phone: zod.string(),
   fullName: zod.string(),
-  email: zod.string(),
   role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
   companyId: zod.number().nullish(),
   companyName: zod.string().nullish(),

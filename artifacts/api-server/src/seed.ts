@@ -21,18 +21,16 @@ export async function seed() {
     const engineerHash = await hashPassword("engineer123");
 
     const [admin] = await db.insert(usersTable).values({
-      username: "admin",
+      phone: "0500000001",
       passwordHash: adminHash,
       fullName: "محمد أحمد المدير",
-      email: "admin@supervision.sa",
       role: "admin",
     }).returning();
 
     await db.insert(usersTable).values({
-      username: "engineer1",
+      phone: "0500000002",
       passwordHash: engineerHash,
       fullName: "خالد عبدالله المهندس",
-      email: "khalid@supervision.sa",
       role: "engineer",
     });
 

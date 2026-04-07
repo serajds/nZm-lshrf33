@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { HardHat, Loader2, Building2, ClipboardList, BarChart3 } from "lucide-react";
 
 const loginSchema = z.object({
-  username: z.string().min(1, "اسم المستخدم مطلوب"),
+  phone: z.string().min(1, "رقم الهاتف مطلوب"),
   password: z.string().min(1, "كلمة المرور مطلوبة"),
 });
 
@@ -39,7 +39,7 @@ export default function Login() {
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { username: "", password: "" },
+    defaultValues: { phone: "", password: "" },
   });
 
   async function onSubmit(values: z.infer<typeof loginSchema>) {
@@ -153,15 +153,17 @@ export default function Login() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
               <FormField
                 control={form.control}
-                name="username"
+                name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium">اسم المستخدم</FormLabel>
+                    <FormLabel className="text-sm font-medium">رقم الهاتف</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="أدخل اسم المستخدم"
+                        placeholder="أدخل رقم الهاتف"
+                        type="tel"
                         {...field}
-                        className="h-10"
+                        dir="ltr"
+                        className="h-10 text-right"
                       />
                     </FormControl>
                     <FormMessage />

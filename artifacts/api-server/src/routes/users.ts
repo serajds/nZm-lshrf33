@@ -10,9 +10,8 @@ const router: IRouter = Router();
 router.get("/users", requireEngineerOrAdmin, async (_req, res): Promise<void> => {
   const users = await db.select({
     id: usersTable.id,
-    username: usersTable.username,
+    phone: usersTable.phone,
     fullName: usersTable.fullName,
-    email: usersTable.email,
     role: usersTable.role,
     companyId: usersTable.companyId,
     companyName: companiesTable.name,
@@ -36,9 +35,9 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 router.post("/users", requireAdmin, async (req, res): Promise<void> => {
-  const { username, password, fullName, email, role, companyId } = req.body;
+  const { phone, password, fullName, role, companyId } = req.body;
 
-  if (!username || !password || !fullName || !email || !role) {
+  if (!phone || !password || !fullName || !role) {
     res.status(400).json({ error: "جميع الحقول مطلوبة" });
     return;
   }
@@ -48,18 +47,11 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
-  const trimmedEmail = (email as string).trim().toLowerCase();
-  const trimmedUsername = (username as string).trim();
+  const trimmedPhone = (phone as string).trim();
 
-  const [existingUsername] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.username, trimmedUsername));
-  if (existingUsername) {
-    res.status(409).json({ error: "اسم المستخدم مستخدم بالفعل" });
-    return;
-  }
-
-  const [existingEmail] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, trimmedEmail));
-  if (existingEmail) {
-    res.status(409).json({ error: "البريد الإلكتروني مستخدم بالفعل" });
+  const [existingPhone] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, trimmedPhone));
+  if (existingPhone) {
+    res.status(409).json({ error: "رقم الهاتف مستخدم بالفعل" });
     return;
   }
 
@@ -80,10 +72,9 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
 
   try {
     const [inserted] = await db.insert(usersTable).values({
-      username: trimmedUsername,
+      phone: trimmedPhone,
       passwordHash,
       fullName,
-      email: trimmedEmail,
       role,
       companyId: parsedCompanyId,
     }).returning();
@@ -96,9 +87,8 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
 
     res.status(201).json({
       id: inserted.id,
-      username: inserted.username,
+      phone: inserted.phone,
       fullName: inserted.fullName,
-      email: inserted.email,
       role: inserted.role,
       companyId: inserted.companyId,
       companyName,
@@ -106,7 +96,7 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
     });
   } catch (err) {
     if (isUniqueViolation(err)) {
-      res.status(409).json({ error: "اسم المستخدم أو البريد الإلكتروني مستخدم بالفعل" });
+      res.status(409).json({ error: "رقم الهاتف مستخدم بالفعل" });
       return;
     }
     throw err;
@@ -129,14 +119,14 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
   const body = req.body;
   if (body.fullName !== undefined) updateData.fullName = body.fullName;
 
-  if (body.email !== undefined) {
-    const trimmedEmail = (body.email as string).trim().toLowerCase();
-    const [existingEmail] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, trimmedEmail));
-    if (existingEmail && existingEmail.id !== id) {
-      res.status(409).json({ error: "البريد الإلكتروني مستخدم بالفعل" });
+  if (body.phone !== undefined) {
+    const trimmedPhone = (body.phone as string).trim();
+    const [existingPhone] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, trimmedPhone));
+    if (existingPhone && existingPhone.id !== id) {
+      res.status(409).json({ error: "رقم الهاتف مستخدم بالفعل" });
       return;
     }
-    updateData.email = trimmedEmail;
+    updateData.phone = trimmedPhone;
   }
 
   if (body.role !== undefined) {
@@ -188,9 +178,8 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
 
     res.json({
       id: updated.id,
-      username: updated.username,
+      phone: updated.phone,
       fullName: updated.fullName,
-      email: updated.email,
       role: updated.role,
       companyId: updated.companyId,
       companyName,
@@ -198,7 +187,7 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
     });
   } catch (err) {
     if (isUniqueViolation(err)) {
-      res.status(409).json({ error: "البريد الإلكتروني مستخدم بالفعل" });
+      res.status(409).json({ error: "رقم الهاتف مستخدم بالفعل" });
       return;
     }
     throw err;
