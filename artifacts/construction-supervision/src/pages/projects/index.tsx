@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useListProjects, useCreateProject, useUpdateProject, useDeleteProject, getListProjectsQueryKey } from "@workspace/api-client-react";
 import type { Project } from "@workspace/api-client-react";
+import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -89,6 +90,9 @@ export default function Projects() {
     const timer = setTimeout(() => setDebouncedSearch(search), 400);
     return () => clearTimeout(timer);
   }, [search]);
+
+  const { user } = useAuth();
+  const canManageProjects = user?.role === "admin" || user?.role === "project_manager";
 
   const { data: projects, isLoading } = useListProjects({
     search: debouncedSearch || undefined,
@@ -204,10 +208,12 @@ export default function Projects() {
       <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
         <h1 className="text-xl md:text-2xl font-bold">المشاريع</h1>
         
-        <Button className="gap-2" onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          مشروع جديد
-        </Button>
+        {canManageProjects && (
+          <Button className="gap-2" onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            مشروع جديد
+          </Button>
+        )}
 
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           setIsDialogOpen(open);
@@ -426,12 +432,16 @@ export default function Projects() {
                   </CardTitle>
                   <div className="flex items-center gap-1 shrink-0">
                     {getStatusBadge(project.status)}
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(project)}>
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeletingProject(project)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {canManageProjects && (
+                      <>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(project)}>
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeletingProject(project)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </CardHeader>
