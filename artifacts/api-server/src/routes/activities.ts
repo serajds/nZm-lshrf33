@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { activitiesTable, projectsTable } from "@workspace/db";
 import { eq, and, avg, max } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
+import { recalcExpectedEndDate } from "../lib/recalc-end-date";
 import multer from "multer";
 import * as XLSX from "xlsx";
 
@@ -63,6 +64,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
   }).returning();
 
   await syncProjectProgress(projectId);
+  await recalcExpectedEndDate(projectId);
 
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "create", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId });
@@ -104,6 +106,7 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   }
 
   await syncProjectProgress(projectId);
+  await recalcExpectedEndDate(projectId);
 
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "update", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId, details: updateData });
@@ -207,6 +210,7 @@ router.post("/projects/:projectId/activities/import", requireProjectAccess("proj
     ).returning();
 
     await syncProjectProgress(projectId);
+    await recalcExpectedEndDate(projectId);
 
     res.status(201).json({
       imported: inserted.length,
@@ -263,6 +267,7 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
   }
 
   await syncProjectProgress(projectId);
+  await recalcExpectedEndDate(projectId);
 
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "delete", entityType: "activity", entityId: id, entityName: activity.name, projectId });

@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   Building2, MapPin, Calendar, ActivitySquare, CheckCircle2,
-  AlertTriangle, ArrowRight, Share2, Copy, Clock, ArrowBigRightDash, PauseCircle, FileText
+  AlertTriangle, ArrowRight, Share2, Copy, Clock, PauseCircle, FileText
 } from "lucide-react";
 import { ProjectNav } from "@/components/project-nav";
 import { ProjectMembers } from "@/components/project-members";
@@ -383,16 +383,11 @@ export default function ProjectDetails() {
                   ltr: true,
                 },
                 {
-                  icon: Calendar, label: "النهاية التعاقدية الأصلية",
+                  icon: Calendar, label: totalExtDays > 0 ? `النهاية المتوقعة (تشمل ${totalExtDays} يوم تمديد)` : "النهاية المتوقعة",
                   value: fmtDate(project.expectedEndDate),
                   ltr: true,
+                  highlight: totalExtDays > 0,
                 },
-                ...(latestEndDate ? [{
-                  icon: ArrowBigRightDash, label: `النهاية بعد التمديد (+${totalExtDays} يوم)`,
-                  value: fmtDate(latestEndDate),
-                  ltr: true,
-                  highlight: true,
-                }] : []),
                 ...(project.actualEndDate ? [{
                   icon: Clock, label: "النهاية الفعلية",
                   value: fmtDate(project.actualEndDate),

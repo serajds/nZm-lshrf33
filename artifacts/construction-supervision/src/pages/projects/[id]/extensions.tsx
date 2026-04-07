@@ -23,7 +23,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Plus, Trash2, ArrowRight, Calendar, FileText, Clock, ArrowBigRightDash
+  Plus, Trash2, ArrowRight, Calendar, FileText, Clock
 } from "lucide-react";
 import { fmtDate } from "@/lib/utils";
 
@@ -102,6 +102,7 @@ export default function ProjectExtensions() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
       toast({ title: "تم إضافة التمديد بنجاح" });
       setIsDialogOpen(false);
       form.reset();
@@ -116,6 +117,7 @@ export default function ProjectExtensions() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
       toast({ title: "تم حذف التمديد" });
       setDeletingId(null);
     },
@@ -155,24 +157,13 @@ export default function ProjectExtensions() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
+        <Card className={totalDaysAdded > 0 ? "border-amber-400" : ""}>
           <CardContent className="pt-5">
             <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
-              <Calendar className="h-3.5 w-3.5" /> التاريخ الأصلي للإنهاء
+              <Calendar className="h-3.5 w-3.5" /> النهاية المتوقعة {totalDaysAdded > 0 && "(شاملة التمديدات)"}
             </p>
-            <p className="text-lg font-bold tabular-nums" dir="ltr">
+            <p className={`text-lg font-bold tabular-nums ${totalDaysAdded > 0 ? "text-amber-600" : ""}`} dir="ltr">
               {project?.expectedEndDate ? fmtDate(project.expectedEndDate) : "—"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className={extensions.length > 0 ? "border-amber-400" : ""}>
-          <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
-              <ArrowBigRightDash className="h-3.5 w-3.5 text-amber-500" /> التاريخ الحالي بعد التمديدات
-            </p>
-            <p className="text-lg font-bold tabular-nums text-amber-600" dir="ltr">
-              {latestEndDate ? fmtDate(latestEndDate) : "—"}
             </p>
           </CardContent>
         </Card>
@@ -184,6 +175,17 @@ export default function ProjectExtensions() {
             </p>
             <p className={`text-2xl font-bold tabular-nums ${totalDaysAdded > 0 ? "text-amber-600" : "text-muted-foreground"}`}>
               {totalDaysAdded} <span className="text-sm font-normal">يوم</span>
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-5">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5" /> عدد التمديدات
+            </p>
+            <p className="text-2xl font-bold tabular-nums">
+              {extensions.length}
             </p>
           </CardContent>
         </Card>

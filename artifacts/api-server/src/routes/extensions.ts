@@ -3,8 +3,28 @@ import { db } from "@workspace/db";
 import { projectExtensionsTable, projectsTable } from "@workspace/db";
 import { eq, desc, and, asc } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
+import { recalcExpectedEndDate, getActivitiesBaseEndDate } from "../lib/recalc-end-date";
 
 const router: IRouter = Router();
+
+async function recomputeExtensionChain(projectId: number, baseEndDate: string) {
+  const allExts = await db.select()
+    .from(projectExtensionsTable)
+    .where(eq(projectExtensionsTable.projectId, projectId))
+    .orderBy(asc(projectExtensionsTable.extensionDate));
+
+  let runningEnd = baseEndDate;
+  for (const ext of allExts) {
+    const parts = runningEnd.split("-").map(Number);
+    const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+    d.setUTCDate(d.getUTCDate() + ext.daysAdded);
+    const newEndDate = d.toISOString().split("T")[0];
+    await db.update(projectExtensionsTable)
+      .set({ newEndDate })
+      .where(eq(projectExtensionsTable.id, ext.id));
+    runningEnd = newEndDate;
+  }
+}
 
 router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId, 10);
@@ -45,26 +65,13 @@ router.post("/projects/:projectId/extensions", requireProjectAccess("projectId")
     notes: notes ?? null,
   }).returning();
 
-  // Recompute new_end_date for all extensions in chronological order
-  // so backdated inserts don't create an inconsistent chain
-  const allExts = await db.select()
-    .from(projectExtensionsTable)
-    .where(eq(projectExtensionsTable.projectId, projectId))
-    .orderBy(asc(projectExtensionsTable.extensionDate));
+  const baseEnd = await getActivitiesBaseEndDate(projectId) ?? project.expectedEndDate;
+  await recomputeExtensionChain(projectId, baseEnd);
+  await recalcExpectedEndDate(projectId);
 
-  let runningEnd = new Date(project.expectedEndDate);
-  let updatedExtension = extension;
-  for (const ext of allExts) {
-    const next = new Date(runningEnd);
-    next.setDate(next.getDate() + ext.daysAdded);
-    const newEndDate = next.toISOString().split("T")[0];
-    const [updated] = await db.update(projectExtensionsTable)
-      .set({ newEndDate })
-      .where(eq(projectExtensionsTable.id, ext.id))
-      .returning();
-    if (ext.id === extension.id) updatedExtension = updated;
-    runningEnd = next;
-  }
+  const [updatedExtension] = await db.select()
+    .from(projectExtensionsTable)
+    .where(eq(projectExtensionsTable.id, extension.id));
 
   res.status(201).json(updatedExtension);
 });
@@ -82,25 +89,12 @@ router.delete("/projects/:projectId/extensions/:id", requireProjectAccess("proje
     return;
   }
 
-  // Recompute new_end_date for all remaining extensions in chronological order
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   if (project) {
-    const remaining = await db.select()
-      .from(projectExtensionsTable)
-      .where(eq(projectExtensionsTable.projectId, projectId))
-      .orderBy(asc(projectExtensionsTable.extensionDate));
-
-    let runningEnd = new Date(project.expectedEndDate);
-    for (const ext of remaining) {
-      const next = new Date(runningEnd);
-      next.setDate(next.getDate() + ext.daysAdded);
-      const newEndDate = next.toISOString().split("T")[0];
-      await db.update(projectExtensionsTable)
-        .set({ newEndDate })
-        .where(eq(projectExtensionsTable.id, ext.id));
-      runningEnd = next;
-    }
+    const baseEnd = await getActivitiesBaseEndDate(projectId) ?? project.expectedEndDate;
+    await recomputeExtensionChain(projectId, baseEnd);
   }
+  await recalcExpectedEndDate(projectId);
 
   res.sendStatus(204);
 });
