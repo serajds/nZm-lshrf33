@@ -295,7 +295,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {canManageMembers ? (
+                      {canManageMembers && member.userId !== user?.id ? (
                         <Select
                           value={member.role}
                           onValueChange={(val) => handleChangeRole(member, val)}
