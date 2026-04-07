@@ -348,14 +348,16 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                     </TableCell>
                     {canManageMembers && (
                       <TableCell className="text-left">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setRemovingId(member.id)}
-                          disabled={removeMember.isPending}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        {member.userId !== user?.id && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setRemovingId(member.id)}
+                            disabled={removeMember.isPending}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
                       </TableCell>
                     )}
                   </TableRow>
