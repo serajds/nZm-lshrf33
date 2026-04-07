@@ -62,4 +62,5 @@ export * from "./updateReportBodyType";
 export * from "./updateUserBody";
 export * from "./uploadFileBody";
 export * from "./user";
+export * from "./userCompany";
 export * from "./userRole";

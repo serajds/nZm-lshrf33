@@ -5,6 +5,7 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { UserCompany } from "./userCompany";
 import type { UserRole } from "./userRole";
 
 export interface User {
@@ -12,9 +13,6 @@ export interface User {
   phone: string;
   fullName: string;
   role: UserRole;
-  /** @nullable */
-  companyId?: number | null;
-  /** @nullable */
-  companyName?: string | null;
+  companies?: UserCompany[];
   createdAt: Date;
 }

@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from "@/components/ui/table";
@@ -59,7 +60,7 @@ const userSchema = z.object({
   phone: z.string().min(1, "رقم الهاتف مطلوب"),
   role: z.enum(["admin", "project_manager", "engineer", "owner"]),
   password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل").optional().or(z.literal('')),
-  companyId: z.string().optional(),
+  companyIds: z.array(z.number()).optional(),
 });
 
 export default function Users() {
@@ -68,6 +69,7 @@ export default function Users() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<number[]>([]);
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -93,7 +95,7 @@ export default function Users() {
       phone: "",
       role: "engineer",
       password: "",
-      companyId: "",
+      companyIds: [],
     }
   });
 
@@ -104,12 +106,27 @@ export default function Users() {
 
   const handleEdit = (u: User) => {
     setEditingUserId(u.id);
+    const cIds = (u as any).companies?.map((c: any) => c.companyId) || [];
+    setSelectedCompanyIds(cIds);
     form.reset({
       fullName: u.fullName,
       phone: u.phone,
       role: u.role as "admin" | "project_manager" | "engineer" | "owner",
       password: "",
-      companyId: u.companyId ? String(u.companyId) : "",
+      companyIds: cIds,
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleOpenNew = () => {
+    setEditingUserId(null);
+    setSelectedCompanyIds([]);
+    form.reset({
+      fullName: "",
+      phone: "",
+      role: "engineer",
+      password: "",
+      companyIds: [],
     });
     setIsDialogOpen(true);
   };
@@ -127,12 +144,30 @@ export default function Users() {
     }
   };
 
+  const toggleCompany = (companyId: number) => {
+    setSelectedCompanyIds(prev => {
+      const next = prev.includes(companyId)
+        ? prev.filter(id => id !== companyId)
+        : [...prev, companyId];
+      form.setValue("companyIds", next);
+      return next;
+    });
+  };
+
+  const getCompanyTypeName = (type: string) => {
+    switch (type) {
+      case "owner": return "مالك";
+      case "contractor": return "مقاول";
+      case "supervisor": return "مشرف";
+      default: return type;
+    }
+  };
+
   const onSubmit = async (values: z.infer<typeof userSchema>) => {
     try {
-      const companyId = values.companyId && values.companyId !== "none" ? parseInt(values.companyId) : null;
       if (editingUserId) {
-        const { password, companyId: _, ...rest } = values;
-        const updateData: any = { ...rest, companyId };
+        const { password, ...rest } = values;
+        const updateData: any = { ...rest, companyIds: selectedCompanyIds };
         if (password) updateData.password = password;
         await updateUser.mutateAsync({ id: editingUserId, data: updateData });
         toast({ title: "تم تحديث المستخدم بنجاح" });
@@ -141,14 +176,14 @@ export default function Users() {
             toast({ variant: "destructive", title: "كلمة المرور مطلوبة للمستخدم الجديد" });
             return;
         }
-        const { companyId: _, ...rest } = values;
-        await createUser.mutateAsync({ data: { ...rest, password: values.password!, companyId } as any });
+        await createUser.mutateAsync({ data: { ...values, password: values.password!, companyIds: selectedCompanyIds } as any });
         toast({ title: "تم إنشاء المستخدم بنجاح" });
       }
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
       setIsDialogOpen(false);
       form.reset();
       setEditingUserId(null);
+      setSelectedCompanyIds([]);
     } catch (e) {
       toast({ variant: "destructive", title: "فشل حفظ المستخدم" });
     }
@@ -164,6 +199,21 @@ export default function Users() {
     }
   };
 
+  const renderCompanyBadges = (u: any) => {
+    const comps = u.companies || [];
+    if (comps.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
+    return (
+      <div className="flex flex-wrap gap-1">
+        {comps.map((c: any) => (
+          <Badge key={c.companyId} variant="outline" className="gap-1 text-xs">
+            <Building2 className="h-3 w-3" />
+            {c.companyName}
+          </Badge>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -177,10 +227,11 @@ export default function Users() {
           if (!open) {
             form.reset();
             setEditingUserId(null);
+            setSelectedCompanyIds([]);
           }
         }}>
           <DialogTrigger asChild>
-            <Button className="gap-2">
+            <Button className="gap-2" onClick={handleOpenNew}>
               <Plus className="h-4 w-4" />
               إضافة مستخدم
             </Button>
@@ -248,31 +299,25 @@ export default function Users() {
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="companyId"
-                    render={({ field }) => (
-                      <FormItem className="sm:col-span-2">
-                        <FormLabel>الشركة</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
-                          <FormControl>
-                            <SelectTrigger dir="rtl">
-                              <SelectValue placeholder="اختر الشركة (اختياري)" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent dir="rtl">
-                            <SelectItem value="none">بدون شركة</SelectItem>
-                            {companies.map(c => (
-                              <SelectItem key={c.id} value={String(c.id)}>
-                                {c.name} ({c.type === "owner" ? "مالك" : c.type === "contractor" ? "مقاول" : "مشرف"})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
+                  <div className="sm:col-span-2 space-y-2">
+                    <FormLabel>الشركات</FormLabel>
+                    {companies.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">لا توجد شركات مسجلة</p>
+                    ) : (
+                      <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto">
+                        {companies.map(c => (
+                          <label key={c.id} className="flex items-center gap-2 cursor-pointer">
+                            <Checkbox
+                              checked={selectedCompanyIds.includes(c.id)}
+                              onCheckedChange={() => toggleCompany(c.id)}
+                            />
+                            <span className="text-sm">{c.name}</span>
+                            <span className="text-xs text-muted-foreground">({getCompanyTypeName(c.type)})</span>
+                          </label>
+                        ))}
+                      </div>
                     )}
-                  />
+                  </div>
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
@@ -292,7 +337,7 @@ export default function Users() {
               <TableRow>
                 <TableHead className="text-right">الاسم</TableHead>
                 <TableHead className="text-right">رقم الهاتف</TableHead>
-                <TableHead className="text-right">الشركة</TableHead>
+                <TableHead className="text-right">الشركات</TableHead>
                 <TableHead className="text-right">الصلاحية</TableHead>
                 <TableHead className="text-left">الإجراءات</TableHead>
               </TableRow>
@@ -311,16 +356,7 @@ export default function Users() {
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">{u.fullName}</TableCell>
                     <TableCell dir="ltr" className="text-right">{u.phone}</TableCell>
-                    <TableCell>
-                      {(u as any).companyName ? (
-                        <Badge variant="outline" className="gap-1">
-                          <Building2 className="h-3 w-3" />
-                          {(u as any).companyName}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
+                    <TableCell>{renderCompanyBadges(u)}</TableCell>
                     <TableCell>{getRoleBadge(u.role)}</TableCell>
                     <TableCell className="text-left">
                       <div className="flex justify-end gap-2">
@@ -355,10 +391,14 @@ export default function Users() {
                 <div className="text-xs text-muted-foreground" dir="ltr">
                   {u.phone}
                 </div>
-                {(u as any).companyName && (
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Building2 className="h-3 w-3" />
-                    <span>{(u as any).companyName}</span>
+                {(u as any).companies?.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {(u as any).companies.map((c: any) => (
+                      <Badge key={c.companyId} variant="outline" className="gap-1 text-xs">
+                        <Building2 className="h-3 w-3" />
+                        {c.companyName}
+                      </Badge>
+                    ))}
                   </div>
                 )}
                 <div className="flex justify-end gap-1 pt-1 border-t">

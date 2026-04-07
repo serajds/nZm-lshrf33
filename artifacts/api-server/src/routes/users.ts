@@ -1,11 +1,51 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable, companiesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { usersTable, companiesTable, userCompaniesTable } from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireEngineerOrAdmin } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
 
 const router: IRouter = Router();
+
+async function getCompaniesForUser(userId: number) {
+  const rows = await db.select({
+    companyId: userCompaniesTable.companyId,
+    companyName: companiesTable.name,
+  })
+    .from(userCompaniesTable)
+    .innerJoin(companiesTable, eq(userCompaniesTable.companyId, companiesTable.id))
+    .where(eq(userCompaniesTable.userId, userId));
+  return rows;
+}
+
+async function getCompaniesForUsers(userIds: number[]) {
+  if (userIds.length === 0) return new Map<number, { companyId: number; companyName: string }[]>();
+  const rows = await db.select({
+    userId: userCompaniesTable.userId,
+    companyId: userCompaniesTable.companyId,
+    companyName: companiesTable.name,
+  })
+    .from(userCompaniesTable)
+    .innerJoin(companiesTable, eq(userCompaniesTable.companyId, companiesTable.id))
+    .where(inArray(userCompaniesTable.userId, userIds));
+
+  const map = new Map<number, { companyId: number; companyName: string }[]>();
+  for (const r of rows) {
+    const list = map.get(r.userId) || [];
+    list.push({ companyId: r.companyId, companyName: r.companyName });
+    map.set(r.userId, list);
+  }
+  return map;
+}
+
+async function setCompaniesForUser(userId: number, companyIds: number[]) {
+  await db.delete(userCompaniesTable).where(eq(userCompaniesTable.userId, userId));
+  if (companyIds.length > 0) {
+    await db.insert(userCompaniesTable).values(
+      companyIds.map(companyId => ({ userId, companyId }))
+    );
+  }
+}
 
 router.get("/users", requireEngineerOrAdmin, async (_req, res): Promise<void> => {
   const users = await db.select({
@@ -13,14 +53,18 @@ router.get("/users", requireEngineerOrAdmin, async (_req, res): Promise<void> =>
     phone: usersTable.phone,
     fullName: usersTable.fullName,
     role: usersTable.role,
-    companyId: usersTable.companyId,
-    companyName: companiesTable.name,
     createdAt: usersTable.createdAt,
   }).from(usersTable)
-    .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
     .orderBy(usersTable.createdAt);
 
-  res.json(users);
+  const companiesMap = await getCompaniesForUsers(users.map(u => u.id));
+
+  const result = users.map(u => ({
+    ...u,
+    companies: companiesMap.get(u.id) || [],
+  }));
+
+  res.json(result);
 });
 
 const VALID_ROLES = ["admin", "project_manager", "engineer", "owner"] as const;
@@ -35,7 +79,7 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 router.post("/users", requireAdmin, async (req, res): Promise<void> => {
-  const { phone, password, fullName, role, companyId } = req.body;
+  const { phone, password, fullName, role, companyIds } = req.body;
 
   if (!phone || !password || !fullName || !role) {
     res.status(400).json({ error: "جميع الحقول مطلوبة" });
@@ -55,43 +99,58 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
-  const parsedCompanyId = companyId ? parseInt(companyId, 10) : null;
-  if (parsedCompanyId !== null) {
-    if (isNaN(parsedCompanyId) || parsedCompanyId <= 0) {
-      res.status(400).json({ error: "معرف الشركة غير صالح" });
+  const parsedCompanyIds: number[] = [];
+  if (companyIds !== undefined) {
+    if (!Array.isArray(companyIds)) {
+      res.status(400).json({ error: "companyIds يجب أن يكون مصفوفة" });
       return;
     }
-    const [company] = await db.select({ id: companiesTable.id }).from(companiesTable).where(eq(companiesTable.id, parsedCompanyId));
-    if (!company) {
-      res.status(400).json({ error: "الشركة غير موجودة" });
-      return;
+    for (const cid of companyIds) {
+      const parsed = parseInt(cid, 10);
+      if (isNaN(parsed) || parsed <= 0) {
+        res.status(400).json({ error: "معرف الشركة غير صالح" });
+        return;
+      }
+      parsedCompanyIds.push(parsed);
+    }
+    if (parsedCompanyIds.length > 0) {
+      const existingCompanies = await db.select({ id: companiesTable.id }).from(companiesTable).where(inArray(companiesTable.id, parsedCompanyIds));
+      if (existingCompanies.length !== parsedCompanyIds.length) {
+        res.status(400).json({ error: "بعض الشركات غير موجودة" });
+        return;
+      }
     }
   }
 
   const passwordHash = await hashPassword(password);
 
   try {
-    const [inserted] = await db.insert(usersTable).values({
-      phone: trimmedPhone,
-      passwordHash,
-      fullName,
-      role,
-      companyId: parsedCompanyId,
-    }).returning();
+    const [inserted] = await db.transaction(async (tx) => {
+      const rows = await tx.insert(usersTable).values({
+        phone: trimmedPhone,
+        passwordHash,
+        fullName,
+        role,
+      }).returning();
 
-    let companyName: string | null = null;
-    if (inserted.companyId) {
-      const [company] = await db.select({ name: companiesTable.name }).from(companiesTable).where(eq(companiesTable.id, inserted.companyId));
-      companyName = company?.name || null;
-    }
+      if (parsedCompanyIds.length > 0) {
+        await tx.delete(userCompaniesTable).where(eq(userCompaniesTable.userId, rows[0].id));
+        await tx.insert(userCompaniesTable).values(
+          parsedCompanyIds.map(companyId => ({ userId: rows[0].id, companyId }))
+        );
+      }
+
+      return rows;
+    });
+
+    const companies = await getCompaniesForUser(inserted.id);
 
     res.status(201).json({
       id: inserted.id,
       phone: inserted.phone,
       fullName: inserted.fullName,
       role: inserted.role,
-      companyId: inserted.companyId,
-      companyName,
+      companies,
       createdAt: inserted.createdAt,
     });
   } catch (err) {
@@ -141,50 +200,52 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
     updateData.passwordHash = await hashPassword(req.body.password);
   }
 
-  if (body.companyId !== undefined) {
-    const cid = body.companyId ? parseInt(body.companyId, 10) : null;
-    if (cid !== null) {
-      if (isNaN(cid) || cid <= 0) {
+  let parsedCompanyIds: number[] | undefined;
+  if (body.companyIds !== undefined) {
+    if (!Array.isArray(body.companyIds)) {
+      res.status(400).json({ error: "companyIds يجب أن يكون مصفوفة" });
+      return;
+    }
+    parsedCompanyIds = [];
+    for (const cid of body.companyIds) {
+      const parsed = parseInt(cid, 10);
+      if (isNaN(parsed) || parsed <= 0) {
         res.status(400).json({ error: "معرف الشركة غير صالح" });
         return;
       }
-      const [company] = await db.select({ id: companiesTable.id }).from(companiesTable).where(eq(companiesTable.id, cid));
-      if (!company) {
-        res.status(400).json({ error: "الشركة غير موجودة" });
+      parsedCompanyIds.push(parsed);
+    }
+    if (parsedCompanyIds.length > 0) {
+      const existingCompanies = await db.select({ id: companiesTable.id }).from(companiesTable).where(inArray(companiesTable.id, parsedCompanyIds));
+      if (existingCompanies.length !== parsedCompanyIds.length) {
+        res.status(400).json({ error: "بعض الشركات غير موجودة" });
         return;
       }
     }
-    updateData.companyId = cid;
-  }
-
-  if (Object.keys(updateData).length === 0) {
-    res.status(400).json({ error: "لا توجد بيانات للتحديث" });
-    return;
   }
 
   try {
-    const [updated] = await db.update(usersTable).set(updateData).where(eq(usersTable.id, id)).returning();
-
-    if (!updated) {
+    const txResult = await db.transaction(async (tx) => {
+      if (Object.keys(updateData).length > 0) {
+        const [updated] = await tx.update(usersTable).set(updateData).where(eq(usersTable.id, id)).returning();
+        if (!updated) {
+          return { notFound: true };
+        }
+      }
+      if (parsedCompanyIds !== undefined) {
+        await tx.delete(userCompaniesTable).where(eq(userCompaniesTable.userId, id));
+        if (parsedCompanyIds.length > 0) {
+          await tx.insert(userCompaniesTable).values(
+            parsedCompanyIds.map(companyId => ({ userId: id, companyId }))
+          );
+        }
+      }
+      return { notFound: false };
+    });
+    if (txResult.notFound) {
       res.status(404).json({ error: "المستخدم غير موجود" });
       return;
     }
-
-    let companyName: string | null = null;
-    if (updated.companyId) {
-      const [company] = await db.select({ name: companiesTable.name }).from(companiesTable).where(eq(companiesTable.id, updated.companyId));
-      companyName = company?.name || null;
-    }
-
-    res.json({
-      id: updated.id,
-      phone: updated.phone,
-      fullName: updated.fullName,
-      role: updated.role,
-      companyId: updated.companyId,
-      companyName,
-      createdAt: updated.createdAt,
-    });
   } catch (err) {
     if (isUniqueViolation(err)) {
       res.status(409).json({ error: "رقم الهاتف مستخدم بالفعل" });
@@ -192,6 +253,26 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
     }
     throw err;
   }
+
+  const [updatedUser] = await db.select({
+    id: usersTable.id,
+    phone: usersTable.phone,
+    fullName: usersTable.fullName,
+    role: usersTable.role,
+    createdAt: usersTable.createdAt,
+  }).from(usersTable).where(eq(usersTable.id, id));
+
+  if (!updatedUser) {
+    res.status(404).json({ error: "المستخدم غير موجود" });
+    return;
+  }
+
+  const companies = await getCompaniesForUser(id);
+
+  res.json({
+    ...updatedUser,
+    companies,
+  });
 });
 
 router.delete("/users/:id", requireAdmin, async (req, res): Promise<void> => {

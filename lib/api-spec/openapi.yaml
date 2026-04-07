@@ -1029,6 +1029,17 @@ components:
         - token
 
     # User
+    UserCompany:
+      type: object
+      properties:
+        companyId:
+          type: integer
+        companyName:
+          type: string
+      required:
+        - companyId
+        - companyName
+
     User:
       type: object
       properties:
@@ -1041,10 +1052,10 @@ components:
         role:
           type: string
           enum: [admin, project_manager, engineer, owner]
-        companyId:
-          type: ["integer", "null"]
-        companyName:
-          type: ["string", "null"]
+        companies:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserCompany"
         createdAt:
           type: string
           format: date-time
@@ -1067,8 +1078,10 @@ components:
         role:
           type: string
           enum: [admin, project_manager, engineer, owner]
-        companyId:
-          type: ["integer", "null"]
+        companyIds:
+          type: array
+          items:
+            type: integer
       required:
         - phone
         - password
@@ -1096,8 +1109,10 @@ components:
           type: string
         userRole:
           type: string
-        companyName:
-          type: ["string", "null"]
+        companyNames:
+          type: array
+          items:
+            type: string
         assignedGroupIds:
           type: array
           items:
@@ -1167,8 +1182,10 @@ components:
           type: ["string", "null"]
         password:
           type: ["string", "null"]
-        companyId:
-          type: ["integer", "null"]
+        companyIds:
+          type: array
+          items:
+            type: integer
 
     # Projects
     Project:
