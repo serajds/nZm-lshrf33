@@ -57,14 +57,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    localStorage.removeItem("auth_token");
+    setToken(null);
+    setLocation("/login");
     try {
       await logoutMutation.mutateAsync();
     } catch (e) {
-      console.error("Logout error", e);
-    } finally {
-      localStorage.removeItem("auth_token");
-      setToken(null);
-      setLocation("/login");
+      // ignore
     }
   };
 
