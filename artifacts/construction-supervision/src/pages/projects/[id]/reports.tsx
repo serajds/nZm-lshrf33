@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { 
   useListReports, 
@@ -120,6 +120,23 @@ export default function ProjectReports() {
       imageUrls: [],
     }
   });
+
+  const watchedType = form.watch("type");
+  const watchedPeriodStart = form.watch("periodStart");
+
+  useEffect(() => {
+    if (editingId || !watchedPeriodStart) return;
+    const startDate = new Date(watchedPeriodStart);
+    if (isNaN(startDate.getTime())) return;
+    const endDate = new Date(startDate);
+    if (watchedType === "monthly") {
+      endDate.setMonth(endDate.getMonth() + 1);
+      endDate.setDate(endDate.getDate() - 1);
+    } else {
+      endDate.setDate(endDate.getDate() + 6);
+    }
+    form.setValue("periodEnd", endDate.toISOString().split("T")[0]);
+  }, [watchedType, watchedPeriodStart, editingId]);
 
   const handleEdit = (r: Report) => {
     setEditingId(r.id);
@@ -293,6 +310,28 @@ export default function ProjectReports() {
               if (!editingId) {
                 const auto = calcAutoProgress();
                 if (auto !== null) form.setValue("progressPercentage", auto);
+
+                const sortedReports = [...(reports ?? [])].sort(
+                  (a, b) => new Date(b.periodEnd).getTime() - new Date(a.periodEnd).getTime()
+                );
+                const lastReport = sortedReports[0];
+                if (lastReport) {
+                  const lastEnd = new Date(lastReport.periodEnd);
+                  const nextStart = new Date(lastEnd);
+                  nextStart.setDate(nextStart.getDate() + 1);
+                  const startStr = nextStart.toISOString().split("T")[0];
+                  form.setValue("periodStart", startStr);
+
+                  const currentType = form.getValues("type");
+                  const endDate = new Date(nextStart);
+                  if (currentType === "monthly") {
+                    endDate.setMonth(endDate.getMonth() + 1);
+                    endDate.setDate(endDate.getDate() - 1);
+                  } else {
+                    endDate.setDate(endDate.getDate() + 6);
+                  }
+                  form.setValue("periodEnd", endDate.toISOString().split("T")[0]);
+                }
               }
             }}>
               <Plus className="h-4 w-4" /> إضافة تقرير
