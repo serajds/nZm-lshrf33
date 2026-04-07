@@ -23,8 +23,8 @@ import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const { isAuthenticated, isLoading } = useAuth();
+function ProtectedRoute({ component: Component, allowedRoles }: { component: React.ComponentType; allowedRoles?: string[] }) {
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return <div className="flex min-h-screen items-center justify-center">جاري التحميل...</div>;
@@ -32,6 +32,11 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   if (!isAuthenticated) {
     window.location.href = "/login";
+    return null;
+  }
+
+  if (allowedRoles && user?.role && !allowedRoles.includes(user.role)) {
+    window.location.href = "/";
     return null;
   }
 
@@ -76,13 +81,13 @@ function Router() {
         <ProtectedRoute component={ProjectDetails} />
       </Route>
       <Route path="/users">
-        <ProtectedRoute component={Users} />
+        <ProtectedRoute component={Users} allowedRoles={["admin"]} />
       </Route>
       <Route path="/companies">
-        <ProtectedRoute component={Companies} />
+        <ProtectedRoute component={Companies} allowedRoles={["admin", "project_manager"]} />
       </Route>
       <Route path="/audit-log">
-        <ProtectedRoute component={AuditLog} />
+        <ProtectedRoute component={AuditLog} allowedRoles={["admin"]} />
       </Route>
       
       <Route component={NotFound} />

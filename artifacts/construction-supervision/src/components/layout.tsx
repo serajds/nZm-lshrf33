@@ -28,11 +28,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     setMobileOpen(false);
   }, [location]);
 
+  const isAdmin = user?.role === "admin";
+  const isAdminOrPM = isAdmin || user?.role === "project_manager";
+
   const navigation = [
     { name: "لوحة التحكم", href: "/", icon: LayoutDashboard },
     { name: "المشاريع", href: "/projects", icon: Building2 },
-    { name: "الشركات", href: "/companies", icon: Landmark },
-    ...(user?.role === "admin"
+    ...(isAdminOrPM
+      ? [{ name: "الشركات", href: "/companies", icon: Landmark }]
+      : []),
+    ...(isAdmin
       ? [
           { name: "المستخدمون", href: "/users", icon: Users },
           { name: "سجل العمليات", href: "/audit-log", icon: ClipboardList },

@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { companiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireEngineerOrAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdminOrPM } from "../middlewares/auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -32,12 +32,12 @@ const upload = multer({
 
 const router: IRouter = Router();
 
-router.get("/companies", requireEngineerOrAdmin, async (_req, res): Promise<void> => {
+router.get("/companies", requireAuth, async (_req, res): Promise<void> => {
   const companies = await db.select().from(companiesTable).orderBy(companiesTable.name);
   res.json(companies);
 });
 
-router.get("/companies/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.get("/companies/:id", requireAuth, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
   const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
@@ -48,7 +48,7 @@ router.get("/companies/:id", requireEngineerOrAdmin, async (req, res): Promise<v
   res.json(company);
 });
 
-router.post("/companies", requireEngineerOrAdmin, upload.single("logo"), async (req, res): Promise<void> => {
+router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, res): Promise<void> => {
   const { name, type, phone, email, address } = req.body;
 
   if (!name || !type) {
@@ -70,7 +70,7 @@ router.post("/companies", requireEngineerOrAdmin, upload.single("logo"), async (
   res.status(201).json(company);
 });
 
-router.patch("/companies/:id", requireEngineerOrAdmin, upload.single("logo"), async (req, res): Promise<void> => {
+router.patch("/companies/:id", requireAdminOrPM, upload.single("logo"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
@@ -100,7 +100,7 @@ router.patch("/companies/:id", requireEngineerOrAdmin, upload.single("logo"), as
   res.json(company);
 });
 
-router.delete("/companies/:id", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.delete("/companies/:id", requireAdminOrPM, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
