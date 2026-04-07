@@ -38,7 +38,7 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Full Arabic RTL layout with Noto Kufi Arabic font
 - JWT authentication (stored in `localStorage` as `auth_token`)
 - Dashboard with project statistics and charts (Recharts)
-- Delay calculation uses activity-weighted planned progress (`lib/progress.ts`), falls back to linear time ratio when no activities exist
+- Delay calculation uses auto-calculated planned progress from activity dates (`lib/progress.ts`): each activity's planned progress = time elapsed since its `plannedStartDate` / total duration. Project planned progress = average of all activities. Falls back to linear time ratio when no activities exist.
 - **Auto-calculated `expectedEndDate`**: `recalcExpectedEndDate(projectId)` in `lib/recalc-end-date.ts` computes `expectedEndDate = max(activity.plannedEndDate) + sum(extension.daysAdded)`. Called after every activity create/update/delete/import, extension create/delete, and suspension create/delete with date shifting. If no activities exist, the manual value is preserved.
 - Projects management with CRUD operations
 - Project detail tabs: Summary, Activities (Gantt), Reports, Files, Deviation Analysis

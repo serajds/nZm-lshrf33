@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectSuspensionsTable, projectMembersTable } from "@workspace/db";
 import { eq, count, avg, sql, desc, inArray } from "drizzle-orm";
 import { requireEngineerOrAdmin, requireProjectAccess } from "../middlewares/auth";
-import { calcPlannedProgressForProject, calcDelayDays } from "../lib/progress";
+import { calcPlannedProgressForProject, calcDelayDays, calcActivityPlannedProgress } from "../lib/progress";
 
 const router: IRouter = Router();
 
@@ -268,14 +268,15 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   }
 
   const activitiesAnalysis = activities.map(a => {
-    const deviation = a.actualProgress - a.plannedProgress;
+    const actPlanned = Math.round(calcActivityPlannedProgress(a, today) * 100) / 100;
+    const deviation = Math.round((a.actualProgress - actPlanned) * 100) / 100;
     let delayDays: number | null = null;
 
-    if (a.status === "delayed" && a.plannedEndDate) {
+    if (a.plannedEndDate) {
       const plannedEnd = new Date(a.plannedEndDate);
       const todayTime = today.getTime();
       const plannedTime = plannedEnd.getTime();
-      if (todayTime > plannedTime) {
+      if (todayTime > plannedTime && a.actualProgress < 100) {
         delayDays = Math.ceil((todayTime - plannedTime) / (1000 * 60 * 60 * 24));
       }
     }
@@ -283,7 +284,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
     return {
       activityId: a.id,
       activityName: a.name,
-      plannedProgress: a.plannedProgress,
+      plannedProgress: actPlanned,
       actualProgress: a.actualProgress,
       deviation,
       delayDays,
