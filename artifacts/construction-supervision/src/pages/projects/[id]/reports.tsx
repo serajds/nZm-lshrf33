@@ -311,13 +311,16 @@ export default function ProjectReports() {
                 const auto = calcAutoProgress();
                 if (auto !== null) form.setValue("progressPercentage", auto);
 
-                const sortedReports = [...(reports ?? [])].sort(
-                  (a, b) => new Date(b.periodEnd).getTime() - new Date(a.periodEnd).getTime()
-                );
-                const lastReport = sortedReports[0];
-                if (lastReport) {
-                  const lastEnd = new Date(lastReport.periodEnd);
-                  const nextStart = new Date(lastEnd);
+                const allReports = reports ?? [];
+                let latestDate: Date | null = null;
+                for (const r of allReports) {
+                  const s = new Date(r.periodStart);
+                  const e = new Date(r.periodEnd);
+                  const maxDate = s > e ? s : e;
+                  if (!latestDate || maxDate > latestDate) latestDate = maxDate;
+                }
+                if (latestDate) {
+                  const nextStart = new Date(latestDate);
                   nextStart.setDate(nextStart.getDate() + 1);
                   const startStr = nextStart.toISOString().split("T")[0];
                   form.setValue("periodStart", startStr);
