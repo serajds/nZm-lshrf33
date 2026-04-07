@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable, projectSuspensionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
-import { calcPlannedProgressForProject, calcDelayDays } from "../lib/progress";
+import { calcPlannedProgressForProject, calcDelayDays, calcActivityPlannedProgress } from "../lib/progress";
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
@@ -287,10 +287,11 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
       const nameX = MARGIN + cols.period + cols.status + cols.dev + cols.actual + cols.planned + 4;
       doc.text(a.name, nameX, y + 4, { width: cols.name - 8, align: "right" });
 
-      // Planned
+      // Planned (auto-calculated from dates)
+      const actPlanned = Math.round(calcActivityPlannedProgress(a, today));
       const plX = MARGIN + cols.period + cols.status + cols.dev + cols.actual + 4;
       setFont(9, C.textMuted);
-      doc.text(`${a.plannedProgress}%`, plX, y + 10, { width: cols.planned - 8, align: "center" });
+      doc.text(`${actPlanned}%`, plX, y + 10, { width: cols.planned - 8, align: "center" });
 
       // Actual with mini bar
       const acX = MARGIN + cols.period + cols.status + cols.dev + 4;
@@ -299,7 +300,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
       drawProgressBar(doc, acX + 2, y + 18, cols.actual - 12, 5, a.actualProgress, statusColor(a.status));
 
       // Deviation
-      const devN = a.actualProgress - a.plannedProgress;
+      const devN = a.actualProgress - actPlanned;
       const dvX = MARGIN + cols.period + cols.status + 4;
       setFont(8, devN < 0 ? C.danger : devN > 0 ? C.success : C.textMuted);
       doc.text(`${devN > 0 ? "+" : ""}${devN}%`, dvX, y + 10, { width: cols.dev - 8, align: "center" });
