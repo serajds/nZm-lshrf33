@@ -258,6 +258,32 @@ function DragHandle() {
   );
 }
 
+function SortableGroupRow({ id, children }: { id: string; children: React.ReactNode }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <SortableRowContext.Provider value={{ dragRef: setActivatorNodeRef, dragListeners: listeners }}>
+      <TableRow ref={setNodeRef} style={style} {...attributes} className="bg-muted/50 hover:bg-muted/70 cursor-pointer">
+        {children}
+      </TableRow>
+    </SortableRowContext.Provider>
+  );
+}
+
 export default function ProjectActivities() {
   const params = useParams();
   const [, setLocation] = useLocation();
@@ -362,10 +388,38 @@ export default function ProjectActivities() {
     }
   };
 
+  const reorderGroupsMutation = useMutation({
+    mutationFn: async (order: number[]) => {
+      const r = await authFetch(`/api/projects/${projectId}/activity-groups/reorder`, {
+        method: "PUT",
+        body: JSON.stringify({ order }),
+      });
+      if (!r.ok) throw new Error("فشل إعادة ترتيب المجموعات");
+      return r.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: groupsQueryKey }),
+  });
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id || !activities) return;
+    if (!over || active.id === over.id) return;
 
+    const activeStr = String(active.id);
+    const overStr = String(over.id);
+
+    if (activeStr.startsWith("group-") && overStr.startsWith("group-")) {
+      const activeGid = parseInt(activeStr.replace("group-", ""), 10);
+      const overGid = parseInt(overStr.replace("group-", ""), 10);
+      const sorted = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
+      const oldIdx = sorted.findIndex(g => g.id === activeGid);
+      const newIdx = sorted.findIndex(g => g.id === overGid);
+      if (oldIdx === -1 || newIdx === -1) return;
+      const reordered = arrayMove(sorted, oldIdx, newIdx);
+      reorderGroupsMutation.mutate(reordered.map(g => g.id));
+      return;
+    }
+
+    if (!activities) return;
     const oldIndex = activities.findIndex(a => a.id === active.id);
     const newIndex = activities.findIndex(a => a.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
@@ -1198,7 +1252,7 @@ export default function ProjectActivities() {
                           {allActs.map(renderActivityRow)}
                         </SortableContext>
                       ) : (
-                        <>
+                        <SortableContext items={[...sortedGroups.map(g => `group-${g.id}`), ...allActs.map(a => a.id)]} strategy={verticalListSortingStrategy}>
                           {sortedGroups.map(g => {
                             const groupActs = groupMap.get(g.id) ?? [];
                             const isCollapsed = collapsedGroups.has(g.id);
@@ -1206,10 +1260,11 @@ export default function ProjectActivities() {
                               ? Math.round(groupActs.reduce((s, a) => s + a.actualProgress, 0) / groupActs.length)
                               : 0;
                             return (
-                              <SortableContext key={g.id} items={groupActs.map(a => a.id)} strategy={verticalListSortingStrategy}>
-                                <TableRow className="bg-muted/50 hover:bg-muted/70 cursor-pointer" onClick={() => toggleGroupCollapse(g.id)}>
-                                  <TableCell colSpan={4}>
+                              <React.Fragment key={g.id}>
+                                <SortableGroupRow id={`group-${g.id}`}>
+                                  <TableCell colSpan={4} onClick={() => toggleGroupCollapse(g.id)}>
                                     <div className="flex items-center gap-2">
+                                      <DragHandle />
                                       {isCollapsed ? <ChevronLeft className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                                       <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                                       <span className="font-semibold text-sm">{g.name}</span>
@@ -1232,9 +1287,9 @@ export default function ProjectActivities() {
                                       </Button>
                                     </div>
                                   </TableCell>
-                                </TableRow>
+                                </SortableGroupRow>
                                 {!isCollapsed && groupActs.map(renderActivityRow)}
-                              </SortableContext>
+                              </React.Fragment>
                             );
                           })}
                           {(() => {
@@ -1242,7 +1297,7 @@ export default function ProjectActivities() {
                             if (ungrouped.length === 0) return null;
                             const isCollapsed = collapsedGroups.has("ungrouped");
                             return (
-                              <SortableContext items={ungrouped.map(a => a.id)} strategy={verticalListSortingStrategy}>
+                              <>
                                 {groups.length > 0 && (
                                   <TableRow className="bg-muted/30 hover:bg-muted/50 cursor-pointer" onClick={() => toggleGroupCollapse("ungrouped")}>
                                     <TableCell colSpan={6}>
@@ -1255,10 +1310,10 @@ export default function ProjectActivities() {
                                   </TableRow>
                                 )}
                                 {!isCollapsed && ungrouped.map(renderActivityRow)}
-                              </SortableContext>
+                              </>
                             );
                           })()}
-                        </>
+                        </SortableContext>
                       )}
                     </TableBody>
                   </Table>
@@ -1352,25 +1407,51 @@ export default function ProjectActivities() {
 
               return (
                 <>
-                  {sortedGroups.map(g => {
+                  {sortedGroups.map((g, gi) => {
                     const groupActs = groupMap.get(g.id) ?? [];
                     const isCollapsed = collapsedGroups.has(g.id);
                     const groupProgress = groupActs.length > 0
                       ? Math.round(groupActs.reduce((s, a) => s + a.actualProgress, 0) / groupActs.length)
                       : 0;
+                    const moveGroup = (dir: -1 | 1) => {
+                      const newIdx = gi + dir;
+                      if (newIdx < 0 || newIdx >= sortedGroups.length) return;
+                      const reordered = arrayMove([...sortedGroups], gi, newIdx);
+                      reorderGroupsMutation.mutate(reordered.map(x => x.id));
+                    };
                     return (
                       <div key={g.id}>
-                        <button
-                          className="w-full flex items-center gap-2 rounded-lg p-2.5 mb-2 transition-colors"
+                        <div
+                          className="flex items-center gap-1.5 rounded-lg p-2.5 mb-2 transition-colors"
                           style={{ backgroundColor: `${g.color}15`, borderRight: `3px solid ${g.color}` }}
-                          onClick={() => toggleGroupCollapse(g.id)}
                         >
-                          {isCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: g.color }} />
-                          <span className="font-semibold text-sm flex-1 text-right">{g.name}</span>
-                          <span className="text-xs text-muted-foreground">{groupActs.length} نشاط</span>
-                          <span className="text-xs font-medium">{groupProgress}%</span>
-                        </button>
+                          <div className="flex flex-col gap-0.5">
+                            <button
+                              className="p-0.5 rounded hover:bg-black/10 disabled:opacity-30"
+                              disabled={gi === 0}
+                              onClick={() => moveGroup(-1)}
+                            >
+                              <ChevronDown className="h-3 w-3 rotate-180" />
+                            </button>
+                            <button
+                              className="p-0.5 rounded hover:bg-black/10 disabled:opacity-30"
+                              disabled={gi === sortedGroups.length - 1}
+                              onClick={() => moveGroup(1)}
+                            >
+                              <ChevronDown className="h-3 w-3" />
+                            </button>
+                          </div>
+                          <button
+                            className="flex items-center gap-2 flex-1 min-w-0"
+                            onClick={() => toggleGroupCollapse(g.id)}
+                          >
+                            {isCollapsed ? <ChevronLeft className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
+                            <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
+                            <span className="font-semibold text-sm flex-1 text-right truncate">{g.name}</span>
+                            <span className="text-xs text-muted-foreground shrink-0">{groupActs.length} نشاط</span>
+                            <span className="text-xs font-medium shrink-0">{groupProgress}%</span>
+                          </button>
+                        </div>
                         {!isCollapsed && (
                           <div className="space-y-2 mb-3">
                             {groupActs.map(renderMobileCard)}
