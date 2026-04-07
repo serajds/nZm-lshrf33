@@ -325,12 +325,18 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                           ) : (
                             <span className="text-xs text-muted-foreground">جميع المجموعات</span>
                           )}
-                          {canManageMembers && sortedGroups.length > 0 && (
+                          {canManageMembers && (
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-6 w-6"
-                              onClick={() => openGroupsEditor(member)}
+                              onClick={() => {
+                                if (sortedGroups.length === 0) {
+                                  toast({ title: "لا توجد مجموعات أنشطة", description: "يرجى إنشاء مجموعات أنشطة أولاً من صفحة الأنشطة" });
+                                  return;
+                                }
+                                openGroupsEditor(member);
+                              }}
                             >
                               <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
                             </Button>
