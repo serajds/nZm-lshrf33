@@ -2,10 +2,12 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import cors from "cors";
 import pinoHttp from "pino-http";
 import path from "path";
+import fs from "fs";
 import jwt from "jsonwebtoken";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { verifyToken } from "./lib/auth";
+import { streamFromCloud, migrateExistingUploads } from "./lib/fileStorage";
 
 const app: Express = express();
 
@@ -62,7 +64,36 @@ app.use("/api/uploads", (req: Request, res: Response, next: NextFunction) => {
   } catch {}
   res.status(401).json({ error: "رمز الدخول غير صالح" });
 }, (req: Request, res: Response, next: NextFunction) => {
-  express.static(uploadsDir)(req, res, next);
+  const filename = decodeURIComponent(req.path).replace(/^\//, "");
+  const localPath = path.join(uploadsDir, filename);
+
+  if (fs.existsSync(localPath)) {
+    return express.static(uploadsDir)(req, res, next);
+  }
+
+  streamFromCloud(filename).then((result) => {
+    if (!result) {
+      res.status(404).json({ error: "الملف غير موجود" });
+      return;
+    }
+    if (result.contentType) {
+      res.setHeader("Content-Type", result.contentType);
+    }
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    const readable = result.stream as NodeJS.ReadableStream;
+    readable.on("error", () => {
+      if (!res.headersSent) {
+        res.status(500).json({ error: "خطأ في قراءة الملف" });
+      } else {
+        res.end();
+      }
+    });
+    readable.pipe(res);
+  }).catch(() => {
+    if (!res.headersSent) {
+      res.status(500).json({ error: "خطأ في قراءة الملف" });
+    }
+  });
 });
 
 app.use("/api", router);

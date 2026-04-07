@@ -6,6 +6,7 @@ import { requireAuth, requireAdminOrPM } from "../middlewares/auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { uploadToCloud, deleteFromCloud } from "../lib/fileStorage";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -56,7 +57,15 @@ router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, r
     return;
   }
 
-  const logoUrl = req.file ? `/api/uploads/${req.file.filename}` : null;
+  let logoUrl: string | null = null;
+  if (req.file) {
+    try {
+      await uploadToCloud(path.join(uploadsDir, req.file.filename), req.file.filename);
+    } catch (err) {
+      console.error("Cloud upload failed for logo, saved locally only:", err);
+    }
+    logoUrl = `/api/uploads/${req.file.filename}`;
+  }
 
   const [company] = await db.insert(companiesTable).values({
     name,
@@ -83,6 +92,11 @@ router.patch("/companies/:id", requireAdminOrPM, upload.single("logo"), async (r
   if (body.address !== undefined) updateData.address = body.address || null;
 
   if (req.file) {
+    try {
+      await uploadToCloud(path.join(uploadsDir, req.file.filename), req.file.filename);
+    } catch (err) {
+      console.error("Cloud upload failed for logo update, saved locally only:", err);
+    }
     updateData.logoUrl = `/api/uploads/${req.file.filename}`;
   }
 
@@ -117,6 +131,7 @@ router.delete("/companies/:id", requireAdminOrPM, async (req, res): Promise<void
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
+      await deleteFromCloud(filename);
     }
   }
 
