@@ -6,13 +6,13 @@ import {
   Building2,
   Users,
   LogOut,
-  HardHat,
   ChevronLeft,
   Menu,
   X,
   Landmark,
   ClipboardList,
 } from "lucide-react";
+import { AppLogo } from "@/components/icons/app-logo";
 
 const SIDEBAR_FULL = 256;
 const SIDEBAR_COLLAPSED = 64;
@@ -135,7 +135,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           className="flex items-center justify-center shrink-0 rounded-lg"
           style={{ width: 34, height: 34, backgroundColor: "hsl(var(--sidebar-primary))" }}
         >
-          <HardHat className="w-4 h-4" style={{ color: "hsl(var(--sidebar-primary-foreground))" }} />
+          <AppLogo className="w-5 h-5" style={{ color: "hsl(var(--sidebar-primary-foreground))" }} />
         </div>
 
         {!collapsed && (
