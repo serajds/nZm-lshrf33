@@ -15,5 +15,8 @@
   },
   "dependencies": {
     "xlsx": "^0.18.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["sharp"]
   }
 }
