@@ -345,7 +345,7 @@ export default function Projects() {
                     name="expectedEndDate"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>تاريخ النهاية المتوقع</FormLabel>
+                        <FormLabel>تاريخ النهاية المتوقع {editingProject && <span className="text-xs text-muted-foreground">(يُحسب تلقائياً من الأنشطة والتمديدات)</span>}</FormLabel>
                         <FormControl><Input type="date" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
