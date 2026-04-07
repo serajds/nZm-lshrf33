@@ -26,4 +26,6 @@ export interface UpdateActivityBody {
   status?: UpdateActivityBodyStatus;
   /** @nullable */
   sortOrder?: number | null;
+  /** @nullable */
+  groupId?: number | null;
 }

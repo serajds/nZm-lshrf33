@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { activitiesTable, projectsTable } from "@workspace/db";
+import { activitiesTable, projectsTable, activityGroupsTable } from "@workspace/db";
 import { eq, and, avg, max } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
@@ -42,12 +42,21 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
 
   const {
     name, plannedStartDate, plannedEndDate, actualStartDate, actualEndDate,
-    plannedProgress, actualProgress, status, sortOrder
+    plannedProgress, actualProgress, status, sortOrder, groupId
   } = req.body;
 
   if (!name || !plannedStartDate || !plannedEndDate) {
     res.status(400).json({ error: "الاسم وتاريخ البداية والنهاية المخططة مطلوبة" });
     return;
+  }
+
+  if (groupId) {
+    const [grp] = await db.select().from(activityGroupsTable)
+      .where(and(eq(activityGroupsTable.id, groupId), eq(activityGroupsTable.projectId, projectId)));
+    if (!grp) {
+      res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
+      return;
+    }
   }
 
   const [activity] = await db.insert(activitiesTable).values({
@@ -60,6 +69,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     plannedProgress: plannedProgress ?? 0,
     actualProgress: actualProgress ?? 0,
     status: status ?? "not_started",
+    groupId: groupId ?? null,
     sortOrder: sortOrder ?? 0,
   }).returning();
 
@@ -89,6 +99,7 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   if (body.actualProgress !== undefined) updateData.actualProgress = body.actualProgress;
   if (body.status !== undefined) updateData.status = body.status;
   if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder;
+  if (body.groupId !== undefined) updateData.groupId = body.groupId === null ? null : body.groupId;
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });
@@ -273,6 +284,23 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.username, action: "delete", entityType: "activity", entityId: id, entityName: activity.name, projectId });
 
   res.sendStatus(204);
+});
+
+router.put("/projects/:projectId/activities/reorder", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+  const projectId = parseInt(req.params.projectId, 10);
+  const { items } = req.body;
+  if (!Array.isArray(items)) {
+    res.status(400).json({ error: "items مطلوب" });
+    return;
+  }
+  for (const item of items) {
+    const updateData: Record<string, unknown> = { sortOrder: item.sortOrder };
+    if (item.groupId !== undefined) updateData.groupId = item.groupId === null ? null : item.groupId;
+    await db.update(activitiesTable)
+      .set(updateData)
+      .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
+  }
+  res.json({ success: true });
 });
 
 export default router;

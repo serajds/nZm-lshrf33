@@ -192,6 +192,7 @@ export const ListActivitiesResponseItem = zod.object({
   actualProgress: zod.number(),
   status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
   sortOrder: zod.number(),
+  groupId: zod.number().nullish(),
   createdAt: zod.coerce.date(),
 });
 export const ListActivitiesResponse = zod.array(ListActivitiesResponseItem);
@@ -222,6 +223,7 @@ export const CreateActivityBody = zod.object({
     .enum(["not_started", "in_progress", "completed", "delayed"])
     .default(createActivityBodyStatusDefault),
   sortOrder: zod.number().default(createActivityBodySortOrderDefault),
+  groupId: zod.number().nullish(),
 });
 
 /**
@@ -261,6 +263,7 @@ export const UpdateActivityBody = zod.object({
     ])
     .nullish(),
   sortOrder: zod.number().nullish(),
+  groupId: zod.number().nullish(),
 });
 
 export const UpdateActivityResponse = zod.object({
@@ -275,6 +278,7 @@ export const UpdateActivityResponse = zod.object({
   actualProgress: zod.number(),
   status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
   sortOrder: zod.number(),
+  groupId: zod.number().nullish(),
   createdAt: zod.coerce.date(),
 });
 
@@ -682,6 +686,7 @@ export const VerifyOwnerAccessResponse = zod.object({
       actualProgress: zod.number(),
       status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
       sortOrder: zod.number(),
+      groupId: zod.number().nullish(),
       createdAt: zod.coerce.date(),
     }),
   ),

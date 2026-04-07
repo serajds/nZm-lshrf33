@@ -21,5 +21,7 @@ export interface Activity {
   actualProgress: number;
   status: ActivityStatus;
   sortOrder: number;
+  /** @nullable */
+  groupId?: number | null;
   createdAt: Date;
 }

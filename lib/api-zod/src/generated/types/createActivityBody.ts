@@ -19,4 +19,6 @@ export interface CreateActivityBody {
   actualProgress?: number;
   status?: CreateActivityBodyStatus;
   sortOrder?: number;
+  /** @nullable */
+  groupId?: number | null;
 }

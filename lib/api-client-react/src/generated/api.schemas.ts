@@ -41,6 +41,8 @@ export interface Activity {
   actualProgress: number;
   status: ActivityStatus;
   sortOrder: number;
+  /** @nullable */
+  groupId?: number | null;
   createdAt: string;
 }
 
@@ -260,6 +262,8 @@ export interface CreateActivityBody {
   actualProgress?: number;
   status?: CreateActivityBodyStatus;
   sortOrder?: number;
+  /** @nullable */
+  groupId?: number | null;
 }
 
 /**
@@ -295,6 +299,8 @@ export interface UpdateActivityBody {
   status?: UpdateActivityBodyStatus;
   /** @nullable */
   sortOrder?: number | null;
+  /** @nullable */
+  groupId?: number | null;
 }
 
 export type ReportType = (typeof ReportType)[keyof typeof ReportType];

@@ -1203,6 +1203,8 @@ components:
           enum: [not_started, in_progress, completed, delayed]
         sortOrder:
           type: integer
+        groupId:
+          type: ["integer", "null"]
         createdAt:
           type: string
           format: date-time
@@ -1248,6 +1250,8 @@ components:
         sortOrder:
           type: integer
           default: 0
+        groupId:
+          type: ["integer", "null"]
       required:
         - name
         - plannedStartDate
@@ -1278,6 +1282,8 @@ components:
           type: ["string", "null"]
           enum: [not_started, in_progress, completed, delayed, null]
         sortOrder:
+          type: ["integer", "null"]
+        groupId:
           type: ["integer", "null"]
 
     # Reports
