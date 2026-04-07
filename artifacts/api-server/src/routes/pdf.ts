@@ -7,6 +7,22 @@ import { calcPlannedProgressForProject, calcDelayDays, calcActivityPlannedProgre
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
+import { streamFromCloud } from "../lib/fileStorage";
+import { pipeline } from "stream/promises";
+
+async function resolveImagePath(imgUrl: string, uploadsDir: string): Promise<string | null> {
+  const filename = path.basename(imgUrl.split("?")[0]);
+  const localPath = path.join(uploadsDir, filename);
+  if (fs.existsSync(localPath)) return localPath;
+
+  const cloudResult = await streamFromCloud(filename);
+  if (!cloudResult) return null;
+
+  const tmpPath = path.join(uploadsDir, filename);
+  const ws = fs.createWriteStream(tmpPath);
+  await pipeline(cloudResult.stream as NodeJS.ReadableStream, ws);
+  return tmpPath;
+}
 
 const AMIRI_FONT = path.join(process.cwd(), "src/fonts/Amiri-Regular.ttf");
 const PAGE_W = 595.28;
@@ -334,7 +350,8 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     setFont(12, C.textMuted);
     doc.text("لا توجد تقارير دورية مسجلة لهذا المشروع.", MARGIN, PAGE_H / 2, { width: CONTENT_W, align: "center" });
   } else {
-    reports.forEach((report, idx) => {
+    for (let idx = 0; idx < reports.length; idx++) {
+      const report = reports[idx];
       doc.addPage();
       if (hasFont) doc.font("Amiri");
       y = MARGIN;
@@ -424,12 +441,12 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
       // Images (if any)
       if (report.imageUrls && report.imageUrls.length > 0) {
         const uploadsDir = path.join(process.cwd(), "uploads");
+        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
         const validImgs: string[] = [];
         for (const imgUrl of report.imageUrls) {
           try {
-            const filename = path.basename(imgUrl.split("?")[0]);
-            const imgPath = path.join(uploadsDir, filename);
-            if (fs.existsSync(imgPath)) validImgs.push(imgPath);
+            const resolved = await resolveImagePath(imgUrl, uploadsDir);
+            if (resolved) validImgs.push(resolved);
           } catch { /* skip */ }
         }
         if (validImgs.length > 0) {
@@ -448,7 +465,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
           });
         }
       }
-    });
+    }
   }
 
   // ════════════════════════════════════════════

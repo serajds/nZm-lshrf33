@@ -7,6 +7,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import sharp from "sharp";
+import { uploadToCloud, deleteFromCloud } from "../lib/fileStorage";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -105,6 +106,12 @@ router.post("/projects/:projectId/files", requireProjectAccess("projectId"), upl
     }
   }
 
+  try {
+    await uploadToCloud(path.join(uploadsDir, finalFilename), finalFilename);
+  } catch (err) {
+    console.error("Cloud upload failed, file saved locally only:", err);
+  }
+
   const baseUrl = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "localhost";
   const fileUrl = `https://${baseUrl}/api/uploads/${finalFilename}`;
 
@@ -141,6 +148,7 @@ router.delete("/projects/:projectId/files/:id", requireProjectAccess("projectId"
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
   }
+  await deleteFromCloud(file.filename);
 
   res.sendStatus(204);
 });

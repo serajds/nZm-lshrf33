@@ -59,6 +59,7 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Project team management (add/remove members, assign project roles)
 - **Activity Groups & Drag-and-Drop**: Activities can be organized into colored groups with collapsible headers. Drag-and-drop reordering via `@dnd-kit` with handle-only drag activation. Groups show aggregate progress. Mobile view includes collapsible group sections. API: `GET/POST/PUT/DELETE /api/projects/:id/activity-groups`, `PUT /api/projects/:id/activity-groups/reorder`, `PUT /api/projects/:id/activities/reorder`. DB: `activity_groups` table with `groupId` FK on activities.
 - File uploads via multer (served at `/api/uploads/`). Report/project images auto-compressed via sharp (JPEG quality 80, mozjpeg, same dimensions preserved). Company logos are NOT compressed. Non-image files stored as-is.
+- **Persistent Cloud Storage**: All uploaded files (images, documents, logos) are stored in Google Cloud Storage via Replit Object Storage. Local filesystem used as cache; cloud used as durable fallback. On startup, existing local files are migrated to GCS. Files served from local first, then cloud. Key files: `artifacts/api-server/src/lib/fileStorage.ts` (upload/download/delete/migrate), `artifacts/api-server/src/lib/objectStorage.ts` (GCS client).
 
 ### Default Credentials (Seed Data)
 - **Admin**: phone=`0500000001`, password=`admin123`
