@@ -26,7 +26,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, ArrowRight, Calendar, FileText, Umbrella, Wind, AlertTriangle, CalendarClock } from "lucide-react";
+import { Plus, Trash2, ArrowRight, Calendar, FileText, Umbrella, Wind, AlertTriangle, CalendarClock, Loader2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { fmtDate } from "@/lib/utils";
 
@@ -427,7 +427,12 @@ export default function ProjectSuspensions() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">جاري التحميل...</TableCell>
+                  <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+                    <div className="flex flex-col items-center gap-2">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
+                      <span className="text-sm">جاري تحميل التوقفات...</span>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ) : suspensions.length === 0 ? (
                 <TableRow>

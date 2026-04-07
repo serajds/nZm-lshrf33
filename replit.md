@@ -54,6 +54,8 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Owner portal charts: pie chart for activity status distribution (completed, in progress, delayed, not started), progress summary cards showing planned vs actual vs deviation
 - Executive summary PDF: comprehensive print-ready project overview generated from project detail page ("ملخص تنفيذي" button). Includes project info, KPI metrics, activity status breakdown, activity table with per-item deviation. Uses browser print dialog for PDF export.
 - Mobile responsive design: all form dialogs use `grid-cols-1 sm:grid-cols-2` / `sm:col-span-2` pattern; tables use `hidden md:block` (desktop) / `md:hidden` (mobile card view) toggle; dashboard KPI cards scale text/padding on mobile
+- **Consistent page content patterns**: Shared `LoadingSpinner` and `EmptyState` components (`components/ui/loading-spinner.tsx`). All pages use animated spinner with contextual text for loading states, and icon+title+description for empty states. Table headers use `bg-muted/40` background. Page headers follow colored icon container pattern (`p-2.5 rounded-xl bg-*/10`).
+- **Not Found page**: Arabic 404 page with styled card, icon, and return-to-home button
 - Role-based access control with project-level permissions
 - User management with roles: admin, project_manager, engineer, owner
 - Project team management (add/remove members, assign project roles)

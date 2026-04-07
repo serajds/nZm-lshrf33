@@ -23,6 +23,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, Edit2, Building2, Upload, Phone, Mail, MapPin, Image } from "lucide-react";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -361,7 +362,7 @@ export default function Companies() {
       </AlertDialog>
 
       {isLoading ? (
-        <div className="flex justify-center py-20 text-muted-foreground">جاري التحميل...</div>
+        <LoadingSpinner text="جاري تحميل الشركات..." />
       ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground">

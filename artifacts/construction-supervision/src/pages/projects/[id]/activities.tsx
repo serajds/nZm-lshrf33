@@ -70,7 +70,7 @@ import {
   Plus, Edit2, Trash2, ArrowRight, ChevronDown, ChevronLeft,
   CheckCircle2, Clock, AlertTriangle, PlayCircle, 
   TrendingUp, TrendingDown, Minus, Timer, CalendarCheck, CalendarX, Hourglass,
-  Upload, Download, FileSpreadsheet, GripVertical, FolderPlus, Palette, X
+  Upload, Download, FileSpreadsheet, GripVertical, FolderPlus, Palette, X, Loader2
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -1262,7 +1262,12 @@ export default function ProjectActivities() {
                     <TableBody>
                       {isLoading ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">جاري التحميل...</TableCell>
+                          <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                            <div className="flex flex-col items-center gap-2">
+                              <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
+                              <span className="text-sm">جاري تحميل الأنشطة...</span>
+                            </div>
+                          </TableCell>
                         </TableRow>
                       ) : allActs.length === 0 ? (
                         <TableRow>
@@ -1346,7 +1351,10 @@ export default function ProjectActivities() {
           {/* Mobile Card View */}
           <CardContent className="md:hidden space-y-3 px-3">
             {isLoading ? (
-              <div className="text-center py-8 text-muted-foreground">جاري التحميل...</div>
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
+                <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
+                <span className="text-sm text-muted-foreground">جاري تحميل الأنشطة...</span>
+              </div>
             ) : (activities ?? []).length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</div>
             ) : (() => {

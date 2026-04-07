@@ -34,7 +34,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Edit2, Trash2, Users as UsersIcon, Building2 } from "lucide-react";
+import { Plus, Edit2, Trash2, Users as UsersIcon, Building2, UserX } from "lucide-react";
+import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -335,12 +336,24 @@ export default function Users() {
         </Dialog>
       </div>
 
-      <Card>
+      {isLoading ? (
+        <LoadingSpinner text="جاري تحميل المستخدمين..." />
+      ) : users?.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<UserX className="h-7 w-7 text-muted-foreground/60" />}
+            title="لا يوجد مستخدمين"
+            description="أضف مستخدمين جدد لمنحهم صلاحيات الوصول للنظام"
+          />
+        </Card>
+      ) : (
+      <>
+      <Card className="shadow-sm">
         {/* Desktop Table */}
         <CardContent className="p-0 overflow-x-auto hidden sm:block">
           <Table className="min-w-[540px]">
             <TableHeader>
-              <TableRow>
+              <TableRow className="bg-muted/40 hover:bg-muted/40">
                 <TableHead className="text-right">الاسم</TableHead>
                 <TableHead className="text-right">رقم الهاتف</TableHead>
                 <TableHead className="text-right">الشركات</TableHead>
@@ -349,15 +362,7 @@ export default function Users() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">جاري التحميل...</TableCell>
-                </TableRow>
-              ) : users?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">لا يوجد مستخدمين</TableCell>
-                </TableRow>
-              ) : (
+              {
                 users?.map(u => (
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">{u.fullName}</TableCell>
@@ -375,20 +380,14 @@ export default function Users() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
+                ))}
             </TableBody>
           </Table>
         </CardContent>
 
         {/* Mobile Card View */}
         <CardContent className="sm:hidden space-y-3 p-3">
-          {isLoading ? (
-            <div className="text-center py-8">جاري التحميل...</div>
-          ) : users?.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">لا يوجد مستخدمين</div>
-          ) : (
-            users?.map(u => (
+          {users?.map(u => (
               <div key={u.id} className="rounded-lg border p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium">{u.fullName}</span>
@@ -416,10 +415,11 @@ export default function Users() {
                   </Button>
                 </div>
               </div>
-            ))
-          )}
+            ))}
         </CardContent>
       </Card>
+      </>
+      )}
       <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>

@@ -23,7 +23,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Plus, Trash2, ArrowRight, Calendar, FileText, Clock
+  Plus, Trash2, ArrowRight, Calendar, FileText, Clock, Loader2
 } from "lucide-react";
 import { fmtDate } from "@/lib/utils";
 
@@ -307,7 +307,12 @@ export default function ProjectExtensions() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">جاري التحميل...</TableCell>
+                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                    <div className="flex flex-col items-center gap-2">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
+                      <span className="text-sm">جاري تحميل التمديدات...</span>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ) : extensions.length === 0 ? (
                 <TableRow>

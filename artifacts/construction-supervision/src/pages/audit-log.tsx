@@ -8,7 +8,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
 import { useQuery } from "@tanstack/react-query";
-import { ClipboardList, Plus, Edit2, Trash2, Filter } from "lucide-react";
+import { ClipboardList, Plus, Edit2, Trash2, Filter, FileX2 } from "lucide-react";
+import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -111,16 +112,20 @@ export default function AuditLogPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-10 text-muted-foreground">جاري التحميل...</div>
+            <LoadingSpinner text="جاري تحميل السجل..." />
           ) : !logs || logs.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">لا توجد عمليات مسجلة</div>
+            <EmptyState
+              icon={<FileX2 className="h-7 w-7 text-muted-foreground/60" />}
+              title="لا توجد عمليات مسجلة"
+              description="ستظهر هنا جميع العمليات التي تتم على النظام"
+            />
           ) : (
             <>
               {/* Desktop Table */}
               <div className="hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
                       <TableHead className="text-right">التاريخ</TableHead>
                       <TableHead className="text-right">المستخدم</TableHead>
                       <TableHead className="text-right">الإجراء</TableHead>
