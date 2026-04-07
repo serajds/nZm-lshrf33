@@ -12,7 +12,6 @@ import {
   Landmark,
   ClipboardList,
 } from "lucide-react";
-import { AppLogo } from "@/components/icons/app-logo";
 
 const SIDEBAR_FULL = 256;
 const SIDEBAR_COLLAPSED = 64;
@@ -131,12 +130,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           borderBottom: "1px solid hsl(var(--sidebar-border))",
         }}
       >
-        <div
-          className="flex items-center justify-center shrink-0 rounded-lg"
-          style={{ width: 34, height: 34, backgroundColor: "hsl(var(--sidebar-primary))" }}
-        >
-          <AppLogo className="w-5 h-5" style={{ color: "hsl(var(--sidebar-primary-foreground))" }} />
-        </div>
+        <img src={`${import.meta.env.BASE_URL}app-icon.png`} alt="Logo" className="w-9 h-9 rounded-lg shrink-0" />
 
         {!collapsed && (
           <div className="flex-1 min-w-0 mr-3">
