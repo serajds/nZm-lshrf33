@@ -622,38 +622,38 @@ export default function OwnerPortal() {
 
         <Tabs defaultValue="progress" className="w-full mb-8" dir="rtl">
           <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-5 gap-2 bg-transparent p-0 mb-6">
-            <TabsTrigger value="progress" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-blue-500 data-[state=active]:bg-blue-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+            <TabsTrigger value="progress" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-blue-500 data-[state=active]:bg-blue-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-blue-50/60 hover:border-blue-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
+              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
                 <BarChart3 className="h-5 w-5 text-blue-600" />
               </div>
               <span className="text-xs font-semibold">سير العمل</span>
               <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-blue-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
             </TabsTrigger>
-            <TabsTrigger value="activities" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-emerald-500 data-[state=active]:bg-emerald-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5">
-              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+            <TabsTrigger value="activities" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-emerald-500 data-[state=active]:bg-emerald-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-emerald-50/60 hover:border-emerald-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
+              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
                 <ActivityIcon className="h-5 w-5 text-emerald-600" />
               </div>
               <span className="text-xs font-semibold">الأنشطة</span>
               <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-emerald-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
             </TabsTrigger>
-            <TabsTrigger value="reports" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-indigo-500 data-[state=active]:bg-indigo-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5">
-              <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+            <TabsTrigger value="reports" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-indigo-500 data-[state=active]:bg-indigo-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-indigo-50/60 hover:border-indigo-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
+              <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
                 <FileText className="h-5 w-5 text-indigo-600" />
               </div>
               <span className="text-xs font-semibold">التقارير</span>
               {reports.length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-indigo-600 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{reports.length}</Badge>}
               <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-indigo-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
             </TabsTrigger>
-            <TabsTrigger value="extensions" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-amber-500 data-[state=active]:bg-amber-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5">
-              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+            <TabsTrigger value="extensions" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-amber-500 data-[state=active]:bg-amber-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-amber-50/60 hover:border-amber-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
                 <ArrowBigRightDash className="h-5 w-5 text-amber-600" />
               </div>
               <span className="text-xs font-semibold">التمديدات</span>
               {extensions.length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-amber-500 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{extensions.length}</Badge>}
               <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-amber-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
             </TabsTrigger>
-            <TabsTrigger value="suspensions" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-violet-500 data-[state=active]:bg-violet-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5">
-              <div className="w-10 h-10 rounded-lg bg-violet-100 flex items-center justify-center">
+            <TabsTrigger value="suspensions" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-violet-500 data-[state=active]:bg-violet-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-violet-50/60 hover:border-violet-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
+              <div className="w-10 h-10 rounded-lg bg-violet-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
                 <PauseCircle className="h-5 w-5 text-violet-600" />
               </div>
               <span className="text-xs font-semibold">التوقفات</span>
