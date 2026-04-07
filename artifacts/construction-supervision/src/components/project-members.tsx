@@ -4,7 +4,7 @@ import {
   useAddProjectMember,
   useUpdateProjectMember,
   useRemoveProjectMember,
-  useListUsers,
+  useGetEligibleUsers,
   getListProjectMembersQueryKey,
 } from "@workspace/api-client-react";
 import type { ProjectMember } from "@workspace/api-client-react";
@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { UserPlus, Trash2, Shield, Users, FolderOpen } from "lucide-react";
+import { UserPlus, Trash2, Shield, Users, FolderOpen, Building2 } from "lucide-react";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -88,7 +88,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
   );
   const canManageMembers = isAdmin || isProjectManager;
 
-  const { data: allUsers = [] } = useListUsers({
+  const { data: allUsers = [] } = useGetEligibleUsers(projectId, {
     query: { enabled: canManageMembers }
   });
   const addMember = useAddProjectMember();
@@ -215,7 +215,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                       <SelectContent dir="rtl">
                         {availableUsers.map(u => (
                           <SelectItem key={u.id} value={String(u.id)}>
-                            {u.fullName} ({u.username})
+                            {u.fullName}{(u as any).companyName ? ` — ${(u as any).companyName}` : ""}
                           </SelectItem>
                         ))}
                         {availableUsers.length === 0 && (
@@ -276,6 +276,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
             <TableHeader>
               <TableRow>
                 <TableHead className="text-right">العضو</TableHead>
+                <TableHead className="text-right">الشركة</TableHead>
                 <TableHead className="text-right">الدور في المشروع</TableHead>
                 <TableHead className="text-right">المجموعات</TableHead>
                 {canManageMembers && <TableHead className="text-left w-[100px]">الإجراءات</TableHead>}
@@ -293,6 +294,16 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                         <p className="font-medium">{member.fullName}</p>
                         <p className="text-xs text-muted-foreground" dir="ltr">{member.email}</p>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {member.companyName ? (
+                        <Badge variant="outline" className="gap-1 text-xs">
+                          <Building2 className="h-3 w-3" />
+                          {member.companyName}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {canManageMembers && member.userId !== user?.id ? (

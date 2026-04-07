@@ -13,4 +13,6 @@ export interface CreateUserBody {
   fullName: string;
   email: string;
   role: CreateUserBodyRole;
+  /** @nullable */
+  companyId?: number | null;
 }
