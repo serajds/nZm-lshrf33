@@ -1,6 +1,6 @@
-import { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   useListActivities, 
   useCreateActivity, 
@@ -10,6 +10,23 @@ import {
   getListActivitiesQueryKey 
 } from "@workspace/api-client-react";
 import type { Activity, ProjectSuspension } from "@workspace/api-client-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -49,10 +66,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 import { 
-  Plus, Edit2, Trash2, ArrowRight, ChevronDown,
+  Plus, Edit2, Trash2, ArrowRight, ChevronDown, ChevronLeft,
   CheckCircle2, Clock, AlertTriangle, PlayCircle, 
   TrendingUp, TrendingDown, Minus, Timer, CalendarCheck, CalendarX, Hourglass,
-  Upload, Download, FileSpreadsheet
+  Upload, Download, FileSpreadsheet, GripVertical, FolderPlus, Palette, X
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -65,6 +82,25 @@ function authFetch(url: string, init?: RequestInit) {
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
   });
 }
+
+interface ActivityGroup {
+  id: number;
+  projectId: number;
+  name: string;
+  color: string;
+  sortOrder: number;
+}
+
+const GROUP_COLORS = [
+  { value: "#3b82f6", label: "أزرق" },
+  { value: "#10b981", label: "أخضر" },
+  { value: "#f59e0b", label: "برتقالي" },
+  { value: "#ef4444", label: "أحمر" },
+  { value: "#8b5cf6", label: "بنفسجي" },
+  { value: "#ec4899", label: "وردي" },
+  { value: "#6b7280", label: "رمادي" },
+  { value: "#0891b2", label: "سماوي" },
+];
 
 const STATUS_OPTIONS = [
   { value: "not_started",  label: "لم يبدأ",      icon: Clock,         cls: "text-muted-foreground" },
@@ -178,6 +214,50 @@ function ProgressBar({ value, max = 100, color }: { value: number; max?: number;
   );
 }
 
+function SortableActivityRow({ id, children }: { id: number; children: React.ReactNode }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <SortableRowContext.Provider value={{ dragRef: setActivatorNodeRef, dragListeners: listeners }}>
+      <TableRow ref={setNodeRef} style={style} {...attributes}>
+        {children}
+      </TableRow>
+    </SortableRowContext.Provider>
+  );
+}
+
+const SortableRowContext = React.createContext<{
+  dragRef: ((node: HTMLElement | null) => void) | null;
+  dragListeners: Record<string, Function> | undefined;
+}>({ dragRef: null, dragListeners: undefined });
+
+function DragHandle() {
+  const { dragRef, dragListeners } = React.useContext(SortableRowContext);
+  return (
+    <span
+      ref={dragRef as any}
+      {...(dragListeners as any)}
+      className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors touch-none"
+    >
+      <GripVertical className="h-4 w-4" />
+    </span>
+  );
+}
+
 export default function ProjectActivities() {
   const params = useParams();
   const [, setLocation] = useLocation();
@@ -192,9 +272,112 @@ export default function ProjectActivities() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupColor, setNewGroupColor] = useState("#3b82f6");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<number | "ungrouped">>(new Set());
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: activities, isLoading } = useListActivities(projectId, { query: { enabled: !!projectId } });
+
+  const groupsQueryKey = [`/api/projects/${projectId}/activity-groups`];
+  const { data: groups = [] } = useQuery<ActivityGroup[]>({
+    queryKey: groupsQueryKey,
+    queryFn: async () => {
+      const r = await authFetch(`/api/projects/${projectId}/activity-groups`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const createGroup = useMutation({
+    mutationFn: async (data: { name: string; color: string }) => {
+      const r = await authFetch(`/api/projects/${projectId}/activity-groups`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      if (!r.ok) throw new Error("فشل إنشاء المجموعة");
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: groupsQueryKey });
+      setIsGroupDialogOpen(false);
+      setNewGroupName("");
+      setNewGroupColor("#3b82f6");
+      toast({ title: "تم إنشاء المجموعة" });
+    },
+  });
+
+  const deleteGroup = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await authFetch(`/api/projects/${projectId}/activity-groups/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error("فشل حذف المجموعة");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: groupsQueryKey });
+      invalidate();
+      toast({ title: "تم حذف المجموعة" });
+    },
+  });
+
+  const reorderActivities = useMutation({
+    mutationFn: async (items: { id: number; sortOrder: number; groupId: number | null }[]) => {
+      const r = await authFetch(`/api/projects/${projectId}/activities/reorder`, {
+        method: "PUT",
+        body: JSON.stringify({ items }),
+      });
+      if (!r.ok) throw new Error("فشل إعادة الترتيب");
+      return r.json();
+    },
+    onSuccess: () => invalidate(),
+  });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const toggleGroupCollapse = (gid: number | "ungrouped") => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(gid)) next.delete(gid);
+      else next.add(gid);
+      return next;
+    });
+  };
+
+  const assignToGroup = async (activityId: number, groupId: number | null) => {
+    setUpdatingId(activityId);
+    try {
+      await authFetch(`/api/projects/${projectId}/activities/${activityId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ groupId }),
+      });
+      invalidate();
+    } catch {
+      toast({ variant: "destructive", title: "فشل نقل النشاط" });
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !activities) return;
+
+    const oldIndex = activities.findIndex(a => a.id === active.id);
+    const newIndex = activities.findIndex(a => a.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove([...activities], oldIndex, newIndex);
+    const items = reordered.map((a, i) => ({
+      id: a.id,
+      sortOrder: i,
+      groupId: (a as any).groupId ?? null,
+    }));
+    reorderActivities.mutate(items);
+  };
   const { data: suspensions = [] } = useQuery<ProjectSuspension[]>({
     queryKey: [`/api/projects/${projectId}/suspensions`],
     queryFn: async () => {
@@ -669,6 +852,45 @@ export default function ProjectActivities() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+            <Dialog open={isGroupDialogOpen} onOpenChange={setIsGroupDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm">
+                  <FolderPlus className="h-4 w-4" /> <span className="hidden sm:inline">مجموعة جديدة</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[400px]" dir="rtl">
+                <DialogHeader>
+                  <DialogTitle>إضافة مجموعة</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">اسم المجموعة</label>
+                    <Input value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder="مثال: الأعمال الخرسانية" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">اللون</label>
+                    <div className="flex flex-wrap gap-2">
+                      {GROUP_COLORS.map(c => (
+                        <button
+                          key={c.value}
+                          className={`w-8 h-8 rounded-full border-2 transition-all ${newGroupColor === c.value ? "border-foreground scale-110" : "border-transparent"}`}
+                          style={{ backgroundColor: c.value }}
+                          onClick={() => setNewGroupColor(c.value)}
+                          title={c.label}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <Button
+                    className="w-full"
+                    disabled={!newGroupName.trim() || createGroup.isPending}
+                    onClick={() => createGroup.mutate({ name: newGroupName.trim(), color: newGroupColor })}
+                  >
+                    إنشاء المجموعة
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
             <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm" onClick={exportActivities} disabled={!activities || activities.length === 0}>
               <Download className="h-4 w-4" /> <span className="hidden xs:inline">تصدير</span> <span className="hidden sm:inline">Excel</span>
             </Button>
@@ -828,111 +1050,221 @@ export default function ProjectActivities() {
 
           {/* Desktop Table */}
           <CardContent className="p-0 overflow-x-auto hidden md:block">
-            <Table className="min-w-[720px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-right w-[200px]">النشاط</TableHead>
-                  <TableHead className="text-right w-[190px]">الفترة المخططة</TableHead>
-                  <TableHead className="text-center w-[140px]">التأخر / التقدم</TableHead>
-                  <TableHead className="text-center w-[160px]">الإنجاز (مخطط/فعلي)</TableHead>
-                  <TableHead className="text-right w-[130px]">الحالة</TableHead>
-                  <TableHead className="text-center w-[110px]">إجراءات</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">جاري التحميل...</TableCell>
-                  </TableRow>
-                ) : (activities ?? []).length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</TableCell>
-                  </TableRow>
-                ) : (
-                  (activities ?? []).map((a) => {
-                    const isBusy = updatingId === a.id;
-                    const deviation = a.actualProgress - a.plannedProgress;
-                    const delayInfo = calcActivityDelay(a);
-                    return (
-                      <TableRow key={a.id} className={isBusy ? "opacity-60 pointer-events-none" : ""}>
-                        <TableCell className="font-medium max-w-[200px]">
-                          <span className="block truncate" title={a.name}>{a.name}</span>
-                        </TableCell>
-                        <TableCell className="w-[190px]">
-                          <div className="flex flex-col gap-0.5 font-mono text-xs tabular-nums">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] text-muted-foreground w-8 shrink-0">بداية</span>
-                              <span className="text-foreground">{fmtDate(a.plannedStartDate)}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] text-muted-foreground w-8 shrink-0">نهاية</span>
-                              <span className="text-foreground">{fmtDate(a.plannedEndDate)}</span>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <DelayBadge info={delayInfo} />
-                        </TableCell>
-                        <TableCell className="w-[160px]">
-                          <div className="space-y-1">
-                            <ProgressBar value={a.plannedProgress} color="hsl(var(--muted-foreground)/0.4)" />
-                            <ProgressBar value={a.actualProgress} color="hsl(var(--primary))" />
-                            <div className={`text-xs flex items-center gap-0.5 justify-end ${deviation < 0 ? 'text-destructive' : deviation > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
-                              {deviation < 0 ? <TrendingDown className="h-3 w-3" /> : deviation > 0 ? <TrendingUp className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
-                              {deviation > 0 ? '+' : ''}{deviation}%
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
+            {(() => {
+              const allActs = activities ?? [];
+              const groupMap = new Map<number | "ungrouped", (Activity & { groupId?: number | null })[]>();
+              const sortedGroups = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
+
+              for (const g of sortedGroups) groupMap.set(g.id, []);
+              groupMap.set("ungrouped", []);
+
+              for (const a of allActs) {
+                const gid = (a as any).groupId ?? "ungrouped";
+                if (!groupMap.has(gid)) groupMap.set("ungrouped", [...(groupMap.get("ungrouped") ?? []), a]);
+                else groupMap.get(gid)!.push(a);
+              }
+
+              const renderActivityRow = (a: Activity) => {
+                const isBusy = updatingId === a.id;
+                const deviation = a.actualProgress - a.plannedProgress;
+                const delayInfo = calcActivityDelay(a);
+                return (
+                  <SortableActivityRow key={a.id} id={a.id}>
+                    <TableCell className="font-medium max-w-[200px]">
+                      <div className="flex items-center gap-1">
+                        <DragHandle />
+                        <span className="block truncate" title={a.name}>{a.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="w-[190px]">
+                      <div className="flex flex-col gap-0.5 font-mono text-xs tabular-nums">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-muted-foreground w-8 shrink-0">بداية</span>
+                          <span className="text-foreground">{fmtDate(a.plannedStartDate)}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-muted-foreground w-8 shrink-0">نهاية</span>
+                          <span className="text-foreground">{fmtDate(a.plannedEndDate)}</span>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <DelayBadge info={delayInfo} />
+                    </TableCell>
+                    <TableCell className="w-[160px]">
+                      <div className="space-y-1">
+                        <ProgressBar value={a.plannedProgress} color="hsl(var(--muted-foreground)/0.4)" />
+                        <ProgressBar value={a.actualProgress} color="hsl(var(--primary))" />
+                        <div className={`text-xs flex items-center gap-0.5 justify-end ${deviation < 0 ? 'text-destructive' : deviation > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                          {deviation < 0 ? <TrendingDown className="h-3 w-3" /> : deviation > 0 ? <TrendingUp className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                          {deviation > 0 ? '+' : ''}{deviation}%
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-accent transition-colors text-sm">
+                            <StatusBadge status={a.status} />
+                            <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuLabel className="text-xs text-muted-foreground">تغيير الحالة</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {STATUS_OPTIONS.map(opt => {
+                            const Icon = opt.icon;
+                            return (
+                              <DropdownMenuItem
+                                key={opt.value}
+                                className={`gap-2 ${opt.cls} ${a.status === opt.value ? 'font-bold bg-accent' : ''}`}
+                                onClick={() => quickUpdateStatus(a, opt.value)}
+                              >
+                                <Icon className="h-4 w-4" />
+                                {opt.label}
+                                {a.status === opt.value && <span className="mr-auto text-xs">✓</span>}
+                              </DropdownMenuItem>
+                            );
+                          })}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-center gap-1">
+                        <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 10%" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
+                          <span className="text-xs font-bold text-muted-foreground">-10</span>
+                        </Button>
+                        <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 10%" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
+                          <span className="text-xs font-bold text-primary">+10</span>
+                        </Button>
+                        {groups.length > 0 && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <button className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-accent transition-colors text-sm">
-                                <StatusBadge status={a.status} />
-                                <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                              </button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <FolderPlus className="h-3.5 w-3.5 text-muted-foreground" />
+                              </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
-                              <DropdownMenuLabel className="text-xs text-muted-foreground">تغيير الحالة</DropdownMenuLabel>
+                            <DropdownMenuContent align="start" dir="rtl">
+                              <DropdownMenuLabel className="text-xs text-muted-foreground">نقل إلى مجموعة</DropdownMenuLabel>
                               <DropdownMenuSeparator />
-                              {STATUS_OPTIONS.map(opt => {
-                                const Icon = opt.icon;
-                                return (
-                                  <DropdownMenuItem
-                                    key={opt.value}
-                                    className={`gap-2 ${opt.cls} ${a.status === opt.value ? 'font-bold bg-accent' : ''}`}
-                                    onClick={() => quickUpdateStatus(a, opt.value)}
-                                  >
-                                    <Icon className="h-4 w-4" />
-                                    {opt.label}
-                                    {a.status === opt.value && <span className="mr-auto text-xs">✓</span>}
-                                  </DropdownMenuItem>
-                                );
-                              })}
+                              <DropdownMenuItem onClick={() => assignToGroup(a.id, null)}>
+                                <span className="text-muted-foreground">بدون مجموعة</span>
+                              </DropdownMenuItem>
+                              {groups.map(g => (
+                                <DropdownMenuItem key={g.id} onClick={() => assignToGroup(a.id, g.id)}>
+                                  <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0 ml-2" style={{ backgroundColor: g.color }} />
+                                  {g.name}
+                                </DropdownMenuItem>
+                              ))}
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-center gap-1">
-                            <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 10%" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
-                              <span className="text-xs font-bold text-muted-foreground">-10</span>
-                            </Button>
-                            <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 10%" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
-                              <span className="text-xs font-bold text-primary">+10</span>
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
-                              <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(a.id)}>
-                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
+                          <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(a.id)}>
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </SortableActivityRow>
+                );
+              };
+
+              return (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <Table className="min-w-[720px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-right w-[220px]">النشاط</TableHead>
+                        <TableHead className="text-right w-[190px]">الفترة المخططة</TableHead>
+                        <TableHead className="text-center w-[140px]">التأخر / التقدم</TableHead>
+                        <TableHead className="text-center w-[160px]">الإنجاز (مخطط/فعلي)</TableHead>
+                        <TableHead className="text-right w-[130px]">الحالة</TableHead>
+                        <TableHead className="text-center w-[110px]">إجراءات</TableHead>
                       </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">جاري التحميل...</TableCell>
+                        </TableRow>
+                      ) : allActs.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</TableCell>
+                        </TableRow>
+                      ) : groups.length === 0 ? (
+                        <SortableContext items={allActs.map(a => a.id)} strategy={verticalListSortingStrategy}>
+                          {allActs.map(renderActivityRow)}
+                        </SortableContext>
+                      ) : (
+                        <>
+                          {sortedGroups.map(g => {
+                            const groupActs = groupMap.get(g.id) ?? [];
+                            const isCollapsed = collapsedGroups.has(g.id);
+                            const groupProgress = groupActs.length > 0
+                              ? Math.round(groupActs.reduce((s, a) => s + a.actualProgress, 0) / groupActs.length)
+                              : 0;
+                            return (
+                              <SortableContext key={g.id} items={groupActs.map(a => a.id)} strategy={verticalListSortingStrategy}>
+                                <TableRow className="bg-muted/50 hover:bg-muted/70 cursor-pointer" onClick={() => toggleGroupCollapse(g.id)}>
+                                  <TableCell colSpan={4}>
+                                    <div className="flex items-center gap-2">
+                                      {isCollapsed ? <ChevronLeft className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                                      <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
+                                      <span className="font-semibold text-sm">{g.name}</span>
+                                      <span className="text-xs text-muted-foreground">({groupActs.length} نشاط)</span>
+                                      <span className="text-xs text-muted-foreground mr-2">{groupProgress}%</span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell colSpan={2}>
+                                    <div className="flex items-center justify-end gap-1">
+                                      <div className="flex-1 max-w-[80px]">
+                                        <ProgressBar value={groupProgress} color={g.color} />
+                                      </div>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={(e) => { e.stopPropagation(); deleteGroup.mutate(g.id); }}
+                                      >
+                                        <X className="h-3 w-3 text-muted-foreground" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                                {!isCollapsed && groupActs.map(renderActivityRow)}
+                              </SortableContext>
+                            );
+                          })}
+                          {(() => {
+                            const ungrouped = groupMap.get("ungrouped") ?? [];
+                            if (ungrouped.length === 0) return null;
+                            const isCollapsed = collapsedGroups.has("ungrouped");
+                            return (
+                              <SortableContext items={ungrouped.map(a => a.id)} strategy={verticalListSortingStrategy}>
+                                {groups.length > 0 && (
+                                  <TableRow className="bg-muted/30 hover:bg-muted/50 cursor-pointer" onClick={() => toggleGroupCollapse("ungrouped")}>
+                                    <TableCell colSpan={6}>
+                                      <div className="flex items-center gap-2">
+                                        {isCollapsed ? <ChevronLeft className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                                        <span className="font-semibold text-sm text-muted-foreground">بدون مجموعة</span>
+                                        <span className="text-xs text-muted-foreground">({ungrouped.length} نشاط)</span>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                                {!isCollapsed && ungrouped.map(renderActivityRow)}
+                              </SortableContext>
+                            );
+                          })()}
+                        </>
+                      )}
+                    </TableBody>
+                  </Table>
+                </DndContext>
+              );
+            })()}
           </CardContent>
 
           {/* Mobile Card View */}
@@ -941,8 +1273,19 @@ export default function ProjectActivities() {
               <div className="text-center py-8 text-muted-foreground">جاري التحميل...</div>
             ) : (activities ?? []).length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</div>
-            ) : (
-              (activities ?? []).map((a) => {
+            ) : (() => {
+              const allActs = activities ?? [];
+              const sortedGroups = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
+              const groupMap = new Map<number | "ungrouped", Activity[]>();
+              for (const g of sortedGroups) groupMap.set(g.id, []);
+              groupMap.set("ungrouped", []);
+              for (const a of allActs) {
+                const gid = (a as any).groupId ?? "ungrouped";
+                if (!groupMap.has(gid)) groupMap.get("ungrouped")!.push(a);
+                else groupMap.get(gid)!.push(a);
+              }
+
+              const renderMobileCard = (a: Activity) => {
                 const isBusy = updatingId === a.id;
                 const deviation = a.actualProgress - a.plannedProgress;
                 const delayInfo = calcActivityDelay(a);
@@ -1003,8 +1346,64 @@ export default function ProjectActivities() {
                     </div>
                   </div>
                 );
-              })
-            )}
+              };
+
+              if (groups.length === 0) return allActs.map(renderMobileCard);
+
+              return (
+                <>
+                  {sortedGroups.map(g => {
+                    const groupActs = groupMap.get(g.id) ?? [];
+                    const isCollapsed = collapsedGroups.has(g.id);
+                    const groupProgress = groupActs.length > 0
+                      ? Math.round(groupActs.reduce((s, a) => s + a.actualProgress, 0) / groupActs.length)
+                      : 0;
+                    return (
+                      <div key={g.id}>
+                        <button
+                          className="w-full flex items-center gap-2 rounded-lg p-2.5 mb-2 transition-colors"
+                          style={{ backgroundColor: `${g.color}15`, borderRight: `3px solid ${g.color}` }}
+                          onClick={() => toggleGroupCollapse(g.id)}
+                        >
+                          {isCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: g.color }} />
+                          <span className="font-semibold text-sm flex-1 text-right">{g.name}</span>
+                          <span className="text-xs text-muted-foreground">{groupActs.length} نشاط</span>
+                          <span className="text-xs font-medium">{groupProgress}%</span>
+                        </button>
+                        {!isCollapsed && (
+                          <div className="space-y-2 mb-3">
+                            {groupActs.map(renderMobileCard)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {(() => {
+                    const ungrouped = groupMap.get("ungrouped") ?? [];
+                    if (ungrouped.length === 0) return null;
+                    const isCollapsed = collapsedGroups.has("ungrouped");
+                    return (
+                      <div>
+                        <button
+                          className="w-full flex items-center gap-2 rounded-lg p-2.5 mb-2 bg-muted/30"
+                          onClick={() => toggleGroupCollapse("ungrouped")}
+                        >
+                          {isCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          <span className="font-semibold text-sm flex-1 text-right text-muted-foreground">بدون مجموعة</span>
+                          <span className="text-xs text-muted-foreground">{ungrouped.length} نشاط</span>
+                        </button>
+                        {!isCollapsed && (
+                          <div className="space-y-2 mb-3">
+                            {ungrouped.map(renderMobileCard)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>

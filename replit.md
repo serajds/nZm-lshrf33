@@ -57,6 +57,7 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - Role-based access control with project-level permissions
 - User management with roles: admin, project_manager, engineer, owner
 - Project team management (add/remove members, assign project roles)
+- **Activity Groups & Drag-and-Drop**: Activities can be organized into colored groups with collapsible headers. Drag-and-drop reordering via `@dnd-kit` with handle-only drag activation. Groups show aggregate progress. Mobile view includes collapsible group sections. API: `GET/POST/PUT/DELETE /api/projects/:id/activity-groups`, `PUT /api/projects/:id/activity-groups/reorder`, `PUT /api/projects/:id/activities/reorder`. DB: `activity_groups` table with `groupId` FK on activities.
 - File uploads via multer (served at `/api/uploads/`)
 
 ### Default Credentials (Seed Data)
