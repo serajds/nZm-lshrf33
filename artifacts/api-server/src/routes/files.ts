@@ -14,7 +14,6 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tiff", ".tif"];
-const MAX_IMAGE_WIDTH = 1920;
 const IMAGE_QUALITY = 80;
 
 function isImageFile(filename: string): boolean {
@@ -41,12 +40,7 @@ async function compressImage(filePath: string): Promise<{ size: number; filename
   const compressedName = baseName + "-compressed.jpg";
   const compressedPath = path.join(path.dirname(filePath), compressedName);
 
-  const metadata = await sharp(filePath).metadata();
   let pipeline = sharp(filePath).rotate();
-
-  if (metadata.width && metadata.width > MAX_IMAGE_WIDTH) {
-    pipeline = pipeline.resize(MAX_IMAGE_WIDTH, undefined, { withoutEnlargement: true });
-  }
 
   pipeline = pipeline.jpeg({ quality: IMAGE_QUALITY, mozjpeg: true });
   await pipeline.toFile(compressedPath);
