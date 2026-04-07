@@ -160,9 +160,14 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* ── Header ── */}
       <div className="flex items-start sm:items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg sm:text-xl font-bold text-foreground">لوحة التحكم الرئيسية</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{dateStr}</p>
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-primary/10 rounded-xl">
+            <BarChart3 className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-lg md:text-2xl font-bold">لوحة التحكم الرئيسية</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{dateStr}</p>
+          </div>
         </div>
         <Link href="/projects" className="flex items-center gap-1 text-xs sm:text-sm text-primary hover:text-primary/80 font-medium transition-colors shrink-0">
           <span className="hidden sm:inline">عرض جميع</span> المشاريع <ChevronLeft className="h-4 w-4" />

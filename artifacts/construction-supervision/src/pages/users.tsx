@@ -218,10 +218,15 @@ export default function Users() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-          <UsersIcon className="h-6 w-6 text-primary shrink-0" />
-          المستخدمون
-        </h1>
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-violet-500/10 rounded-xl">
+            <UsersIcon className="h-6 w-6 text-violet-600" />
+          </div>
+          <div>
+            <h1 className="text-lg md:text-2xl font-bold">المستخدمون</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">إدارة حسابات المستخدمين والصلاحيات</p>
+          </div>
+        </div>
         
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           setIsDialogOpen(open);

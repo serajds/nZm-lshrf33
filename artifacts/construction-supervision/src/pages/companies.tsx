@@ -202,7 +202,15 @@ export default function Companies() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
-        <h1 className="text-xl md:text-2xl font-bold">إدارة الشركات</h1>
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-amber-500/10 rounded-xl">
+            <Building2 className="h-6 w-6 text-amber-600" />
+          </div>
+          <div>
+            <h1 className="text-lg md:text-2xl font-bold">إدارة الشركات</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">الشركات المالكة والمقاولين وجهات الإشراف</p>
+          </div>
+        </div>
         <div className="flex gap-2 items-center">
           <Select value={typeFilter ?? "all"} onValueChange={(v) => setTypeFilter(v === "all" ? null : v)} dir="rtl">
             <SelectTrigger className="w-[140px]"><SelectValue placeholder="الكل" /></SelectTrigger>
