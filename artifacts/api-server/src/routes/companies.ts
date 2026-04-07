@@ -6,7 +6,6 @@ import { requireAuth, requireAdminOrPM } from "../middlewares/auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import sharp from "sharp";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -30,21 +29,6 @@ const upload = multer({
     cb(null, allowed.includes(ext));
   },
 });
-
-async function compressLogo(filePath: string): Promise<string> {
-  const baseName = path.basename(filePath, path.extname(filePath));
-  const compressedName = baseName + "-compressed.jpg";
-  const compressedPath = path.join(path.dirname(filePath), compressedName);
-
-  await sharp(filePath)
-    .rotate()
-    .resize(400, 400, { fit: "inside", withoutEnlargement: true })
-    .jpeg({ quality: 85, mozjpeg: true })
-    .toFile(compressedPath);
-
-  fs.unlinkSync(filePath);
-  return compressedName;
-}
 
 const router: IRouter = Router();
 
@@ -72,20 +56,7 @@ router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, r
     return;
   }
 
-  let logoUrl: string | null = null;
-  if (req.file) {
-    const ext = path.extname(req.file.originalname).toLowerCase();
-    if (ext !== ".svg") {
-      try {
-        const compressedFilename = await compressLogo(path.join(uploadsDir, req.file.filename));
-        logoUrl = `/api/uploads/${compressedFilename}`;
-      } catch {
-        logoUrl = `/api/uploads/${req.file.filename}`;
-      }
-    } else {
-      logoUrl = `/api/uploads/${req.file.filename}`;
-    }
-  }
+  const logoUrl = req.file ? `/api/uploads/${req.file.filename}` : null;
 
   const [company] = await db.insert(companiesTable).values({
     name,
@@ -112,17 +83,7 @@ router.patch("/companies/:id", requireAdminOrPM, upload.single("logo"), async (r
   if (body.address !== undefined) updateData.address = body.address || null;
 
   if (req.file) {
-    const ext = path.extname(req.file.originalname).toLowerCase();
-    if (ext !== ".svg") {
-      try {
-        const compressedFilename = await compressLogo(path.join(uploadsDir, req.file.filename));
-        updateData.logoUrl = `/api/uploads/${compressedFilename}`;
-      } catch {
-        updateData.logoUrl = `/api/uploads/${req.file.filename}`;
-      }
-    } else {
-      updateData.logoUrl = `/api/uploads/${req.file.filename}`;
-    }
+    updateData.logoUrl = `/api/uploads/${req.file.filename}`;
   }
 
   if (Object.keys(updateData).length === 0) {
