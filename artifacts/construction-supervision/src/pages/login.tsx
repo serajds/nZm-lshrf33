@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Loader2, Phone, Lock, Eye, EyeOff } from "lucide-react";
-import { AppLogo } from "@/components/icons/app-logo";
 
 const loginSchema = z.object({
   phone: z.string().min(1, "رقم الهاتف مطلوب"),
@@ -56,9 +55,7 @@ export default function Login() {
 
       <div className="relative w-full max-w-md mx-4">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-700 shadow-lg shadow-emerald-200 mb-5">
-            <AppLogo className="w-10 h-10 text-white" />
-          </div>
+          <img src={`${import.meta.env.BASE_URL}app-icon.png`} alt="إدارة الإشراف والمتابعة" className="w-20 h-20 rounded-2xl shadow-lg shadow-emerald-200 mb-5 mx-auto" />
           <h1 className="text-2xl font-bold text-slate-800">إدارة الإشراف والمتابعة</h1>
         </div>
 
