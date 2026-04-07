@@ -17,4 +17,5 @@ export interface ProjectMember {
   username: string;
   email: string;
   userRole: string;
+  assignedGroupIds?: number[];
 }

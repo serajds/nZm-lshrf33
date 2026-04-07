@@ -7,7 +7,8 @@ import {
   useUpdateActivity, 
   useDeleteActivity,
   useGetProject,
-  getListActivitiesQueryKey 
+  getListActivitiesQueryKey,
+  useGetMyProjectPermissions,
 } from "@workspace/api-client-react";
 import type { Activity, ProjectSuspension } from "@workspace/api-client-react";
 import {
@@ -316,6 +317,15 @@ export default function ProjectActivities() {
     },
     enabled: !!projectId,
   });
+
+  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
+  const canEditAll = myPermissions?.canEditAll ?? true;
+  const assignedGroupIds = myPermissions?.assignedGroupIds ?? [];
+  const canEditActivity = useCallback((a: Activity) => {
+    if (canEditAll) return true;
+    if (assignedGroupIds.length === 0) return true;
+    return a.groupId != null && assignedGroupIds.includes(a.groupId);
+  }, [canEditAll, assignedGroupIds]);
 
   const createGroup = useMutation({
     mutationFn: async (data: { name: string; color: string }) => {
@@ -1122,6 +1132,7 @@ export default function ProjectActivities() {
                 const isBusy = updatingId === a.id;
                 const deviation = a.actualProgress - a.plannedProgress;
                 const delayInfo = calcActivityDelay(a);
+                const editable = canEditActivity(a);
                 return (
                   <SortableActivityRow key={a.id} id={a.id}>
                     <TableCell className="font-medium max-w-[200px]">
@@ -1156,69 +1167,79 @@ export default function ProjectActivities() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-accent transition-colors text-sm">
-                            <StatusBadge status={a.status} />
-                            <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          <DropdownMenuLabel className="text-xs text-muted-foreground">تغيير الحالة</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          {STATUS_OPTIONS.map(opt => {
-                            const Icon = opt.icon;
-                            return (
-                              <DropdownMenuItem
-                                key={opt.value}
-                                className={`gap-2 ${opt.cls} ${a.status === opt.value ? 'font-bold bg-accent' : ''}`}
-                                onClick={() => quickUpdateStatus(a, opt.value)}
-                              >
-                                <Icon className="h-4 w-4" />
-                                {opt.label}
-                                {a.status === opt.value && <span className="mr-auto text-xs">✓</span>}
-                              </DropdownMenuItem>
-                            );
-                          })}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {editable ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-accent transition-colors text-sm">
+                              <StatusBadge status={a.status} />
+                              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuLabel className="text-xs text-muted-foreground">تغيير الحالة</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {STATUS_OPTIONS.map(opt => {
+                              const Icon = opt.icon;
+                              return (
+                                <DropdownMenuItem
+                                  key={opt.value}
+                                  className={`gap-2 ${opt.cls} ${a.status === opt.value ? 'font-bold bg-accent' : ''}`}
+                                  onClick={() => quickUpdateStatus(a, opt.value)}
+                                >
+                                  <Icon className="h-4 w-4" />
+                                  {opt.label}
+                                  {a.status === opt.value && <span className="mr-auto text-xs">✓</span>}
+                                </DropdownMenuItem>
+                              );
+                            })}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <StatusBadge status={a.status} />
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-1">
-                        <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 10%" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
-                          <span className="text-xs font-bold text-muted-foreground">-10</span>
-                        </Button>
-                        <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 10%" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
-                          <span className="text-xs font-bold text-primary">+10</span>
-                        </Button>
-                        {groups.length > 0 && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-7 w-7">
-                                <FolderPlus className="h-3.5 w-3.5 text-muted-foreground" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" dir="rtl">
-                              <DropdownMenuLabel className="text-xs text-muted-foreground">نقل إلى مجموعة</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => assignToGroup(a.id, null)}>
-                                <span className="text-muted-foreground">بدون مجموعة</span>
-                              </DropdownMenuItem>
-                              {groups.map(g => (
-                                <DropdownMenuItem key={g.id} onClick={() => assignToGroup(a.id, g.id)}>
-                                  <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0 ml-2" style={{ backgroundColor: g.color }} />
-                                  {g.name}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                        {editable ? (
+                          <>
+                            <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 10%" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
+                              <span className="text-xs font-bold text-muted-foreground">-10</span>
+                            </Button>
+                            <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 10%" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
+                              <span className="text-xs font-bold text-primary">+10</span>
+                            </Button>
+                            {groups.length > 0 && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                                    <FolderPlus className="h-3.5 w-3.5 text-muted-foreground" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start" dir="rtl">
+                                  <DropdownMenuLabel className="text-xs text-muted-foreground">نقل إلى مجموعة</DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => assignToGroup(a.id, null)}>
+                                    <span className="text-muted-foreground">بدون مجموعة</span>
+                                  </DropdownMenuItem>
+                                  {groups.map(g => (
+                                    <DropdownMenuItem key={g.id} onClick={() => assignToGroup(a.id, g.id)}>
+                                      <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0 ml-2" style={{ backgroundColor: g.color }} />
+                                      {g.name}
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
+                              <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(a.id)}>
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">عرض فقط</span>
                         )}
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
-                          <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(a.id)}>
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                        </Button>
                       </div>
                     </TableCell>
                   </SortableActivityRow>
@@ -1344,6 +1365,7 @@ export default function ProjectActivities() {
                 const isBusy = updatingId === a.id;
                 const deviation = a.actualProgress - a.plannedProgress;
                 const delayInfo = calcActivityDelay(a);
+                const editable = canEditActivity(a);
                 return (
                   <div key={a.id} className={`rounded-lg border p-3 space-y-2.5 ${isBusy ? "opacity-60 pointer-events-none" : ""}`}>
                     <div className="flex items-start justify-between gap-2">
@@ -1364,41 +1386,47 @@ export default function ProjectActivities() {
                       </div>
                       <ProgressBar value={a.actualProgress} color="hsl(var(--primary))" />
                     </div>
-                    <div className="flex items-center gap-1 pt-1 border-t">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm" className="gap-1 h-7 text-xs">
-                            تغيير الحالة <ChevronDown className="h-3 w-3" />
+                    {editable ? (
+                      <div className="flex items-center gap-1 pt-1 border-t">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="gap-1 h-7 text-xs">
+                              تغيير الحالة <ChevronDown className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuLabel className="text-xs text-muted-foreground">تغيير الحالة</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {STATUS_OPTIONS.map(opt => {
+                              const Icon = opt.icon;
+                              return (
+                                <DropdownMenuItem key={opt.value} className={`gap-2 ${opt.cls} ${a.status === opt.value ? 'font-bold bg-accent' : ''}`} onClick={() => quickUpdateStatus(a, opt.value)}>
+                                  <Icon className="h-4 w-4" /> {opt.label}
+                                </DropdownMenuItem>
+                              );
+                            })}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <div className="flex items-center gap-1 mr-auto">
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
+                            <span className="text-xs font-bold text-muted-foreground">-10</span>
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          <DropdownMenuLabel className="text-xs text-muted-foreground">تغيير الحالة</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          {STATUS_OPTIONS.map(opt => {
-                            const Icon = opt.icon;
-                            return (
-                              <DropdownMenuItem key={opt.value} className={`gap-2 ${opt.cls} ${a.status === opt.value ? 'font-bold bg-accent' : ''}`} onClick={() => quickUpdateStatus(a, opt.value)}>
-                                <Icon className="h-4 w-4" /> {opt.label}
-                              </DropdownMenuItem>
-                            );
-                          })}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      <div className="flex items-center gap-1 mr-auto">
-                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
-                          <span className="text-xs font-bold text-muted-foreground">-10</span>
-                        </Button>
-                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
-                          <span className="text-xs font-bold text-primary">+10</span>
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
-                          <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(a.id)}>
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                        </Button>
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
+                            <span className="text-xs font-bold text-primary">+10</span>
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
+                            <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(a.id)}>
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="pt-1 border-t">
+                        <span className="text-xs text-muted-foreground">عرض فقط</span>
+                      </div>
+                    )}
                   </div>
                 );
               };
