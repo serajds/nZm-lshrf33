@@ -30,6 +30,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2 } from "lucide-react";
+import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -420,13 +421,15 @@ export default function Projects() {
       </div>
 
       {isLoading ? (
-        <div className="flex h-40 items-center justify-center">جاري التحميل...</div>
+        <LoadingSpinner text="جاري تحميل المشاريع..." />
       ) : projects?.length === 0 ? (
-        <div className="text-center py-12 bg-card rounded-lg border border-dashed">
-          <Building2 className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-3" />
-          <h3 className="text-lg font-medium">لا توجد مشاريع</h3>
-          <p className="text-muted-foreground text-sm mt-1">لم يتم العثور على مشاريع مطابقة للبحث</p>
-        </div>
+        <Card className="border-dashed">
+          <EmptyState
+            icon={<Building2 className="h-7 w-7 text-muted-foreground/60" />}
+            title="لا توجد مشاريع"
+            description="لم يتم العثور على مشاريع مطابقة للبحث"
+          />
+        </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projects?.map((project) => (

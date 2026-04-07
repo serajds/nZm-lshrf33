@@ -38,6 +38,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer } from "lucide-react";
+import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
@@ -555,13 +556,15 @@ export default function ProjectReports() {
 
       <div className="grid gap-4">
         {isLoading ? (
-          <div className="text-center py-12">جاري التحميل...</div>
+          <LoadingSpinner text="جاري تحميل التقارير..." />
         ) : (reports ?? []).length === 0 ? (
-          <div className="text-center py-12 bg-card rounded-lg border border-dashed">
-            <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-3" />
-            <h3 className="text-lg font-medium">لا توجد تقارير</h3>
-            <p className="text-muted-foreground text-sm mt-1">لم يتم إضافة أي تقارير لهذا المشروع بعد</p>
-          </div>
+          <Card className="border-dashed">
+            <EmptyState
+              icon={<FileText className="h-7 w-7 text-muted-foreground/60" />}
+              title="لا توجد تقارير"
+              description="لم يتم إضافة أي تقارير لهذا المشروع بعد"
+            />
+          </Card>
         ) : (
           (reports ?? []).map((report) => (
             <Card key={report.id} className="overflow-hidden">

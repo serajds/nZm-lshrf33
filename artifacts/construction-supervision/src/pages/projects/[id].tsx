@@ -134,7 +134,14 @@ export default function ProjectDetails() {
   };
 
   if (isProjectLoading || isSummaryLoading)
-    return <div className="flex h-40 items-center justify-center text-muted-foreground">جاري التحميل...</div>;
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-muted-foreground text-sm">جاري تحميل المشروع...</p>
+        </div>
+      </div>
+    );
   if (!project)
     return <div className="flex h-40 items-center justify-center text-muted-foreground">المشروع غير موجود</div>;
 
