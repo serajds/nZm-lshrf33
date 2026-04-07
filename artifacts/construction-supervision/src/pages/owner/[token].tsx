@@ -1186,7 +1186,7 @@ export default function OwnerPortal() {
         </Tabs>
 
         <div className="text-center pb-8">
-          <p className="text-xs text-muted-foreground">إدارة الإشراف والمتابعة — بوابة المالك (قراءة فقط)</p>
+          <p className="text-xs text-muted-foreground">إدارة الإشراف والمتابعة</p>
         </div>
       </div>
 
