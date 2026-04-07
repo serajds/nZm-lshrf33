@@ -14,23 +14,18 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { HardHat, Loader2, Building2, ClipboardList, BarChart3 } from "lucide-react";
+import { HardHat, Loader2, Phone, Lock, Eye, EyeOff } from "lucide-react";
 
 const loginSchema = z.object({
   phone: z.string().min(1, "رقم الهاتف مطلوب"),
   password: z.string().min(1, "كلمة المرور مطلوبة"),
 });
 
-const features = [
-  { icon: Building2, text: "إدارة الإشراف والمتابعة" },
-  { icon: ClipboardList, text: "التقارير الدورية والمرفقات" },
-  { icon: BarChart3, text: "لوحة تحليلات شاملة" },
-];
-
 export default function Login() {
   const { login, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   if (isAuthenticated) {
     setLocation("/");
@@ -52,103 +47,26 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex" dir="rtl" style={{ backgroundColor: "hsl(var(--background))" }}>
-
-      {/* ===== RIGHT PANEL — Branding ===== */}
-      <div
-        className="hidden lg:flex flex-col justify-between w-5/12 p-12"
-        style={{ backgroundColor: "hsl(var(--sidebar))" }}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-            style={{ backgroundColor: "hsl(var(--sidebar-primary))" }}
-          >
-            <HardHat className="w-5 h-5" style={{ color: "hsl(var(--sidebar-primary-foreground))" }} />
-          </div>
-          <span
-            className="text-base font-bold"
-            style={{ color: "hsl(var(--sidebar-accent-foreground))" }}
-          >
-            إدارة الإشراف والمتابعة
-          </span>
-        </div>
-
-        {/* Center content */}
-        <div>
-          <h2
-            className="text-3xl font-bold leading-snug mb-4"
-            style={{ color: "hsl(var(--sidebar-accent-foreground))" }}
-          >
-            منصة متكاملة
-            <br />
-            للإشراف والمتابعة
-          </h2>
-          <p
-            className="text-sm leading-relaxed mb-10"
-            style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.6 }}
-          >
-            تتبع تقدم المشاريع، وأصدر التقارير الدورية، وراقب الجداول الزمنية بدقة واحترافية.
-          </p>
-
-          <div className="space-y-4">
-            {features.map((f) => (
-              <div key={f.text} className="flex items-center gap-3">
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                  style={{
-                    backgroundColor: "hsl(var(--sidebar-accent))",
-                  }}
-                >
-                  <f.icon
-                    className="w-4 h-4"
-                    style={{ color: "hsl(var(--sidebar-primary))" }}
-                  />
-                </div>
-                <span
-                  className="text-sm font-medium"
-                  style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.75 }}
-                >
-                  {f.text}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <p
-          className="text-xs"
-          style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.35 }}
-        >
-          &copy; {new Date().getFullYear()} إدارة الإشراف والمتابعة. جميع الحقوق محفوظة.
-        </p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-emerald-50/40" dir="rtl">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-blue-100/30 rounded-full blur-3xl" />
       </div>
 
-      {/* ===== LEFT PANEL — Login Form ===== */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        {/* Mobile logo */}
-        <div className="flex lg:hidden flex-col items-center mb-10">
-          <div
-            className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-            style={{ backgroundColor: "hsl(var(--primary))" }}
-          >
-            <HardHat className="w-7 h-7 text-white" />
+      <div className="relative w-full max-w-md mx-4">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-700 shadow-lg shadow-emerald-200 mb-5">
+            <HardHat className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-foreground">إدارة الإشراف والمتابعة</h1>
+          <h1 className="text-2xl font-bold text-slate-800">إدارة الإشراف والمتابعة</h1>
         </div>
 
-        <div className="w-full max-w-sm">
-          {/* Heading */}
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-foreground">تسجيل الدخول</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              أدخل بيانات حسابك للوصول إلى النظام
-            </p>
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 p-8">
+          <div className="mb-6">
+            <h2 className="text-xl font-bold text-slate-800">تسجيل الدخول</h2>
+            <p className="text-sm text-slate-500 mt-1">أدخل بيانات حسابك للوصول إلى النظام</p>
           </div>
 
-          {/* Form */}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
               <FormField
@@ -156,15 +74,18 @@ export default function Login() {
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium">رقم الهاتف</FormLabel>
+                    <FormLabel className="text-sm font-medium text-slate-700">رقم الهاتف</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="أدخل رقم الهاتف"
-                        type="tel"
-                        {...field}
-                        dir="ltr"
-                        className="h-10 text-right"
-                      />
+                      <div className="relative">
+                        <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <Input
+                          placeholder="أدخل رقم الهاتف"
+                          type="tel"
+                          {...field}
+                          dir="ltr"
+                          className="h-11 text-right pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
+                        />
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -175,14 +96,25 @@ export default function Login() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium">كلمة المرور</FormLabel>
+                    <FormLabel className="text-sm font-medium text-slate-700">كلمة المرور</FormLabel>
                     <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="أدخل كلمة المرور"
-                        {...field}
-                        className="h-10"
-                      />
+                      <div className="relative">
+                        <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="أدخل كلمة المرور"
+                          {...field}
+                          className="h-11 pr-10 pl-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
+                        />
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -191,7 +123,7 @@ export default function Login() {
 
               <Button
                 type="submit"
-                className="w-full h-10 font-semibold"
+                className="w-full h-11 font-semibold text-base bg-gradient-to-l from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-md shadow-emerald-200 transition-all"
                 disabled={isLoggingIn}
               >
                 {isLoggingIn ? (
@@ -200,16 +132,22 @@ export default function Login() {
                     جاري الدخول...
                   </>
                 ) : (
-                  "دخول"
+                  "تسجيل الدخول"
                 )}
               </Button>
             </form>
           </Form>
+        </div>
 
-          {/* Footer mobile */}
-          <p className="mt-10 text-center text-xs text-muted-foreground lg:hidden">
-            &copy; {new Date().getFullYear()} إدارة الإشراف والمتابعة. جميع الحقوق محفوظة.
-          </p>
+        <div className="mt-8 text-center">
+          <a
+            href="https://about.me/seraj"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-slate-400 hover:text-emerald-600 transition-colors"
+          >
+            Developed By : Eng. Seraj Elajtel
+          </a>
         </div>
       </div>
     </div>
