@@ -30,7 +30,25 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
   const [filesCountResult] = await db.select({ count: count() }).from(projectFilesTable).where(eq(projectFilesTable.projectId, project.id));
   const activitiesCompleted = activities.filter(a => a.status === "completed").length;
 
-  let summary: any;
+  interface OwnerSummary {
+    projectId: number;
+    noSchedule: boolean;
+    overallProgress: number;
+    plannedProgress: number;
+    activitiesTotal: number;
+    activitiesCompleted: number;
+    activitiesDelayed: number;
+    daysElapsed: number;
+    totalDays: number;
+    daysRemaining: number;
+    delayDays: number;
+    suspensionDays: number;
+    netDelayDays: number;
+    reportsCount: number;
+    filesCount: number | bigint;
+  }
+
+  let summary: OwnerSummary;
 
   if (isNoSchedule || !project.startDate || !project.expectedEndDate) {
     summary = {
