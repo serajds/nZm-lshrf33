@@ -4,14 +4,23 @@ import { hashPassword } from "./lib/auth";
 import { logger } from "./lib/logger";
 
 export async function seed() {
-  if (process.env.NODE_ENV !== "development") {
-    logger.info("Skipping seed in non-development environment");
-    return;
-  }
   try {
     const existingUsers = await db.select().from(usersTable).limit(1);
     if (existingUsers.length > 0) {
       logger.info("Database already seeded, skipping...");
+      return;
+    }
+
+    if (process.env.NODE_ENV !== "development") {
+      logger.info("Creating initial admin user in production...");
+      const adminHash = await hashPassword("Admin@2025");
+      const [admin] = await db.insert(usersTable).values({
+        phone: "0500000001",
+        passwordHash: adminHash,
+        fullName: "مدير النظام",
+        role: "admin",
+      }).returning();
+      logger.info({ adminId: admin.id }, "Initial admin created — phone: 0500000001 — CHANGE PASSWORD IMMEDIATELY");
       return;
     }
 
