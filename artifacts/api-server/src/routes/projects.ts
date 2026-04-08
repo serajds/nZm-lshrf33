@@ -180,6 +180,14 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
       }
       updateData.expectedEndDate = body.expectedEndDate;
     }
+    if (willBeNoSchedule === false) {
+      const finalStartDate = (updateData.startDate as string) ?? existingProject?.startDate;
+      const finalEndDate = (updateData.expectedEndDate as string) ?? existingProject?.expectedEndDate;
+      if (!finalStartDate || !finalEndDate) {
+        res.status(400).json({ error: "يجب تحديد تاريخ البداية والنهاية عند تفعيل الجدول الزمني" });
+        return;
+      }
+    }
   }
   if (body.actualEndDate !== undefined) updateData.actualEndDate = body.actualEndDate;
   if (body.status !== undefined) updateData.status = body.status;
