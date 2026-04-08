@@ -11,8 +11,10 @@ export interface Activity {
   id: number;
   projectId: number;
   name: string;
-  plannedStartDate: Date;
-  plannedEndDate: Date;
+  /** @nullable */
+  plannedStartDate?: Date | null;
+  /** @nullable */
+  plannedEndDate?: Date | null;
   /** @nullable */
   actualStartDate?: Date | null;
   /** @nullable */

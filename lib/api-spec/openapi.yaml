@@ -1314,10 +1314,10 @@ components:
         name:
           type: string
         plannedStartDate:
-          type: string
+          type: ["string", "null"]
           format: date
         plannedEndDate:
-          type: string
+          type: ["string", "null"]
           format: date
         actualStartDate:
           type: ["string", "null"]
@@ -1343,8 +1343,6 @@ components:
         - id
         - projectId
         - name
-        - plannedStartDate
-        - plannedEndDate
         - plannedProgress
         - actualProgress
         - status
@@ -1357,10 +1355,10 @@ components:
         name:
           type: string
         plannedStartDate:
-          type: string
+          type: ["string", "null"]
           format: date
         plannedEndDate:
-          type: string
+          type: ["string", "null"]
           format: date
         actualStartDate:
           type: ["string", "null"]
@@ -1385,8 +1383,6 @@ components:
           type: ["integer", "null"]
       required:
         - name
-        - plannedStartDate
-        - plannedEndDate
 
     UpdateActivityBody:
       type: object
