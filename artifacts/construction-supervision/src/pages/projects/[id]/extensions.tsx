@@ -263,13 +263,6 @@ export default function ProjectExtensions() {
                         <FormMessage />
                       </FormItem>
                     )} />
-                    <FormField control={form.control} name="approvedBy" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>الجهة الموافِقة</FormLabel>
-                        <FormControl><Input placeholder="مثال: وزارة العدل" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
                   </div>
                   <FormField control={form.control} name="notes" render={({ field }) => (
                     <FormItem>
@@ -300,14 +293,13 @@ export default function ProjectExtensions() {
                 <TableHead className="text-right">تاريخ الإنهاء الجديد</TableHead>
                 <TableHead className="text-right">السبب</TableHead>
                 <TableHead className="text-right">رقم الخطاب</TableHead>
-                <TableHead className="text-right">الجهة الموافِقة</TableHead>
                 <TableHead className="text-left"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
                       <span className="text-sm">جاري تحميل التمديدات...</span>
@@ -316,7 +308,7 @@ export default function ProjectExtensions() {
                 </TableRow>
               ) : extensions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
                     <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
                     لا توجد تمديدات مسجّلة — المشروع يسير وفق الجدول الأصلي
                   </TableCell>
@@ -337,9 +329,6 @@ export default function ProjectExtensions() {
                     </TableCell>
                     <TableCell className="text-sm font-mono">
                       {ext.documentRef ?? <span className="text-muted-foreground">—</span>}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {ext.approvedBy ?? <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell>
                       <Button
