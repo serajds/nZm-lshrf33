@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,7 +21,16 @@ import AuditLog from "@/pages/audit-log";
 import OwnerPortal from "@/pages/owner/[token]";
 import NotFound from "@/pages/not-found";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 30,
+      refetchOnMount: "always",
+      refetchOnWindowFocus: true,
+      retry: 1,
+    },
+  },
+});
 
 function ProtectedRoute({ component: Component, allowedRoles }: { component: React.ComponentType; allowedRoles?: string[] }) {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -31,13 +40,11 @@ function ProtectedRoute({ component: Component, allowedRoles }: { component: Rea
   }
 
   if (!isAuthenticated) {
-    window.location.href = "/login";
-    return null;
+    return <Redirect to="/login" />;
   }
 
   if (allowedRoles && user?.role && !allowedRoles.includes(user.role)) {
-    window.location.href = "/";
-    return null;
+    return <Redirect to="/" />;
   }
 
   return (
