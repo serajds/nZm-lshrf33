@@ -1063,7 +1063,6 @@ export default function OwnerPortal() {
                             <TableHead className="text-right">تاريخ الإنهاء الجديد</TableHead>
                             <TableHead className="text-right">السبب</TableHead>
                             <TableHead className="text-right">رقم الخطاب</TableHead>
-                            <TableHead className="text-right">الجهة الموافِقة</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1082,9 +1081,6 @@ export default function OwnerPortal() {
                               </TableCell>
                               <TableCell className="text-sm font-mono">
                                 {ext.documentRef ?? <span className="text-muted-foreground">—</span>}
-                              </TableCell>
-                              <TableCell className="text-sm">
-                                {ext.approvedBy ?? <span className="text-muted-foreground">—</span>}
                               </TableCell>
                             </TableRow>
                           ))}
