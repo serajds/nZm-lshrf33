@@ -67,8 +67,16 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     plannedProgress, actualProgress, status, sortOrder, groupId
   } = req.body;
 
-  if (!name || !plannedStartDate || !plannedEndDate) {
-    res.status(400).json({ error: "الاسم وتاريخ البداية والنهاية المخططة مطلوبة" });
+  if (!name) {
+    res.status(400).json({ error: "اسم النشاط مطلوب" });
+    return;
+  }
+
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+  const isNoSchedule = project?.noSchedule === true;
+
+  if (!isNoSchedule && (!plannedStartDate || !plannedEndDate)) {
+    res.status(400).json({ error: "تاريخ البداية والنهاية المخططة مطلوبة" });
     return;
   }
 
@@ -84,8 +92,8 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
   const [activity] = await db.insert(activitiesTable).values({
     projectId,
     name,
-    plannedStartDate,
-    plannedEndDate,
+    plannedStartDate: plannedStartDate || null,
+    plannedEndDate: plannedEndDate || null,
     actualStartDate: actualStartDate ?? null,
     actualEndDate: actualEndDate ?? null,
     plannedProgress: plannedProgress ?? 0,
@@ -119,11 +127,28 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
     }
   }
 
+  const [proj] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+  const projNoSchedule = proj?.noSchedule === true;
+
   const updateData: Record<string, unknown> = {};
   const body = req.body;
   if (body.name !== undefined) updateData.name = body.name;
-  if (body.plannedStartDate !== undefined) updateData.plannedStartDate = body.plannedStartDate;
-  if (body.plannedEndDate !== undefined) updateData.plannedEndDate = body.plannedEndDate;
+  if (body.plannedStartDate !== undefined) {
+    const val = body.plannedStartDate || null;
+    if (!projNoSchedule && !val) {
+      res.status(400).json({ error: "تاريخ البداية المخططة مطلوب" });
+      return;
+    }
+    updateData.plannedStartDate = val;
+  }
+  if (body.plannedEndDate !== undefined) {
+    const val = body.plannedEndDate || null;
+    if (!projNoSchedule && !val) {
+      res.status(400).json({ error: "تاريخ النهاية المخططة مطلوب" });
+      return;
+    }
+    updateData.plannedEndDate = val;
+  }
   if (body.actualStartDate !== undefined) updateData.actualStartDate = body.actualStartDate;
   if (body.actualEndDate !== undefined) updateData.actualEndDate = body.actualEndDate;
   if (body.plannedProgress !== undefined) updateData.plannedProgress = body.plannedProgress;

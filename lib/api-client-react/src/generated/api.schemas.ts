@@ -31,8 +31,10 @@ export interface Activity {
   id: number;
   projectId: number;
   name: string;
-  plannedStartDate: string;
-  plannedEndDate: string;
+  /** @nullable */
+  plannedStartDate?: string | null;
+  /** @nullable */
+  plannedEndDate?: string | null;
   /** @nullable */
   actualStartDate?: string | null;
   /** @nullable */
@@ -276,8 +278,10 @@ export const CreateActivityBodyStatus = {
 
 export interface CreateActivityBody {
   name: string;
-  plannedStartDate: string;
-  plannedEndDate: string;
+  /** @nullable */
+  plannedStartDate?: string | null;
+  /** @nullable */
+  plannedEndDate?: string | null;
   /** @nullable */
   actualStartDate?: string | null;
   /** @nullable */

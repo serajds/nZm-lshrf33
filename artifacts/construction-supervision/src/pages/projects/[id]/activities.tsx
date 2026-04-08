@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -111,10 +111,10 @@ const STATUS_OPTIONS = [
   { value: "delayed",      label: "متأخر",          icon: AlertTriangle, cls: "text-destructive" },
 ] as const;
 
-const activitySchema = z.object({
+const createActivitySchema = (isNoSchedule: boolean) => z.object({
   name: z.string().min(1, "اسم النشاط مطلوب"),
-  plannedStartDate: z.string().min(1, "تاريخ البداية المخطط مطلوب"),
-  plannedEndDate: z.string().min(1, "تاريخ النهاية المخطط مطلوب"),
+  plannedStartDate: isNoSchedule ? z.string().optional().default("") : z.string().min(1, "تاريخ البداية المخطط مطلوب"),
+  plannedEndDate: isNoSchedule ? z.string().optional().default("") : z.string().min(1, "تاريخ النهاية المخطط مطلوب"),
   actualStartDate: z.string().optional().nullable(),
   actualEndDate: z.string().optional().nullable(),
   plannedProgress: z.coerce.number().min(0).max(100),
@@ -123,6 +123,7 @@ const activitySchema = z.object({
   sortOrder: z.coerce.number().default(0),
 });
 
+const activitySchema = createActivitySchema(false);
 type ActivityFormValues = z.infer<typeof activitySchema>;
 
 function StatusBadge({ status }: { status: string }) {
@@ -145,6 +146,9 @@ type DelayInfo =
   | { kind: "late_start"; days: number; label: string };
 
 function calcActivityDelay(a: Activity): DelayInfo {
+  if (!a.plannedStartDate || !a.plannedEndDate) {
+    return { kind: "on_time", days: 0, label: "—" };
+  }
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const plannedEnd = new Date(a.plannedEndDate); plannedEnd.setHours(0, 0, 0, 0);
   const plannedStart = new Date(a.plannedStartDate); plannedStart.setHours(0, 0, 0, 0);
@@ -458,8 +462,11 @@ export default function ProjectActivities() {
   const updateActivity = useUpdateActivity();
   const deleteActivity = useDeleteActivity();
 
+  const isNoSchedule = project?.noSchedule === true;
+  const currentSchema = useMemo(() => createActivitySchema(isNoSchedule), [isNoSchedule]);
+
   const form = useForm<ActivityFormValues>({
-    resolver: zodResolver(activitySchema),
+    resolver: zodResolver(currentSchema),
     defaultValues: {
       name: "", plannedStartDate: "", plannedEndDate: "",
       actualStartDate: "", actualEndDate: "",
@@ -552,8 +559,8 @@ export default function ProjectActivities() {
     setEditingId(a.id);
     form.reset({
       name: a.name,
-      plannedStartDate: new Date(a.plannedStartDate).toISOString().split('T')[0],
-      plannedEndDate: new Date(a.plannedEndDate).toISOString().split('T')[0],
+      plannedStartDate: a.plannedStartDate ? new Date(a.plannedStartDate).toISOString().split('T')[0] : "",
+      plannedEndDate: a.plannedEndDate ? new Date(a.plannedEndDate).toISOString().split('T')[0] : "",
       actualStartDate: a.actualStartDate ? new Date(a.actualStartDate).toISOString().split('T')[0] : "",
       actualEndDate: a.actualEndDate ? new Date(a.actualEndDate).toISOString().split('T')[0] : "",
       plannedProgress: a.plannedProgress,
@@ -681,7 +688,7 @@ export default function ProjectActivities() {
         {/* ── Gantt Chart ── */}
         {(activities ?? []).length > 0 && (() => {
           const today = new Date(); today.setHours(0, 0, 0, 0);
-          const spanMs = ganttEnd.getTime() - ganttStart.getTime();
+          const spanMs = ganttEnd.getTime() - ganttStart.getTime() || 86400000;
           const toPct = (d: Date) => Math.max(0, Math.min(100, (d.getTime() - ganttStart.getTime()) / spanMs * 100));
           const todayPct = toPct(today);
           const NAME_W = 176; // px — fixed name column
@@ -828,7 +835,7 @@ export default function ProjectActivities() {
                             <div className="absolute inset-0 z-10 flex flex-col justify-center gap-1.5 px-0">
                               {/* Planned bar */}
                               <div className="relative h-4">
-                                {(() => {
+                                {a.plannedStartDate && a.plannedEndDate && (() => {
                                   const sl = toPct(new Date(a.plannedStartDate));
                                   const el = toPct(new Date(a.plannedEndDate));
                                   const w = Math.max(0.5, el - sl);
@@ -1039,14 +1046,14 @@ export default function ProjectActivities() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <FormField control={form.control} name="plannedStartDate" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>بداية مخططة</FormLabel>
+                          <FormLabel>بداية مخططة {isNoSchedule && <span className="text-xs text-muted-foreground font-normal">(اختياري)</span>}</FormLabel>
                           <FormControl><Input type="date" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
                       <FormField control={form.control} name="plannedEndDate" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>نهاية مخططة</FormLabel>
+                          <FormLabel>نهاية مخططة {isNoSchedule && <span className="text-xs text-muted-foreground font-normal">(اختياري)</span>}</FormLabel>
                           <FormControl><Input type="date" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
