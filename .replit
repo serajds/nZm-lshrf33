@@ -9,6 +9,8 @@ id = "artifacts/mockup-sandbox"
 [deployment]
 router = "application"
 deploymentTarget = "autoscale"
+build = ["pnpm", "run", "build"]
+run = ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
