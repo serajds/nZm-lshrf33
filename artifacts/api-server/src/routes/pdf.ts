@@ -163,14 +163,16 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   doc.text(project.name, MARGIN + 10, y + 10, { width: CONTENT_W - 20, align: "center" });
   y += 52;
 
-  // Project info grid (2 columns)
-  const infoItems = [
+  const isNoSchedule = project.noSchedule === true;
+
+  const infoItems: [string, string | null][] = [
     ["الجهة المالكة", project.ownerEntity],
     ["المقاول المنفذ", project.contractor],
     ["الجهة المشرفة", project.supervisorEntity],
     ["موقع المشروع", project.location],
-    ["تاريخ البداية", formatDate(project.startDate)],
-    ["التاريخ المتوقع للإنهاء", formatDate(project.expectedEndDate)],
+    ...(project.startDate ? [["تاريخ البداية", formatDate(project.startDate)] as [string, string]] : []),
+    ...(!isNoSchedule && project.expectedEndDate ? [["التاريخ المتوقع للإنهاء", formatDate(project.expectedEndDate)] as [string, string]] : []),
+    ...(isNoSchedule ? [["حالة الجدول الزمني", "بدون جدول زمني معتمد"] as [string, string]] : []),
   ];
 
   const colW = (CONTENT_W - 8) / 2;
@@ -194,57 +196,73 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
 
   y += infoItems.length / 2 * 26 + 20;
 
-  // ── Overall Progress ──
   const overall = project.overallProgress ?? 0;
-  const today = new Date();
-  const start = new Date(project.startDate);
-  const end = new Date(project.expectedEndDate);
-  const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
-  const elapsed = Math.max(0, Math.ceil((today.getTime() - start.getTime()) / 86400000));
-  const planned = Math.round(calcPlannedProgressForProject(activities, elapsed, totalDays));
-  const deviation = overall - planned;
-  const delayDays = calcDelayDays(planned, overall, totalDays);
 
-  doc.rect(MARGIN, y, CONTENT_W, 90).fill(C.light).stroke(C.border);
-  setFont(10, C.primary);
-  doc.text("ملخص الأداء", MARGIN + 8, y + 8, { width: CONTENT_W - 16, align: "right" });
+  if (isNoSchedule) {
+    doc.rect(MARGIN, y, CONTENT_W, 60).fill(C.light).stroke(C.border);
+    setFont(10, C.primary);
+    doc.text("ملخص الأداء", MARGIN + 8, y + 8, { width: CONTENT_W - 16, align: "right" });
 
-  // Progress bars
-  const barY1 = y + 26;
-  setFont(8, C.textMuted);
-  doc.text("الإنجاز الفعلي", MARGIN + 8, barY1, { width: 90, align: "right" });
-  drawProgressBar(doc, MARGIN + 105, barY1, CONTENT_W - 185, 12, overall, C.accent);
-  setFont(9, C.textDark);
-  doc.text(`${overall}%`, MARGIN + CONTENT_W - 75, barY1 - 1, { width: 70, align: "right" });
-
-  const barY2 = y + 46;
-  setFont(8, C.textMuted);
-  doc.text("الإنجاز المخطط", MARGIN + 8, barY2, { width: 90, align: "right" });
-  drawProgressBar(doc, MARGIN + 105, barY2, CONTENT_W - 185, 12, planned, "#94a3b8");
-  setFont(9, C.textDark);
-  doc.text(`${planned}%`, MARGIN + CONTENT_W - 75, barY2 - 1, { width: 70, align: "right" });
-
-  // Status indicators
-  const st1x = MARGIN + 8;
-  setFont(8, C.textMuted);
-  doc.text(`الانحراف: `, st1x + 200, y + 68, { continued: true, width: 60 });
-  const devColor = deviation < -10 ? C.danger : deviation < 0 ? C.warning : C.success;
-  setFont(9, devColor);
-  doc.text(`${deviation > 0 ? "+" : ""}${deviation}%`);
-
-  setFont(8, C.textMuted);
-  doc.text(`الأيام المنقضية: `, st1x + 90, y + 68, { continued: true, width: 85 });
-  setFont(9, C.textDark);
-  doc.text(`${elapsed} / ${totalDays} يوم`);
-
-  if (delayDays > 0) {
+    const barY1 = y + 26;
     setFont(8, C.textMuted);
-    doc.text(`التأخر التقديري: `, st1x, y + 68, { continued: true, width: 85 });
-    setFont(9, C.danger);
-    doc.text(`${delayDays} يوم`);
-  }
+    doc.text("الإنجاز الفعلي", MARGIN + 8, barY1, { width: 90, align: "right" });
+    drawProgressBar(doc, MARGIN + 105, barY1, CONTENT_W - 185, 12, overall, C.accent);
+    setFont(9, C.textDark);
+    doc.text(`${overall}%`, MARGIN + CONTENT_W - 75, barY1 - 1, { width: 70, align: "right" });
 
-  y += 100;
+    setFont(8, C.textMuted);
+    doc.text("مشروع بدون جدول زمني معتمد — لا يُحسب التأخير", MARGIN + 8, y + 44, { width: CONTENT_W - 16, align: "right" });
+
+    y += 70;
+  } else {
+    const today = new Date();
+    const start = new Date(project.startDate!);
+    const end = new Date(project.expectedEndDate!);
+    const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+    const elapsed = Math.max(0, Math.ceil((today.getTime() - start.getTime()) / 86400000));
+    const planned = Math.round(calcPlannedProgressForProject(activities, elapsed, totalDays));
+    const deviation = overall - planned;
+    const delayDays = calcDelayDays(planned, overall, totalDays);
+
+    doc.rect(MARGIN, y, CONTENT_W, 90).fill(C.light).stroke(C.border);
+    setFont(10, C.primary);
+    doc.text("ملخص الأداء", MARGIN + 8, y + 8, { width: CONTENT_W - 16, align: "right" });
+
+    const barY1 = y + 26;
+    setFont(8, C.textMuted);
+    doc.text("الإنجاز الفعلي", MARGIN + 8, barY1, { width: 90, align: "right" });
+    drawProgressBar(doc, MARGIN + 105, barY1, CONTENT_W - 185, 12, overall, C.accent);
+    setFont(9, C.textDark);
+    doc.text(`${overall}%`, MARGIN + CONTENT_W - 75, barY1 - 1, { width: 70, align: "right" });
+
+    const barY2 = y + 46;
+    setFont(8, C.textMuted);
+    doc.text("الإنجاز المخطط", MARGIN + 8, barY2, { width: 90, align: "right" });
+    drawProgressBar(doc, MARGIN + 105, barY2, CONTENT_W - 185, 12, planned, "#94a3b8");
+    setFont(9, C.textDark);
+    doc.text(`${planned}%`, MARGIN + CONTENT_W - 75, barY2 - 1, { width: 70, align: "right" });
+
+    const st1x = MARGIN + 8;
+    setFont(8, C.textMuted);
+    doc.text(`الانحراف: `, st1x + 200, y + 68, { continued: true, width: 60 });
+    const devColor = deviation < -10 ? C.danger : deviation < 0 ? C.warning : C.success;
+    setFont(9, devColor);
+    doc.text(`${deviation > 0 ? "+" : ""}${deviation}%`);
+
+    setFont(8, C.textMuted);
+    doc.text(`الأيام المنقضية: `, st1x + 90, y + 68, { continued: true, width: 85 });
+    setFont(9, C.textDark);
+    doc.text(`${elapsed} / ${totalDays} يوم`);
+
+    if (delayDays > 0) {
+      setFont(8, C.textMuted);
+      doc.text(`التأخر التقديري: `, st1x, y + 68, { continued: true, width: 85 });
+      setFont(9, C.danger);
+      doc.text(`${delayDays} يوم`);
+    }
+
+    y += 100;
+  }
 
   // Stats row (activities/reports)
   const statItems = [
@@ -274,18 +292,29 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     y = MARGIN;
     y = drawSectionHeader(doc, "جدول الأنشطة والإنجاز", y);
 
-    // Table header
-    const cols = { name: 200, planned: 55, actual: 55, dev: 45, status: 70, period: 85 };
+    const today = new Date();
+
+    const cols = isNoSchedule
+      ? { name: 250, actual: 70, status: 100, period: 90, planned: 0, dev: 0 }
+      : { name: 200, planned: 55, actual: 55, dev: 45, status: 70, period: 85 };
     const headerH = 20;
     doc.rect(MARGIN, y, CONTENT_W, headerH).fill(C.light).stroke(C.border);
-    const heads = [
-      { text: "الفترة الزمنية", x: MARGIN + 4, w: cols.period },
-      { text: "الحالة", x: MARGIN + cols.period + 4, w: cols.status },
-      { text: "الانحراف", x: MARGIN + cols.period + cols.status + 4, w: cols.dev },
-      { text: "فعلي%", x: MARGIN + cols.period + cols.status + cols.dev + 4, w: cols.actual },
-      { text: "مخطط%", x: MARGIN + cols.period + cols.status + cols.dev + cols.actual + 4, w: cols.planned },
-      { text: "اسم النشاط", x: MARGIN + cols.period + cols.status + cols.dev + cols.actual + cols.planned + 4, w: cols.name },
-    ];
+
+    const heads = isNoSchedule
+      ? [
+          { text: "الفترة الزمنية", x: MARGIN + 4, w: cols.period },
+          { text: "الحالة", x: MARGIN + cols.period + 4, w: cols.status },
+          { text: "فعلي%", x: MARGIN + cols.period + cols.status + 4, w: cols.actual },
+          { text: "اسم النشاط", x: MARGIN + cols.period + cols.status + cols.actual + 4, w: cols.name },
+        ]
+      : [
+          { text: "الفترة الزمنية", x: MARGIN + 4, w: cols.period },
+          { text: "الحالة", x: MARGIN + cols.period + 4, w: cols.status },
+          { text: "الانحراف", x: MARGIN + cols.period + cols.status + 4, w: cols.dev },
+          { text: "فعلي%", x: MARGIN + cols.period + cols.status + cols.dev + 4, w: cols.actual },
+          { text: "مخطط%", x: MARGIN + cols.period + cols.status + cols.dev + cols.actual + 4, w: cols.planned },
+          { text: "اسم النشاط", x: MARGIN + cols.period + cols.status + cols.dev + cols.actual + cols.planned + 4, w: cols.name },
+        ];
     heads.forEach(h => {
       setFont(8, C.textMuted);
       doc.text(h.text, h.x, y + 5, { width: h.w, align: "right" });
@@ -298,38 +327,51 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
       const bg = i % 2 === 0 ? C.white : "#f8fafc";
       doc.rect(MARGIN, y, CONTENT_W, rowH).fill(bg).stroke(C.border);
 
-      // Activity name
-      setFont(9, C.textDark);
-      const nameX = MARGIN + cols.period + cols.status + cols.dev + cols.actual + cols.planned + 4;
-      doc.text(a.name, nameX, y + 4, { width: cols.name - 8, align: "right" });
+      if (isNoSchedule) {
+        setFont(9, C.textDark);
+        const nameX = MARGIN + cols.period + cols.status + cols.actual + 4;
+        doc.text(a.name, nameX, y + 4, { width: cols.name - 8, align: "right" });
 
-      // Planned (auto-calculated from dates)
-      const actPlanned = Math.round(calcActivityPlannedProgress(a, today));
-      const plX = MARGIN + cols.period + cols.status + cols.dev + cols.actual + 4;
-      setFont(9, C.textMuted);
-      doc.text(`${actPlanned}%`, plX, y + 10, { width: cols.planned - 8, align: "center" });
+        const acX = MARGIN + cols.period + cols.status + 4;
+        setFont(9, C.textDark);
+        doc.text(`${a.actualProgress}%`, acX, y + 4, { width: cols.actual - 8, align: "center" });
+        drawProgressBar(doc, acX + 2, y + 18, cols.actual - 12, 5, a.actualProgress, statusColor(a.status));
 
-      // Actual with mini bar
-      const acX = MARGIN + cols.period + cols.status + cols.dev + 4;
-      setFont(9, C.textDark);
-      doc.text(`${a.actualProgress}%`, acX, y + 4, { width: cols.actual - 8, align: "center" });
-      drawProgressBar(doc, acX + 2, y + 18, cols.actual - 12, 5, a.actualProgress, statusColor(a.status));
+        const stX = MARGIN + cols.period + 4;
+        setFont(8, statusColor(a.status));
+        doc.text(statusLabel(a.status), stX, y + 10, { width: cols.status - 8, align: "center" });
 
-      // Deviation
-      const devN = a.actualProgress - actPlanned;
-      const dvX = MARGIN + cols.period + cols.status + 4;
-      setFont(8, devN < 0 ? C.danger : devN > 0 ? C.success : C.textMuted);
-      doc.text(`${devN > 0 ? "+" : ""}${devN}%`, dvX, y + 10, { width: cols.dev - 8, align: "center" });
+        setFont(7, C.textMuted);
+        doc.text(formatDate(a.plannedStartDate), MARGIN + 4, y + 5, { width: cols.period - 8, align: "right" });
+        doc.text(`→ ${formatDate(a.plannedEndDate)}`, MARGIN + 4, y + 17, { width: cols.period - 8, align: "right" });
+      } else {
+        setFont(9, C.textDark);
+        const nameX = MARGIN + cols.period + cols.status + cols.dev + cols.actual + cols.planned + 4;
+        doc.text(a.name, nameX, y + 4, { width: cols.name - 8, align: "right" });
 
-      // Status
-      const stX = MARGIN + cols.period + 4;
-      setFont(8, statusColor(a.status));
-      doc.text(statusLabel(a.status), stX, y + 10, { width: cols.status - 8, align: "center" });
+        const actPlanned = Math.round(calcActivityPlannedProgress(a, today));
+        const plX = MARGIN + cols.period + cols.status + cols.dev + cols.actual + 4;
+        setFont(9, C.textMuted);
+        doc.text(`${actPlanned}%`, plX, y + 10, { width: cols.planned - 8, align: "center" });
 
-      // Period
-      setFont(7, C.textMuted);
-      doc.text(formatDate(a.plannedStartDate), MARGIN + 4, y + 5, { width: cols.period - 8, align: "right" });
-      doc.text(`→ ${formatDate(a.plannedEndDate)}`, MARGIN + 4, y + 17, { width: cols.period - 8, align: "right" });
+        const acX = MARGIN + cols.period + cols.status + cols.dev + 4;
+        setFont(9, C.textDark);
+        doc.text(`${a.actualProgress}%`, acX, y + 4, { width: cols.actual - 8, align: "center" });
+        drawProgressBar(doc, acX + 2, y + 18, cols.actual - 12, 5, a.actualProgress, statusColor(a.status));
+
+        const devN = a.actualProgress - actPlanned;
+        const dvX = MARGIN + cols.period + cols.status + 4;
+        setFont(8, devN < 0 ? C.danger : devN > 0 ? C.success : C.textMuted);
+        doc.text(`${devN > 0 ? "+" : ""}${devN}%`, dvX, y + 10, { width: cols.dev - 8, align: "center" });
+
+        const stX = MARGIN + cols.period + 4;
+        setFont(8, statusColor(a.status));
+        doc.text(statusLabel(a.status), stX, y + 10, { width: cols.status - 8, align: "center" });
+
+        setFont(7, C.textMuted);
+        doc.text(formatDate(a.plannedStartDate), MARGIN + 4, y + 5, { width: cols.period - 8, align: "right" });
+        doc.text(`→ ${formatDate(a.plannedEndDate)}`, MARGIN + 4, y + 17, { width: cols.period - 8, align: "right" });
+      }
 
       y += rowH;
     });
@@ -484,7 +526,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     setFont(8, C.textMuted);
     doc.text("التاريخ الأصلي للإنهاء", MARGIN + 8, y + 8, { width: 120, align: "right" });
     setFont(9, C.textDark);
-    doc.text(formatDate(project.expectedEndDate), MARGIN + 8, y + 20, { width: 120, align: "right" });
+    doc.text(project.expectedEndDate ? formatDate(project.expectedEndDate) : "—", MARGIN + 8, y + 20, { width: 120, align: "right" });
 
     setFont(8, C.textMuted);
     doc.text("إجمالي أيام التمديد", MARGIN + 140, y + 8, { width: 100, align: "right" });

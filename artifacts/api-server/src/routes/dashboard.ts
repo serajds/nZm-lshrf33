@@ -122,7 +122,7 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
   }
 
   const projectNameMap = new Map(allProjects.map(p => [p.id, p.name]));
-  const noScheduleProjectIds = new Set(allProjects.filter(p => (p as any).noSchedule === true || !p.startDate || !p.expectedEndDate).map(p => p.id));
+  const noScheduleProjectIds = new Set(allProjects.filter(p => p.noSchedule === true || !p.startDate || !p.expectedEndDate).map(p => p.id));
   const delayedActivitiesList = allActivities
     .filter(a => {
       if (a.status === "completed") return false;
@@ -149,7 +149,7 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
     .slice(0, 10);
 
   const projectsWithPlanned = allProjects.map(p => {
-    const isNoSchedule = (p as any).noSchedule === true;
+    const isNoSchedule = p.noSchedule === true;
     if (isNoSchedule || !p.startDate || !p.expectedEndDate) {
       return {
         id: p.id,
