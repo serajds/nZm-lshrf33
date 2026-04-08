@@ -254,13 +254,13 @@ export default function Projects() {
           setIsDialogOpen(open);
           if (!open) { setEditingProject(null); form.reset(); }
         }}>
-          <DialogContent className="sm:max-w-[600px]" dir="rtl">
+          <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto" dir="rtl">
             <DialogHeader>
               <DialogTitle>{editingProject ? "تعديل المشروع" : "إضافة مشروع جديد"}</DialogTitle>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <FormField
                     control={form.control}
                     name="name"
@@ -368,14 +368,14 @@ export default function Projects() {
                     control={form.control}
                     name="noSchedule"
                     render={({ field }) => (
-                      <FormItem className="sm:col-span-2 flex items-center justify-between rounded-lg border p-3 gap-3">
-                        <div className="space-y-0.5 flex-1">
-                          <FormLabel className="text-sm font-medium flex items-center gap-2">
-                            <CalendarOff className="h-4 w-4 text-muted-foreground" />
-                            مشروع بدون جدول زمني معتمد
+                      <FormItem className="sm:col-span-2 flex items-center justify-between rounded-lg border p-2.5 sm:p-3 gap-2 sm:gap-3">
+                        <div className="space-y-0.5 flex-1 min-w-0">
+                          <FormLabel className="text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2">
+                            <CalendarOff className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground shrink-0" />
+                            بدون جدول زمني معتمد
                           </FormLabel>
-                          <p className="text-xs text-muted-foreground">
-                            عند التفعيل، لن يُحسب التأخير وتصبح التواريخ اختيارية
+                          <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">
+                            لن يُحسب التأخير وتصبح التواريخ اختيارية
                           </p>
                         </div>
                         <FormControl>
@@ -444,7 +444,7 @@ export default function Projects() {
                     )}
                   />
                 </div>
-                <div className="flex justify-end pt-4 gap-2">
+                <div className="flex justify-end pt-3 sm:pt-4 gap-2 sticky bottom-0 bg-background pb-1">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
                   <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? "جاري الحفظ..." : editingProject ? "حفظ التعديلات" : "حفظ المشروع"}
