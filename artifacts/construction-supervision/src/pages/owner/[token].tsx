@@ -61,6 +61,7 @@ export default function OwnerPortal() {
       }
       setOwnerData(data as OwnerProjectView);
     } catch {
+    } finally {
       setIsRestoring(false);
     }
   };
