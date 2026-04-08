@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useGetProject,
@@ -43,7 +44,6 @@ export default function ProjectDetails() {
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
   const [ownerPassword, setOwnerPassword] = useState("");
   const [ownerSlug, setOwnerSlug] = useState("");
   const [ownerLink, setOwnerLink] = useState("");
@@ -53,6 +53,7 @@ export default function ProjectDetails() {
   const { data: project, isLoading: isProjectLoading } = useGetProject(projectId, {
     query: { enabled: !!projectId }
   });
+  usePageTitle(project?.name ?? "تفاصيل المشروع");
   const { data: summary, isLoading: isSummaryLoading } = useGetProjectSummary(projectId, {
     query: { enabled: !!projectId }
   });

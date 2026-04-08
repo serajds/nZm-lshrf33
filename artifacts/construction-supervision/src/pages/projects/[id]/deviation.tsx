@@ -1,4 +1,5 @@
 import { useParams, useLocation } from "wouter";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { 
   useGetProjectDeviation,
   useGetProject
@@ -18,6 +19,7 @@ export default function ProjectDeviation() {
   const params = useParams();
   const [, setLocation] = useLocation();
   const projectId = parseInt(params.id || "0", 10);
+  usePageTitle("الانحرافات");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: deviationData, isLoading } = useGetProjectDeviation(projectId, { query: { enabled: !!projectId } });

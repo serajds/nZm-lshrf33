@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -22,6 +23,7 @@ const loginSchema = z.object({
 });
 
 export default function Login() {
+  usePageTitle("تسجيل الدخول");
   const { login, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const [isLoggingIn, setIsLoggingIn] = useState(false);

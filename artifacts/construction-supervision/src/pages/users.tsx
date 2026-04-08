@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { 
   useListUsers, 
   useCreateUser, 
@@ -66,6 +67,7 @@ const userSchema = z.object({
 });
 
 export default function Users() {
+  usePageTitle("المستخدمين");
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [isDialogOpen, setIsDialogOpen] = useState(false);

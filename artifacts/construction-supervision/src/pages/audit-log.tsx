@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,7 @@ const ENTITY_LABELS: Record<string, string> = { project: "مشروع", activity:
 const ACTION_ICONS: Record<string, typeof Plus> = { create: Plus, update: Edit2, delete: Trash2 };
 
 export default function AuditLogPage() {
+  usePageTitle("سجل التدقيق");
   const [entityType, setEntityType] = useState<string>("all");
   const [action, setAction] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
