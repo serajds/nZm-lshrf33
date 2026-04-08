@@ -27,7 +27,7 @@ async function recomputeExtensionChain(projectId: number, baseEndDate: string) {
 }
 
 router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
 
   const extensions = await db.select()
     .from(projectExtensionsTable)
@@ -38,7 +38,7 @@ router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"),
 });
 
 router.post("/projects/:projectId/extensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
 
   const { extensionDate, daysAdded, reason, documentRef, approvedBy, notes } = req.body;
 
@@ -77,8 +77,8 @@ router.post("/projects/:projectId/extensions", requireProjectAccess("projectId")
 });
 
 router.delete("/projects/:projectId/extensions/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
-  const id = parseInt(req.params.id, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
+  const id = parseInt(req.params.id as string, 10);
 
   const [deleted] = await db.delete(projectExtensionsTable)
     .where(and(eq(projectExtensionsTable.id, id), eq(projectExtensionsTable.projectId, projectId)))
