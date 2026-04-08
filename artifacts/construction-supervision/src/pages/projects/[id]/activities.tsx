@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   useListActivities, 
@@ -291,6 +292,7 @@ export default function ProjectActivities() {
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  usePageTitle("الأنشطة");
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);

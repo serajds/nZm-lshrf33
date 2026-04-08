@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { useVerifyOwnerAccess } from "@workspace/api-client-react";
 import type { OwnerProjectView, Activity, Report, ProjectExtension, ProjectSuspension } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -28,6 +29,7 @@ import {
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
 export default function OwnerPortal() {
+  usePageTitle("بوابة المالك");
   const params = useParams();
   const token = params.token ?? "";
   const { toast } = useToast();

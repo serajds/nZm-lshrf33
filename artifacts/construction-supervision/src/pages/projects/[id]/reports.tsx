@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { 
   useListReports, 
   useCreateReport, 
@@ -68,6 +69,7 @@ export default function ProjectReports() {
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  usePageTitle("التقارير");
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);

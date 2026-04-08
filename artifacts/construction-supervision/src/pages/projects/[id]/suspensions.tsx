@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGetProject } from "@workspace/api-client-react";
 import type { ProjectSuspension } from "@workspace/api-client-react";
@@ -93,6 +94,7 @@ export default function ProjectSuspensions() {
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  usePageTitle("التوقفات");
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);

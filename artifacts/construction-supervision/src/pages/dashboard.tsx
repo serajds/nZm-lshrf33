@@ -1,4 +1,5 @@
 import { useGetDashboardSummary } from "@workspace/api-client-react";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fmtDate } from "@/lib/utils";
@@ -98,6 +99,7 @@ const CustomDonutLabel = ({ viewBox, total }: { viewBox?: { cx: number; cy: numb
 };
 
 export default function Dashboard() {
+  usePageTitle("لوحة التحكم");
   const { data: summary, isLoading } = useGetDashboardSummary();
 
   const today = new Date();

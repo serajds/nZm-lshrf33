@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { 
   useListFiles,
   useDeleteFile,
@@ -55,6 +56,7 @@ export default function ProjectFiles() {
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  usePageTitle("الملفات");
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [previewFile, setPreviewFile] = useState<ProjectFile | null>(null);
