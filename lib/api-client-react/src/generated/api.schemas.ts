@@ -471,6 +471,8 @@ export interface ProjectSummary {
   totalDays: number;
   daysRemaining: number;
   delayDays: number;
+  suspensionDays: number;
+  netDelayDays: number;
   reportsCount: number;
   filesCount: number;
   noSchedule?: boolean;
@@ -493,14 +495,57 @@ export interface OwnerLinkResponse {
   url: string;
 }
 
+export type DashboardSummaryAllProjectsItem = {
+  id?: number;
+  name?: string;
+  overallProgress?: number;
+  plannedProgress?: number;
+  status?: string;
+  daysRemaining?: number;
+  /** @nullable */
+  ownerEntity?: string | null;
+  /** @nullable */
+  startDate?: string | null;
+  /** @nullable */
+  expectedEndDate?: string | null;
+  noSchedule?: boolean;
+};
+
+export type DashboardSummaryRecentReportsItem = {
+  id?: number;
+  projectId?: number;
+  type?: string;
+  reportDate?: string;
+  progressPercentage?: number;
+};
+
+export type DashboardSummaryDelayedActivitiesListItem = {
+  id?: number;
+  name?: string;
+  projectId?: number;
+  projectName?: string;
+  /** @nullable */
+  plannedEndDate?: string | null;
+  actualProgress?: number;
+  delayDays?: number;
+};
+
 export interface DashboardSummary {
   totalProjects: number;
   activeProjects: number;
   completedProjects: number;
   delayedProjects: number;
+  suspendedProjects: number;
   averageProgress: number;
   totalReports: number;
+  totalActivities: number;
+  completedActivities: number;
+  delayedActivities: number;
+  inProgressActivities: number;
   recentProjects: Project[];
+  allProjects: DashboardSummaryAllProjectsItem[];
+  recentReports: DashboardSummaryRecentReportsItem[];
+  delayedActivitiesList: DashboardSummaryDelayedActivitiesListItem[];
 }
 
 export type DeviationAnalysisStatus =

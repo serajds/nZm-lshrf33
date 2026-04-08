@@ -125,37 +125,21 @@ export default function Dashboard() {
 
   const totalProjects = summary?.totalProjects ?? 0;
 
-  type Project = {
-    id: number;
-    name: string;
-    overallProgress: number;
-    plannedProgress: number;
-    status: string;
-    daysRemaining: number;
-    ownerEntity: string;
-    startDate: string;
-    expectedEndDate: string;
-    noSchedule?: boolean;
-  };
-  const allProjects: Project[] = (summary as any)?.allProjects ?? [];
-  const recentReports = (summary as any)?.recentReports ?? [];
+  const allProjects = summary?.allProjects ?? [];
+  const recentReports = summary?.recentReports ?? [];
 
   const barData = allProjects.slice(0, 8).map(p => ({
-    name: p.name.length > 18 ? p.name.slice(0, 18) + "…" : p.name,
-    فعلي: p.overallProgress,
-    مخطط: p.plannedProgress,
+    name: (p.name ?? "").length > 18 ? (p.name ?? "").slice(0, 18) + "…" : (p.name ?? ""),
+    فعلي: p.overallProgress ?? 0,
+    مخطط: p.plannedProgress ?? 0,
   }));
 
-  const totalActivities   = (summary as any)?.totalActivities     ?? 0;
-  const completedActs     = (summary as any)?.completedActivities  ?? 0;
-  const delayedActs       = (summary as any)?.delayedActivities    ?? 0;
-  const inProgressActs    = (summary as any)?.inProgressActivities ?? 0;
+  const totalActivities   = summary?.totalActivities     ?? 0;
+  const completedActs     = summary?.completedActivities  ?? 0;
+  const delayedActs       = summary?.delayedActivities    ?? 0;
+  const inProgressActs    = summary?.inProgressActivities ?? 0;
 
-  type DelayedActivity = {
-    id: number; name: string; projectId: number; projectName: string;
-    plannedEndDate: string; actualProgress: number; delayDays: number;
-  };
-  const delayedActivitiesList: DelayedActivity[] = (summary as any)?.delayedActivitiesList ?? [];
+  const delayedActivitiesList = summary?.delayedActivitiesList ?? [];
 
   const actPct = (n: number) => totalActivities > 0 ? Math.round(n / totalActivities * 100) : 0;
 
@@ -456,7 +440,7 @@ export default function Dashboard() {
               <p className="text-sm text-muted-foreground text-center py-6">لا توجد تقارير</p>
             ) : (
               <div className="space-y-3">
-                {recentReports.map((r: any) => (
+                {recentReports.map((r) => (
                   <Link key={r.id} href={`/projects/${r.projectId}/reports`} className="block group">
                     <div className="flex items-start justify-between gap-2 p-3 rounded-lg border hover:border-primary/40 hover:bg-muted/30 transition-all">
                       <div className="flex items-start gap-2.5 min-w-0">

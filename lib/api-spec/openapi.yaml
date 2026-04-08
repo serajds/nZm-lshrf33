@@ -1656,22 +1656,99 @@ components:
           type: integer
         delayedProjects:
           type: integer
+        suspendedProjects:
+          type: integer
         averageProgress:
           type: number
         totalReports:
+          type: integer
+        totalActivities:
+          type: integer
+        completedActivities:
+          type: integer
+        delayedActivities:
+          type: integer
+        inProgressActivities:
           type: integer
         recentProjects:
           type: array
           items:
             $ref: "#/components/schemas/Project"
+        allProjects:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              overallProgress:
+                type: number
+              plannedProgress:
+                type: number
+              status:
+                type: string
+              daysRemaining:
+                type: integer
+              ownerEntity:
+                type: ["string", "null"]
+              startDate:
+                type: ["string", "null"]
+              expectedEndDate:
+                type: ["string", "null"]
+              noSchedule:
+                type: boolean
+        recentReports:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              projectId:
+                type: integer
+              type:
+                type: string
+              reportDate:
+                type: string
+              progressPercentage:
+                type: number
+        delayedActivitiesList:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              projectId:
+                type: integer
+              projectName:
+                type: string
+              plannedEndDate:
+                type: ["string", "null"]
+              actualProgress:
+                type: number
+              delayDays:
+                type: integer
       required:
         - totalProjects
         - activeProjects
         - completedProjects
         - delayedProjects
+        - suspendedProjects
         - averageProgress
         - totalReports
+        - totalActivities
+        - completedActivities
+        - delayedActivities
+        - inProgressActivities
         - recentProjects
+        - allProjects
+        - recentReports
+        - delayedActivitiesList
 
     ProjectSummary:
       type: object
@@ -1696,6 +1773,10 @@ components:
           type: integer
         delayDays:
           type: integer
+        suspensionDays:
+          type: integer
+        netDelayDays:
+          type: integer
         reportsCount:
           type: integer
         filesCount:
@@ -1713,6 +1794,8 @@ components:
         - totalDays
         - daysRemaining
         - delayDays
+        - suspensionDays
+        - netDelayDays
         - reportsCount
         - filesCount
 
