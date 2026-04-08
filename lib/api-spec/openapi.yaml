@@ -1204,10 +1204,10 @@ components:
         contractor:
           type: string
         startDate:
-          type: string
+          type: ["string", "null"]
           format: date
         expectedEndDate:
-          type: string
+          type: ["string", "null"]
           format: date
         actualEndDate:
           type: ["string", "null"]
@@ -1217,6 +1217,8 @@ components:
           enum: [active, completed, delayed, suspended]
         overallProgress:
           type: number
+        noSchedule:
+          type: boolean
         ownerAccessToken:
           type: ["string", "null"]
         createdAt:
@@ -1232,10 +1234,9 @@ components:
         - ownerEntity
         - supervisorEntity
         - contractor
-        - startDate
-        - expectedEndDate
         - status
         - overallProgress
+        - noSchedule
         - createdAt
         - updatedAt
 
@@ -1253,11 +1254,14 @@ components:
         contractor:
           type: string
         startDate:
-          type: string
+          type: ["string", "null"]
           format: date
         expectedEndDate:
-          type: string
+          type: ["string", "null"]
           format: date
+        noSchedule:
+          type: boolean
+          default: false
         status:
           type: string
           enum: [active, completed, delayed, suspended]
@@ -1268,8 +1272,6 @@ components:
         - ownerEntity
         - supervisorEntity
         - contractor
-        - startDate
-        - expectedEndDate
 
     UpdateProjectBody:
       type: object
@@ -1293,6 +1295,8 @@ components:
         actualEndDate:
           type: ["string", "null"]
           format: date
+        noSchedule:
+          type: ["boolean", "null"]
         status:
           type: ["string", "null"]
           enum: [active, completed, delayed, suspended, null]
@@ -1700,6 +1704,8 @@ components:
           type: integer
         filesCount:
           type: integer
+        noSchedule:
+          type: boolean
       required:
         - projectId
         - overallProgress
@@ -1730,6 +1736,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ActivityDeviation"
+        noSchedule:
+          type: boolean
       required:
         - projectId
         - timeDeviation

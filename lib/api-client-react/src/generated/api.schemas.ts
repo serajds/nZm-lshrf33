@@ -186,12 +186,15 @@ export interface Project {
   ownerEntity: string;
   supervisorEntity: string;
   contractor: string;
-  startDate: string;
-  expectedEndDate: string;
+  /** @nullable */
+  startDate?: string | null;
+  /** @nullable */
+  expectedEndDate?: string | null;
   /** @nullable */
   actualEndDate?: string | null;
   status: ProjectStatus;
   overallProgress: number;
+  noSchedule: boolean;
   /** @nullable */
   ownerAccessToken?: string | null;
   createdAt: string;
@@ -214,8 +217,11 @@ export interface CreateProjectBody {
   ownerEntity: string;
   supervisorEntity: string;
   contractor: string;
-  startDate: string;
-  expectedEndDate: string;
+  /** @nullable */
+  startDate?: string | null;
+  /** @nullable */
+  expectedEndDate?: string | null;
+  noSchedule?: boolean;
   status?: CreateProjectBodyStatus;
 }
 
@@ -250,6 +256,8 @@ export interface UpdateProjectBody {
   expectedEndDate?: string | null;
   /** @nullable */
   actualEndDate?: string | null;
+  /** @nullable */
+  noSchedule?: boolean | null;
   /** @nullable */
   status?: UpdateProjectBodyStatus;
   /** @nullable */
@@ -461,6 +469,7 @@ export interface ProjectSummary {
   delayDays: number;
   reportsCount: number;
   filesCount: number;
+  noSchedule?: boolean;
 }
 
 export interface OwnerProjectView {
@@ -516,6 +525,7 @@ export interface DeviationAnalysis {
   progressDeviation: number;
   status: DeviationAnalysisStatus;
   activitiesAnalysis: ActivityDeviation[];
+  noSchedule?: boolean;
 }
 
 export type ListProjectsParams = {

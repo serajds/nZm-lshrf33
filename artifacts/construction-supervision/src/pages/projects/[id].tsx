@@ -299,40 +299,53 @@ export default function ProjectDetails() {
                 <div className="text-4xl font-bold tabular-nums">
                   {summary?.overallProgress ?? 0}%
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  المخطط: {summary?.plannedProgress ?? 0}%
-                </div>
+                {!summary?.noSchedule && (
+                  <div className="text-sm text-muted-foreground">
+                    المخطط: {summary?.plannedProgress ?? 0}%
+                  </div>
+                )}
               </div>
               <div className="relative w-full h-2.5 bg-secondary rounded-full overflow-hidden">
-                <div
-                  className="absolute top-0 right-0 h-full bg-primary/25 rounded-full"
-                  style={{ width: `${summary?.plannedProgress ?? 0}%` }}
-                />
+                {!summary?.noSchedule && (
+                  <div
+                    className="absolute top-0 right-0 h-full bg-primary/25 rounded-full"
+                    style={{ width: `${summary?.plannedProgress ?? 0}%` }}
+                  />
+                )}
                 <div
                   className="absolute top-0 right-0 h-full bg-primary rounded-full"
                   style={{ width: `${summary?.overallProgress ?? 0}%` }}
                 />
               </div>
-              <div className="mt-3 space-y-1.5">
-                <p className={`text-sm flex items-center gap-1.5 font-medium ${(summary?.delayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
-                  {(summary?.delayDays ?? 0) > 0 ? (
-                    <><AlertTriangle className="h-4 w-4 shrink-0" /> تأخير إجمالي: {summary!.delayDays} يوم</>
-                  ) : (
-                    <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا تأخير إجمالي</>
-                  )}
-                </p>
-                <p className="text-sm text-amber-600 flex items-center gap-1.5 font-medium">
-                  <PauseCircle className="h-4 w-4 shrink-0" />
-                  توقفات مشروعة: {summary?.suspensionDays ?? 0} يوم
-                </p>
-                <p className={`text-sm flex items-center gap-1.5 font-semibold ${(summary?.netDelayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
-                  {(summary?.netDelayDays ?? 0) > 0 ? (
-                    <><AlertTriangle className="h-4 w-4 shrink-0" /> صافي التأخير: {summary!.netDelayDays} يوم</>
-                  ) : (
-                    <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا تأخير صافي</>
-                  )}
-                </p>
-              </div>
+              {summary?.noSchedule ? (
+                <div className="mt-3">
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    <Clock className="h-4 w-4 shrink-0" />
+                    مشروع بدون جدول زمني معتمد — لا يُحسب التأخير
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-3 space-y-1.5">
+                  <p className={`text-sm flex items-center gap-1.5 font-medium ${(summary?.delayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
+                    {(summary?.delayDays ?? 0) > 0 ? (
+                      <><AlertTriangle className="h-4 w-4 shrink-0" /> تأخير إجمالي: {summary!.delayDays} يوم</>
+                    ) : (
+                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا تأخير إجمالي</>
+                    )}
+                  </p>
+                  <p className="text-sm text-amber-600 flex items-center gap-1.5 font-medium">
+                    <PauseCircle className="h-4 w-4 shrink-0" />
+                    توقفات مشروعة: {summary?.suspensionDays ?? 0} يوم
+                  </p>
+                  <p className={`text-sm flex items-center gap-1.5 font-semibold ${(summary?.netDelayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
+                    {(summary?.netDelayDays ?? 0) > 0 ? (
+                      <><AlertTriangle className="h-4 w-4 shrink-0" /> صافي التأخير: {summary!.netDelayDays} يوم</>
+                    ) : (
+                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا تأخير صافي</>
+                    )}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -348,19 +361,23 @@ export default function ProjectDetails() {
                   <span className="text-sm font-normal text-muted-foreground"> / {summary?.activitiesTotal ?? 0}</span>
                 </p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">أنشطة متأخرة</p>
-                <p className="text-xl font-bold tabular-nums text-destructive">
-                  {summary?.activitiesDelayed ?? 0}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">الأيام المنقضية</p>
-                <p className="text-xl font-bold tabular-nums">
-                  {summary?.daysElapsed ?? 0}
-                  <span className="text-sm font-normal text-muted-foreground"> / {summary?.totalDays ?? 0}</span>
-                </p>
-              </div>
+              {!summary?.noSchedule && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">أنشطة متأخرة</p>
+                  <p className="text-xl font-bold tabular-nums text-destructive">
+                    {summary?.activitiesDelayed ?? 0}
+                  </p>
+                </div>
+              )}
+              {!summary?.noSchedule && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">الأيام المنقضية</p>
+                  <p className="text-xl font-bold tabular-nums">
+                    {summary?.daysElapsed ?? 0}
+                    <span className="text-sm font-normal text-muted-foreground"> / {summary?.totalDays ?? 0}</span>
+                  </p>
+                </div>
+              )}
               <div>
                 <p className="text-xs text-muted-foreground mb-1">تقارير / ملفات</p>
                 <p className="text-xl font-bold tabular-nums">
@@ -385,17 +402,17 @@ export default function ProjectDetails() {
                 { icon: Building2, label: "المقاول المنفذ", value: project.contractor },
                 { icon: ActivitySquare, label: "الجهة المشرفة", value: project.supervisorEntity },
                 { icon: MapPin, label: "الموقع", value: project.location },
-                {
+                ...(project.startDate ? [{
                   icon: Calendar, label: "تاريخ البداية",
                   value: fmtDate(project.startDate),
                   ltr: true,
-                },
-                {
+                }] : []),
+                ...(!(project.noSchedule) && project.expectedEndDate ? [{
                   icon: Calendar, label: totalExtDays > 0 ? `النهاية المتوقعة (تشمل ${totalExtDays} يوم تمديد)` : "النهاية المتوقعة",
                   value: fmtDate(project.expectedEndDate),
                   ltr: true,
                   highlight: totalExtDays > 0,
-                },
+                }] : []),
                 ...(project.actualEndDate ? [{
                   icon: Clock, label: "النهاية الفعلية",
                   value: fmtDate(project.actualEndDate),

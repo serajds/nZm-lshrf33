@@ -135,6 +135,7 @@ export default function Dashboard() {
     ownerEntity: string;
     startDate: string;
     expectedEndDate: string;
+    noSchedule?: boolean;
   };
   const allProjects: Project[] = (summary as any)?.allProjects ?? [];
   const recentReports = (summary as any)?.recentReports ?? [];
@@ -431,7 +432,9 @@ export default function Dashboard() {
                         <td className="px-3 py-3 hidden md:table-cell">
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Clock className="h-3.5 w-3.5 shrink-0" />
-                            {p.daysRemaining > 0 ? `${p.daysRemaining} يوم` : <span className="text-red-500 font-medium">منتهي</span>}
+                            {p.noSchedule ? (
+                              <span className="text-muted-foreground">بدون جدول</span>
+                            ) : p.daysRemaining > 0 ? `${p.daysRemaining} يوم` : <span className="text-red-500 font-medium">منتهي</span>}
                           </div>
                         </td>
                       </tr>

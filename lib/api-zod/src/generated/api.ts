@@ -82,11 +82,12 @@ export const ListProjectsResponseItem = zod.object({
   ownerEntity: zod.string(),
   supervisorEntity: zod.string(),
   contractor: zod.string(),
-  startDate: zod.coerce.date(),
-  expectedEndDate: zod.coerce.date(),
+  startDate: zod.coerce.date().nullish(),
+  expectedEndDate: zod.coerce.date().nullish(),
   actualEndDate: zod.coerce.date().nullish(),
   status: zod.enum(["active", "completed", "delayed", "suspended"]),
   overallProgress: zod.number(),
+  noSchedule: zod.boolean(),
   ownerAccessToken: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -96,6 +97,7 @@ export const ListProjectsResponse = zod.array(ListProjectsResponseItem);
 /**
  * @summary Create a new project
  */
+export const createProjectBodyNoScheduleDefault = false;
 export const createProjectBodyStatusDefault = `active`;
 
 export const CreateProjectBody = zod.object({
@@ -104,8 +106,9 @@ export const CreateProjectBody = zod.object({
   ownerEntity: zod.string(),
   supervisorEntity: zod.string(),
   contractor: zod.string(),
-  startDate: zod.coerce.date(),
-  expectedEndDate: zod.coerce.date(),
+  startDate: zod.coerce.date().nullish(),
+  expectedEndDate: zod.coerce.date().nullish(),
+  noSchedule: zod.boolean().default(createProjectBodyNoScheduleDefault),
   status: zod
     .enum(["active", "completed", "delayed", "suspended"])
     .default(createProjectBodyStatusDefault),
@@ -125,11 +128,12 @@ export const GetProjectResponse = zod.object({
   ownerEntity: zod.string(),
   supervisorEntity: zod.string(),
   contractor: zod.string(),
-  startDate: zod.coerce.date(),
-  expectedEndDate: zod.coerce.date(),
+  startDate: zod.coerce.date().nullish(),
+  expectedEndDate: zod.coerce.date().nullish(),
   actualEndDate: zod.coerce.date().nullish(),
   status: zod.enum(["active", "completed", "delayed", "suspended"]),
   overallProgress: zod.number(),
+  noSchedule: zod.boolean(),
   ownerAccessToken: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -151,6 +155,7 @@ export const UpdateProjectBody = zod.object({
   startDate: zod.coerce.date().nullish(),
   expectedEndDate: zod.coerce.date().nullish(),
   actualEndDate: zod.coerce.date().nullish(),
+  noSchedule: zod.boolean().nullish(),
   status: zod
     .union([
       zod.literal("active"),
@@ -170,11 +175,12 @@ export const UpdateProjectResponse = zod.object({
   ownerEntity: zod.string(),
   supervisorEntity: zod.string(),
   contractor: zod.string(),
-  startDate: zod.coerce.date(),
-  expectedEndDate: zod.coerce.date(),
+  startDate: zod.coerce.date().nullish(),
+  expectedEndDate: zod.coerce.date().nullish(),
   actualEndDate: zod.coerce.date().nullish(),
   status: zod.enum(["active", "completed", "delayed", "suspended"]),
   overallProgress: zod.number(),
+  noSchedule: zod.boolean(),
   ownerAccessToken: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -751,11 +757,12 @@ export const VerifyOwnerAccessResponse = zod.object({
     ownerEntity: zod.string(),
     supervisorEntity: zod.string(),
     contractor: zod.string(),
-    startDate: zod.coerce.date(),
-    expectedEndDate: zod.coerce.date(),
+    startDate: zod.coerce.date().nullish(),
+    expectedEndDate: zod.coerce.date().nullish(),
     actualEndDate: zod.coerce.date().nullish(),
     status: zod.enum(["active", "completed", "delayed", "suspended"]),
     overallProgress: zod.number(),
+    noSchedule: zod.boolean(),
     ownerAccessToken: zod.string().nullish(),
     createdAt: zod.coerce.date(),
     updatedAt: zod.coerce.date(),
@@ -825,6 +832,7 @@ export const VerifyOwnerAccessResponse = zod.object({
     delayDays: zod.number(),
     reportsCount: zod.number(),
     filesCount: zod.number(),
+    noSchedule: zod.boolean().optional(),
   }),
 });
 
@@ -846,11 +854,12 @@ export const GetDashboardSummaryResponse = zod.object({
       ownerEntity: zod.string(),
       supervisorEntity: zod.string(),
       contractor: zod.string(),
-      startDate: zod.coerce.date(),
-      expectedEndDate: zod.coerce.date(),
+      startDate: zod.coerce.date().nullish(),
+      expectedEndDate: zod.coerce.date().nullish(),
       actualEndDate: zod.coerce.date().nullish(),
       status: zod.enum(["active", "completed", "delayed", "suspended"]),
       overallProgress: zod.number(),
+      noSchedule: zod.boolean(),
       ownerAccessToken: zod.string().nullish(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
@@ -878,6 +887,7 @@ export const GetProjectSummaryResponse = zod.object({
   delayDays: zod.number(),
   reportsCount: zod.number(),
   filesCount: zod.number(),
+  noSchedule: zod.boolean().optional(),
 });
 
 /**
@@ -907,6 +917,7 @@ export const GetProjectDeviationResponse = zod.object({
       delayDays: zod.number().nullish(),
     }),
   ),
+  noSchedule: zod.boolean().optional(),
 });
 
 /**
