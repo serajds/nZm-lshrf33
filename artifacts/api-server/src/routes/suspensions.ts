@@ -43,7 +43,7 @@ async function shiftActivities(projectId: number, suspStartDate: string, calenda
 }
 
 router.get("/projects/:projectId/suspensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
 
   const suspensions = await db.select()
     .from(projectSuspensionsTable)
@@ -54,7 +54,7 @@ router.get("/projects/:projectId/suspensions", requireProjectAccess("projectId")
 });
 
 router.post("/projects/:projectId/suspensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
 
   const { type, title, startDate, endDate, reason, documentRef, approvedBy, notes, shiftDates } = req.body;
 
@@ -108,8 +108,8 @@ router.post("/projects/:projectId/suspensions", requireProjectAccess("projectId"
 });
 
 router.delete("/projects/:projectId/suspensions/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
-  const id = parseInt(req.params.id, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
+  const id = parseInt(req.params.id as string, 10);
 
   const [susp] = await db.select()
     .from(projectSuspensionsTable)

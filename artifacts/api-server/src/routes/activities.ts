@@ -337,7 +337,7 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
 });
 
 router.put("/projects/:projectId/activities/reorder", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
   const { items } = req.body;
   if (!Array.isArray(items)) {
     res.status(400).json({ error: "items مطلوب" });

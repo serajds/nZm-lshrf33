@@ -7,7 +7,7 @@ import { requireProjectAccess } from "../middlewares/auth";
 const router: IRouter = Router();
 
 router.get("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
   const groups = await db.select()
     .from(activityGroupsTable)
     .where(eq(activityGroupsTable.projectId, projectId))
@@ -16,7 +16,7 @@ router.get("/projects/:projectId/activity-groups", requireProjectAccess("project
 });
 
 router.post("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
   const { name, color } = req.body;
   if (!name) {
     res.status(400).json({ error: "اسم المجموعة مطلوب" });
@@ -38,7 +38,7 @@ router.post("/projects/:projectId/activity-groups", requireProjectAccess("projec
 });
 
 router.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
   const { order } = req.body;
   if (!Array.isArray(order)) {
     res.status(400).json({ error: "order مطلوب" });
@@ -53,8 +53,8 @@ router.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess(
 });
 
 router.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
-  const id = parseInt(req.params.id, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
+  const id = parseInt(req.params.id as string, 10);
   const { name, color } = req.body;
   const updateData: Record<string, unknown> = {};
   if (name !== undefined) updateData.name = name;
@@ -72,8 +72,8 @@ router.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("pro
 });
 
 router.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
-  const projectId = parseInt(req.params.projectId, 10);
-  const id = parseInt(req.params.id, 10);
+  const projectId = parseInt(req.params.projectId as string, 10);
+  const id = parseInt(req.params.id as string, 10);
 
   await db.update(activitiesTable)
     .set({ groupId: null })
