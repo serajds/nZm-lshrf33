@@ -172,6 +172,25 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
     return;
   }
 
+  const todayStr = new Date().toISOString().split("T")[0];
+  if (body.actualProgress !== undefined) {
+    const [existing] = await db.select().from(activitiesTable)
+      .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
+    if (existing) {
+      const newProgress = Number(body.actualProgress);
+      if (newProgress > 0 && !existing.actualStartDate && !updateData.actualStartDate) {
+        updateData.actualStartDate = todayStr;
+      }
+      if (newProgress >= 100 && !existing.actualEndDate && !updateData.actualEndDate) {
+        updateData.actualEndDate = todayStr;
+        if (!updateData.status) updateData.status = "completed";
+      }
+      if (newProgress > 0 && newProgress < 100) {
+        if (!updateData.status && existing.status === "not_started") updateData.status = "in_progress";
+      }
+    }
+  }
+
   const [activity] = await db.update(activitiesTable)
     .set(updateData)
     .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))
