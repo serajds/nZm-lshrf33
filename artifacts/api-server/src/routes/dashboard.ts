@@ -74,13 +74,13 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
         id: projectsTable.id, name: projectsTable.name,
         overallProgress: projectsTable.overallProgress, status: projectsTable.status,
         startDate: projectsTable.startDate, expectedEndDate: projectsTable.expectedEndDate,
-        ownerEntity: projectsTable.ownerEntity,
+        ownerEntity: projectsTable.ownerEntity, noSchedule: projectsTable.noSchedule,
       }).from(projectsTable).where(inArray(projectsTable.id, projectFilter)).orderBy(desc(projectsTable.overallProgress))
     : await db.select({
         id: projectsTable.id, name: projectsTable.name,
         overallProgress: projectsTable.overallProgress, status: projectsTable.status,
         startDate: projectsTable.startDate, expectedEndDate: projectsTable.expectedEndDate,
-        ownerEntity: projectsTable.ownerEntity,
+        ownerEntity: projectsTable.ownerEntity, noSchedule: projectsTable.noSchedule,
       }).from(projectsTable).orderBy(desc(projectsTable.overallProgress));
 
   const recentReports = projectFilter
@@ -122,9 +122,11 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
   }
 
   const projectNameMap = new Map(allProjects.map(p => [p.id, p.name]));
+  const noScheduleProjectIds = new Set(allProjects.filter(p => (p as any).noSchedule === true || !p.startDate || !p.expectedEndDate).map(p => p.id));
   const delayedActivitiesList = allActivities
     .filter(a => {
       if (a.status === "completed") return false;
+      if (noScheduleProjectIds.has(a.projectId)) return false;
       const plannedEnd = new Date(a.plannedEndDate);
       plannedEnd.setHours(0, 0, 0, 0);
       return today > plannedEnd;
@@ -147,6 +149,21 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
     .slice(0, 10);
 
   const projectsWithPlanned = allProjects.map(p => {
+    const isNoSchedule = (p as any).noSchedule === true;
+    if (isNoSchedule || !p.startDate || !p.expectedEndDate) {
+      return {
+        id: p.id,
+        name: p.name,
+        overallProgress: p.overallProgress,
+        plannedProgress: 0,
+        status: p.status,
+        daysRemaining: 0,
+        ownerEntity: p.ownerEntity,
+        startDate: p.startDate,
+        expectedEndDate: p.expectedEndDate,
+        noSchedule: true,
+      };
+    }
     const startDate = new Date(p.startDate);
     const endDate = new Date(p.expectedEndDate);
     const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
@@ -164,6 +181,7 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
       ownerEntity: p.ownerEntity,
       startDate: p.startDate,
       expectedEndDate: p.expectedEndDate,
+      noSchedule: false,
     };
   });
 
@@ -201,6 +219,29 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
   const [fileCount] = await db.select({ count: count() }).from(projectFilesTable).where(eq(projectFilesTable.projectId, projectId));
   const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId));
 
+  const isNoSchedule = project.noSchedule === true;
+
+  if (isNoSchedule || !project.startDate || !project.expectedEndDate) {
+    res.json({
+      projectId,
+      noSchedule: true,
+      overallProgress: project.overallProgress,
+      plannedProgress: 0,
+      activitiesTotal: activities.length,
+      activitiesCompleted: activities.filter(a => a.status === "completed").length,
+      activitiesDelayed: 0,
+      daysElapsed: 0,
+      totalDays: 0,
+      daysRemaining: 0,
+      delayDays: 0,
+      suspensionDays: 0,
+      netDelayDays: 0,
+      reportsCount: Number(reportCount?.count ?? 0),
+      filesCount: Number(fileCount?.count ?? 0),
+    });
+    return;
+  }
+
   const today = new Date();
   const startDate = new Date(project.startDate);
   const endDate = new Date(project.expectedEndDate);
@@ -214,6 +255,7 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
 
   res.json({
     projectId,
+    noSchedule: false,
     overallProgress: project.overallProgress,
     plannedProgress: Math.round(plannedProgress * 100) / 100,
     activitiesTotal: activities.length,
@@ -242,6 +284,32 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
 
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
   const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId));
+
+  const isNoSchedule = project.noSchedule === true;
+
+  if (isNoSchedule || !project.startDate || !project.expectedEndDate) {
+    const activitiesAnalysis = activities.map(a => ({
+      activityId: a.id,
+      activityName: a.name,
+      plannedProgress: 0,
+      actualProgress: a.actualProgress,
+      deviation: 0,
+      delayDays: null,
+    }));
+
+    res.json({
+      projectId,
+      noSchedule: true,
+      timeDeviation: 0,
+      progressDeviation: 0,
+      suspensionDays: 0,
+      grossDelayDays: 0,
+      netDelayDays: 0,
+      status: "on_track",
+      activitiesAnalysis,
+    });
+    return;
+  }
 
   const today = new Date();
   const startDate = new Date(project.startDate);
@@ -293,6 +361,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
 
   res.json({
     projectId,
+    noSchedule: false,
     timeDeviation,
     progressDeviation,
     suspensionDays,

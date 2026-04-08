@@ -24,12 +24,40 @@ export default function ProjectDeviation() {
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: deviationData, isLoading } = useGetProjectDeviation(projectId, { query: { enabled: !!projectId } });
 
+  const isNoSchedule = deviationData?.noSchedule === true;
+
   if (isLoading) {
     return (
       <div className="flex h-60 items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           <span className="text-sm text-muted-foreground">جاري تحليل بيانات الانحراف...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isNoSchedule) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-start gap-3">
+          <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
+            <ArrowRight className="h-5 w-5" />
+          </Button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">تحليل الانحراف عن الجدول الزمني</p>
+          </div>
+        </div>
+        <ProjectNav projectId={projectId} />
+        <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
+          <div className="p-4 rounded-full bg-muted">
+            <CalendarOff className="h-10 w-10 text-muted-foreground" />
+          </div>
+          <h2 className="text-xl font-bold text-muted-foreground">مشروع بدون جدول زمني معتمد</h2>
+          <p className="text-sm text-muted-foreground max-w-md">
+            هذا المشروع لا يحتوي على جدول زمني معتمد، لذلك لا يتم حساب التأخير أو الانحرافات الزمنية.
+          </p>
         </div>
       </div>
     );

@@ -67,18 +67,27 @@ router.get("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> 
 router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
   const {
     name, location, ownerEntity, supervisorEntity, contractor,
-    startDate, expectedEndDate, status,
+    startDate, expectedEndDate, status, noSchedule,
     ownerCompanyId, contractorCompanyId, supervisorCompanyId
   } = req.body;
 
-  if (!name || !location || !ownerEntity || !supervisorEntity || !contractor || !startDate || !expectedEndDate) {
+  const isNoSchedule = noSchedule === true || noSchedule === "true";
+
+  if (!name || !location || !ownerEntity || !supervisorEntity || !contractor) {
     res.status(400).json({ error: "جميع الحقول مطلوبة" });
+    return;
+  }
+
+  if (!isNoSchedule && (!startDate || !expectedEndDate)) {
+    res.status(400).json({ error: "تاريخ البداية وتاريخ النهاية مطلوبان للمشاريع ذات الجدول الزمني" });
     return;
   }
 
   const [project] = await db.insert(projectsTable).values({
     name, location, ownerEntity, supervisorEntity, contractor,
-    startDate, expectedEndDate,
+    noSchedule: isNoSchedule,
+    startDate: isNoSchedule ? (startDate || null) : startDate,
+    expectedEndDate: isNoSchedule ? (expectedEndDate || null) : expectedEndDate,
     status: status ?? "active",
     overallProgress: 0,
     ownerCompanyId: ownerCompanyId && ownerCompanyId !== "none" && !isNaN(Number(ownerCompanyId)) ? parseInt(ownerCompanyId, 10) : null,
@@ -138,13 +147,24 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
   const updateData: Record<string, unknown> = {};
   const body = req.body;
   const parseCompanyId = (val: unknown) => val && val !== "none" && !isNaN(Number(val)) ? parseInt(String(val), 10) : null;
+  const isTogglingNoSchedule = body.noSchedule !== undefined;
+  const willBeNoSchedule = isTogglingNoSchedule
+    ? (body.noSchedule === true || body.noSchedule === "true")
+    : undefined;
+
+  if (isTogglingNoSchedule) updateData.noSchedule = willBeNoSchedule;
   if (body.name !== undefined) updateData.name = body.name;
   if (body.location !== undefined) updateData.location = body.location;
   if (body.ownerEntity !== undefined) updateData.ownerEntity = body.ownerEntity;
   if (body.supervisorEntity !== undefined) updateData.supervisorEntity = body.supervisorEntity;
   if (body.contractor !== undefined) updateData.contractor = body.contractor;
-  if (body.startDate !== undefined) updateData.startDate = body.startDate;
-  if (body.expectedEndDate !== undefined) updateData.expectedEndDate = body.expectedEndDate;
+  if (body.startDate !== undefined) updateData.startDate = body.startDate || null;
+  if (body.expectedEndDate !== undefined) updateData.expectedEndDate = body.expectedEndDate || null;
+
+  if (willBeNoSchedule === true) {
+    if (!body.startDate) updateData.startDate = null;
+    if (!body.expectedEndDate) updateData.expectedEndDate = null;
+  }
   if (body.actualEndDate !== undefined) updateData.actualEndDate = body.actualEndDate;
   if (body.status !== undefined) updateData.status = body.status;
   if (body.overallProgress !== undefined) updateData.overallProgress = body.overallProgress;

@@ -25,6 +25,8 @@ export interface UpdateProjectBody {
   /** @nullable */
   actualEndDate?: Date | null;
   /** @nullable */
+  noSchedule?: boolean | null;
+  /** @nullable */
   status?: UpdateProjectBodyStatus;
   /** @nullable */
   overallProgress?: number | null;

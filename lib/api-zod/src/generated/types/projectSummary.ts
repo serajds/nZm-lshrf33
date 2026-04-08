@@ -19,4 +19,5 @@ export interface ProjectSummary {
   delayDays: number;
   reportsCount: number;
   filesCount: number;
+  noSchedule?: boolean;
 }

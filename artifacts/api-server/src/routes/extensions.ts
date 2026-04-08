@@ -66,8 +66,10 @@ router.post("/projects/:projectId/extensions", requireProjectAccess("projectId")
   }).returning();
 
   const baseEnd = await getActivitiesBaseEndDate(projectId) ?? project.expectedEndDate;
-  await recomputeExtensionChain(projectId, baseEnd);
-  await recalcExpectedEndDate(projectId);
+  if (baseEnd) {
+    await recomputeExtensionChain(projectId, baseEnd);
+    await recalcExpectedEndDate(projectId);
+  }
 
   const [updatedExtension] = await db.select()
     .from(projectExtensionsTable)
@@ -92,7 +94,9 @@ router.delete("/projects/:projectId/extensions/:id", requireProjectAccess("proje
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   if (project) {
     const baseEnd = await getActivitiesBaseEndDate(projectId) ?? project.expectedEndDate;
-    await recomputeExtensionChain(projectId, baseEnd);
+    if (baseEnd) {
+      await recomputeExtensionChain(projectId, baseEnd);
+    }
   }
   await recalcExpectedEndDate(projectId);
 

@@ -26,41 +26,64 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     .where(eq(projectSuspensionsTable.projectId, project.id))
     .orderBy(projectSuspensionsTable.startDate);
 
-  const today = new Date();
-  const startDate = new Date(project.startDate);
-  const endDate = new Date(project.expectedEndDate);
-  const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-  const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-  const rawDaysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  const daysRemaining = Math.max(0, rawDaysRemaining);
-  const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays);
-  const calendarDelayDays = rawDaysRemaining < 0 ? Math.abs(rawDaysRemaining) : 0;
-  const progressDelayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
-  const delayDays = Math.max(calendarDelayDays, progressDelayDays);
-  const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
-  const netDelayDays = Math.max(0, delayDays - suspensionDays);
-
-  const activitiesCompleted = activities.filter(a => a.status === "completed").length;
-  const activitiesDelayed = activities.filter(a => a.status === "delayed").length;
-
+  const isNoSchedule = project.noSchedule === true;
   const [filesCountResult] = await db.select({ count: count() }).from(projectFilesTable).where(eq(projectFilesTable.projectId, project.id));
+  const activitiesCompleted = activities.filter(a => a.status === "completed").length;
 
-  const summary = {
-    projectId: project.id,
-    overallProgress: project.overallProgress,
-    plannedProgress,
-    activitiesTotal: activities.length,
-    activitiesCompleted,
-    activitiesDelayed,
-    daysElapsed,
-    totalDays,
-    daysRemaining,
-    delayDays,
-    suspensionDays,
-    netDelayDays,
-    reportsCount: reports.length,
-    filesCount: filesCountResult?.count ?? 0,
-  };
+  let summary: any;
+
+  if (isNoSchedule || !project.startDate || !project.expectedEndDate) {
+    summary = {
+      projectId: project.id,
+      noSchedule: true,
+      overallProgress: project.overallProgress,
+      plannedProgress: 0,
+      activitiesTotal: activities.length,
+      activitiesCompleted,
+      activitiesDelayed: 0,
+      daysElapsed: 0,
+      totalDays: 0,
+      daysRemaining: 0,
+      delayDays: 0,
+      suspensionDays: 0,
+      netDelayDays: 0,
+      reportsCount: reports.length,
+      filesCount: filesCountResult?.count ?? 0,
+    };
+  } else {
+    const today = new Date();
+    const startDate = new Date(project.startDate);
+    const endDate = new Date(project.expectedEndDate);
+    const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const rawDaysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const daysRemaining = Math.max(0, rawDaysRemaining);
+    const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays);
+    const calendarDelayDays = rawDaysRemaining < 0 ? Math.abs(rawDaysRemaining) : 0;
+    const progressDelayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
+    const delayDays = Math.max(calendarDelayDays, progressDelayDays);
+    const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
+    const netDelayDays = Math.max(0, delayDays - suspensionDays);
+    const activitiesDelayed = activities.filter(a => a.status === "delayed").length;
+
+    summary = {
+      projectId: project.id,
+      noSchedule: false,
+      overallProgress: project.overallProgress,
+      plannedProgress,
+      activitiesTotal: activities.length,
+      activitiesCompleted,
+      activitiesDelayed,
+      daysElapsed,
+      totalDays,
+      daysRemaining,
+      delayDays,
+      suspensionDays,
+      netDelayDays,
+      reportsCount: reports.length,
+      filesCount: filesCountResult?.count ?? 0,
+    };
+  }
 
   const companyLogos: Record<string, { name: string; logoUrl: string | null }> = {};
   const companyIds = [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId].filter(Boolean) as number[];

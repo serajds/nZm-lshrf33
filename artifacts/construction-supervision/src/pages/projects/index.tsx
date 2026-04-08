@@ -30,7 +30,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2 } from "lucide-react";
+import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2, CalendarOff } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -56,13 +57,30 @@ const projectSchema = z.object({
   ownerEntity: z.string().min(1, "الجهة المالكة مطلوبة"),
   supervisorEntity: z.string().min(1, "الجهة المشرفة مطلوبة"),
   contractor: z.string().min(1, "المقاول مطلوب"),
-  startDate: z.string().min(1, "تاريخ البداية مطلوب"),
-  expectedEndDate: z.string().min(1, "تاريخ النهاية المتوقع مطلوب"),
+  noSchedule: z.boolean().default(false),
+  startDate: z.string().optional().default(""),
+  expectedEndDate: z.string().optional().default(""),
   status: z.enum(["active", "completed", "delayed", "suspended"]).default("active"),
   ownerCompanyId: z.string().optional(),
   contractorCompanyId: z.string().optional(),
   supervisorCompanyId: z.string().optional(),
-}).refine((data) => !data.startDate || !data.expectedEndDate || data.expectedEndDate >= data.startDate, {
+}).refine((data) => {
+  if (data.noSchedule) return true;
+  return !!data.startDate && data.startDate.length > 0;
+}, {
+  message: "تاريخ البداية مطلوب",
+  path: ["startDate"],
+}).refine((data) => {
+  if (data.noSchedule) return true;
+  return !!data.expectedEndDate && data.expectedEndDate.length > 0;
+}, {
+  message: "تاريخ النهاية المتوقع مطلوب",
+  path: ["expectedEndDate"],
+}).refine((data) => {
+  if (data.noSchedule) return true;
+  if (!data.startDate || !data.expectedEndDate) return true;
+  return data.expectedEndDate >= data.startDate;
+}, {
   message: "تاريخ النهاية يجب أن يكون بعد تاريخ البداية",
   path: ["expectedEndDate"],
 });
@@ -114,6 +132,7 @@ export default function Projects() {
       ownerEntity: "",
       supervisorEntity: "",
       contractor: "",
+      noSchedule: false,
       startDate: new Date().toISOString().split('T')[0],
       expectedEndDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
       status: "active",
@@ -122,6 +141,8 @@ export default function Projects() {
       supervisorCompanyId: "",
     }
   });
+
+  const watchNoSchedule = form.watch("noSchedule");
 
   const handleCompanySelect = (companyId: string, field: "ownerEntity" | "contractor" | "supervisorEntity") => {
     const company = companies.find(c => String(c.id) === companyId);
@@ -132,14 +153,16 @@ export default function Projects() {
 
   const openEdit = (p: Project) => {
     setEditingProject(p);
+    const isNoSchedule = p.noSchedule === true;
     form.reset({
       name: p.name,
       location: p.location,
       ownerEntity: p.ownerEntity,
       supervisorEntity: p.supervisorEntity,
       contractor: p.contractor,
-      startDate: new Date(p.startDate).toISOString().split('T')[0],
-      expectedEndDate: new Date(p.expectedEndDate).toISOString().split('T')[0],
+      noSchedule: isNoSchedule,
+      startDate: p.startDate ? new Date(p.startDate).toISOString().split('T')[0] : "",
+      expectedEndDate: p.expectedEndDate ? new Date(p.expectedEndDate).toISOString().split('T')[0] : "",
       status: p.status as ProjectFormValues["status"],
       ownerCompanyId: (p as any).ownerCompanyId ? String((p as any).ownerCompanyId) : "",
       contractorCompanyId: (p as any).contractorCompanyId ? String((p as any).contractorCompanyId) : "",
@@ -153,6 +176,7 @@ export default function Projects() {
     form.reset({
       name: "", location: "", ownerEntity: "", supervisorEntity: "",
       contractor: "",
+      noSchedule: false,
       startDate: new Date().toISOString().split('T')[0],
       expectedEndDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
       status: "active",
@@ -342,26 +366,62 @@ export default function Projects() {
                   />
                   <FormField
                     control={form.control}
-                    name="startDate"
+                    name="noSchedule"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>تاريخ البداية</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
-                        <FormMessage />
+                      <FormItem className="sm:col-span-2 flex items-center justify-between rounded-lg border p-3 gap-3">
+                        <div className="space-y-0.5 flex-1">
+                          <FormLabel className="text-sm font-medium flex items-center gap-2">
+                            <CalendarOff className="h-4 w-4 text-muted-foreground" />
+                            مشروع بدون جدول زمني معتمد
+                          </FormLabel>
+                          <p className="text-xs text-muted-foreground">
+                            عند التفعيل، لن يُحسب التأخير وتصبح التواريخ اختيارية
+                          </p>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={(checked) => {
+                              field.onChange(checked);
+                              if (checked) {
+                                form.setValue("startDate", "");
+                                form.setValue("expectedEndDate", "");
+                              } else {
+                                form.setValue("startDate", new Date().toISOString().split('T')[0]);
+                                form.setValue("expectedEndDate", new Date(Date.now() + 31536000000).toISOString().split('T')[0]);
+                              }
+                            }}
+                          />
+                        </FormControl>
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="expectedEndDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>تاريخ النهاية المتوقع {editingProject && <span className="text-xs text-muted-foreground">(يُحسب تلقائياً من الأنشطة والتمديدات)</span>}</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {!watchNoSchedule && (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name="startDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>تاريخ البداية</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="expectedEndDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>تاريخ النهاية المتوقع {editingProject && <span className="text-xs text-muted-foreground">(يُحسب تلقائياً من الأنشطة والتمديدات)</span>}</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
                   <FormField
                     control={form.control}
                     name="status"
@@ -468,10 +528,17 @@ export default function Projects() {
                     <Building2 className="h-4 w-4 shrink-0" />
                     <span className="truncate">المالك: {project.ownerEntity}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Calendar className="h-4 w-4 shrink-0" />
-                    <span>النهاية: <span className="font-mono">{fmtDate(project.expectedEndDate)}</span></span>
-                  </div>
+                  {project.noSchedule ? (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <CalendarOff className="h-4 w-4 shrink-0" />
+                      <span className="text-xs">بدون جدول زمني معتمد</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Calendar className="h-4 w-4 shrink-0" />
+                      <span>النهاية: <span className="font-mono">{fmtDate(project.expectedEndDate)}</span></span>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="space-y-1.5 mt-auto pt-4">

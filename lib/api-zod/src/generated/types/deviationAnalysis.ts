@@ -14,4 +14,5 @@ export interface DeviationAnalysis {
   progressDeviation: number;
   status: DeviationAnalysisStatus;
   activitiesAnalysis: ActivityDeviation[];
+  noSchedule?: boolean;
 }
