@@ -152,18 +152,34 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
     ? (body.noSchedule === true || body.noSchedule === "true")
     : undefined;
 
+  const [existingProject] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
+  const effectiveNoSchedule = willBeNoSchedule ?? existingProject?.noSchedule ?? false;
+
   if (isTogglingNoSchedule) updateData.noSchedule = willBeNoSchedule;
   if (body.name !== undefined) updateData.name = body.name;
   if (body.location !== undefined) updateData.location = body.location;
   if (body.ownerEntity !== undefined) updateData.ownerEntity = body.ownerEntity;
   if (body.supervisorEntity !== undefined) updateData.supervisorEntity = body.supervisorEntity;
   if (body.contractor !== undefined) updateData.contractor = body.contractor;
-  if (body.startDate !== undefined) updateData.startDate = body.startDate || null;
-  if (body.expectedEndDate !== undefined) updateData.expectedEndDate = body.expectedEndDate || null;
 
-  if (willBeNoSchedule === true) {
-    if (!body.startDate) updateData.startDate = null;
-    if (!body.expectedEndDate) updateData.expectedEndDate = null;
+  if (effectiveNoSchedule) {
+    if (body.startDate !== undefined) updateData.startDate = body.startDate || null;
+    if (body.expectedEndDate !== undefined) updateData.expectedEndDate = body.expectedEndDate || null;
+  } else {
+    if (body.startDate !== undefined) {
+      if (!body.startDate) {
+        res.status(400).json({ error: "تاريخ البداية مطلوب للمشاريع ذات الجدول الزمني" });
+        return;
+      }
+      updateData.startDate = body.startDate;
+    }
+    if (body.expectedEndDate !== undefined) {
+      if (!body.expectedEndDate) {
+        res.status(400).json({ error: "تاريخ النهاية مطلوب للمشاريع ذات الجدول الزمني" });
+        return;
+      }
+      updateData.expectedEndDate = body.expectedEndDate;
+    }
   }
   if (body.actualEndDate !== undefined) updateData.actualEndDate = body.actualEndDate;
   if (body.status !== undefined) updateData.status = body.status;

@@ -122,7 +122,7 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
   }
 
   const projectNameMap = new Map(allProjects.map(p => [p.id, p.name]));
-  const noScheduleProjectIds = new Set(allProjects.filter(p => p.noSchedule === true || !p.startDate || !p.expectedEndDate).map(p => p.id));
+  const noScheduleProjectIds = new Set(allProjects.filter(p => p.noSchedule === true).map(p => p.id));
   const delayedActivitiesList = allActivities
     .filter(a => {
       if (a.status === "completed") return false;
@@ -150,7 +150,7 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
 
   const projectsWithPlanned = allProjects.map(p => {
     const isNoSchedule = p.noSchedule === true;
-    if (isNoSchedule || !p.startDate || !p.expectedEndDate) {
+    if (isNoSchedule) {
       return {
         id: p.id,
         name: p.name,
@@ -221,7 +221,7 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
 
   const isNoSchedule = project.noSchedule === true;
 
-  if (isNoSchedule || !project.startDate || !project.expectedEndDate) {
+  if (isNoSchedule) {
     res.json({
       projectId,
       noSchedule: true,
@@ -287,7 +287,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
 
   const isNoSchedule = project.noSchedule === true;
 
-  if (isNoSchedule || !project.startDate || !project.expectedEndDate) {
+  if (isNoSchedule) {
     const activitiesAnalysis = activities.map(a => ({
       activityId: a.id,
       activityName: a.name,

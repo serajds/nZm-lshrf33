@@ -50,7 +50,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
 
   let summary: OwnerSummary;
 
-  if (isNoSchedule || !project.startDate || !project.expectedEndDate) {
+  if (isNoSchedule) {
     summary = {
       projectId: project.id,
       noSchedule: true,
