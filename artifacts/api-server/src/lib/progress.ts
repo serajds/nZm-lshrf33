@@ -4,36 +4,6 @@ interface ActivityLike {
   actualProgress: number;
 }
 
-interface ProjectLike {
-  noSchedule?: boolean;
-  startDate?: string | null;
-  expectedEndDate?: string | null;
-}
-
-export function isProjectNoSchedule(project: ProjectLike): boolean {
-  return project.noSchedule === true;
-}
-
-export function safeCalcPlannedProgressForProject(
-  project: ProjectLike,
-  activities: ActivityLike[],
-  daysElapsed: number,
-  totalDays: number,
-  today?: Date,
-): number {
-  if (isProjectNoSchedule(project)) return 0;
-  return calcPlannedProgressForProject(activities, daysElapsed, totalDays, today);
-}
-
-export function safeCalcDelayDays(
-  project: ProjectLike,
-  plannedProgress: number,
-  actualProgress: number,
-  totalDays: number,
-): number {
-  if (isProjectNoSchedule(project)) return 0;
-  return calcDelayDays(plannedProgress, actualProgress, totalDays);
-}
 
 export function calcActivityPlannedProgress(
   activity: { plannedStartDate: string; plannedEndDate: string },
