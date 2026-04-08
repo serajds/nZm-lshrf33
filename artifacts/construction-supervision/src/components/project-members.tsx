@@ -201,7 +201,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                   إضافة عضو
                 </Button>
               </DialogTrigger>
-              <DialogContent dir="rtl" className="sm:max-w-[400px]">
+              <DialogContent dir="rtl" className="sm:max-w-[440px]">
                 <DialogHeader>
                   <DialogTitle>إضافة عضو للمشروع</DialogTitle>
                 </DialogHeader>
@@ -209,13 +209,27 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                   <div className="space-y-2">
                     <Label>المستخدم</Label>
                     <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                      <SelectTrigger dir="rtl">
-                        <SelectValue placeholder="اختر مستخدم" />
+                      <SelectTrigger dir="rtl" className="w-full">
+                        <span className="truncate block text-right">
+                          {selectedUserId
+                            ? (() => {
+                                const u = availableUsers.find(u => String(u.id) === selectedUserId);
+                                return u ? u.fullName : "اختر مستخدم";
+                              })()
+                            : "اختر مستخدم"}
+                        </span>
                       </SelectTrigger>
-                      <SelectContent dir="rtl">
+                      <SelectContent dir="rtl" className="max-w-[400px]">
                         {availableUsers.map(u => (
-                          <SelectItem key={u.id} value={String(u.id)}>
-                            {u.fullName}{(u as any).companies?.length > 0 ? ` — ${(u as any).companies.map((c: any) => c.companyName).join("، ")}` : ""}
+                          <SelectItem key={u.id} value={String(u.id)} className="max-w-full">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-medium">{u.fullName}</span>
+                              {(u as any).companies?.length > 0 && (
+                                <span className="text-xs text-muted-foreground truncate max-w-[340px]">
+                                  {(u as any).companies.map((c: any) => c.companyName).join("، ")}
+                                </span>
+                              )}
+                            </div>
                           </SelectItem>
                         ))}
                         {availableUsers.length === 0 && (
