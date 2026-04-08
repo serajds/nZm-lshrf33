@@ -127,6 +127,7 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
     .filter(a => {
       if (a.status === "completed") return false;
       if (noScheduleProjectIds.has(a.projectId)) return false;
+      if (!a.plannedEndDate) return false;
       const plannedEnd = new Date(a.plannedEndDate);
       plannedEnd.setHours(0, 0, 0, 0);
       return today > plannedEnd;

@@ -6,9 +6,10 @@ interface ActivityLike {
 
 
 export function calcActivityPlannedProgress(
-  activity: { plannedStartDate: string; plannedEndDate: string },
+  activity: { plannedStartDate: string | null; plannedEndDate: string | null },
   today: Date = new Date(),
 ): number {
+  if (!activity.plannedStartDate || !activity.plannedEndDate) return 0;
   const start = new Date(activity.plannedStartDate);
   const end = new Date(activity.plannedEndDate);
   const duration = end.getTime() - start.getTime();
