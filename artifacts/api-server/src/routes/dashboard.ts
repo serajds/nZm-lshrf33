@@ -133,7 +133,7 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
       return today > plannedEnd;
     })
     .map(a => {
-      const plannedEnd = new Date(a.plannedEndDate);
+      const plannedEnd = new Date(a.plannedEndDate!);
       plannedEnd.setHours(0, 0, 0, 0);
       const delayDays = Math.ceil((today.getTime() - plannedEnd.getTime()) / 86400000);
       return {
@@ -165,8 +165,8 @@ router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Prom
         noSchedule: true,
       };
     }
-    const startDate = new Date(p.startDate);
-    const endDate = new Date(p.expectedEndDate);
+    const startDate = new Date(p.startDate ?? Date.now());
+    const endDate = new Date(p.expectedEndDate ?? Date.now());
     const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
     const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
     const daysRemaining = Math.max(0, totalDays - daysElapsed);
@@ -244,8 +244,8 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
   }
 
   const today = new Date();
-  const startDate = new Date(project.startDate);
-  const endDate = new Date(project.expectedEndDate);
+  const startDate = new Date(project.startDate ?? Date.now());
+  const endDate = new Date(project.expectedEndDate ?? Date.now());
   const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const daysRemaining = Math.max(0, totalDays - daysElapsed);
@@ -313,8 +313,8 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   }
 
   const today = new Date();
-  const startDate = new Date(project.startDate);
-  const endDate = new Date(project.expectedEndDate);
+  const startDate = new Date(project.startDate ?? Date.now());
+  const endDate = new Date(project.expectedEndDate ?? Date.now());
   const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays);

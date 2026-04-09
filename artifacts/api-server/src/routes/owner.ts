@@ -70,8 +70,8 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     };
   } else {
     const today = new Date();
-    const startDate = new Date(project.startDate);
-    const endDate = new Date(project.expectedEndDate);
+    const startDate = new Date(project.startDate ?? Date.now());
+    const endDate = new Date(project.expectedEndDate ?? Date.now());
     const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
     const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
     const rawDaysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
