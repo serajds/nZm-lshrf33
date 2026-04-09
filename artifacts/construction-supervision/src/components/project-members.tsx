@@ -222,14 +222,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                       <SelectContent dir="rtl" className="max-w-[400px]">
                         {availableUsers.map(u => (
                           <SelectItem key={u.id} value={String(u.id)} className="max-w-full">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="font-medium">{u.fullName}</span>
-                              {(u as any).companies?.length > 0 && (
-                                <span className="text-xs text-muted-foreground truncate max-w-[340px]">
-                                  {(u as any).companies.map((c: any) => c.companyName).join("، ")}
-                                </span>
-                              )}
-                            </div>
+                            <span className="font-medium">{u.fullName}</span>
                           </SelectItem>
                         ))}
                         {availableUsers.length === 0 && (
