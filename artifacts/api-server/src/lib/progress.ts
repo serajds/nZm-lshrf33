@@ -1,6 +1,6 @@
 interface ActivityLike {
-  plannedStartDate: string;
-  plannedEndDate: string;
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
   actualProgress: number;
 }
 

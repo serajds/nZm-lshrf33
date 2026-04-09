@@ -21,12 +21,12 @@ async function shiftActivities(projectId: number, suspStartDate: string, calenda
   const suspStart = new Date(suspStartDate);
 
   for (const activity of activities) {
+    if (!activity.plannedStartDate || !activity.plannedEndDate) continue;
     const actStart = new Date(activity.plannedStartDate);
     const actEnd = new Date(activity.plannedEndDate);
     const shift = calendarDays * direction;
 
     if (actStart >= suspStart) {
-      // Activity starts on or after suspension: shift both dates
       await db.update(activitiesTable)
         .set({
           plannedStartDate: addDays(activity.plannedStartDate, shift),
@@ -34,7 +34,6 @@ async function shiftActivities(projectId: number, suspStartDate: string, calenda
         })
         .where(eq(activitiesTable.id, activity.id));
     } else if (actEnd >= suspStart) {
-      // Activity spans the suspension: only extend/shorten end date
       await db.update(activitiesTable)
         .set({ plannedEndDate: addDays(activity.plannedEndDate, shift) })
         .where(eq(activitiesTable.id, activity.id));
