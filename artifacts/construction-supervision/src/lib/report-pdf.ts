@@ -334,18 +334,17 @@ function buildPrintHTML(data: ReportPdfData): string {
   .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; }
 
   /* ── TOOLBAR ── */
-  .toolbar { position: fixed; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e293b, #334155); padding: 12px 24px; display: flex; justify-content: center; gap: 14px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
-  .btn-print { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer; }
+  .toolbar { position: sticky; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e293b, #334155); padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+  .btn-print { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
   .btn-print:hover { background: #1d4ed8; }
-  .btn-close { background: #64748b; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; }
-  .btn-close:hover { background: #475569; }
+  .btn-close { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .btn-close:hover { background: rgba(255,255,255,0.25); }
 
   @media print {
     .toolbar { display: none !important; }
-    body { padding-top: 0 !important; }
   }
   @media screen {
-    body { padding-top: 56px; max-width: 210mm; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+    body { max-width: 210mm; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
   }
 </style>
 </head>
@@ -585,9 +584,12 @@ function buildExecutiveSummaryHTML(data: ExecutiveSummaryData): string {
 body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;line-height:1.7}
 @media print{@page{size:A4 portrait;margin:15mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none!important}}
 .container{max-width:750px;margin:0 auto;padding:20px}
-.toolbar{position:fixed;top:0;left:0;right:0;background:rgba(15,23,42,.92);backdrop-filter:blur(8px);padding:10px 20px;display:flex;gap:12px;z-index:999;justify-content:center}
-.toolbar button{background:rgba(255,255,255,.15);color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px}
-.toolbar button:hover{background:rgba(255,255,255,.25)}
+.toolbar{position:sticky;top:0;left:0;right:0;background:rgba(15,23,42,.95);backdrop-filter:blur(8px);padding:10px 16px;display:flex;gap:10px;z-index:999;justify-content:center;align-items:center;box-shadow:0 4px 16px rgba(0,0,0,0.3)}
+.toolbar button{color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.toolbar button:first-child{background:#2563eb}
+.toolbar button:first-child:hover{background:#1d4ed8}
+.toolbar button:last-child{background:rgba(255,255,255,.15)}
+.toolbar button:last-child:hover{background:rgba(255,255,255,.25)}
 .header{text-align:center;margin-bottom:24px;padding:20px 0;border-bottom:3px solid #1e3a5f}
 .header h1{font-size:22px;font-weight:800;color:#1e3a5f;margin-bottom:4px}
 .header p{font-size:13px;color:#64748b}
@@ -614,7 +616,6 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
   <button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
   <button onclick="window.close()">✕ إغلاق</button>
 </div>
-<div style="height:50px" class="no-print"></div>
 <div class="container">
   ${logosHtml}
   <div class="header">
