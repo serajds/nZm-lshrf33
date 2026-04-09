@@ -16,6 +16,7 @@ import projectMembersRouter from "./project-members";
 import auditLogRouter from "./audit-log";
 import activityGroupsRouter from "./activity-groups";
 import setupRouter from "./setup";
+import testResultsRouter from "./test-results";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(companiesRouter);
 router.use(auditLogRouter);
 router.use(activityGroupsRouter);
 router.use(setupRouter);
+router.use(testResultsRouter);
 
 export default router;

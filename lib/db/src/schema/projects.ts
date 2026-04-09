@@ -20,6 +20,7 @@ export const projectsTable = pgTable("projects", {
   ownerCompanyId: integer("owner_company_id"),
   contractorCompanyId: integer("contractor_company_id"),
   supervisorCompanyId: integer("supervisor_company_id"),
+  onedriveTestResultsFolderId: text("onedrive_test_results_folder_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

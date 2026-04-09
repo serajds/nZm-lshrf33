@@ -135,3 +135,13 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - `GET/POST/PATCH/DELETE /api/projects/:id/members` — project team membership (admin/PM)
 - `GET/POST/PUT/DELETE /api/users` — user management (admin only, list accessible to all staff)
 - `GET/POST/PATCH/DELETE /api/companies` — companies management with logo upload
+- `GET /api/owner/:token/test-results` — list files from project's linked OneDrive folder (JWT authenticated)
+
+### OneDrive Integration (Test Results)
+- Each project can have a `onedriveTestResultsFolderId` field linking to a OneDrive folder
+- Owner portal has a "نتائج الاختبارات" (Test Results) tab that lists files from the linked OneDrive folder
+- Files are fetched live from OneDrive via Microsoft Graph API using Replit's OneDrive connector
+- Direct download buttons for each file
+- OneDrive client: `artifacts/api-server/src/lib/onedrive.ts` (uses Replit connectors for OAuth token management)
+- Test results API route: `artifacts/api-server/src/routes/test-results.ts`
+- DB column: `projects.onedrive_test_results_folder_id` (text, nullable)

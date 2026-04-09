@@ -19,7 +19,7 @@ import {
   CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock, PauseCircle, Printer,
   BarChart3, Activity as ActivityIcon, TrendingUp, TrendingDown, FileText,
   CalendarDays, Gauge, Timer, ShieldCheck, CircleDot, ChevronLeft, ChevronRight, X, ZoomIn,
-  GanttChart
+  GanttChart, FlaskConical, Download, File, FileSpreadsheet, FileImage, FileArchive, Loader2
 } from "lucide-react";
 import { previewReport, type ActivityForReport } from "@/lib/report-pdf";
 
@@ -41,6 +41,9 @@ export default function OwnerPortal() {
   const [isRestoring, setIsRestoring] = useState(true);
   const [projectInfo, setProjectInfo] = useState<{ projectName: string; hasPassword?: boolean; companyLogos: Record<string, { name: string; logoUrl: string | null }> } | null>(null);
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
+  const [testResultsFiles, setTestResultsFiles] = useState<any[]>([]);
+  const [testResultsLoading, setTestResultsLoading] = useState(false);
+  const [testResultsFolderLinked, setTestResultsFolderLinked] = useState<boolean | null>(null);
   const verifyAccess = useVerifyOwnerAccess();
 
   useEffect(() => {
@@ -287,6 +290,40 @@ export default function OwnerPortal() {
   const closeLightbox = () => setLightbox(null);
   const lightboxPrev = () => setLightbox(prev => prev ? { ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length } : null);
   const lightboxNext = () => setLightbox(prev => prev ? { ...prev, index: (prev.index + 1) % prev.images.length } : null);
+
+  const fetchTestResults = async () => {
+    const jwt = sessionStorage.getItem(`owner_jwt_${token}`);
+    if (!jwt) return;
+    setTestResultsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/owner/${token}/test-results`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      if (!res.ok) throw new Error("failed");
+      const data = await res.json();
+      setTestResultsFiles(data.files || []);
+      setTestResultsFolderLinked(data.folderLinked);
+    } catch {
+      setTestResultsFiles([]);
+      setTestResultsFolderLinked(false);
+    } finally {
+      setTestResultsLoading(false);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.startsWith("image/")) return <FileImage className="h-5 w-5 text-pink-500" />;
+    if (mimeType.includes("spreadsheet") || mimeType.includes("excel") || mimeType.includes("csv")) return <FileSpreadsheet className="h-5 w-5 text-green-600" />;
+    if (mimeType.includes("pdf")) return <FileText className="h-5 w-5 text-red-500" />;
+    if (mimeType.includes("zip") || mimeType.includes("rar") || mimeType.includes("archive")) return <FileArchive className="h-5 w-5 text-yellow-600" />;
+    return <File className="h-5 w-5 text-gray-500" />;
+  };
 
   const handlePreview = (report: Report) => {
     const apiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -625,7 +662,7 @@ export default function OwnerPortal() {
         </div>
 
         <Tabs defaultValue="gantt" className="w-full mb-8" dir="rtl">
-          <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-5 gap-2 bg-transparent p-0 mb-6">
+          <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-6 gap-2 bg-transparent p-0 mb-6">
             <TabsTrigger value="gantt" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-teal-500 data-[state=active]:bg-teal-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-teal-50/60 hover:border-teal-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
               <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
                 <GanttChart className="h-5 w-5 text-teal-600" />
@@ -663,6 +700,14 @@ export default function OwnerPortal() {
               <span className="text-xs font-semibold">التوقفات</span>
               {(suspensions as ProjectSuspension[]).length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-violet-500 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{(suspensions as ProjectSuspension[]).length}</Badge>}
               <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-violet-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
+            </TabsTrigger>
+            <TabsTrigger value="test-results" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-emerald-500 data-[state=active]:bg-emerald-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-emerald-50/60 hover:border-emerald-200 hover:shadow hover:-translate-y-0.5 cursor-pointer" onClick={() => { if (testResultsFolderLinked === null) fetchTestResults(); }}>
+              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
+                <FlaskConical className="h-5 w-5 text-emerald-600" />
+              </div>
+              <span className="text-xs font-semibold">نتائج الاختبارات</span>
+              {testResultsFiles.length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-emerald-600 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{testResultsFiles.length}</Badge>}
+              <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-emerald-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
             </TabsTrigger>
           </TabsList>
 
@@ -1394,6 +1439,124 @@ export default function OwnerPortal() {
                     </div>
                   );
                 })()}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="test-results" className="space-y-4">
+            <Card className="shadow-md border-0">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10">
+                    <FlaskConical className="h-5 w-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">نتائج الاختبارات</CardTitle>
+                    <CardDescription className="text-xs">ملفات نتائج الاختبارات المرفقة من OneDrive</CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" className="mr-auto" onClick={fetchTestResults} disabled={testResultsLoading}>
+                    {testResultsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "تحديث"}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {testResultsLoading ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+                    <p className="text-sm text-muted-foreground">جاري تحميل الملفات...</p>
+                  </div>
+                ) : testResultsFolderLinked === false ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+                    <div className="p-3 rounded-full bg-muted">
+                      <FlaskConical className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium">لم يتم ربط مجلد نتائج الاختبارات</p>
+                    <p className="text-xs text-muted-foreground">يرجى التواصل مع مدير المشروع لربط مجلد OneDrive</p>
+                  </div>
+                ) : testResultsFiles.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+                    <div className="p-3 rounded-full bg-muted">
+                      <File className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium">لا توجد ملفات حالياً</p>
+                    <p className="text-xs text-muted-foreground">سيتم عرض الملفات تلقائياً عند إضافتها للمجلد</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="hidden md:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/40">
+                            <TableHead className="text-right">الملف</TableHead>
+                            <TableHead className="text-right">الحجم</TableHead>
+                            <TableHead className="text-right">تاريخ التعديل</TableHead>
+                            <TableHead className="text-center w-[100px]">تحميل</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {testResultsFiles.map((file) => (
+                            <TableRow key={file.id}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  {getFileIcon(file.mimeType)}
+                                  <span className="text-sm font-medium truncate max-w-[300px]">{file.name}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground" dir="ltr">{formatFileSize(file.size)}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { year: "numeric", month: "short", day: "numeric" })}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {file.downloadUrl ? (
+                                  <a href={file.downloadUrl} target="_blank" rel="noopener noreferrer" download>
+                                    <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50">
+                                      <Download className="h-4 w-4" />
+                                    </Button>
+                                  </a>
+                                ) : (
+                                  <a href={file.webUrl} target="_blank" rel="noopener noreferrer">
+                                    <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50">
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  </a>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div className="md:hidden space-y-3">
+                      {testResultsFiles.map((file) => (
+                        <div key={file.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
+                          <div className="shrink-0">{getFileIcon(file.mimeType)}</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{file.name}</p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                              <span dir="ltr">{formatFileSize(file.size)}</span>
+                              <span>·</span>
+                              <span>{new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { month: "short", day: "numeric" })}</span>
+                            </div>
+                          </div>
+                          {file.downloadUrl ? (
+                            <a href={file.downloadUrl} target="_blank" rel="noopener noreferrer" download>
+                              <Button variant="outline" size="sm" className="shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </a>
+                          ) : (
+                            <a href={file.webUrl} target="_blank" rel="noopener noreferrer">
+                              <Button variant="outline" size="sm" className="shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

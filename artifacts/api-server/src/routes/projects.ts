@@ -68,7 +68,8 @@ router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
   const {
     name, location, ownerEntity, supervisorEntity, contractor,
     startDate, expectedEndDate, status, noSchedule,
-    ownerCompanyId, contractorCompanyId, supervisorCompanyId
+    ownerCompanyId, contractorCompanyId, supervisorCompanyId,
+    onedriveTestResultsFolderId
   } = req.body;
 
   const isNoSchedule = noSchedule === true || noSchedule === "true";
@@ -93,6 +94,7 @@ router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
     ownerCompanyId: ownerCompanyId && ownerCompanyId !== "none" && !isNaN(Number(ownerCompanyId)) ? parseInt(ownerCompanyId, 10) : null,
     contractorCompanyId: contractorCompanyId && contractorCompanyId !== "none" && !isNaN(Number(contractorCompanyId)) ? parseInt(contractorCompanyId, 10) : null,
     supervisorCompanyId: supervisorCompanyId && supervisorCompanyId !== "none" && !isNaN(Number(supervisorCompanyId)) ? parseInt(supervisorCompanyId, 10) : null,
+    onedriveTestResultsFolderId: onedriveTestResultsFolderId || null,
   }).returning();
 
   const { logAudit } = await import("../lib/audit");
@@ -195,6 +197,7 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
   if (body.ownerCompanyId !== undefined) updateData.ownerCompanyId = parseCompanyId(body.ownerCompanyId);
   if (body.contractorCompanyId !== undefined) updateData.contractorCompanyId = parseCompanyId(body.contractorCompanyId);
   if (body.supervisorCompanyId !== undefined) updateData.supervisorCompanyId = parseCompanyId(body.supervisorCompanyId);
+  if (body.onedriveTestResultsFolderId !== undefined) updateData.onedriveTestResultsFolderId = body.onedriveTestResultsFolderId || null;
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });
