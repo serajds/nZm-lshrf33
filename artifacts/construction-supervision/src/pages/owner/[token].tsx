@@ -624,8 +624,15 @@ export default function OwnerPortal() {
           </Card>
         </div>
 
-        <Tabs defaultValue="progress" className="w-full mb-8" dir="rtl">
+        <Tabs defaultValue="gantt" className="w-full mb-8" dir="rtl">
           <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-6 gap-2 bg-transparent p-0 mb-6">
+            <TabsTrigger value="gantt" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-teal-500 data-[state=active]:bg-teal-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-teal-50/60 hover:border-teal-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
+              <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
+                <GanttChart className="h-5 w-5 text-teal-600" />
+              </div>
+              <span className="text-xs font-semibold">الجدول الزمني</span>
+              <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-teal-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
+            </TabsTrigger>
             <TabsTrigger value="progress" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-blue-500 data-[state=active]:bg-blue-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-blue-50/60 hover:border-blue-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
               <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
                 <BarChart3 className="h-5 w-5 text-blue-600" />
@@ -663,13 +670,6 @@ export default function OwnerPortal() {
               <span className="text-xs font-semibold">التوقفات</span>
               {(suspensions as ProjectSuspension[]).length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-violet-500 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{(suspensions as ProjectSuspension[]).length}</Badge>}
               <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-violet-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
-            </TabsTrigger>
-            <TabsTrigger value="gantt" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-teal-500 data-[state=active]:bg-teal-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-teal-50/60 hover:border-teal-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
-              <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
-                <GanttChart className="h-5 w-5 text-teal-600" />
-              </div>
-              <span className="text-xs font-semibold">الجدول الزمني</span>
-              <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-teal-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
             </TabsTrigger>
           </TabsList>
 
@@ -1263,10 +1263,10 @@ export default function OwnerPortal() {
                   const getBarStyle = (start: string, end: string) => {
                     const s = new Date(start).getTime();
                     const e = new Date(end).getTime();
-                    if (!Number.isFinite(s) || !Number.isFinite(e)) return { left: "0%", width: "0%" };
-                    const left = ((s - minMs) / rangeMs) * 100;
+                    if (!Number.isFinite(s) || !Number.isFinite(e)) return { right: "0%", width: "0%" };
+                    const right = ((s - minMs) / rangeMs) * 100;
                     const width = ((e - s) / rangeMs) * 100;
-                    return { left: `${Math.max(0, left)}%`, width: `${Math.max(0.5, width)}%` };
+                    return { right: `${Math.max(0, right)}%`, width: `${Math.max(0.5, width)}%` };
                   };
 
                   return (
@@ -1287,19 +1287,19 @@ export default function OwnerPortal() {
 
                       <div className="overflow-x-auto">
                         <div className="min-w-[700px]">
-                          <div className="relative h-8 border-b border-border mb-1" dir="ltr">
+                          <div className="relative h-8 border-b border-border mb-1">
                             {months.map((m, i) => (
                               <div
                                 key={i}
-                                className="absolute top-0 h-full flex items-center justify-center text-[10px] font-medium text-muted-foreground border-s border-border/50 px-1 truncate"
-                                style={{ left: `${m.left}%`, width: `${m.width}%` }}
+                                className="absolute top-0 h-full flex items-center justify-center text-[10px] font-medium text-muted-foreground border-e border-border/50 px-1 truncate"
+                                style={{ right: `${m.left}%`, width: `${m.width}%` }}
                               >
                                 {m.width > 5 ? m.label : ""}
                               </div>
                             ))}
                           </div>
 
-                          <div className="space-y-0" dir="ltr">
+                          <div className="space-y-0">
                             {activitiesWithDates.map((a: Activity, i: number) => {
                               const planned = getBarStyle(a.plannedStartDate!, a.plannedEndDate!);
                               const hasActual = a.actualStartDate && a.actualEndDate;
@@ -1310,13 +1310,12 @@ export default function OwnerPortal() {
                               return (
                                 <div
                                   key={a.id}
-                                  className={`group relative flex items-center border-b border-border/30 ${i % 2 === 0 ? "bg-muted/20" : ""} hover:bg-muted/40 transition-colors`}
+                                  className={`group relative flex flex-row-reverse items-center border-b border-border/30 ${i % 2 === 0 ? "bg-muted/20" : ""} hover:bg-muted/40 transition-colors`}
                                   style={{ height: hasActual ? "52px" : "40px" }}
                                 >
                                   <div
-                                    className="flex-shrink-0 flex items-center gap-1.5 pe-3 border-e border-border/50 h-full px-2"
+                                    className="flex-shrink-0 flex items-center gap-1.5 ps-3 border-s border-border/50 h-full px-2"
                                     style={{ width: "200px" }}
-                                    dir="rtl"
                                   >
                                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isCompleted ? "bg-emerald-500" : isDelayed ? "bg-red-500" : a.status === "in_progress" ? "bg-blue-500" : "bg-gray-300"}`} />
                                     <span className="text-xs font-medium truncate" title={a.name}>
@@ -1328,7 +1327,7 @@ export default function OwnerPortal() {
                                     {showToday && (
                                       <div
                                         className="absolute top-0 bottom-0 w-px bg-red-500 z-10 pointer-events-none"
-                                        style={{ left: `${todayPos}%` }}
+                                        style={{ right: `${todayPos}%` }}
                                       />
                                     )}
 
@@ -1350,20 +1349,20 @@ export default function OwnerPortal() {
                                       const s = new Date(a.actualStartDate!).getTime();
                                       if (!Number.isFinite(s)) return null;
                                       const end = today.getTime();
-                                      const left = ((s - minMs) / rangeMs) * 100;
+                                      const rightPos = ((s - minMs) / rangeMs) * 100;
                                       const width = ((end - s) / rangeMs) * 100;
                                       return (
                                         <div
                                           className={`absolute rounded-sm shadow-sm ${isDelayed ? "bg-red-500/60" : "bg-emerald-500/60"}`}
                                           style={{
-                                            left: `${Math.max(0, left)}%`,
+                                            right: `${Math.max(0, rightPos)}%`,
                                             width: `${Math.max(0.5, width)}%`,
                                             top: "28px",
                                             height: "14px",
                                           }}
                                           title={`الفعلي: ${fmtDate(a.actualStartDate!)} → مستمر`}
                                         >
-                                          <div className="absolute inset-y-0 end-0 w-2 bg-gradient-to-l from-white/60 to-transparent rounded-e-sm" />
+                                          <div className="absolute inset-y-0 start-0 w-2 bg-gradient-to-r from-white/60 to-transparent rounded-s-sm" />
                                         </div>
                                       );
                                     })()}
@@ -1373,9 +1372,9 @@ export default function OwnerPortal() {
                             })}
                           </div>
 
-                          <div className="flex justify-between text-[10px] text-muted-foreground mt-1 px-1" dir="ltr">
-                            <span className="tabular-nums">{fmtDate(minDate.toISOString())}</span>
+                          <div className="flex justify-between text-[10px] text-muted-foreground mt-1 px-1">
                             <span className="tabular-nums">{fmtDate(maxDate.toISOString())}</span>
+                            <span className="tabular-nums">{fmtDate(minDate.toISOString())}</span>
                           </div>
                         </div>
                       </div>
