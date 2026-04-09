@@ -255,7 +255,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                   {selectedRole === "engineer" && sortedGroups.length > 0 && (
                     <div className="space-y-2">
                       <Label>المجموعات المسموح بتعديلها</Label>
-                      <p className="text-xs text-muted-foreground">إذا لم تختر أي مجموعة، سيتمكن المهندس من تعديل جميع الأنشطة</p>
+                      <p className="text-xs text-muted-foreground">إذا لم تختر أي مجموعة، سيتمكن المهندس من تعديل جميع البنود</p>
                       <div className="space-y-2 max-h-[160px] overflow-y-auto border rounded-md p-2">
                         {sortedGroups.map(g => (
                           <label key={g.id} className="flex items-center gap-2 cursor-pointer">
@@ -361,7 +361,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                               className="h-6 w-6"
                               onClick={() => {
                                 if (sortedGroups.length === 0) {
-                                  toast({ title: "لا توجد مجموعات أنشطة", description: "يرجى إنشاء مجموعات أنشطة أولاً من صفحة الأنشطة" });
+                                  toast({ title: "لا توجد مجموعات بنود", description: "يرجى إنشاء مجموعات بنود أولاً من صفحة بنود الأعمال" });
                                   return;
                                 }
                                 openGroupsEditor(member);
@@ -417,7 +417,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <p className="text-sm text-muted-foreground">
-              حدد المجموعات التي يمكن لهذا المهندس تعديل أنشطتها. إذا لم تحدد أي مجموعة، سيتمكن من تعديل جميع الأنشطة.
+              حدد المجموعات التي يمكن لهذا المهندس تعديل بنودها. إذا لم تحدد أي مجموعة، سيتمكن من تعديل جميع البنود.
             </p>
             <div className="space-y-2 max-h-[200px] overflow-y-auto border rounded-md p-3">
               {sortedGroups.map(g => (

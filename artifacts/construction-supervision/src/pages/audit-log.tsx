@@ -35,7 +35,7 @@ function authFetch(url: string) {
 
 const ACTION_LABELS: Record<string, string> = { create: "إنشاء", update: "تعديل", delete: "حذف" };
 const ACTION_COLORS: Record<string, string> = { create: "bg-green-100 text-green-700", update: "bg-blue-100 text-blue-700", delete: "bg-red-100 text-red-700" };
-const ENTITY_LABELS: Record<string, string> = { project: "مشروع", activity: "نشاط", report: "تقرير", user: "مستخدم" };
+const ENTITY_LABELS: Record<string, string> = { project: "مشروع", activity: "بند عمل", report: "تقرير", user: "مستخدم" };
 
 const ACTION_ICONS: Record<string, typeof Plus> = { create: Plus, update: Edit2, delete: Trash2 };
 
@@ -83,7 +83,7 @@ export default function AuditLogPage() {
                   <SelectContent dir="rtl">
                     <SelectItem value="all">كل الأنواع</SelectItem>
                     <SelectItem value="project">مشروع</SelectItem>
-                    <SelectItem value="activity">نشاط</SelectItem>
+                    <SelectItem value="activity">بند عمل</SelectItem>
                     <SelectItem value="report">تقرير</SelectItem>
                     <SelectItem value="user">مستخدم</SelectItem>
                   </SelectContent>

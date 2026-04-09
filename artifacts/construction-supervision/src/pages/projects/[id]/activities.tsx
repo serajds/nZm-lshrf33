@@ -112,7 +112,7 @@ const STATUS_OPTIONS = [
 ] as const;
 
 const createActivitySchema = (isNoSchedule: boolean) => z.object({
-  name: z.string().min(1, "اسم النشاط مطلوب"),
+  name: z.string().min(1, "اسم البند مطلوب"),
   plannedStartDate: isNoSchedule ? z.string().optional().default("") : z.string().min(1, "تاريخ البداية المخطط مطلوب"),
   plannedEndDate: isNoSchedule ? z.string().optional().default("") : z.string().min(1, "تاريخ النهاية المخطط مطلوب"),
   actualStartDate: z.string().optional().nullable(),
@@ -296,7 +296,7 @@ export default function ProjectActivities() {
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  usePageTitle("الأنشطة");
+  usePageTitle("بنود الأعمال");
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -398,7 +398,7 @@ export default function ProjectActivities() {
       });
       invalidate();
     } catch {
-      toast({ variant: "destructive", title: "فشل نقل النشاط" });
+      toast({ variant: "destructive", title: "فشل نقل البند" });
     } finally {
       setUpdatingId(null);
     }
@@ -576,7 +576,7 @@ export default function ProjectActivities() {
     try {
       await deleteActivity.mutateAsync({ projectId, id: deletingId });
       invalidate();
-      toast({ title: "تم حذف النشاط" });
+      toast({ title: "تم حذف البند" });
     } catch {
       toast({ variant: "destructive", title: "فشل الحذف" });
     } finally {
@@ -920,7 +920,7 @@ export default function ProjectActivities() {
           <CardHeader className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-base">الأنشطة</CardTitle>
+                <CardTitle className="text-base">بنود الأعمال</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">انقر على الحالة أو نسبة الإنجاز لتحديثها مباشرةً</p>
               </div>
             </div>
@@ -1027,18 +1027,18 @@ export default function ProjectActivities() {
             }}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1.5 text-xs sm:text-sm mr-auto">
-                  <Plus className="h-4 w-4" /> إضافة نشاط
+                  <Plus className="h-4 w-4" /> إضافة بند
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[600px]" dir="rtl">
                 <DialogHeader>
-                  <DialogTitle>{editingId ? "تعديل نشاط" : "نشاط جديد"}</DialogTitle>
+                  <DialogTitle>{editingId ? "تعديل بند" : "بند جديد"}</DialogTitle>
                 </DialogHeader>
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
                     <FormField control={form.control} name="name" render={({ field }) => (
                       <FormItem>
-                        <FormLabel>اسم النشاط</FormLabel>
+                        <FormLabel>اسم البند</FormLabel>
                         <FormControl><Input {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1260,7 +1260,7 @@ export default function ProjectActivities() {
                   <Table className="min-w-[720px]">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-right w-[220px]">النشاط</TableHead>
+                        <TableHead className="text-right w-[220px]">البند</TableHead>
                         <TableHead className="text-right w-[190px]">الفترة المخططة</TableHead>
                         <TableHead className="text-center w-[140px]">التأخر / التقدم</TableHead>
                         <TableHead className="text-center w-[160px]">الإنجاز (مخطط/فعلي)</TableHead>
@@ -1274,13 +1274,13 @@ export default function ProjectActivities() {
                           <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                             <div className="flex flex-col items-center gap-2">
                               <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
-                              <span className="text-sm">جاري تحميل الأنشطة...</span>
+                              <span className="text-sm">جاري تحميل بنود الأعمال...</span>
                             </div>
                           </TableCell>
                         </TableRow>
                       ) : allActs.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</TableCell>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد بنود — أضف أول بند</TableCell>
                         </TableRow>
                       ) : groups.length === 0 ? (
                         <SortableContext items={allActs.map(a => a.id)} strategy={verticalListSortingStrategy}>
@@ -1303,7 +1303,7 @@ export default function ProjectActivities() {
                                       {isCollapsed ? <ChevronLeft className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                                       <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                                       <span className="font-semibold text-sm">{g.name}</span>
-                                      <span className="text-xs text-muted-foreground">({groupActs.length} نشاط)</span>
+                                      <span className="text-xs text-muted-foreground">({groupActs.length} بند)</span>
                                       <span className="text-xs text-muted-foreground mr-2">{groupProgress}%</span>
                                     </div>
                                   </TableCell>
@@ -1339,7 +1339,7 @@ export default function ProjectActivities() {
                                       <div className="flex items-center gap-2">
                                         {isCollapsed ? <ChevronLeft className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                                         <span className="font-semibold text-sm text-muted-foreground">بدون مجموعة</span>
-                                        <span className="text-xs text-muted-foreground">({ungrouped.length} نشاط)</span>
+                                        <span className="text-xs text-muted-foreground">({ungrouped.length} بند)</span>
                                       </div>
                                     </TableCell>
                                   </TableRow>
@@ -1362,10 +1362,10 @@ export default function ProjectActivities() {
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
-                <span className="text-sm text-muted-foreground">جاري تحميل الأنشطة...</span>
+                <span className="text-sm text-muted-foreground">جاري تحميل بنود الأعمال...</span>
               </div>
             ) : (activities ?? []).length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</div>
+              <div className="text-center py-8 text-muted-foreground">لا يوجد بنود — أضف أول بند</div>
             ) : (() => {
               const allActs = activities ?? [];
               const sortedGroups = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -1493,7 +1493,7 @@ export default function ProjectActivities() {
                             {isCollapsed ? <ChevronLeft className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                             <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                             <span className="font-semibold text-sm flex-1 text-right truncate">{g.name}</span>
-                            <span className="text-xs text-muted-foreground shrink-0">{groupActs.length} نشاط</span>
+                            <span className="text-xs text-muted-foreground shrink-0">{groupActs.length} بند</span>
                             <span className="text-xs font-medium shrink-0">{groupProgress}%</span>
                           </button>
                         </div>
@@ -1517,7 +1517,7 @@ export default function ProjectActivities() {
                         >
                           {isCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                           <span className="font-semibold text-sm flex-1 text-right text-muted-foreground">بدون مجموعة</span>
-                          <span className="text-xs text-muted-foreground">{ungrouped.length} نشاط</span>
+                          <span className="text-xs text-muted-foreground">{ungrouped.length} بند</span>
                         </button>
                         {!isCollapsed && (
                           <div className="space-y-2 mb-3">
@@ -1539,7 +1539,7 @@ export default function ProjectActivities() {
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
             <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
-            <AlertDialogDescription>هل أنت متأكد من حذف هذا النشاط؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
+            <AlertDialogDescription>هل أنت متأكد من حذف هذا البند؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row-reverse gap-2">
             <AlertDialogCancel>إلغاء</AlertDialogCancel>

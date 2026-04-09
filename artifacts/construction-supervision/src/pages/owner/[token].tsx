@@ -465,7 +465,7 @@ export default function OwnerPortal() {
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <ActivityIcon className="h-4 w-4" />
-                <span className="text-xs font-medium">الأنشطة</span>
+                <span className="text-xs font-medium">بنود الأعمال</span>
               </div>
               <div className="text-3xl font-black">{sm.activitiesCompleted}<span className="text-lg font-normal text-muted-foreground"> / {sm.activitiesTotal}</span></div>
               <div className="flex gap-2 mt-2 text-xs">
@@ -529,7 +529,7 @@ export default function OwnerPortal() {
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-3">
                 <BarChart3 className="h-4 w-4" />
-                <span className="text-sm font-medium">توزيع حالات الأنشطة</span>
+                <span className="text-sm font-medium">توزيع حالات بنود الأعمال</span>
               </div>
               {pieData.length > 0 ? (
                 <div className="flex items-center gap-4">
@@ -567,7 +567,7 @@ export default function OwnerPortal() {
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-8 text-sm text-muted-foreground">لا توجد أنشطة</div>
+                <div className="text-center py-8 text-sm text-muted-foreground">لا توجد بنود أعمال</div>
               )}
             </CardContent>
           </Card>
@@ -599,7 +599,7 @@ export default function OwnerPortal() {
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">الأنشطة المكتملة</span>
+                    <span className="text-muted-foreground">البنود المكتملة</span>
                     <span className="font-medium">{sm.activitiesTotal > 0 ? Math.round((sm.activitiesCompleted / sm.activitiesTotal) * 100) : 0}%</span>
                   </div>
                   <div className="h-2.5 rounded-full bg-muted overflow-hidden" dir="ltr">
@@ -710,7 +710,7 @@ export default function OwnerPortal() {
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <ActivityIcon className="h-5 w-5 text-primary" />
-                    توزيع حالة الأنشطة
+                    توزيع حالة بنود الأعمال
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -738,7 +738,7 @@ export default function OwnerPortal() {
                       </div>
                     </>
                   ) : (
-                    <div className="text-center py-10 text-muted-foreground text-sm">لا توجد أنشطة</div>
+                    <div className="text-center py-10 text-muted-foreground text-sm">لا توجد بنود أعمال</div>
                   )}
                 </CardContent>
               </Card>
@@ -845,7 +845,7 @@ export default function OwnerPortal() {
                         return (
                           <div className="pt-3 border-t">
                             <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
-                              <ActivityIcon className="h-4 w-4 text-blue-500" /> الأنشطة ({reportActivities.length})
+                              <ActivityIcon className="h-4 w-4 text-blue-500" /> بنود الأعمال ({reportActivities.length})
                               {!report.activitiesSnapshot && (
                                 <span className="text-[10px] text-muted-foreground font-normal">(بيانات حالية)</span>
                               )}
@@ -854,7 +854,7 @@ export default function OwnerPortal() {
                               <Table className="min-w-[500px]">
                                 <TableHeader>
                                   <TableRow className="bg-muted/40">
-                                    <TableHead className="text-right text-xs py-2">النشاط</TableHead>
+                                    <TableHead className="text-right text-xs py-2">البند</TableHead>
                                     <TableHead className="text-center text-xs py-2 w-24">المخطط %</TableHead>
                                     <TableHead className="text-center text-xs py-2 w-24">الفعلي %</TableHead>
                                     <TableHead className="text-center text-xs py-2 w-28">الحالة</TableHead>
@@ -1135,7 +1135,7 @@ export default function OwnerPortal() {
                   <GanttChart className="h-5 w-5 text-teal-600" />
                   الجدول الزمني للمشروع
                 </CardTitle>
-                <CardDescription>عرض الجدول الزمني للأنشطة مع التواريخ المخططة والفعلية</CardDescription>
+                <CardDescription>عرض الجدول الزمني لبنود الأعمال مع التواريخ المخططة والفعلية</CardDescription>
               </CardHeader>
               <CardContent>
                 {(() => {
@@ -1147,7 +1147,7 @@ export default function OwnerPortal() {
                       <div className="py-16 text-center">
                         <GanttChart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                         <h3 className="text-lg font-semibold mb-1">لا توجد بيانات للجدول الزمني</h3>
-                        <p className="text-sm text-muted-foreground">لا توجد أنشطة بتواريخ مخططة لعرض الجدول الزمني</p>
+                        <p className="text-sm text-muted-foreground">لا توجد بنود أعمال بتواريخ مخططة لعرض الجدول الزمني</p>
                       </div>
                     );
                   }
@@ -1168,7 +1168,7 @@ export default function OwnerPortal() {
                       <div className="py-16 text-center">
                         <GanttChart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                         <h3 className="text-lg font-semibold mb-1">لا توجد بيانات صالحة</h3>
-                        <p className="text-sm text-muted-foreground">التواريخ المسجلة للأنشطة غير صالحة للعرض</p>
+                        <p className="text-sm text-muted-foreground">التواريخ المسجلة لبنود الأعمال غير صالحة للعرض</p>
                       </div>
                     );
                   }
@@ -1320,7 +1320,7 @@ export default function OwnerPortal() {
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                           <div className="p-3 rounded-lg bg-muted/50">
                             <div className="text-2xl font-bold text-teal-600">{activitiesWithDates.length}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">إجمالي الأنشطة</div>
+                            <div className="text-xs text-muted-foreground mt-0.5">إجمالي البنود</div>
                           </div>
                           <div className="p-3 rounded-lg bg-muted/50">
                             <div className="text-2xl font-bold text-emerald-600">
@@ -1348,7 +1348,7 @@ export default function OwnerPortal() {
                           <TableHeader>
                             <TableRow className="bg-muted/40">
                               <TableHead className="text-right w-8">#</TableHead>
-                              <TableHead className="text-right">النشاط</TableHead>
+                              <TableHead className="text-right">البند</TableHead>
                               <TableHead className="text-center">البدء المخطط</TableHead>
                               <TableHead className="text-center">الانتهاء المخطط</TableHead>
                               <TableHead className="text-center">المدة (أيام)</TableHead>

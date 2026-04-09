@@ -202,8 +202,8 @@ export default function Dashboard() {
         {[
           { label: "مكتملة",    value: summary?.completedProjects ?? 0, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
           { label: "متوقفة",    value: summary?.suspendedProjects ?? 0, icon: PauseCircle,  color: "text-orange-600", bg: "bg-orange-50",  border: "border-orange-200" },
-          { label: "الأنشطة",   value: totalActivities,                  icon: ActivitySquare,color: "text-blue-600", bg: "bg-blue-50",    border: "border-blue-200" },
-          { label: "أنشطة مكتملة", value: completedActs,                icon: BarChart3,   color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" },
+          { label: "بنود الأعمال",   value: totalActivities,                  icon: ActivitySquare,color: "text-blue-600", bg: "bg-blue-50",    border: "border-blue-200" },
+          { label: "بنود مكتملة", value: completedActs,                icon: BarChart3,   color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" },
         ].map(s => (
           <Card key={s.label} className={`border ${s.border} shadow-sm`}>
             <CardContent className="p-3 flex items-center gap-3">
@@ -304,7 +304,7 @@ export default function Dashboard() {
         <Card className="shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              ملخص الأنشطة — {totalActivities} نشاط إجمالاً
+              ملخص بنود الأعمال — {totalActivities} بند إجمالاً
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -336,9 +336,9 @@ export default function Dashboard() {
             </div>
             <div>
               <CardTitle className="text-sm font-semibold text-red-700">
-                تنبيهات التأخر — {delayedActivitiesList.length} نشاط متأخر
+                تنبيهات التأخر — {delayedActivitiesList.length} بند متأخر
               </CardTitle>
-              <p className="text-xs text-red-500/80 mt-0.5">أنشطة تجاوزت موعد انتهائها المخطط</p>
+              <p className="text-xs text-red-500/80 mt-0.5">بنود تجاوزت موعد انتهائها المخطط</p>
             </div>
           </CardHeader>
           <CardContent>

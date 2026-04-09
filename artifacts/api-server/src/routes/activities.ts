@@ -68,7 +68,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
   } = req.body;
 
   if (!name) {
-    res.status(400).json({ error: "اسم النشاط مطلوب" });
+    res.status(400).json({ error: "اسم البند مطلوب" });
     return;
   }
 
@@ -122,7 +122,7 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   if (user?.role !== "admin") {
     const allowed = await checkGroupPermission(user?.userId, projectId, id);
     if (!allowed) {
-      res.status(403).json({ error: "ليس لديك صلاحية تعديل هذا النشاط" });
+      res.status(403).json({ error: "ليس لديك صلاحية تعديل هذا البند" });
       return;
     }
   }
@@ -357,7 +357,7 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
   if (user?.role !== "admin") {
     const allowed = await checkGroupPermission(user?.userId, projectId, id);
     if (!allowed) {
-      res.status(403).json({ error: "ليس لديك صلاحية حذف هذا النشاط" });
+      res.status(403).json({ error: "ليس لديك صلاحية حذف هذا البند" });
       return;
     }
   }

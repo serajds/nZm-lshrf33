@@ -355,7 +355,7 @@ export default function ProjectDetails() {
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-muted-foreground mb-1">الأنشطة المكتملة</p>
+                <p className="text-xs text-muted-foreground mb-1">البنود المكتملة</p>
                 <p className="text-xl font-bold tabular-nums">
                   {summary?.activitiesCompleted ?? 0}
                   <span className="text-sm font-normal text-muted-foreground"> / {summary?.activitiesTotal ?? 0}</span>
@@ -363,7 +363,7 @@ export default function ProjectDetails() {
               </div>
               {!summary?.noSchedule && (
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">أنشطة متأخرة</p>
+                  <p className="text-xs text-muted-foreground mb-1">بنود متأخرة</p>
                   <p className="text-xl font-bold tabular-nums text-destructive">
                     {summary?.activitiesDelayed ?? 0}
                   </p>

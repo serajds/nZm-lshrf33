@@ -131,7 +131,7 @@ export default function ProjectSuspensions() {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       if (data?.activitiesShifted) {
-        toast({ title: "تم إضافة التوقف وترحيل الجدول الزمني", description: "تم تأجيل تواريخ الأنشطة اللاحقة وتاريخ نهاية المشروع" });
+        toast({ title: "تم إضافة التوقف وترحيل الجدول الزمني", description: "تم تأجيل تواريخ البنود اللاحقة وتاريخ نهاية المشروع" });
       } else {
         toast({ title: "تم إضافة التوقف بنجاح", description: "لم يتم ترحيل الجدول الزمني" });
       }
@@ -357,7 +357,7 @@ export default function ProjectSuspensions() {
                               ترحيل الجدول الزمني
                             </FormLabel>
                             <p className="text-xs text-muted-foreground">
-                              تأجيل تواريخ الأنشطة اللاحقة وتاريخ نهاية المشروع بعدد أيام التوقف
+                              تأجيل تواريخ البنود اللاحقة وتاريخ نهاية المشروع بعدد أيام التوقف
                             </p>
                           </div>
                         </div>
