@@ -625,7 +625,7 @@ export default function OwnerPortal() {
         </div>
 
         <Tabs defaultValue="gantt" className="w-full mb-8" dir="rtl">
-          <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-6 gap-2 bg-transparent p-0 mb-6">
+          <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-5 gap-2 bg-transparent p-0 mb-6">
             <TabsTrigger value="gantt" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-teal-500 data-[state=active]:bg-teal-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-teal-50/60 hover:border-teal-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
               <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
                 <GanttChart className="h-5 w-5 text-teal-600" />
@@ -639,13 +639,6 @@ export default function OwnerPortal() {
               </div>
               <span className="text-xs font-semibold">سير العمل</span>
               <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-blue-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
-            </TabsTrigger>
-            <TabsTrigger value="activities" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-emerald-500 data-[state=active]:bg-emerald-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-emerald-50/60 hover:border-emerald-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
-              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
-                <ActivityIcon className="h-5 w-5 text-emerald-600" />
-              </div>
-              <span className="text-xs font-semibold">الأنشطة</span>
-              <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-emerald-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
             </TabsTrigger>
             <TabsTrigger value="reports" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-indigo-500 data-[state=active]:bg-indigo-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-indigo-50/60 hover:border-indigo-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
               <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
@@ -777,62 +770,6 @@ export default function OwnerPortal() {
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="activities">
-            <Card className="shadow-md border-0">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <ActivityIcon className="h-5 w-5 text-primary" />
-                  جدول الأنشطة التفصيلي
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 overflow-x-auto">
-                <Table className="min-w-[700px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right w-8">#</TableHead>
-                      <TableHead className="text-right">النشاط</TableHead>
-                      <TableHead className="text-center">الحالة</TableHead>
-                      <TableHead className="text-center">المخطط</TableHead>
-                      <TableHead className="text-center">الفعلي</TableHead>
-                      <TableHead className="text-center">الانحراف</TableHead>
-                      <TableHead className="text-center w-40">مؤشر الأداء</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {activities.map((a: Activity, i: number) => {
-                      const dev = a.actualProgress - a.plannedProgress;
-                      const devColor = dev < -10 ? 'text-red-600' : dev < 0 ? 'text-amber-600' : dev > 0 ? 'text-emerald-600' : 'text-muted-foreground';
-                      const barColor = dev < -10 ? 'bg-red-500' : dev < 0 ? 'bg-amber-500' : 'bg-emerald-500';
-                      const statusBadge = (() => {
-                        switch (a.status) {
-                          case 'completed': return <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">مكتمل</Badge>;
-                          case 'active': return <Badge className="bg-blue-100 text-blue-700 text-[10px]">نشط</Badge>;
-                          case 'delayed': return <Badge className="bg-red-100 text-red-700 text-[10px]">متأخر</Badge>;
-                          default: return <Badge variant="outline" className="text-[10px]">لم يبدأ</Badge>;
-                        }
-                      })();
-                      return (
-                        <TableRow key={a.id} className="hover:bg-muted/50">
-                          <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
-                          <TableCell className="font-medium text-sm">{a.name}</TableCell>
-                          <TableCell className="text-center">{statusBadge}</TableCell>
-                          <TableCell className="text-center text-sm" dir="ltr">{a.plannedProgress}%</TableCell>
-                          <TableCell className="text-center text-sm" dir="ltr">{a.actualProgress}%</TableCell>
-                          <TableCell className={`text-center text-sm font-bold ${devColor}`} dir="ltr">{dev > 0 ? '+' : ''}{dev}%</TableCell>
-                          <TableCell>
-                            <div className="h-2 rounded-full bg-muted overflow-hidden" dir="ltr">
-                              <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${Math.min(100, a.actualProgress)}%` }} />
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
               </CardContent>
             </Card>
           </TabsContent>
