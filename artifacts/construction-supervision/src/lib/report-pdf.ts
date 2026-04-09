@@ -107,11 +107,11 @@ function buildPrintHTML(data: ReportPdfData): string {
 
   const activitiesHTML = acts.length > 0 ? `
     <div class="section avoid-break">
-      <div class="section-title blue-title">📋 حالة الأنشطة</div>
+      <div class="section-title blue-title">📋 حالة بنود الأعمال</div>
       <table class="tbl">
         <thead>
           <tr>
-            <th class="th" style="text-align:right;width:40%">النشاط</th>
+            <th class="th" style="text-align:right;width:40%">البند</th>
             <th class="th tc" style="width:12%">مخطط %</th>
             <th class="th tc" style="width:12%">فعلي %</th>
             <th class="th tc" style="width:16%">الحالة</th>
@@ -456,7 +456,7 @@ ${data.startDate && data.expectedEndDate ? `<div class="tl-box avoid-break">
 
 <!-- ACTIVITY SUMMARY -->
 ${acts.length > 0 ? `<div class="act-box avoid-break">
-  <div class="act-title">ملخص حالة الأنشطة (${acts.length} نشاط)</div>
+  <div class="act-title">ملخص حالة بنود الأعمال (${acts.length} بند)</div>
   <div class="act-grid">
     <div class="act-item">
       <div class="act-num" style="color:#16a34a">${completedCount}</div>
@@ -675,7 +675,7 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
   </div>
 
   <div class="section">
-    <div class="section-title">📈 ملخص الأنشطة (${total} نشاط)</div>
+    <div class="section-title">📈 ملخص بنود الأعمال (${total} بند)</div>
     <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
       <div class="metric" style="border-color:#10b981;padding:10px">
         <div class="value" style="color:#10b981;font-size:22px">${completed}</div>
@@ -696,7 +696,7 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
     </div>
 
     ${total > 0 ? `<table class="activity-table">
-      <thead><tr><th>#</th><th>اسم النشاط</th><th>المخطط</th><th>الفعلي</th><th>الفرق</th><th>الحالة</th></tr></thead>
+      <thead><tr><th>#</th><th>اسم البند</th><th>المخطط</th><th>الفعلي</th><th>الفرق</th><th>الحالة</th></tr></thead>
       <tbody>${data.activities.map((a, i) => {
         const diff = a.actualProgress - a.plannedProgress;
         return `<tr>

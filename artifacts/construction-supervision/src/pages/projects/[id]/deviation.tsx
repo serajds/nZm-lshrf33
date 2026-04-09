@@ -263,7 +263,7 @@ export default function ProjectDeviation() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2">
                   <Activity className="h-5 w-5 text-primary" />
-                  تحليل الانحراف حسب النشاط
+                  تحليل الانحراف حسب البند
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -322,7 +322,7 @@ export default function ProjectDeviation() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <AlertTriangle className={`h-5 w-5 ${criticalActivities.length > 0 ? 'text-red-500' : 'text-muted-foreground'}`} />
-                  الأنشطة الحرجة المتأخرة
+                  البنود الحرجة المتأخرة
                   {criticalActivities.length > 0 && (
                     <Badge variant="destructive" className="mr-2">{criticalActivities.length}</Badge>
                   )}
@@ -332,7 +332,7 @@ export default function ProjectDeviation() {
                 {criticalActivities.length === 0 ? (
                   <div className="text-center py-8">
                     <CheckCircle2 className="h-10 w-10 mx-auto text-emerald-500 mb-2" />
-                    <p className="text-sm text-muted-foreground">لا توجد أنشطة متأخرة بشكل حرج</p>
+                    <p className="text-sm text-muted-foreground">لا توجد بنود متأخرة بشكل حرج</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -371,7 +371,7 @@ export default function ProjectDeviation() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <TrendingUp className={`h-5 w-5 ${aheadActivities.length > 0 ? 'text-emerald-500' : 'text-muted-foreground'}`} />
-                  الأنشطة المتقدمة
+                  البنود المتقدمة
                   {aheadActivities.length > 0 && (
                     <Badge className="mr-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">{aheadActivities.length}</Badge>
                   )}
@@ -381,7 +381,7 @@ export default function ProjectDeviation() {
                 {aheadActivities.length === 0 ? (
                   <div className="text-center py-8">
                     <TrendingDown className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
-                    <p className="text-sm text-muted-foreground">لا توجد أنشطة متقدمة عن الجدول</p>
+                    <p className="text-sm text-muted-foreground">لا توجد بنود متقدمة عن الجدول</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -416,7 +416,7 @@ export default function ProjectDeviation() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <BarChart3 className="h-5 w-5 text-primary" />
-                  جدول تفصيلي لجميع الأنشطة
+                  جدول تفصيلي لجميع البنود
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -424,7 +424,7 @@ export default function ProjectDeviation() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-muted-foreground">
-                        <th className="py-3 px-3 text-right font-medium">النشاط</th>
+                        <th className="py-3 px-3 text-right font-medium">البند</th>
                         <th className="py-3 px-3 text-center font-medium">المخطط</th>
                         <th className="py-3 px-3 text-center font-medium">الفعلي</th>
                         <th className="py-3 px-3 text-center font-medium">الانحراف</th>
@@ -466,7 +466,7 @@ export default function ProjectDeviation() {
           <CardContent className="py-16 text-center">
             <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-2">لا تتوفر بيانات كافية</h3>
-            <p className="text-sm text-muted-foreground">يرجى التأكد من وجود أنشطة مسجلة في المشروع لعرض تحليل الانحراف.</p>
+            <p className="text-sm text-muted-foreground">يرجى التأكد من وجود بنود أعمال مسجلة في المشروع لعرض تحليل الانحراف.</p>
           </CardContent>
         </Card>
       )}

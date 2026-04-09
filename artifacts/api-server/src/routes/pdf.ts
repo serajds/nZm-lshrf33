@@ -266,7 +266,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
 
   // Stats row (activities/reports)
   const statItems = [
-    { label: "إجمالي الأنشطة", value: String(activities.length) },
+    { label: "إجمالي البنود", value: String(activities.length) },
     { label: "مكتملة", value: String(activities.filter(a => a.status === "completed").length), color: C.success },
     { label: "قيد التنفيذ", value: String(activities.filter(a => a.status === "in_progress").length), color: C.accent },
     { label: "متأخرة", value: String(activities.filter(a => a.status === "delayed").length), color: C.danger },
@@ -290,7 +290,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     doc.addPage();
     if (hasFont) doc.font("Amiri");
     y = MARGIN;
-    y = drawSectionHeader(doc, "جدول الأنشطة والإنجاز", y);
+    y = drawSectionHeader(doc, "جدول بنود الأعمال والإنجاز", y);
 
     const today = new Date();
 
@@ -305,7 +305,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
           { text: "الفترة الزمنية", x: MARGIN + 4, w: cols.period },
           { text: "الحالة", x: MARGIN + cols.period + 4, w: cols.status },
           { text: "فعلي%", x: MARGIN + cols.period + cols.status + 4, w: cols.actual },
-          { text: "اسم النشاط", x: MARGIN + cols.period + cols.status + cols.actual + 4, w: cols.name },
+          { text: "اسم البند", x: MARGIN + cols.period + cols.status + cols.actual + 4, w: cols.name },
         ]
       : [
           { text: "الفترة الزمنية", x: MARGIN + 4, w: cols.period },
@@ -313,7 +313,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
           { text: "الانحراف", x: MARGIN + cols.period + cols.status + 4, w: cols.dev },
           { text: "فعلي%", x: MARGIN + cols.period + cols.status + cols.dev + 4, w: cols.actual },
           { text: "مخطط%", x: MARGIN + cols.period + cols.status + cols.dev + cols.actual + 4, w: cols.planned },
-          { text: "اسم النشاط", x: MARGIN + cols.period + cols.status + cols.dev + cols.actual + cols.planned + 4, w: cols.name },
+          { text: "اسم البند", x: MARGIN + cols.period + cols.status + cols.dev + cols.actual + cols.planned + 4, w: cols.name },
         ];
     heads.forEach(h => {
       setFont(8, C.textMuted);
@@ -380,7 +380,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     y = ensurePage(doc, 30);
     y += 8;
     setFont(8, C.textMuted);
-    doc.text("الأنشطة المكتملة بلون أخضر — المتأخرة بلون أحمر — قيد التنفيذ بلون أزرق", MARGIN, y, { width: CONTENT_W, align: "right" });
+    doc.text("البنود المكتملة بلون أخضر — المتأخرة بلون أحمر — قيد التنفيذ بلون أزرق", MARGIN, y, { width: CONTENT_W, align: "right" });
   }
 
   // ════════════════════════════════════════════

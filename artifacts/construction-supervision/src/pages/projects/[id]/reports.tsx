@@ -437,7 +437,7 @@ export default function ProjectReports() {
                           </FormControl>
                           {autoVal !== null && (
                             <p className="text-xs text-muted-foreground mt-1">
-                              محتسب من المتوسط الموزون لجميع أنشطة المشروع ({(activities ?? []).length} نشاط)
+                              محتسب من المتوسط الموزون لجميع بنود المشروع ({(activities ?? []).length} بند)
                             </p>
                           )}
                           <FormMessage />
