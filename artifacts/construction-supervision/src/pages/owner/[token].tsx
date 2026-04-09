@@ -1247,11 +1247,11 @@ export default function OwnerPortal() {
                               return (
                                 <div
                                   key={a.id}
-                                  className={`group relative flex flex-row-reverse items-center border-b border-border/30 ${i % 2 === 0 ? "bg-muted/20" : ""} hover:bg-muted/40 transition-colors`}
+                                  className={`group relative flex items-center border-b border-border/30 ${i % 2 === 0 ? "bg-muted/20" : ""} hover:bg-muted/40 transition-colors`}
                                   style={{ height: hasActual ? "52px" : "40px" }}
                                 >
                                   <div
-                                    className="flex-shrink-0 flex items-center gap-1.5 ps-3 border-s border-border/50 h-full px-2"
+                                    className="flex-shrink-0 flex items-center gap-1.5 border-e border-border/50 h-full px-2"
                                     style={{ width: "200px" }}
                                   >
                                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isCompleted ? "bg-emerald-500" : isDelayed ? "bg-red-500" : a.status === "in_progress" ? "bg-blue-500" : "bg-gray-300"}`} />
@@ -1310,8 +1310,8 @@ export default function OwnerPortal() {
                           </div>
 
                           <div className="flex justify-between text-[10px] text-muted-foreground mt-1 px-1">
-                            <span className="tabular-nums">{fmtDate(maxDate.toISOString())}</span>
                             <span className="tabular-nums">{fmtDate(minDate.toISOString())}</span>
+                            <span className="tabular-nums">{fmtDate(maxDate.toISOString())}</span>
                           </div>
                         </div>
                       </div>
