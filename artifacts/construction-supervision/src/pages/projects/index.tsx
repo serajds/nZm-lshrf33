@@ -64,6 +64,7 @@ const projectSchema = z.object({
   ownerCompanyId: z.string().optional(),
   contractorCompanyId: z.string().optional(),
   supervisorCompanyId: z.string().optional(),
+  onedriveTestResultsFolderId: z.string().optional(),
 }).refine((data) => {
   if (data.noSchedule) return true;
   return !!data.startDate && data.startDate.length > 0;
@@ -167,6 +168,7 @@ export default function Projects() {
       ownerCompanyId: (p as any).ownerCompanyId ? String((p as any).ownerCompanyId) : "",
       contractorCompanyId: (p as any).contractorCompanyId ? String((p as any).contractorCompanyId) : "",
       supervisorCompanyId: (p as any).supervisorCompanyId ? String((p as any).supervisorCompanyId) : "",
+      onedriveTestResultsFolderId: (p as any).onedriveTestResultsFolderId || "",
     });
     setIsDialogOpen(true);
   };
@@ -183,6 +185,7 @@ export default function Projects() {
       ownerCompanyId: "",
       contractorCompanyId: "",
       supervisorCompanyId: "",
+      onedriveTestResultsFolderId: "",
     });
     setIsDialogOpen(true);
   };
@@ -360,6 +363,18 @@ export default function Projects() {
                       <FormItem className="sm:col-span-2">
                         <FormLabel>موقع المشروع</FormLabel>
                         <FormControl><Input {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="onedriveTestResultsFolderId"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel>معرّف مجلد نتائج الاختبارات (OneDrive)</FormLabel>
+                        <FormControl><Input {...field} placeholder="مثال: XXXXXXXXXXXXXXXX" dir="ltr" className="text-left" /></FormControl>
+                        <p className="text-[10px] text-muted-foreground">معرّف المجلد من OneDrive لعرض نتائج الاختبارات في بوابة المالك</p>
                         <FormMessage />
                       </FormItem>
                     )}
