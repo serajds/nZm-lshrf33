@@ -291,21 +291,35 @@ export default function OwnerPortal() {
   const lightboxPrev = () => setLightbox(prev => prev ? { ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length } : null);
   const lightboxNext = () => setLightbox(prev => prev ? { ...prev, index: (prev.index + 1) % prev.images.length } : null);
 
+  const [testResultsError, setTestResultsError] = useState<string | null>(null);
+
   const fetchTestResults = async () => {
     const jwt = sessionStorage.getItem(`owner_jwt_${token}`);
     if (!jwt) return;
     setTestResultsLoading(true);
+    setTestResultsError(null);
     try {
       const res = await fetch(`${API_BASE}/owner/${token}/test-results`, {
         headers: { Authorization: `Bearer ${jwt}` },
       });
-      if (!res.ok) throw new Error("failed");
+      if (res.status === 401) {
+        setTestResultsError("انتهت صلاحية الجلسة، يرجى تحديث الصفحة");
+        return;
+      }
+      if (res.status === 404) {
+        const data = await res.json();
+        setTestResultsError(data.error || "مجلد OneDrive غير موجود");
+        return;
+      }
+      if (!res.ok) {
+        setTestResultsError("حدث خطأ أثناء جلب الملفات");
+        return;
+      }
       const data = await res.json();
       setTestResultsFiles(data.files || []);
       setTestResultsFolderLinked(data.folderLinked);
     } catch {
-      setTestResultsFiles([]);
-      setTestResultsFolderLinked(false);
+      setTestResultsError("تعذر الاتصال بالخادم");
     } finally {
       setTestResultsLoading(false);
     }
@@ -1464,6 +1478,14 @@ export default function OwnerPortal() {
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
                     <p className="text-sm text-muted-foreground">جاري تحميل الملفات...</p>
+                  </div>
+                ) : testResultsError ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+                    <div className="p-3 rounded-full bg-red-50">
+                      <AlertTriangle className="h-8 w-8 text-red-500" />
+                    </div>
+                    <p className="text-sm font-medium text-red-600">{testResultsError}</p>
+                    <Button variant="outline" size="sm" onClick={fetchTestResults} className="mt-2">إعادة المحاولة</Button>
                   </div>
                 ) : testResultsFolderLinked === false ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
