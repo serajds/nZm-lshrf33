@@ -18,7 +18,8 @@ import {
   Building2, MapPin, HardHat, Lock, Eye,
   CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock, PauseCircle, Printer,
   BarChart3, Activity as ActivityIcon, TrendingUp, TrendingDown, FileText,
-  CalendarDays, Gauge, Timer, ShieldCheck, CircleDot, ChevronLeft, ChevronRight, X, ZoomIn
+  CalendarDays, Gauge, Timer, ShieldCheck, CircleDot, ChevronLeft, ChevronRight, X, ZoomIn,
+  GanttChart
 } from "lucide-react";
 import { previewReport, type ActivityForReport } from "@/lib/report-pdf";
 
@@ -624,7 +625,7 @@ export default function OwnerPortal() {
         </div>
 
         <Tabs defaultValue="progress" className="w-full mb-8" dir="rtl">
-          <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-5 gap-2 bg-transparent p-0 mb-6">
+          <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-6 gap-2 bg-transparent p-0 mb-6">
             <TabsTrigger value="progress" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-blue-500 data-[state=active]:bg-blue-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-blue-50/60 hover:border-blue-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
               <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
                 <BarChart3 className="h-5 w-5 text-blue-600" />
@@ -662,6 +663,13 @@ export default function OwnerPortal() {
               <span className="text-xs font-semibold">التوقفات</span>
               {(suspensions as ProjectSuspension[]).length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-violet-500 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{(suspensions as ProjectSuspension[]).length}</Badge>}
               <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-violet-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
+            </TabsTrigger>
+            <TabsTrigger value="gantt" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-teal-500 data-[state=active]:bg-teal-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-teal-50/60 hover:border-teal-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
+              <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
+                <GanttChart className="h-5 w-5 text-teal-600" />
+              </div>
+              <span className="text-xs font-semibold">الجدول الزمني</span>
+              <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-teal-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
             </TabsTrigger>
           </TabsList>
 
@@ -1181,6 +1189,277 @@ export default function OwnerPortal() {
                 </>
               )}
             </div>
+          </TabsContent>
+
+          <TabsContent value="gantt">
+            <Card className="shadow-md border-0">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <GanttChart className="h-5 w-5 text-teal-600" />
+                  الجدول الزمني للمشروع
+                </CardTitle>
+                <CardDescription>عرض الجدول الزمني للأنشطة مع التواريخ المخططة والفعلية</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const activitiesWithDates = activities.filter(
+                    (a: Activity) => a.plannedStartDate && a.plannedEndDate
+                  );
+                  if (activitiesWithDates.length === 0) {
+                    return (
+                      <div className="py-16 text-center">
+                        <GanttChart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                        <h3 className="text-lg font-semibold mb-1">لا توجد بيانات للجدول الزمني</h3>
+                        <p className="text-sm text-muted-foreground">لا توجد أنشطة بتواريخ مخططة لعرض الجدول الزمني</p>
+                      </div>
+                    );
+                  }
+
+                  const allDates = activitiesWithDates.flatMap((a: Activity) => {
+                    const dates: number[] = [];
+                    const ps = new Date(a.plannedStartDate!).getTime();
+                    const pe = new Date(a.plannedEndDate!).getTime();
+                    if (Number.isFinite(ps)) dates.push(ps);
+                    if (Number.isFinite(pe)) dates.push(pe);
+                    if (a.actualStartDate) { const t = new Date(a.actualStartDate).getTime(); if (Number.isFinite(t)) dates.push(t); }
+                    if (a.actualEndDate) { const t = new Date(a.actualEndDate).getTime(); if (Number.isFinite(t)) dates.push(t); }
+                    return dates;
+                  }).filter(Number.isFinite);
+
+                  if (allDates.length === 0) {
+                    return (
+                      <div className="py-16 text-center">
+                        <GanttChart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                        <h3 className="text-lg font-semibold mb-1">لا توجد بيانات صالحة</h3>
+                        <p className="text-sm text-muted-foreground">التواريخ المسجلة للأنشطة غير صالحة للعرض</p>
+                      </div>
+                    );
+                  }
+
+                  const minMs = Math.min(...allDates);
+                  const maxMs = Math.max(...allDates);
+                  const rangeMs = Math.max(maxMs - minMs, 86400000);
+                  const minDate = new Date(minMs);
+                  const maxDate = new Date(minMs + rangeMs);
+                  const today = new Date();
+                  const todayPos = Math.max(0, Math.min(100, ((today.getTime() - minMs) / rangeMs) * 100));
+                  const showToday = today.getTime() >= minMs && today.getTime() <= minMs + rangeMs;
+
+                  const months: { label: string; left: number; width: number }[] = [];
+                  const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+                  while (cursor.getTime() <= minMs + rangeMs) {
+                    const mStart = Math.max(cursor.getTime(), minMs);
+                    const nextMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+                    const mEnd = Math.min(nextMonth.getTime(), minMs + rangeMs);
+                    const left = ((mStart - minMs) / rangeMs) * 100;
+                    const width = ((mEnd - mStart) / rangeMs) * 100;
+                    if (width > 0) {
+                      const monthNames = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+                      months.push({ label: `${monthNames[cursor.getMonth()]} ${cursor.getFullYear()}`, left, width });
+                    }
+                    cursor.setMonth(cursor.getMonth() + 1);
+                  }
+
+                  const getBarStyle = (start: string, end: string) => {
+                    const s = new Date(start).getTime();
+                    const e = new Date(end).getTime();
+                    if (!Number.isFinite(s) || !Number.isFinite(e)) return { left: "0%", width: "0%" };
+                    const left = ((s - minMs) / rangeMs) * 100;
+                    const width = ((e - s) / rangeMs) * 100;
+                    return { left: `${Math.max(0, left)}%`, width: `${Math.max(0.5, width)}%` };
+                  };
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-4 text-xs justify-end mb-2">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-4 h-2.5 rounded-sm bg-blue-400 inline-block" /> المخطط
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-4 h-2.5 rounded-sm bg-emerald-500 inline-block" /> الفعلي
+                        </span>
+                        {showToday && (
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-0.5 h-3 bg-red-500 inline-block" /> اليوم
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <div className="min-w-[700px]">
+                          <div className="relative h-8 border-b border-border mb-1" dir="ltr">
+                            {months.map((m, i) => (
+                              <div
+                                key={i}
+                                className="absolute top-0 h-full flex items-center justify-center text-[10px] font-medium text-muted-foreground border-s border-border/50 px-1 truncate"
+                                style={{ left: `${m.left}%`, width: `${m.width}%` }}
+                              >
+                                {m.width > 5 ? m.label : ""}
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="space-y-0" dir="ltr">
+                            {activitiesWithDates.map((a: Activity, i: number) => {
+                              const planned = getBarStyle(a.plannedStartDate!, a.plannedEndDate!);
+                              const hasActual = a.actualStartDate && a.actualEndDate;
+                              const actual = hasActual ? getBarStyle(a.actualStartDate!, a.actualEndDate!) : null;
+                              const isDelayed = a.status === "delayed";
+                              const isCompleted = a.status === "completed";
+
+                              return (
+                                <div
+                                  key={a.id}
+                                  className={`group relative flex items-center border-b border-border/30 ${i % 2 === 0 ? "bg-muted/20" : ""} hover:bg-muted/40 transition-colors`}
+                                  style={{ height: hasActual ? "52px" : "40px" }}
+                                >
+                                  <div
+                                    className="flex-shrink-0 flex items-center gap-1.5 pe-3 border-e border-border/50 h-full px-2"
+                                    style={{ width: "200px" }}
+                                    dir="rtl"
+                                  >
+                                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isCompleted ? "bg-emerald-500" : isDelayed ? "bg-red-500" : a.status === "in_progress" ? "bg-blue-500" : "bg-gray-300"}`} />
+                                    <span className="text-xs font-medium truncate" title={a.name}>
+                                      {a.name}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex-1 relative h-full">
+                                    {showToday && (
+                                      <div
+                                        className="absolute top-0 bottom-0 w-px bg-red-500 z-10 pointer-events-none"
+                                        style={{ left: `${todayPos}%` }}
+                                      />
+                                    )}
+
+                                    <div
+                                      className="absolute rounded-sm bg-blue-400/80 shadow-sm"
+                                      style={{ ...planned, top: hasActual ? "6px" : "12px", height: hasActual ? "14px" : "16px" }}
+                                      title={`المخطط: ${fmtDate(a.plannedStartDate!)} → ${fmtDate(a.plannedEndDate!)}`}
+                                    />
+
+                                    {actual && (
+                                      <div
+                                        className={`absolute rounded-sm shadow-sm ${isDelayed ? "bg-red-500/80" : "bg-emerald-500/80"}`}
+                                        style={{ ...actual, top: "28px", height: "14px" }}
+                                        title={`الفعلي: ${fmtDate(a.actualStartDate!)} → ${fmtDate(a.actualEndDate!)}`}
+                                      />
+                                    )}
+
+                                    {a.actualStartDate && !a.actualEndDate && (() => {
+                                      const s = new Date(a.actualStartDate!).getTime();
+                                      if (!Number.isFinite(s)) return null;
+                                      const end = today.getTime();
+                                      const left = ((s - minMs) / rangeMs) * 100;
+                                      const width = ((end - s) / rangeMs) * 100;
+                                      return (
+                                        <div
+                                          className={`absolute rounded-sm shadow-sm ${isDelayed ? "bg-red-500/60" : "bg-emerald-500/60"}`}
+                                          style={{
+                                            left: `${Math.max(0, left)}%`,
+                                            width: `${Math.max(0.5, width)}%`,
+                                            top: "28px",
+                                            height: "14px",
+                                          }}
+                                          title={`الفعلي: ${fmtDate(a.actualStartDate!)} → مستمر`}
+                                        >
+                                          <div className="absolute inset-y-0 end-0 w-2 bg-gradient-to-l from-white/60 to-transparent rounded-e-sm" />
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <div className="flex justify-between text-[10px] text-muted-foreground mt-1 px-1" dir="ltr">
+                            <span className="tabular-nums">{fmtDate(minDate.toISOString())}</span>
+                            <span className="tabular-nums">{fmtDate(maxDate.toISOString())}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-4 border-t">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                          <div className="p-3 rounded-lg bg-muted/50">
+                            <div className="text-2xl font-bold text-teal-600">{activitiesWithDates.length}</div>
+                            <div className="text-xs text-muted-foreground mt-0.5">إجمالي الأنشطة</div>
+                          </div>
+                          <div className="p-3 rounded-lg bg-muted/50">
+                            <div className="text-2xl font-bold text-emerald-600">
+                              {activitiesWithDates.filter((a: Activity) => a.status === "completed").length}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">مكتملة</div>
+                          </div>
+                          <div className="p-3 rounded-lg bg-muted/50">
+                            <div className="text-2xl font-bold text-blue-600">
+                              {activitiesWithDates.filter((a: Activity) => a.status === "in_progress").length}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">قيد التنفيذ</div>
+                          </div>
+                          <div className="p-3 rounded-lg bg-muted/50">
+                            <div className="text-2xl font-bold text-red-600">
+                              {activitiesWithDates.filter((a: Activity) => a.status === "delayed").length}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">متأخرة</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <Table className="min-w-[600px]">
+                          <TableHeader>
+                            <TableRow className="bg-muted/40">
+                              <TableHead className="text-right w-8">#</TableHead>
+                              <TableHead className="text-right">النشاط</TableHead>
+                              <TableHead className="text-center">البدء المخطط</TableHead>
+                              <TableHead className="text-center">الانتهاء المخطط</TableHead>
+                              <TableHead className="text-center">المدة (أيام)</TableHead>
+                              <TableHead className="text-center">الإنجاز</TableHead>
+                              <TableHead className="text-center">الحالة</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {activitiesWithDates.map((a: Activity, i: number) => {
+                              const dur = Math.ceil((new Date(a.plannedEndDate!).getTime() - new Date(a.plannedStartDate!).getTime()) / (1000 * 60 * 60 * 24));
+                              return (
+                                <TableRow key={a.id} className="hover:bg-muted/50">
+                                  <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
+                                  <TableCell className="font-medium text-sm">{a.name}</TableCell>
+                                  <TableCell className="text-center text-sm tabular-nums" dir="ltr">{fmtDate(a.plannedStartDate!)}</TableCell>
+                                  <TableCell className="text-center text-sm tabular-nums" dir="ltr">{fmtDate(a.plannedEndDate!)}</TableCell>
+                                  <TableCell className="text-center text-sm tabular-nums">{dur}</TableCell>
+                                  <TableCell className="text-center">
+                                    <div className="flex items-center gap-1.5 justify-center">
+                                      <div className="h-2 w-16 rounded-full bg-muted overflow-hidden" dir="ltr">
+                                        <div className={`h-full rounded-full transition-all ${a.status === "delayed" ? "bg-red-500" : a.status === "completed" ? "bg-emerald-500" : "bg-blue-500"}`} style={{ width: `${Math.min(100, a.actualProgress)}%` }} />
+                                      </div>
+                                      <span className="text-xs tabular-nums font-medium">{a.actualProgress}%</span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    {a.status === "completed" ? (
+                                      <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">مكتمل</Badge>
+                                    ) : a.status === "in_progress" ? (
+                                      <Badge className="bg-blue-100 text-blue-700 text-[10px]">قيد التنفيذ</Badge>
+                                    ) : a.status === "delayed" ? (
+                                      <Badge className="bg-red-100 text-red-700 text-[10px]">متأخر</Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="text-[10px]">لم يبدأ</Badge>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
 
