@@ -23,7 +23,7 @@ async function getAccessToken() {
     throw new Error("X-Replit-Token not found for repl/depl");
   }
 
-  connectionSettings = await fetch(
+  const response = await fetch(
     "https://" +
       hostname +
       "/api/v2/connection?include_secrets=true&connector_names=onedrive",
@@ -33,9 +33,9 @@ async function getAccessToken() {
         "X-Replit-Token": xReplitToken,
       },
     },
-  )
-    .then((res) => res.json())
-    .then((data) => data.items?.[0]);
+  );
+  const responseData = (await response.json()) as { items?: any[] };
+  connectionSettings = responseData.items?.[0];
 
   const accessToken =
     connectionSettings?.settings?.access_token ||
