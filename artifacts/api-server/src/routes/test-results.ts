@@ -85,6 +85,93 @@ router.get(
 );
 
 router.get(
+  "/owner/:token/test-results/download/:fileId",
+  async (req, res): Promise<void> => {
+    const { token, fileId } = req.params;
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "غير مصرح" });
+      return;
+    }
+
+    try {
+      const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET) as {
+        ownerToken: string;
+        projectId: number;
+      };
+      if (decoded.ownerToken !== token) {
+        res.status(401).json({ error: "غير مصرح" });
+        return;
+      }
+    } catch {
+      res.status(401).json({ error: "انتهت صلاحية الجلسة" });
+      return;
+    }
+
+    const [project] = await db
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.ownerAccessToken, token));
+
+    if (!project || !project.onedriveTestResultsFolderId) {
+      res.status(404).json({ error: "المشروع أو المجلد غير موجود" });
+      return;
+    }
+
+    try {
+      const client = await getUncachableOneDriveClient();
+
+      const fileMeta = await client
+        .api(`/me/drive/items/${fileId}`)
+        .select("name,file,parentReference")
+        .get();
+
+      if (fileMeta.parentReference?.id !== project.onedriveTestResultsFolderId) {
+        res.status(403).json({ error: "الملف لا ينتمي لمجلد المشروع" });
+        return;
+      }
+
+      const downloadUrl = (await client
+        .api(`/me/drive/items/${fileId}`)
+        .select("@microsoft.graph.downloadUrl")
+        .get())["@microsoft.graph.downloadUrl"];
+
+      if (!downloadUrl) {
+        res.status(404).json({ error: "رابط التحميل غير متوفر" });
+        return;
+      }
+
+      const fileResponse = await fetch(downloadUrl);
+      if (!fileResponse.ok || !fileResponse.body) {
+        res.status(502).json({ error: "فشل تحميل الملف من OneDrive" });
+        return;
+      }
+
+      const fileName = encodeURIComponent(fileMeta.name || "file");
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${fileName}`);
+      res.setHeader("Content-Type", fileMeta.file?.mimeType || "application/octet-stream");
+
+      const reader = fileResponse.body.getReader();
+      const pump = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+        res.end();
+      };
+      await pump();
+    } catch (err: any) {
+      console.error("Download proxy error:", err?.message || err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "حدث خطأ أثناء تحميل الملف" });
+      }
+    }
+  },
+);
+
+router.get(
   "/onedrive/browse",
   requireAdmin,
   async (req, res): Promise<void> => {
