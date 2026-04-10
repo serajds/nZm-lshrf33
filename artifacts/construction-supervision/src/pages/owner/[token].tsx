@@ -807,9 +807,9 @@ export default function OwnerPortal() {
             </TabsTrigger>
             <TabsTrigger value="test-results" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-emerald-500 data-[state=active]:bg-emerald-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-emerald-50/60 hover:border-emerald-200 hover:shadow hover:-translate-y-0.5 cursor-pointer" onClick={() => fetchTestResults()}>
               <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
-                <FlaskConical className="h-5 w-5 text-emerald-600" />
+                <FileArchive className="h-5 w-5 text-emerald-600" />
               </div>
-              <span className="text-xs font-semibold">نتائج الاختبارات</span>
+              <span className="text-xs font-semibold">مستندات المشروع</span>
               {testResultsFiles.length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-emerald-600 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{testResultsFiles.length}</Badge>}
               <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-emerald-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
             </TabsTrigger>
@@ -1552,10 +1552,10 @@ export default function OwnerPortal() {
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 rounded-xl bg-emerald-500/10">
-                    <FlaskConical className="h-5 w-5 text-emerald-600" />
+                    <FileArchive className="h-5 w-5 text-emerald-600" />
                   </div>
                   <div>
-                    <CardTitle className="text-base">نتائج الاختبارات</CardTitle>
+                    <CardTitle className="text-base">مستندات المشروع</CardTitle>
                     <CardDescription className="text-xs">مزامنة مباشرة مع OneDrive - سحابة المشروع</CardDescription>
                   </div>
                   <Button variant="outline" size="sm" className="mr-auto" onClick={() => { setTestResultsFolderPath([]); fetchTestResults(); }} disabled={testResultsLoading}>
@@ -1580,9 +1580,9 @@ export default function OwnerPortal() {
                 ) : testResultsFolderLinked === false ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
                     <div className="p-3 rounded-full bg-muted">
-                      <FlaskConical className="h-8 w-8 text-muted-foreground" />
+                      <FileArchive className="h-8 w-8 text-muted-foreground" />
                     </div>
-                    <p className="text-sm font-medium">لم يتم ربط مجلد نتائج الاختبارات</p>
+                    <p className="text-sm font-medium">لم يتم ربط مجلد مستندات المشروع</p>
                     <p className="text-xs text-muted-foreground">يرجى التواصل مع مدير المشروع لربط مجلد OneDrive</p>
                   </div>
                 ) : testResultsFiles.length === 0 && testResultsFolders.length === 0 ? (
