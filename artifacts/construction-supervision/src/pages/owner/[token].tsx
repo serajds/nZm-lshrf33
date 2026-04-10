@@ -1556,7 +1556,7 @@ export default function OwnerPortal() {
                   </div>
                   <div>
                     <CardTitle className="text-base">نتائج الاختبارات</CardTitle>
-                    <CardDescription className="text-xs">ملفات نتائج الاختبارات المرفقة من OneDrive</CardDescription>
+                    <CardDescription className="text-xs">مزامنة مباشرة مع OneDrive - سحابة المشروع</CardDescription>
                   </div>
                   <Button variant="outline" size="sm" className="mr-auto" onClick={() => { setTestResultsFolderPath([]); fetchTestResults(); }} disabled={testResultsLoading}>
                     {testResultsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "تحديث"}
