@@ -163,7 +163,18 @@ router.get(
         .select("name,file,parentReference")
         .get();
 
-      if (fileMeta.parentReference?.id !== project.onedriveTestResultsFolderId) {
+      const rootFolderId = project.onedriveTestResultsFolderId;
+      let parentId = fileMeta.parentReference?.id;
+      let belongsToProject = false;
+      for (let i = 0; i < 10; i++) {
+        if (!parentId) break;
+        if (parentId === rootFolderId) { belongsToProject = true; break; }
+        try {
+          const parent = await client.api(`/me/drive/items/${parentId}`).select("parentReference").get();
+          parentId = parent.parentReference?.id;
+        } catch { break; }
+      }
+      if (!belongsToProject) {
         res.status(403).json({ error: "الملف لا ينتمي لمجلد المشروع" });
         return;
       }
