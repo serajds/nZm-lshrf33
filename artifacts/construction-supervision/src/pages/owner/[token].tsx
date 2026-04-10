@@ -44,6 +44,7 @@ export default function OwnerPortal() {
   const [testResultsFiles, setTestResultsFiles] = useState<any[]>([]);
   const [testResultsLoading, setTestResultsLoading] = useState(false);
   const [testResultsFolderLinked, setTestResultsFolderLinked] = useState<boolean | null>(null);
+  const [testResultsError, setTestResultsError] = useState<string | null>(null);
   const verifyAccess = useVerifyOwnerAccess();
 
   useEffect(() => {
@@ -290,8 +291,6 @@ export default function OwnerPortal() {
   const closeLightbox = () => setLightbox(null);
   const lightboxPrev = () => setLightbox(prev => prev ? { ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length } : null);
   const lightboxNext = () => setLightbox(prev => prev ? { ...prev, index: (prev.index + 1) % prev.images.length } : null);
-
-  const [testResultsError, setTestResultsError] = useState<string | null>(null);
 
   const fetchTestResults = async () => {
     const jwt = sessionStorage.getItem(`owner_jwt_${token}`);

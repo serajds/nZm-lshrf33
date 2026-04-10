@@ -30,7 +30,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2, CalendarOff } from "lucide-react";
+import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2, CalendarOff, Folder, FolderOpen, ChevronRight, ArrowUp, Loader2, FlaskConical, X, FileText } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -96,6 +96,12 @@ export default function Projects() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [folderBrowserOpen, setFolderBrowserOpen] = useState(false);
+  const [folderBrowserItems, setFolderBrowserItems] = useState<any[]>([]);
+  const [folderBrowserLoading, setFolderBrowserLoading] = useState(false);
+  const [folderBrowserParentId, setFolderBrowserParentId] = useState<string | null>(null);
+  const [folderBrowserCurrentId, setFolderBrowserCurrentId] = useState<string>("root");
+  const [folderBrowserPath, setFolderBrowserPath] = useState<{id: string; name: string}[]>([]);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -144,6 +150,58 @@ export default function Projects() {
   });
 
   const watchNoSchedule = form.watch("noSchedule");
+
+  const browseFolders = async (folderId?: string) => {
+    setFolderBrowserLoading(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const url = folderId
+        ? `${API_BASE}/onedrive/browse?folderId=${folderId}`
+        : `${API_BASE}/onedrive/browse`;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("failed");
+      const data = await res.json();
+      setFolderBrowserItems(data.items || []);
+      setFolderBrowserParentId(data.parentId);
+      setFolderBrowserCurrentId(data.currentFolderId);
+    } catch {
+      toast({ title: "حدث خطأ أثناء تصفح OneDrive", variant: "destructive" });
+    } finally {
+      setFolderBrowserLoading(false);
+    }
+  };
+
+  const openFolderBrowser = () => {
+    setFolderBrowserPath([]);
+    setFolderBrowserItems([]);
+    setFolderBrowserParentId(null);
+    setFolderBrowserCurrentId("root");
+    setFolderBrowserOpen(true);
+    browseFolders();
+  };
+
+  const navigateToFolder = (folderId: string, folderName: string) => {
+    setFolderBrowserPath(prev => [...prev, { id: folderId, name: folderName }]);
+    browseFolders(folderId);
+  };
+
+  const navigateUp = () => {
+    if (folderBrowserPath.length <= 1) {
+      setFolderBrowserPath([]);
+      browseFolders();
+    } else {
+      const newPath = folderBrowserPath.slice(0, -1);
+      setFolderBrowserPath(newPath);
+      browseFolders(newPath[newPath.length - 1].id);
+    }
+  };
+
+  const selectFolder = (folderId: string) => {
+    form.setValue("onedriveTestResultsFolderId", folderId);
+    setFolderBrowserOpen(false);
+  };
 
   const handleCompanySelect = (companyId: string, field: "ownerEntity" | "contractor" | "supervisorEntity") => {
     const company = companies.find(c => String(c.id) === companyId);
@@ -372,9 +430,25 @@ export default function Projects() {
                     name="onedriveTestResultsFolderId"
                     render={({ field }) => (
                       <FormItem className="sm:col-span-2">
-                        <FormLabel>معرّف مجلد نتائج الاختبارات (OneDrive)</FormLabel>
-                        <FormControl><Input {...field} placeholder="مثال: XXXXXXXXXXXXXXXX" dir="ltr" className="text-left" /></FormControl>
-                        <p className="text-[10px] text-muted-foreground">معرّف المجلد من OneDrive لعرض نتائج الاختبارات في بوابة المالك</p>
+                        <FormLabel className="flex items-center gap-1.5">
+                          <FlaskConical className="h-3.5 w-3.5 text-emerald-600" />
+                          مجلد نتائج الاختبارات (OneDrive)
+                        </FormLabel>
+                        <div className="flex items-center gap-2">
+                          <FormControl>
+                            <Input {...field} placeholder="لم يتم اختيار مجلد" dir="ltr" className="text-left text-sm flex-1" readOnly />
+                          </FormControl>
+                          <Button type="button" variant="outline" size="sm" onClick={openFolderBrowser} className="shrink-0 gap-1.5">
+                            <FolderOpen className="h-4 w-4" />
+                            تصفح
+                          </Button>
+                          {field.value && (
+                            <Button type="button" variant="ghost" size="sm" onClick={() => form.setValue("onedriveTestResultsFolderId", "")} className="shrink-0 text-muted-foreground hover:text-red-500 px-2">
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">اختر المجلد الذي سيتم عرض ملفاته في بوابة المالك</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -594,6 +668,107 @@ export default function Projects() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={folderBrowserOpen} onOpenChange={setFolderBrowserOpen}>
+        <DialogContent className="max-w-lg" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderOpen className="h-5 w-5 text-emerald-600" />
+              اختيار مجلد من OneDrive
+            </DialogTitle>
+          </DialogHeader>
+
+          {folderBrowserPath.length > 0 && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
+              <button type="button" onClick={() => { setFolderBrowserPath([]); browseFolders(); }} className="hover:text-foreground hover:underline">
+                OneDrive
+              </button>
+              {folderBrowserPath.map((p, i) => (
+                <span key={p.id} className="flex items-center gap-1">
+                  <ChevronRight className="h-3 w-3 rotate-180" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newPath = folderBrowserPath.slice(0, i + 1);
+                      setFolderBrowserPath(newPath);
+                      browseFolders(p.id);
+                    }}
+                    className="hover:text-foreground hover:underline"
+                  >
+                    {p.name}
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="border rounded-lg max-h-[350px] overflow-y-auto">
+            {folderBrowserLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+              </div>
+            ) : folderBrowserItems.length === 0 ? (
+              <div className="text-center py-12 text-sm text-muted-foreground">
+                لا توجد عناصر في هذا المجلد
+              </div>
+            ) : (
+              <div className="divide-y">
+                {folderBrowserPath.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={navigateUp}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors text-right"
+                  >
+                    <ArrowUp className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">..</span>
+                  </button>
+                )}
+                {folderBrowserItems.filter(i => i.isFolder).map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => navigateToFolder(item.id, item.name)}
+                      className="flex items-center gap-3 flex-1 min-w-0 text-right"
+                    >
+                      <Folder className="h-5 w-5 text-amber-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{item.childCount} عنصر</p>
+                      </div>
+                    </button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => selectFolder(item.id)}
+                      className="shrink-0 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                    >
+                      اختيار
+                    </Button>
+                  </div>
+                ))}
+                {folderBrowserItems.filter(i => !i.isFolder).map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 px-4 py-3 opacity-50">
+                    <FileText className="h-5 w-5 text-gray-400 shrink-0" />
+                    <p className="text-sm truncate">{item.name}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {folderBrowserCurrentId !== "root" && (
+            <Button
+              type="button"
+              onClick={() => selectFolder(folderBrowserCurrentId)}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+            >
+              <FolderOpen className="h-4 w-4" />
+              اختيار المجلد الحالي
+            </Button>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
