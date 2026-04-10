@@ -19,7 +19,8 @@ import {
   CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock, PauseCircle, Printer,
   BarChart3, Activity as ActivityIcon, TrendingUp, TrendingDown, FileText,
   CalendarDays, Gauge, Timer, ShieldCheck, CircleDot, ChevronLeft, ChevronRight, X, ZoomIn,
-  GanttChart, FlaskConical, Download, File, FileSpreadsheet, FileImage, FileArchive, Loader2
+  GanttChart, FlaskConical, Download, File, FileSpreadsheet, FileImage, FileArchive, Loader2,
+  Folder, FolderOpen, ArrowUp
 } from "lucide-react";
 import { previewReport, type ActivityForReport } from "@/lib/report-pdf";
 
@@ -42,9 +43,12 @@ export default function OwnerPortal() {
   const [projectInfo, setProjectInfo] = useState<{ projectName: string; hasPassword?: boolean; companyLogos: Record<string, { name: string; logoUrl: string | null }> } | null>(null);
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
   const [testResultsFiles, setTestResultsFiles] = useState<any[]>([]);
+  const [testResultsFolders, setTestResultsFolders] = useState<any[]>([]);
   const [testResultsLoading, setTestResultsLoading] = useState(false);
   const [testResultsFolderLinked, setTestResultsFolderLinked] = useState<boolean | null>(null);
   const [testResultsError, setTestResultsError] = useState<string | null>(null);
+  const [testResultsIsRoot, setTestResultsIsRoot] = useState(true);
+  const [testResultsFolderPath, setTestResultsFolderPath] = useState<{ id: string; name: string }[]>([]);
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const verifyAccess = useVerifyOwnerAccess();
@@ -294,13 +298,16 @@ export default function OwnerPortal() {
   const lightboxPrev = () => setLightbox(prev => prev ? { ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length } : null);
   const lightboxNext = () => setLightbox(prev => prev ? { ...prev, index: (prev.index + 1) % prev.images.length } : null);
 
-  const fetchTestResults = async () => {
+  const fetchTestResults = async (subfolderId?: string) => {
     const jwt = sessionStorage.getItem(`owner_jwt_${token}`);
     if (!jwt) return;
     setTestResultsLoading(true);
     setTestResultsError(null);
     try {
-      const res = await fetch(`${API_BASE}/owner/${token}/test-results`, {
+      const url = subfolderId
+        ? `${API_BASE}/owner/${token}/test-results?subfolderId=${subfolderId}`
+        : `${API_BASE}/owner/${token}/test-results`;
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${jwt}` },
       });
       if (res.status === 401) {
@@ -318,11 +325,39 @@ export default function OwnerPortal() {
       }
       const data = await res.json();
       setTestResultsFiles(data.files || []);
+      setTestResultsFolders(data.folders || []);
       setTestResultsFolderLinked(data.folderLinked);
+      setTestResultsIsRoot(data.isRoot !== false);
     } catch {
       setTestResultsError("تعذر الاتصال بالخادم");
     } finally {
       setTestResultsLoading(false);
+    }
+  };
+
+  const navigateToSubfolder = (folderId: string, folderName: string) => {
+    setTestResultsFolderPath(prev => [...prev, { id: folderId, name: folderName }]);
+    fetchTestResults(folderId);
+  };
+
+  const navigateToRoot = () => {
+    setTestResultsFolderPath([]);
+    fetchTestResults();
+  };
+
+  const navigateToPathIndex = (index: number) => {
+    const newPath = testResultsFolderPath.slice(0, index + 1);
+    setTestResultsFolderPath(newPath);
+    fetchTestResults(newPath[newPath.length - 1].id);
+  };
+
+  const navigateBack = () => {
+    if (testResultsFolderPath.length <= 1) {
+      navigateToRoot();
+    } else {
+      const newPath = testResultsFolderPath.slice(0, -1);
+      setTestResultsFolderPath(newPath);
+      fetchTestResults(newPath[newPath.length - 1].id);
     }
   };
 
@@ -1523,7 +1558,7 @@ export default function OwnerPortal() {
                     <CardTitle className="text-base">نتائج الاختبارات</CardTitle>
                     <CardDescription className="text-xs">ملفات نتائج الاختبارات المرفقة من OneDrive</CardDescription>
                   </div>
-                  <Button variant="outline" size="sm" className="mr-auto" onClick={fetchTestResults} disabled={testResultsLoading}>
+                  <Button variant="outline" size="sm" className="mr-auto" onClick={() => { setTestResultsFolderPath([]); fetchTestResults(); }} disabled={testResultsLoading}>
                     {testResultsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "تحديث"}
                   </Button>
                 </div>
@@ -1550,112 +1585,186 @@ export default function OwnerPortal() {
                     <p className="text-sm font-medium">لم يتم ربط مجلد نتائج الاختبارات</p>
                     <p className="text-xs text-muted-foreground">يرجى التواصل مع مدير المشروع لربط مجلد OneDrive</p>
                   </div>
-                ) : testResultsFiles.length === 0 ? (
+                ) : testResultsFiles.length === 0 && testResultsFolders.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
                     <div className="p-3 rounded-full bg-muted">
                       <File className="h-8 w-8 text-muted-foreground" />
                     </div>
                     <p className="text-sm font-medium">لا توجد ملفات حالياً</p>
                     <p className="text-xs text-muted-foreground">سيتم عرض الملفات تلقائياً عند إضافتها للمجلد</p>
+                    {testResultsFolderPath.length > 0 && (
+                      <Button variant="outline" size="sm" onClick={navigateBack} className="mt-2 gap-1.5">
+                        <ArrowUp className="h-4 w-4" />
+                        رجوع
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <>
-                    <div className="hidden md:block">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/40">
-                            <TableHead className="text-right">الملف</TableHead>
-                            <TableHead className="text-right">الحجم</TableHead>
-                            <TableHead className="text-right">تاريخ التعديل</TableHead>
-                            <TableHead className="text-center w-[100px]">تحميل</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {testResultsFiles.map((file) => (
-                            <React.Fragment key={file.id}>
-                              <TableRow>
-                                <TableCell>
-                                  <div className="flex items-center gap-2">
-                                    {getFileIcon(file.mimeType)}
-                                    <span className="text-sm font-medium truncate max-w-[300px]">{file.name}</span>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="text-sm text-muted-foreground" dir="ltr">{formatFileSize(file.size)}</TableCell>
-                                <TableCell className="text-sm text-muted-foreground">
-                                  {new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { year: "numeric", month: "short", day: "numeric" })}
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 gap-1.5"
-                                    onClick={() => handleDownloadFile(file.id, file.name, file.size)}
-                                    disabled={downloadingFileId === file.id}
-                                  >
-                                    {downloadingFileId === file.id ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <Download className="h-4 w-4" />
-                                    )}
-                                    <span className="text-xs">{downloadingFileId === file.id ? `${downloadProgress}%` : "تحميل"}</span>
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                              {downloadingFileId === file.id && (
-                                <TableRow>
-                                  <TableCell colSpan={4} className="p-0 border-0">
-                                    <div className="h-1 bg-emerald-100 w-full overflow-hidden">
-                                      <div
-                                        className="h-full bg-emerald-500 transition-all duration-300 ease-out"
-                                        style={{ width: `${downloadProgress}%` }}
-                                      />
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              )}
-                            </React.Fragment>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-
-                    <div className="md:hidden space-y-3">
-                      {testResultsFiles.map((file) => (
-                        <div key={file.id} className="relative flex items-center gap-3 p-3 rounded-lg border bg-card overflow-hidden">
-                          <div className="shrink-0">{getFileIcon(file.mimeType)}</div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{file.name}</p>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                              <span dir="ltr">{formatFileSize(file.size)}</span>
-                              <span>·</span>
-                              <span>{new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { month: "short", day: "numeric" })}</span>
-                            </div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50 gap-1"
-                            onClick={() => handleDownloadFile(file.id, file.name, file.size)}
-                            disabled={downloadingFileId === file.id}
-                          >
-                            {downloadingFileId === file.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                    {testResultsFolderPath.length > 0 && (
+                      <div className="flex items-center gap-1.5 mb-4 text-xs flex-wrap">
+                        <button type="button" onClick={navigateToRoot} className="flex items-center gap-1 text-emerald-600 hover:text-emerald-700 hover:underline font-medium">
+                          <FolderOpen className="h-3.5 w-3.5" />
+                          الرئيسي
+                        </button>
+                        {testResultsFolderPath.map((p, i) => (
+                          <span key={p.id} className="flex items-center gap-1">
+                            <ChevronLeft className="h-3 w-3 text-muted-foreground" />
+                            {i === testResultsFolderPath.length - 1 ? (
+                              <span className="font-medium text-foreground">{p.name}</span>
                             ) : (
-                              <Download className="h-4 w-4" />
+                              <button type="button" onClick={() => navigateToPathIndex(i)} className="text-emerald-600 hover:text-emerald-700 hover:underline">
+                                {p.name}
+                              </button>
                             )}
-                            <span className="text-xs">{downloadingFileId === file.id ? `${downloadProgress}%` : "تحميل"}</span>
-                          </Button>
-                          {downloadingFileId === file.id && (
-                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-100 rounded-b-lg overflow-hidden">
-                              <div
-                                className="h-full bg-emerald-500 transition-all duration-300 ease-out"
-                                style={{ width: `${downloadProgress}%` }}
-                              />
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {testResultsFolders.length > 0 && (
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
+                        {testResultsFolderPath.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={navigateBack}
+                            className="flex items-center gap-2.5 p-3 rounded-lg border border-dashed hover:bg-muted/50 transition-colors text-right"
+                          >
+                            <ArrowUp className="h-5 w-5 text-muted-foreground shrink-0" />
+                            <span className="text-sm text-muted-foreground">..</span>
+                          </button>
+                        )}
+                        {testResultsFolders.map((folder) => (
+                          <button
+                            key={folder.id}
+                            type="button"
+                            onClick={() => navigateToSubfolder(folder.id, folder.name)}
+                            className="flex items-center gap-2.5 p-3 rounded-lg border hover:bg-amber-50/60 hover:border-amber-200 transition-colors text-right group"
+                          >
+                            <Folder className="h-5 w-5 text-amber-500 shrink-0 group-hover:scale-110 transition-transform" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{folder.name}</p>
+                              <p className="text-[10px] text-muted-foreground">{folder.childCount} عنصر</p>
                             </div>
-                          )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {testResultsFolderPath.length > 0 && testResultsFolders.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={navigateBack}
+                        className="flex items-center gap-2 mb-4 text-sm text-emerald-600 hover:text-emerald-700 hover:underline"
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                        رجوع للمجلد السابق
+                      </button>
+                    )}
+
+                    {testResultsFiles.length > 0 && (
+                      <>
+                        {testResultsFolders.length > 0 && (
+                          <p className="text-xs font-medium text-muted-foreground mb-2">الملفات ({testResultsFiles.length})</p>
+                        )}
+                        <div className="hidden md:block">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-muted/40">
+                                <TableHead className="text-right">الملف</TableHead>
+                                <TableHead className="text-right">الحجم</TableHead>
+                                <TableHead className="text-right">تاريخ التعديل</TableHead>
+                                <TableHead className="text-center w-[100px]">تحميل</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {testResultsFiles.map((file) => (
+                                <React.Fragment key={file.id}>
+                                  <TableRow>
+                                    <TableCell>
+                                      <div className="flex items-center gap-2">
+                                        {getFileIcon(file.mimeType)}
+                                        <span className="text-sm font-medium truncate max-w-[300px]">{file.name}</span>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="text-sm text-muted-foreground" dir="ltr">{formatFileSize(file.size)}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">
+                                      {new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { year: "numeric", month: "short", day: "numeric" })}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 gap-1.5"
+                                        onClick={() => handleDownloadFile(file.id, file.name, file.size)}
+                                        disabled={downloadingFileId === file.id}
+                                      >
+                                        {downloadingFileId === file.id ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Download className="h-4 w-4" />
+                                        )}
+                                        <span className="text-xs">{downloadingFileId === file.id ? `${downloadProgress}%` : "تحميل"}</span>
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                  {downloadingFileId === file.id && (
+                                    <TableRow>
+                                      <TableCell colSpan={4} className="p-0 border-0">
+                                        <div className="h-1 bg-emerald-100 w-full overflow-hidden">
+                                          <div
+                                            className="h-full bg-emerald-500 transition-all duration-300 ease-out"
+                                            style={{ width: `${downloadProgress}%` }}
+                                          />
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </TableBody>
+                          </Table>
                         </div>
-                      ))}
-                    </div>
+
+                        <div className="md:hidden space-y-3">
+                          {testResultsFiles.map((file) => (
+                            <div key={file.id} className="relative flex items-center gap-3 p-3 rounded-lg border bg-card overflow-hidden">
+                              <div className="shrink-0">{getFileIcon(file.mimeType)}</div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{file.name}</p>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                                  <span dir="ltr">{formatFileSize(file.size)}</span>
+                                  <span>·</span>
+                                  <span>{new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { month: "short", day: "numeric" })}</span>
+                                </div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50 gap-1"
+                                onClick={() => handleDownloadFile(file.id, file.name, file.size)}
+                                disabled={downloadingFileId === file.id}
+                              >
+                                {downloadingFileId === file.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Download className="h-4 w-4" />
+                                )}
+                                <span className="text-xs">{downloadingFileId === file.id ? `${downloadProgress}%` : "تحميل"}</span>
+                              </Button>
+                              {downloadingFileId === file.id && (
+                                <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-100 rounded-b-lg overflow-hidden">
+                                  <div
+                                    className="h-full bg-emerald-500 transition-all duration-300 ease-out"
+                                    style={{ width: `${downloadProgress}%` }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
               </CardContent>

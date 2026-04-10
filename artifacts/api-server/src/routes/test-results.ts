@@ -47,17 +47,38 @@ router.get(
       return;
     }
 
-    const folderId = project.onedriveTestResultsFolderId;
-    if (!folderId) {
-      res.json({ files: [], folderLinked: false });
+    const rootFolderId = project.onedriveTestResultsFolderId;
+    if (!rootFolderId) {
+      res.json({ files: [], folders: [], folderLinked: false });
       return;
     }
 
+    const subfolderId = typeof req.query.subfolderId === "string" ? req.query.subfolderId : null;
+    const targetFolderId = subfolderId || rootFolderId;
+
     try {
       const client = await getUncachableOneDriveClient();
+
+      if (subfolderId) {
+        let currentId = subfolderId;
+        let isChild = false;
+        for (let i = 0; i < 10; i++) {
+          if (currentId === rootFolderId) { isChild = true; break; }
+          try {
+            const item = await client.api(`/me/drive/items/${currentId}`).select("parentReference").get();
+            currentId = item.parentReference?.id;
+            if (!currentId) break;
+          } catch { break; }
+        }
+        if (!isChild) {
+          res.status(403).json({ error: "المجلد المطلوب خارج نطاق المشروع" });
+          return;
+        }
+      }
+
       const result = await client
-        .api(`/me/drive/items/${folderId}/children`)
-        .select("id,name,size,lastModifiedDateTime,file,webUrl,@microsoft.graph.downloadUrl")
+        .api(`/me/drive/items/${targetFolderId}/children`)
+        .select("id,name,size,lastModifiedDateTime,file,folder,webUrl,@microsoft.graph.downloadUrl")
         .get();
 
       const files = (result.value || [])
@@ -72,7 +93,22 @@ router.get(
           webUrl: item.webUrl,
         }));
 
-      res.json({ files, folderLinked: true });
+      const folders = (result.value || [])
+        .filter((item: any) => item.folder)
+        .map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          childCount: item.folder?.childCount ?? 0,
+          lastModified: item.lastModifiedDateTime,
+        }));
+
+      res.json({
+        files,
+        folders,
+        folderLinked: true,
+        currentFolderId: targetFolderId,
+        isRoot: targetFolderId === rootFolderId,
+      });
     } catch (err: any) {
       console.error("OneDrive API error:", err?.message || err);
       if (err?.statusCode === 404 || err?.code === "itemNotFound") {
