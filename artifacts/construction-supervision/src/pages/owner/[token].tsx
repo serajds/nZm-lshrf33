@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useVerifyOwnerAccess } from "@workspace/api-client-react";
@@ -45,6 +45,8 @@ export default function OwnerPortal() {
   const [testResultsLoading, setTestResultsLoading] = useState(false);
   const [testResultsFolderLinked, setTestResultsFolderLinked] = useState<boolean | null>(null);
   const [testResultsError, setTestResultsError] = useState<string | null>(null);
+  const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const verifyAccess = useVerifyOwnerAccess();
 
   useEffect(() => {
@@ -324,9 +326,11 @@ export default function OwnerPortal() {
     }
   };
 
-  const handleDownloadFile = async (fileId: string, fileName: string) => {
+  const handleDownloadFile = async (fileId: string, fileName: string, fileSize: number) => {
     const jwt = sessionStorage.getItem(`owner_jwt_${token}`);
-    if (!jwt) return;
+    if (!jwt || downloadingFileId) return;
+    setDownloadingFileId(fileId);
+    setDownloadProgress(0);
     try {
       const res = await fetch(`${API_BASE}/owner/${token}/test-results/download/${fileId}`, {
         headers: { Authorization: `Bearer ${jwt}` },
@@ -336,18 +340,44 @@ export default function OwnerPortal() {
         alert(data?.error || "حدث خطأ أثناء تحميل الملف");
         return;
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const contentLength = res.headers.get("Content-Length");
+      const total = contentLength ? parseInt(contentLength, 10) : fileSize;
+      const reader = res.body?.getReader();
+      if (!reader) {
+        const blob = await res.blob();
+        triggerBlobDownload(blob, fileName);
+        return;
+      }
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (total > 0) {
+          setDownloadProgress(Math.min(Math.round((received / total) * 100), 100));
+        }
+      }
+      const blob = new Blob(chunks);
+      triggerBlobDownload(blob, fileName);
     } catch {
       alert("تعذر تحميل الملف");
+    } finally {
+      setDownloadingFileId(null);
+      setDownloadProgress(0);
     }
+  };
+
+  const triggerBlobDownload = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -1542,29 +1572,48 @@ export default function OwnerPortal() {
                         </TableHeader>
                         <TableBody>
                           {testResultsFiles.map((file) => (
-                            <TableRow key={file.id}>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  {getFileIcon(file.mimeType)}
-                                  <span className="text-sm font-medium truncate max-w-[300px]">{file.name}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-sm text-muted-foreground" dir="ltr">{formatFileSize(file.size)}</TableCell>
-                              <TableCell className="text-sm text-muted-foreground">
-                                {new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { year: "numeric", month: "short", day: "numeric" })}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 gap-1.5"
-                                  onClick={() => handleDownloadFile(file.id, file.name)}
-                                >
-                                  <Download className="h-4 w-4" />
-                                  <span className="text-xs">تحميل</span>
-                                </Button>
-                              </TableCell>
-                            </TableRow>
+                            <React.Fragment key={file.id}>
+                              <TableRow>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    {getFileIcon(file.mimeType)}
+                                    <span className="text-sm font-medium truncate max-w-[300px]">{file.name}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground" dir="ltr">{formatFileSize(file.size)}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { year: "numeric", month: "short", day: "numeric" })}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 gap-1.5"
+                                    onClick={() => handleDownloadFile(file.id, file.name, file.size)}
+                                    disabled={downloadingFileId === file.id}
+                                  >
+                                    {downloadingFileId === file.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Download className="h-4 w-4" />
+                                    )}
+                                    <span className="text-xs">{downloadingFileId === file.id ? `${downloadProgress}%` : "تحميل"}</span>
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                              {downloadingFileId === file.id && (
+                                <TableRow>
+                                  <TableCell colSpan={4} className="p-0 border-0">
+                                    <div className="h-1 bg-emerald-100 w-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-emerald-500 transition-all duration-300 ease-out"
+                                        style={{ width: `${downloadProgress}%` }}
+                                      />
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </React.Fragment>
                           ))}
                         </TableBody>
                       </Table>
@@ -1572,7 +1621,7 @@ export default function OwnerPortal() {
 
                     <div className="md:hidden space-y-3">
                       {testResultsFiles.map((file) => (
-                        <div key={file.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
+                        <div key={file.id} className="relative flex items-center gap-3 p-3 rounded-lg border bg-card overflow-hidden">
                           <div className="shrink-0">{getFileIcon(file.mimeType)}</div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">{file.name}</p>
@@ -1586,11 +1635,24 @@ export default function OwnerPortal() {
                             variant="outline"
                             size="sm"
                             className="shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50 gap-1"
-                            onClick={() => handleDownloadFile(file.id, file.name)}
+                            onClick={() => handleDownloadFile(file.id, file.name, file.size)}
+                            disabled={downloadingFileId === file.id}
                           >
-                            <Download className="h-4 w-4" />
-                            <span className="text-xs">تحميل</span>
+                            {downloadingFileId === file.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
+                            <span className="text-xs">{downloadingFileId === file.id ? `${downloadProgress}%` : "تحميل"}</span>
                           </Button>
+                          {downloadingFileId === file.id && (
+                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-100 rounded-b-lg overflow-hidden">
+                              <div
+                                className="h-full bg-emerald-500 transition-all duration-300 ease-out"
+                                style={{ width: `${downloadProgress}%` }}
+                              />
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
