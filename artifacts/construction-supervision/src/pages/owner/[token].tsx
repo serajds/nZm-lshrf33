@@ -324,6 +324,32 @@ export default function OwnerPortal() {
     }
   };
 
+  const handleDownloadFile = async (fileId: string, fileName: string) => {
+    const jwt = sessionStorage.getItem(`owner_jwt_${token}`);
+    if (!jwt) return;
+    try {
+      const res = await fetch(`${API_BASE}/owner/${token}/test-results/download/${fileId}`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        alert(data?.error || "حدث خطأ أثناء تحميل الملف");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("تعذر تحميل الملف");
+    }
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -1528,19 +1554,15 @@ export default function OwnerPortal() {
                                 {new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { year: "numeric", month: "short", day: "numeric" })}
                               </TableCell>
                               <TableCell className="text-center">
-                                {file.downloadUrl ? (
-                                  <a href={file.downloadUrl} target="_blank" rel="noopener noreferrer" download>
-                                    <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50">
-                                      <Download className="h-4 w-4" />
-                                    </Button>
-                                  </a>
-                                ) : (
-                                  <a href={file.webUrl} target="_blank" rel="noopener noreferrer">
-                                    <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50">
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                  </a>
-                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 gap-1.5"
+                                  onClick={() => handleDownloadFile(file.id, file.name)}
+                                >
+                                  <Download className="h-4 w-4" />
+                                  <span className="text-xs">تحميل</span>
+                                </Button>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -1560,19 +1582,15 @@ export default function OwnerPortal() {
                               <span>{new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { month: "short", day: "numeric" })}</span>
                             </div>
                           </div>
-                          {file.downloadUrl ? (
-                            <a href={file.downloadUrl} target="_blank" rel="noopener noreferrer" download>
-                              <Button variant="outline" size="sm" className="shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            </a>
-                          ) : (
-                            <a href={file.webUrl} target="_blank" rel="noopener noreferrer">
-                              <Button variant="outline" size="sm" className="shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </a>
-                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50 gap-1"
+                            onClick={() => handleDownloadFile(file.id, file.name)}
+                          >
+                            <Download className="h-4 w-4" />
+                            <span className="text-xs">تحميل</span>
+                          </Button>
                         </div>
                       ))}
                     </div>
