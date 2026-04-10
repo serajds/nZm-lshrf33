@@ -1673,7 +1673,6 @@ export default function OwnerPortal() {
                               <TableRow className="bg-muted/40">
                                 <TableHead className="text-right">الملف</TableHead>
                                 <TableHead className="text-right">الحجم</TableHead>
-                                <TableHead className="text-right">تاريخ التعديل</TableHead>
                                 <TableHead className="text-center w-[100px]">تحميل</TableHead>
                               </TableRow>
                             </TableHeader>
@@ -1688,9 +1687,6 @@ export default function OwnerPortal() {
                                       </div>
                                     </TableCell>
                                     <TableCell className="text-sm text-muted-foreground" dir="ltr">{formatFileSize(file.size)}</TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">
-                                      {new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { year: "numeric", month: "short", day: "numeric" })}
-                                    </TableCell>
                                     <TableCell className="text-center">
                                       <Button
                                         variant="ghost"
@@ -1710,7 +1706,7 @@ export default function OwnerPortal() {
                                   </TableRow>
                                   {downloadingFileId === file.id && (
                                     <TableRow>
-                                      <TableCell colSpan={4} className="p-0 border-0">
+                                      <TableCell colSpan={3} className="p-0 border-0">
                                         <div className="h-1 bg-emerald-100 w-full overflow-hidden">
                                           <div
                                             className="h-full bg-emerald-500 transition-all duration-300 ease-out"
@@ -1732,11 +1728,7 @@ export default function OwnerPortal() {
                               <div className="shrink-0">{getFileIcon(file.mimeType)}</div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium truncate">{file.name}</p>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                                  <span dir="ltr">{formatFileSize(file.size)}</span>
-                                  <span>·</span>
-                                  <span>{new Date(file.lastModified).toLocaleDateString("ar-u-nu-latn", { month: "short", day: "numeric" })}</span>
-                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5" dir="ltr">{formatFileSize(file.size)}</p>
                               </div>
                               <Button
                                 variant="outline"
