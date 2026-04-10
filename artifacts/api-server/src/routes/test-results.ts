@@ -4,6 +4,7 @@ import { projectsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import { getUncachableOneDriveClient } from "../lib/onedrive";
+import { requireAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
 const JWT_SECRET =
@@ -79,6 +80,51 @@ router.get(
         return;
       }
       res.status(500).json({ error: "حدث خطأ أثناء جلب الملفات من OneDrive" });
+    }
+  },
+);
+
+router.get(
+  "/onedrive/browse",
+  requireAdmin,
+  async (req, res): Promise<void> => {
+    const folderId = typeof req.query.folderId === "string" ? req.query.folderId : null;
+
+    try {
+      const client = await getUncachableOneDriveClient();
+      const path = folderId
+        ? `/me/drive/items/${folderId}/children`
+        : "/me/drive/root/children";
+
+      const result = await client
+        .api(path)
+        .select("id,name,folder,file,size,lastModifiedDateTime,parentReference")
+        .get();
+
+      const items = (result.value || []).map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        isFolder: !!item.folder,
+        childCount: item.folder?.childCount ?? 0,
+        size: item.size,
+        lastModified: item.lastModifiedDateTime,
+      }));
+
+      let parentId: string | null = null;
+      if (folderId) {
+        try {
+          const current = await client
+            .api(`/me/drive/items/${folderId}`)
+            .select("parentReference")
+            .get();
+          parentId = current.parentReference?.id || null;
+        } catch {}
+      }
+
+      res.json({ items, parentId, currentFolderId: folderId || "root" });
+    } catch (err: any) {
+      console.error("OneDrive browse error:", err?.message || err);
+      res.status(500).json({ error: "حدث خطأ أثناء تصفح OneDrive" });
     }
   },
 );
