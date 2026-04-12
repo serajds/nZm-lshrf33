@@ -27,7 +27,7 @@ import {
   Plus, ArrowRight, FileText, Trash2, Edit2, Eye, Printer,
   GripVertical, Type, Hash, Calendar, List, Table, Heading,
   AlignLeft, Send, ClipboardCheck, ChevronDown, ChevronUp, X,
-  Download, Upload,
+  Download, Upload, FileDown, Filter,
 } from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { fmtDate } from "@/lib/utils";
@@ -649,6 +649,87 @@ function FormFiller({
   );
 }
 
+const escHtml = (s: string | null | undefined) =>
+  (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function buildSubmissionPageHtml(
+  submission: FormSubmission,
+  template: FormTemplate,
+  projectName: string | undefined,
+): string {
+  const data = submission.data as Record<string, unknown>;
+  let fieldsHtml = "";
+  for (const field of template.fields) {
+    if (field.type === "section") {
+      fieldsHtml += `<tr><td colspan="2" style="background:#eef2f7;padding:3px 6px;font-weight:700;font-size:10px;border-top:1px solid #bbb;letter-spacing:0.3px;">${escHtml(field.label)}</td></tr>`;
+      continue;
+    }
+    const value = data[field.id];
+    const isEmpty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+    if (isEmpty) continue;
+    let displayValue = "";
+    if (field.type === "table" && Array.isArray(value)) {
+      const rows = (value as string[][]).filter(row => row.some(cell => cell && cell.trim()));
+      if (rows.length === 0) continue;
+      let tableHtml = `<table style="width:100%;border-collapse:collapse;font-size:9px;"><thead><tr>`;
+      (field.columns || []).forEach(col => {
+        tableHtml += `<th style="border:1px solid #ccc;padding:2px 4px;background:#f0f0f0;text-align:right;font-size:8px;">${escHtml(col.label)}</th>`;
+      });
+      tableHtml += `</tr></thead><tbody>`;
+      rows.forEach(row => {
+        tableHtml += `<tr>`;
+        row.forEach(cell => {
+          tableHtml += `<td style="border:1px solid #ccc;padding:2px 4px;font-size:9px;">${escHtml(cell)}</td>`;
+        });
+        tableHtml += `</tr>`;
+      });
+      tableHtml += `</tbody></table>`;
+      displayValue = tableHtml;
+    } else if (field.type === "textarea") {
+      displayValue = `<span style="white-space:pre-wrap;font-size:9px;">${escHtml(value as string)}</span>`;
+    } else {
+      displayValue = `<span style="font-size:9px;">${escHtml(value as string)}</span>`;
+    }
+    fieldsHtml += `<tr><td style="padding:2px 5px;font-weight:600;vertical-align:top;width:120px;background:#fafafa;border-bottom:1px solid #eee;font-size:9px;">${escHtml(field.label)}</td><td style="padding:2px 5px;border-bottom:1px solid #eee;">${displayValue}</td></tr>`;
+  }
+  return `<div class="page">
+<div class="header"><h1>${escHtml(template.name)}</h1><p>${escHtml(projectName)}</p></div>
+<div class="meta">
+  <span>التاريخ: ${escHtml(fmtDate(submission.reportDate))}</span>
+  <span>الحالة: ${submission.status === "reviewed" ? "تمت المراجعة" : submission.status === "submitted" ? "مرسل" : "مسودة"}</span>
+</div>
+<table class="fields">${fieldsHtml}</table>
+${submission.notes ? `<div class="notes-box"><strong>ملاحظات:</strong> ${escHtml(submission.notes)}</div>` : ""}
+<div class="footer"><div class="sig-box"><p>اعتماد</p><p>التوقيع: ___________</p></div></div>
+</div>`;
+}
+
+const PDF_STYLES = `
+@import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@300;400;600;700&display=swap');
+@page { size: A4; margin: 8mm; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Noto Kufi Arabic', sans-serif; padding: 6px; color: #333; direction: rtl; font-size: 9px; line-height: 1.3; }
+.page { page-break-after: always; }
+.page:last-child { page-break-after: auto; }
+.header { text-align: center; margin-bottom: 6px; border-bottom: 2px solid #2563eb; padding-bottom: 4px; }
+.header h1 { font-size: 13px; color: #1e40af; margin-bottom: 1px; }
+.header p { font-size: 10px; color: #666; }
+.meta { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 9px; background: #f8fafc; padding: 3px 8px; border-radius: 3px; }
+table.fields { width: 100%; border-collapse: collapse; border: 1px solid #ccc; }
+.notes-box { margin-top: 4px; padding: 3px 6px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 3px; font-size: 9px; }
+.footer { margin-top: 10px; display: flex; justify-content: space-between; font-size: 9px; }
+.sig-box { width: 45%; border-top: 1px solid #999; padding-top: 4px; text-align: center; }
+.sig-box p { margin-bottom: 2px; }
+@media print { body { padding: 0; } }`;
+
+function openPrintWindow(bodyContent: string, title: string) {
+  const w = window.open("", "_blank");
+  if (!w) return;
+  w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${escHtml(title)}</title><style>${PDF_STYLES}</style></head><body>${bodyContent}</body></html>`);
+  w.document.close();
+  setTimeout(() => w.print(), 400);
+}
+
 function SubmissionViewer({
   submission,
   template,
@@ -662,85 +743,8 @@ function SubmissionViewer({
 }) {
   const data = submission.data as Record<string, unknown>;
 
-  const esc = (s: string | null | undefined) =>
-    (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
   const handlePrint = () => {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-
-    let fieldsHtml = "";
-    for (const field of template.fields) {
-      if (field.type === "section") {
-        fieldsHtml += `<tr><td colspan="2" style="background:#eef2f7;padding:3px 6px;font-weight:700;font-size:10px;border-top:1px solid #bbb;letter-spacing:0.3px;">${esc(field.label)}</td></tr>`;
-        continue;
-      }
-
-      const value = data[field.id];
-      const isEmpty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
-      if (isEmpty) continue;
-
-      let displayValue = "";
-
-      if (field.type === "table" && Array.isArray(value)) {
-        const rows = (value as string[][]).filter(row => row.some(cell => cell && cell.trim()));
-        if (rows.length === 0) continue;
-        let tableHtml = `<table style="width:100%;border-collapse:collapse;font-size:9px;"><thead><tr>`;
-        (field.columns || []).forEach(col => {
-          tableHtml += `<th style="border:1px solid #ccc;padding:2px 4px;background:#f0f0f0;text-align:right;font-size:8px;">${esc(col.label)}</th>`;
-        });
-        tableHtml += `</tr></thead><tbody>`;
-        rows.forEach(row => {
-          tableHtml += `<tr>`;
-          row.forEach(cell => {
-            tableHtml += `<td style="border:1px solid #ccc;padding:2px 4px;font-size:9px;">${esc(cell)}</td>`;
-          });
-          tableHtml += `</tr>`;
-        });
-        tableHtml += `</tbody></table>`;
-        displayValue = tableHtml;
-      } else if (field.type === "textarea") {
-        displayValue = `<span style="white-space:pre-wrap;font-size:9px;">${esc(value as string)}</span>`;
-      } else {
-        displayValue = `<span style="font-size:9px;">${esc(value as string)}</span>`;
-      }
-
-      fieldsHtml += `<tr><td style="padding:2px 5px;font-weight:600;vertical-align:top;width:120px;background:#fafafa;border-bottom:1px solid #eee;font-size:9px;">${esc(field.label)}</td><td style="padding:2px 5px;border-bottom:1px solid #eee;">${displayValue}</td></tr>`;
-    }
-
-    printWindow.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${esc(template.name)}</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@300;400;600;700&display=swap');
-@page { size: A4; margin: 8mm; }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Noto Kufi Arabic', sans-serif; padding: 6px; color: #333; direction: rtl; font-size: 9px; line-height: 1.3; }
-.header { text-align: center; margin-bottom: 6px; border-bottom: 2px solid #2563eb; padding-bottom: 4px; }
-.header h1 { font-size: 13px; color: #1e40af; margin-bottom: 1px; }
-.header p { font-size: 10px; color: #666; }
-.meta { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 9px; background: #f8fafc; padding: 3px 8px; border-radius: 3px; }
-table.fields { width: 100%; border-collapse: collapse; border: 1px solid #ccc; }
-.notes-box { margin-top: 4px; padding: 3px 6px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 3px; font-size: 9px; }
-.footer { margin-top: 10px; display: flex; justify-content: space-between; font-size: 9px; }
-.sig-box { width: 45%; border-top: 1px solid #999; padding-top: 4px; text-align: center; }
-.sig-box p { margin-bottom: 2px; }
-@media print { body { padding: 0; } }
-</style></head><body>
-<div class="header">
-  <h1>${esc(template.name)}</h1>
-  <p>${esc(project?.name)}</p>
-</div>
-<div class="meta">
-  <span>التاريخ: ${esc(fmtDate(submission.reportDate))}</span>
-  <span>الحالة: ${submission.status === "reviewed" ? "تمت المراجعة" : submission.status === "submitted" ? "مرسل" : "مسودة"}</span>
-</div>
-<table class="fields">${fieldsHtml}</table>
-${submission.notes ? `<div class="notes-box"><strong>ملاحظات:</strong> ${esc(submission.notes)}</div>` : ""}
-<div class="footer">
-  <div class="sig-box"><p>اعتماد</p><p>التوقيع: ___________</p></div>
-</div>
-</body></html>`);
-    printWindow.document.close();
-    setTimeout(() => printWindow.print(), 400);
+    openPrintWindow(buildSubmissionPageHtml(submission, template, project?.name), template.name);
   };
 
   return (
@@ -838,6 +842,10 @@ export default function ProjectForms() {
   const [viewingTemplate, setViewingTemplate] = useState<FormTemplate | null>(null);
   const [deletingTemplateId, setDeletingTemplateId] = useState<number | null>(null);
   const [deletingSubmissionId, setDeletingSubmissionId] = useState<number | null>(null);
+  const [filterTemplateId, setFilterTemplateId] = useState<string>("all");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
 
@@ -943,6 +951,40 @@ export default function ProjectForms() {
       toast({ title: "تم تحديث الحالة" });
       invalidate();
     }
+  };
+
+  const filteredSubmissions = submissions.filter(s => {
+    if (filterTemplateId !== "all" && s.templateId !== parseInt(filterTemplateId)) return false;
+    if (filterStatus !== "all" && s.status !== filterStatus) return false;
+    if (filterDateFrom && s.reportDate < filterDateFrom) return false;
+    if (filterDateTo && s.reportDate > filterDateTo) return false;
+    return true;
+  });
+
+  const hasActiveFilters = filterTemplateId !== "all" || filterStatus !== "all" || filterDateFrom || filterDateTo;
+
+  const handlePrintSingle = (s: FormSubmission) => {
+    const tmpl = getTemplateForSubmission(s.templateId);
+    if (!tmpl) return;
+    openPrintWindow(buildSubmissionPageHtml(s, tmpl, project?.name), tmpl.name);
+  };
+
+  const handlePrintAll = () => {
+    const list = filteredSubmissions;
+    if (list.length === 0) return;
+    const pages = list.map(s => {
+      const tmpl = getTemplateForSubmission(s.templateId);
+      if (!tmpl) return "";
+      return buildSubmissionPageHtml(s, tmpl, project?.name);
+    }).filter(Boolean).join("\n");
+    openPrintWindow(pages, `تعبئات - ${project?.name || ""}`);
+  };
+
+  const clearFilters = () => {
+    setFilterTemplateId("all");
+    setFilterDateFrom("");
+    setFilterDateTo("");
+    setFilterStatus("all");
   };
 
   const handleExportTemplate = (t: FormTemplate) => {
@@ -1122,6 +1164,65 @@ export default function ProjectForms() {
 
       {activeTab === "submissions" && (
         <div className="space-y-4">
+          {submissions.length > 0 && (
+            <Card>
+              <CardContent className="p-3 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Filter className="h-4 w-4" />
+                  <span>فلترة التعبئات</span>
+                  {hasActiveFilters && (
+                    <Button variant="ghost" size="sm" className="text-xs h-6 px-2 mr-auto" onClick={clearFilters}>
+                      <X className="h-3 w-3 ml-1" /> مسح الفلاتر
+                    </Button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div>
+                    <Label className="text-xs">نوع النموذج</Label>
+                    <Select value={filterTemplateId} onValueChange={setFilterTemplateId}>
+                      <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">الكل</SelectItem>
+                        {templates.map(t => (
+                          <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">الحالة</Label>
+                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                      <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">الكل</SelectItem>
+                        <SelectItem value="submitted">مرسل</SelectItem>
+                        <SelectItem value="reviewed">تمت المراجعة</SelectItem>
+                        <SelectItem value="draft">مسودة</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">من تاريخ</Label>
+                    <Input type="date" className="h-8 text-xs mt-1" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">إلى تاريخ</Label>
+                    <Input type="date" className="h-8 text-xs mt-1" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-1 border-t">
+                  <span className="text-xs text-muted-foreground">
+                    {filteredSubmissions.length} من {submissions.length} تعبئة
+                  </span>
+                  <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={handlePrintAll} disabled={filteredSubmissions.length === 0}>
+                    <FileDown className="h-3.5 w-3.5" />
+                    تحميل الكل PDF ({filteredSubmissions.length})
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {submissionsLoading ? (
             <LoadingSpinner text="جاري تحميل التعبئات..." />
           ) : submissions.length === 0 ? (
@@ -1129,6 +1230,12 @@ export default function ProjectForms() {
               icon={<ClipboardCheck className="h-6 w-6 text-muted-foreground" />}
               title="لا توجد تعبئات"
               description="لم يتم إرسال أي تعبئات بعد"
+            />
+          ) : filteredSubmissions.length === 0 ? (
+            <EmptyState
+              icon={<Filter className="h-6 w-6 text-muted-foreground" />}
+              title="لا توجد نتائج"
+              description="لا توجد تعبئات تطابق معايير الفلترة"
             />
           ) : (
             <div className="space-y-2">
@@ -1141,11 +1248,11 @@ export default function ProjectForms() {
                         <th className="px-4 py-2.5 text-right font-medium">التاريخ</th>
                         <th className="px-4 py-2.5 text-right font-medium">مقدم من</th>
                         <th className="px-4 py-2.5 text-right font-medium">الحالة</th>
-                        <th className="px-4 py-2.5 text-right font-medium w-32">إجراءات</th>
+                        <th className="px-4 py-2.5 text-right font-medium w-40">إجراءات</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {submissions.map(s => (
+                      {filteredSubmissions.map(s => (
                         <tr key={s.id} className="border-t hover:bg-muted/20">
                           <td className="px-4 py-2.5 font-medium">{getTemplateName(s.templateId)}</td>
                           <td className="px-4 py-2.5" dir="ltr">{fmtDate(s.reportDate)}</td>
@@ -1167,6 +1274,15 @@ export default function ProjectForms() {
                                 }}
                               >
                                 <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                title="تحميل PDF"
+                                onClick={() => handlePrintSingle(s)}
+                              >
+                                <FileDown className="h-3.5 w-3.5" />
                               </Button>
                               {(isAdminOrPM || (s.submittedById === user?.id && !isContractor)) && (
                                 <Button
@@ -1201,7 +1317,7 @@ export default function ProjectForms() {
               </div>
 
               <div className="md:hidden space-y-2">
-                {submissions.map(s => (
+                {filteredSubmissions.map(s => (
                   <Card key={s.id}>
                     <CardContent className="p-3">
                       <div className="flex items-start justify-between mb-2">
@@ -1219,6 +1335,9 @@ export default function ProjectForms() {
                           if (tmpl) { setViewingSubmission(s); setViewingTemplate(tmpl); }
                         }}>
                           <Eye className="h-3 w-3" /> عرض
+                        </Button>
+                        <Button variant="outline" size="sm" className="text-xs" title="تحميل PDF" onClick={() => handlePrintSingle(s)}>
+                          <FileDown className="h-3 w-3" />
                         </Button>
                         {(isAdminOrPM || (s.submittedById === user?.id && !isContractor)) && (
                           <Button variant="outline" size="sm" className="text-xs" onClick={() => {
