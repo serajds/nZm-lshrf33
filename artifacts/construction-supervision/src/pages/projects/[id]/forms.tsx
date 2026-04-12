@@ -845,7 +845,6 @@ export default function ProjectForms() {
   const [filterTemplateId, setFilterTemplateId] = useState<string>("all");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
 
@@ -955,13 +954,12 @@ export default function ProjectForms() {
 
   const filteredSubmissions = submissions.filter(s => {
     if (filterTemplateId !== "all" && s.templateId !== parseInt(filterTemplateId)) return false;
-    if (filterStatus !== "all" && s.status !== filterStatus) return false;
     if (filterDateFrom && s.reportDate < filterDateFrom) return false;
     if (filterDateTo && s.reportDate > filterDateTo) return false;
     return true;
   });
 
-  const hasActiveFilters = filterTemplateId !== "all" || filterStatus !== "all" || filterDateFrom || filterDateTo;
+  const hasActiveFilters = filterTemplateId !== "all" || filterDateFrom || filterDateTo;
 
   const handlePrintSingle = (s: FormSubmission) => {
     const tmpl = getTemplateForSubmission(s.templateId);
@@ -984,7 +982,6 @@ export default function ProjectForms() {
     setFilterTemplateId("all");
     setFilterDateFrom("");
     setFilterDateTo("");
-    setFilterStatus("all");
   };
 
   const handleExportTemplate = (t: FormTemplate) => {
@@ -1176,7 +1173,7 @@ export default function ProjectForms() {
                     </Button>
                   )}
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <div>
                     <Label className="text-xs">نوع النموذج</Label>
                     <Select value={filterTemplateId} onValueChange={setFilterTemplateId}>
@@ -1186,18 +1183,6 @@ export default function ProjectForms() {
                         {templates.map(t => (
                           <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
                         ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs">الحالة</Label>
-                    <Select value={filterStatus} onValueChange={setFilterStatus}>
-                      <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">الكل</SelectItem>
-                        <SelectItem value="submitted">مرسل</SelectItem>
-                        <SelectItem value="reviewed">تمت المراجعة</SelectItem>
-                        <SelectItem value="draft">مسودة</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1247,7 +1232,6 @@ export default function ProjectForms() {
                         <th className="px-4 py-2.5 text-right font-medium">النموذج</th>
                         <th className="px-4 py-2.5 text-right font-medium">التاريخ</th>
                         <th className="px-4 py-2.5 text-right font-medium">مقدم من</th>
-                        <th className="px-4 py-2.5 text-right font-medium">الحالة</th>
                         <th className="px-4 py-2.5 text-right font-medium w-40">إجراءات</th>
                       </tr>
                     </thead>
@@ -1257,11 +1241,6 @@ export default function ProjectForms() {
                           <td className="px-4 py-2.5 font-medium">{getTemplateName(s.templateId)}</td>
                           <td className="px-4 py-2.5" dir="ltr">{fmtDate(s.reportDate)}</td>
                           <td className="px-4 py-2.5">{s.submittedByName || "—"}</td>
-                          <td className="px-4 py-2.5">
-                            <Badge variant={s.status === "reviewed" ? "default" : s.status === "submitted" ? "secondary" : "outline"} className="text-[10px]">
-                              {s.status === "reviewed" ? "تمت المراجعة" : s.status === "submitted" ? "مرسل" : "مسودة"}
-                            </Badge>
-                          </td>
                           <td className="px-4 py-2.5">
                             <div className="flex gap-1">
                               <Button
@@ -1320,14 +1299,9 @@ export default function ProjectForms() {
                 {filteredSubmissions.map(s => (
                   <Card key={s.id}>
                     <CardContent className="p-3">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <p className="font-medium text-sm">{getTemplateName(s.templateId)}</p>
-                          <p className="text-xs text-muted-foreground">{fmtDate(s.reportDate)} — {s.submittedByName || "—"}</p>
-                        </div>
-                        <Badge variant={s.status === "reviewed" ? "default" : "secondary"} className="text-[10px]">
-                          {s.status === "reviewed" ? "تمت المراجعة" : "مرسل"}
-                        </Badge>
+                      <div className="mb-2">
+                        <p className="font-medium text-sm">{getTemplateName(s.templateId)}</p>
+                        <p className="text-xs text-muted-foreground">{fmtDate(s.reportDate)} — {s.submittedByName || "—"}</p>
                       </div>
                       <div className="flex gap-1.5">
                         <Button variant="outline" size="sm" className="text-xs gap-1 flex-1" onClick={() => {
