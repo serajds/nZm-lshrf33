@@ -218,8 +218,14 @@ router.put("/projects/:id/form-submissions/:submissionId", requireProjectAccess(
 
   const userRole = req.user?.role;
   const projectRole = req.projectRole;
+  const isContractor = userRole === "contractor" || projectRole === "contractor";
   const isOwner = existing.submittedById === req.user?.userId;
   const isManagerOrAdmin = userRole === "admin" || projectRole === "project_manager";
+
+  if (isContractor) {
+    res.status(403).json({ error: "المقاول غير مصرح له بتعديل النماذج المرسلة" });
+    return;
+  }
 
   if (!isOwner && !isManagerOrAdmin) {
     res.status(403).json({ error: "لا يمكنك تعديل هذه التعبئة" });
@@ -255,8 +261,14 @@ router.delete("/projects/:id/form-submissions/:submissionId", requireProjectAcce
 
   const userRole = req.user?.role;
   const projectRole = req.projectRole;
+  const isContractorDel = userRole === "contractor" || projectRole === "contractor";
   const isOwner = existing.submittedById === req.user?.userId;
   const isManagerOrAdmin = userRole === "admin" || projectRole === "project_manager";
+
+  if (isContractorDel) {
+    res.status(403).json({ error: "المقاول غير مصرح له بحذف النماذج المرسلة" });
+    return;
+  }
 
   if (!isOwner && !isManagerOrAdmin) {
     res.status(403).json({ error: "لا يمكنك حذف هذه التعبئة" });
