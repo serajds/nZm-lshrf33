@@ -54,7 +54,7 @@ async function compressImage(filePath: string): Promise<{ size: number; filename
 
 const router: IRouter = Router();
 
-router.get("/projects/:projectId/files", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/files", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const { category } = req.query;

@@ -2,13 +2,13 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable } from "@workspace/db";
 import { eq, ilike, or, sql, inArray } from "drizzle-orm";
-import { requireEngineerOrAdmin, requireProjectAccess, requireAdmin } from "../middlewares/auth";
+import { requireEngineerOrAdmin, requireStaffOrContractor, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
 
 const router: IRouter = Router();
 
-router.get("/projects", requireEngineerOrAdmin, async (req, res): Promise<void> => {
+router.get("/projects", requireStaffOrContractor, async (req, res): Promise<void> => {
   const rawStatus = req.query.status;
   const rawSearch = req.query.search;
   const status = typeof rawStatus === "string" && rawStatus !== "null" && rawStatus !== "" ? rawStatus : undefined;

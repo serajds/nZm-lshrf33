@@ -2,12 +2,12 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectSuspensionsTable, projectMembersTable } from "@workspace/db";
 import { eq, count, avg, sql, desc, inArray } from "drizzle-orm";
-import { requireEngineerOrAdmin, requireProjectAccess } from "../middlewares/auth";
+import { requireStaffOrContractor, requireProjectAccess } from "../middlewares/auth";
 import { calcPlannedProgressForProject, calcDelayDays, calcActivityPlannedProgress } from "../lib/progress";
 
 const router: IRouter = Router();
 
-router.get("/dashboard/summary", requireEngineerOrAdmin, async (_req, res): Promise<void> => {
+router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Promise<void> => {
   const userRole = _req.user?.role;
   const userId = _req.user?.userId;
 
