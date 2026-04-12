@@ -730,14 +730,12 @@ table.fields { width: 100%; border-collapse: collapse; border: 1px solid #ccc; }
 </div>
 <div class="meta">
   <span>التاريخ: ${esc(fmtDate(submission.reportDate))}</span>
-  <span>مقدم من: ${esc(submission.submittedByName) || "—"}</span>
   <span>الحالة: ${submission.status === "reviewed" ? "تمت المراجعة" : submission.status === "submitted" ? "مرسل" : "مسودة"}</span>
 </div>
 <table class="fields">${fieldsHtml}</table>
 ${submission.notes ? `<div class="notes-box"><strong>ملاحظات:</strong> ${esc(submission.notes)}</div>` : ""}
 <div class="footer">
-  <div class="sig-box"><p>إعداد / المقاول المنفذ</p><p>الاسم: ${esc(submission.submittedByName) || "___________"}</p><p>التوقيع: ___________</p></div>
-  <div class="sig-box"><p>اعتماد /</p><p>الاسم: ___________</p><p>التوقيع: ___________</p></div>
+  <div class="sig-box"><p>اعتماد</p><p>التوقيع: ___________</p></div>
 </div>
 </body></html>`);
     printWindow.document.close();
