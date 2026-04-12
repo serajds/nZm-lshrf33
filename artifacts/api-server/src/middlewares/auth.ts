@@ -108,21 +108,6 @@ export function requireProjectAccess(paramName: string = "projectId") {
       const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, req.user!.userId));
       const actualRole = dbUser?.role || role;
 
-      const [membership] = await db.select()
-        .from(projectMembersTable)
-        .where(
-          and(
-            eq(projectMembersTable.projectId, projectId),
-            eq(projectMembersTable.userId, req.user!.userId)
-          )
-        );
-
-      if (membership) {
-        req.projectRole = membership.role;
-        next();
-        return;
-      }
-
       const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
         .from(userCompaniesTable)
         .where(eq(userCompaniesTable.userId, req.user!.userId));
@@ -135,14 +120,26 @@ export function requireProjectAccess(paramName: string = "projectId") {
           .where(eq(projectsTable.id, projectId));
 
         if (project?.contractorCompanyId && companyIds.includes(project.contractorCompanyId)) {
-          req.projectRole = "contractor";
-          next();
-          return;
+          if (actualRole !== "admin" && actualRole !== "project_manager") {
+            req.projectRole = "contractor";
+            next();
+            return;
+          }
         }
       }
 
-      if (actualRole === "contractor") {
-        res.status(403).json({ error: "ليس لديك صلاحية الوصول لهذا المشروع" });
+      const [membership] = await db.select()
+        .from(projectMembersTable)
+        .where(
+          and(
+            eq(projectMembersTable.projectId, projectId),
+            eq(projectMembersTable.userId, req.user!.userId)
+          )
+        );
+
+      if (membership) {
+        req.projectRole = membership.role;
+        next();
         return;
       }
 
