@@ -103,7 +103,7 @@ export default function Dashboard() {
   usePageTitle("لوحة التحكم");
   const { user } = useAuth();
   const { data: summary, isLoading } = useGetDashboardSummary();
-  const isContractor = user?.role === "contractor";
+  const isContractor = user?.role === "contractor" || (user as Record<string, unknown>)?.isContractorCompanyUser === true;
   const getProjectLink = (projectId: number) =>
     isContractor ? `/projects/${projectId}/activities` : `/projects/${projectId}`;
 

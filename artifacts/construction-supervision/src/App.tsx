@@ -66,7 +66,8 @@ function HomeRoute() {
     return <Redirect to="/login" />;
   }
 
-  const Component = user?.role === "contractor" ? Projects : Dashboard;
+  const isContractor = user?.role === "contractor" || (user as Record<string, unknown>)?.isContractorCompanyUser === true;
+  const Component = isContractor ? Projects : Dashboard;
 
   return (
     <AppLayout>

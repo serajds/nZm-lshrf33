@@ -23,34 +23,32 @@ router.get("/projects", requireStaffOrContractor, async (req, res): Promise<void
 
   let projectIds: number[] | null = null;
 
-  if (actualRole === "contractor" && userId) {
+  if (actualRole !== "admin" && userId) {
+    const projectIdSet = new Set<number>();
+
     const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
       .from(userCompaniesTable)
       .where(eq(userCompaniesTable.userId, userId));
 
     const companyIds = companyLinks.map(c => c.companyId);
 
-    if (companyIds.length === 0) {
-      res.json([]);
-      return;
+    if (companyIds.length > 0) {
+      const companyProjects = await db.select({ id: projectsTable.id })
+        .from(projectsTable)
+        .where(inArray(projectsTable.contractorCompanyId, companyIds));
+
+      companyProjects.forEach(p => projectIdSet.add(p.id));
     }
 
-    const companyProjects = await db.select({ id: projectsTable.id })
-      .from(projectsTable)
-      .where(inArray(projectsTable.contractorCompanyId, companyIds));
+    if (actualRole !== "contractor") {
+      const memberships = await db.select({ projectId: projectMembersTable.projectId })
+        .from(projectMembersTable)
+        .where(eq(projectMembersTable.userId, userId));
 
-    projectIds = companyProjects.map(p => p.id);
-
-    if (projectIds.length === 0) {
-      res.json([]);
-      return;
+      memberships.forEach(m => projectIdSet.add(m.projectId));
     }
-  } else if (actualRole !== "admin" && userId) {
-    const memberships = await db.select({ projectId: projectMembersTable.projectId })
-      .from(projectMembersTable)
-      .where(eq(projectMembersTable.userId, userId));
 
-    projectIds = memberships.map(m => m.projectId);
+    projectIds = Array.from(projectIdSet);
 
     if (projectIds.length === 0) {
       res.json([]);
