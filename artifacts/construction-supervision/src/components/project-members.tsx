@@ -180,6 +180,9 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
     if (role === "project_manager") {
       return <Badge className="bg-amber-600 hover:bg-amber-600">مدير مشروع</Badge>;
     }
+    if (role === "contractor") {
+      return <Badge className="bg-orange-600 hover:bg-orange-600">مقاول</Badge>;
+    }
     return <Badge className="bg-primary hover:bg-primary">مهندس</Badge>;
   };
 
@@ -242,6 +245,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                       <SelectContent dir="rtl">
                         <SelectItem value="project_manager">مدير مشروع</SelectItem>
                         <SelectItem value="engineer">مهندس</SelectItem>
+                        <SelectItem value="contractor">مقاول</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -328,6 +332,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                           <SelectContent dir="rtl">
                             <SelectItem value="project_manager">مدير مشروع</SelectItem>
                             <SelectItem value="engineer">مهندس</SelectItem>
+                            <SelectItem value="contractor">مقاول</SelectItem>
                           </SelectContent>
                         </Select>
                       ) : (

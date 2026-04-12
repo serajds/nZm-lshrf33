@@ -67,7 +67,7 @@ router.get("/users", requireEngineerOrAdmin, async (_req, res): Promise<void> =>
   res.json(result);
 });
 
-const VALID_ROLES = ["admin", "project_manager", "engineer", "owner"] as const;
+const VALID_ROLES = ["admin", "project_manager", "engineer", "owner", "contractor"] as const;
 
 function parseUserId(raw: string | string[]): number | null {
   const val = parseInt(Array.isArray(raw) ? raw[0] : raw, 10);

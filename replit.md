@@ -60,8 +60,10 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - **Consistent page content patterns**: Shared `LoadingSpinner` and `EmptyState` components (`components/ui/loading-spinner.tsx`). All pages use animated spinner with contextual text for loading states, and icon+title+description for empty states. Table headers use `bg-muted/40` background. Page headers follow colored icon container pattern (`p-2.5 rounded-xl bg-*/10`).
 - **Not Found page**: Arabic 404 page with styled card, icon, and return-to-home button
 - Role-based access control with project-level permissions
-- User management with roles: admin, project_manager, engineer, owner
+- User management with roles: admin, project_manager, engineer, owner, contractor
+- **Contractor role**: restricted access — sidebar shows only dashboard + projects; within projects, can only see timeline (read-only) and forms tab; cannot access extensions, suspensions, reports, files, or deviation analysis
 - Project team management (add/remove members, assign project roles)
+- **Form Builder System (النماذج)**: Custom form templates with field types: text, textarea, number, date, select (with options), table (dynamic rows), section (header/divider). Admins/PMs create templates; all project members can fill and submit forms; admins/PMs can review submissions and mark as reviewed. Print-ready submission viewer with Arabic layout. DB tables: `form_templates`, `form_submissions`. Routes: `GET/POST/PUT/DELETE /api/projects/:id/form-templates`, `GET/POST/PUT/DELETE /api/projects/:id/form-submissions`.
 - **Activity Groups & Drag-and-Drop**: Activities can be organized into colored groups with collapsible headers. Drag-and-drop reordering via `@dnd-kit` with handle-only drag activation. Groups show aggregate progress. Mobile view includes collapsible group sections. API: `GET/POST/PUT/DELETE /api/projects/:id/activity-groups`, `PUT /api/projects/:id/activity-groups/reorder`, `PUT /api/projects/:id/activities/reorder`. DB: `activity_groups` table with `groupId` FK on activities.
 - File uploads via multer (served at `/api/uploads/`). Report/project images auto-compressed via sharp (JPEG quality 80, mozjpeg, same dimensions preserved). Company logos are NOT compressed. Non-image files stored as-is.
 - **Persistent Cloud Storage**: All uploaded files (images, documents, logos) are stored in Google Cloud Storage via Replit Object Storage. Local filesystem used as cache; cloud used as durable fallback. On startup, existing local files are migrated to GCS. Files served from local first, then cloud. Key files: `artifacts/api-server/src/lib/fileStorage.ts` (upload/download/delete/migrate), `artifacts/api-server/src/lib/objectStorage.ts` (GCS client).
@@ -76,7 +78,7 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - `setAuthTokenGetter` configured in `main.tsx` to inject token as Bearer header
 - Protected routes redirect to `/login` when unauthenticated
 - Owner portal uses a separate token in the URL + password verification
-- **Role hierarchy**: admin (full system) > project_manager (full project control) > engineer (project read/limited access) > owner (external portal)
+- **Role hierarchy**: admin (full system) > project_manager (full project control) > engineer (project read/limited access) > contractor (forms + timeline only) > owner (external portal)
 - **Project-level access**: non-admin users only see projects they are assigned to via `project_members` table
 - **Middleware**: `requireProjectAccess(paramName)` checks DB membership; `requireProjectManager(paramName)` restricts to admin or project manager role
 - Admin users bypass all project membership checks
@@ -135,6 +137,8 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - `GET/POST/PATCH/DELETE /api/projects/:id/members` — project team membership (admin/PM)
 - `GET/POST/PUT/DELETE /api/users` — user management (admin only, list accessible to all staff)
 - `GET/POST/PATCH/DELETE /api/companies` — companies management with logo upload
+- `GET/POST/PUT/DELETE /api/projects/:id/form-templates` — form template CRUD (create/edit admin/PM only)
+- `GET/POST/PUT/DELETE /api/projects/:id/form-submissions` — form submission CRUD
 - `GET /api/owner/:token/test-results` — list files from project's linked OneDrive folder (JWT authenticated)
 
 ### OneDrive Integration (Test Results)

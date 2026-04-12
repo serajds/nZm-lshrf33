@@ -11,3 +11,5 @@ export * from "./project_members";
 export * from "./audit_log";
 export * from "./member_group_assignments";
 export * from "./user_companies";
+export * from "./form_templates";
+export * from "./form_submissions";

@@ -1,14 +1,16 @@
 import type { CSSProperties } from "react";
 import { Link, useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 
-const navItems = [
-  { label: "ملخص المشروع", path: "" },
-  { label: "الجدول الزمني", path: "/activities" },
-  { label: "التمديدات", path: "/extensions" },
-  { label: "التوقفات", path: "/suspensions" },
-  { label: "التقارير", path: "/reports" },
-  { label: "الملفات", path: "/files" },
-  { label: "تحليل الانحراف", path: "/deviation" },
+const allNavItems = [
+  { label: "ملخص المشروع", path: "", roles: ["admin", "project_manager", "engineer"] },
+  { label: "الجدول الزمني", path: "/activities", roles: null },
+  { label: "التمديدات", path: "/extensions", roles: ["admin", "project_manager", "engineer"] },
+  { label: "التوقفات", path: "/suspensions", roles: ["admin", "project_manager", "engineer"] },
+  { label: "التقارير", path: "/reports", roles: ["admin", "project_manager", "engineer"] },
+  { label: "النماذج", path: "/forms", roles: null },
+  { label: "الملفات", path: "/files", roles: ["admin", "project_manager", "engineer"] },
+  { label: "تحليل الانحراف", path: "/deviation", roles: ["admin", "project_manager", "engineer"] },
 ];
 
 interface ProjectNavProps {
@@ -17,7 +19,14 @@ interface ProjectNavProps {
 
 export function ProjectNav({ projectId }: ProjectNavProps) {
   const [location] = useLocation();
+  const { user } = useAuth();
   const basePath = `/projects/${projectId}`;
+  const userRole = user?.role;
+
+  const navItems = allNavItems.filter(item => {
+    if (!item.roles) return true;
+    return userRole && item.roles.includes(userRole);
+  });
 
   return (
     <div

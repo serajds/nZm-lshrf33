@@ -15,6 +15,7 @@ import ProjectFiles from "@/pages/projects/[id]/files";
 import ProjectDeviation from "@/pages/projects/[id]/deviation";
 import ProjectExtensions from "@/pages/projects/[id]/extensions";
 import ProjectSuspensions from "@/pages/projects/[id]/suspensions";
+import ProjectForms from "@/pages/projects/[id]/forms";
 import Users from "@/pages/users";
 import Companies from "@/pages/companies";
 import AuditLog from "@/pages/audit-log";
@@ -83,6 +84,9 @@ function Router() {
       </Route>
       <Route path="/projects/:id/suspensions">
         <ProtectedRoute component={ProjectSuspensions} />
+      </Route>
+      <Route path="/projects/:id/forms">
+        <ProtectedRoute component={ProjectForms} />
       </Route>
       <Route path="/projects/:id">
         <ProtectedRoute component={ProjectDetails} />
