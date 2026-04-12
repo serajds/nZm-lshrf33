@@ -287,8 +287,9 @@ router.post("/projects/:projectId/generate-owner-link", requireProjectAccess("pr
     return;
   }
 
-  const baseUrl = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "localhost";
-  const url = `https://${baseUrl}/owner/${token}`;
+  const protocol = req.get("x-forwarded-proto") || req.protocol || "https";
+  const host = req.get("host") || req.get("x-forwarded-host") || "localhost";
+  const url = `${protocol}://${host}/owner/${token}`;
 
   res.json({ token, url });
 });

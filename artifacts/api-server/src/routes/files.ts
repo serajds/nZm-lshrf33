@@ -112,8 +112,7 @@ router.post("/projects/:projectId/files", requireProjectAccess("projectId"), upl
     console.error("Cloud upload failed, file saved locally only:", err);
   }
 
-  const baseUrl = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "localhost";
-  const fileUrl = `https://${baseUrl}/api/uploads/${finalFilename}`;
+  const fileUrl = `/api/uploads/${finalFilename}`;
 
   const [file] = await db.insert(projectFilesTable).values({
     projectId,
