@@ -63,6 +63,14 @@ export function requireEngineerOrAdmin(req: Request, res: Response, next: NextFu
   });
 }
 
+export function rejectContractor(req: Request, res: Response, next: NextFunction): void {
+  if (req.user?.role === "contractor" || req.projectRole === "contractor") {
+    res.status(403).json({ error: "المقاول غير مصرح له بهذا الإجراء" });
+    return;
+  }
+  next();
+}
+
 export function requireProjectAccess(paramName: string = "projectId") {
   return (req: Request, res: Response, next: NextFunction): void => {
     requireAuth(req, res, async () => {

@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectFilesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireProjectAccess } from "../middlewares/auth";
+import { requireProjectAccess, rejectContractor } from "../middlewares/auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -73,7 +73,7 @@ router.get("/projects/:projectId/files", requireProjectAccess("projectId"), asyn
   res.json(files);
 });
 
-router.post("/projects/:projectId/files", requireProjectAccess("projectId"), upload.single("file"), async (req, res): Promise<void> => {
+router.post("/projects/:projectId/files", requireProjectAccess("projectId"), rejectContractor, upload.single("file"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -128,7 +128,7 @@ router.post("/projects/:projectId/files", requireProjectAccess("projectId"), upl
   res.status(201).json(file);
 });
 
-router.delete("/projects/:projectId/files/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/files/:id", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
