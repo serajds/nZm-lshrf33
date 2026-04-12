@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable } from "@workspace/db";
+import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, usersTable } from "@workspace/db";
 import { eq, ilike, or, sql, inArray } from "drizzle-orm";
 import { requireEngineerOrAdmin, requireStaffOrContractor, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
@@ -13,12 +13,17 @@ router.get("/projects", requireStaffOrContractor, async (req, res): Promise<void
   const rawSearch = req.query.search;
   const status = typeof rawStatus === "string" && rawStatus !== "null" && rawStatus !== "" ? rawStatus : undefined;
   const search = typeof rawSearch === "string" && rawSearch !== "null" && rawSearch !== "" ? rawSearch : undefined;
-  const userRole = req.user?.role;
   const userId = req.user?.userId;
+
+  let actualRole = req.user?.role;
+  if (userId) {
+    const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, userId));
+    if (dbUser) actualRole = dbUser.role;
+  }
 
   let projectIds: number[] | null = null;
 
-  if (userRole === "contractor" && userId) {
+  if (actualRole === "contractor" && userId) {
     const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
       .from(userCompaniesTable)
       .where(eq(userCompaniesTable.userId, userId));
@@ -40,7 +45,7 @@ router.get("/projects", requireStaffOrContractor, async (req, res): Promise<void
       res.json([]);
       return;
     }
-  } else if (userRole !== "admin" && userId) {
+  } else if (actualRole !== "admin" && userId) {
     const memberships = await db.select({ projectId: projectMembersTable.projectId })
       .from(projectMembersTable)
       .where(eq(projectMembersTable.userId, userId));

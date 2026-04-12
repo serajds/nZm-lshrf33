@@ -92,11 +92,6 @@ export function requireProjectAccess(paramName: string = "projectId") {
         return;
       }
 
-      if (role !== "engineer" && role !== "project_manager" && role !== "contractor") {
-        res.status(403).json({ error: "غير مصرح بهذه العملية" });
-        return;
-      }
-
       const rawId = req.params[paramName] || req.params.id;
       if (!rawId) {
         res.status(400).json({ error: "معرف المشروع مطلوب" });
@@ -109,7 +104,16 @@ export function requireProjectAccess(paramName: string = "projectId") {
         return;
       }
 
-      if (role === "contractor") {
+      const { usersTable } = await import("@workspace/db");
+      const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, req.user!.userId));
+      const actualRole = dbUser?.role || role;
+
+      if (actualRole !== "engineer" && actualRole !== "project_manager" && actualRole !== "contractor") {
+        res.status(403).json({ error: "غير مصرح بهذه العملية" });
+        return;
+      }
+
+      if (actualRole === "contractor") {
         const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
           .from(userCompaniesTable)
           .where(eq(userCompaniesTable.userId, req.user!.userId));
