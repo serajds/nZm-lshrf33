@@ -122,8 +122,7 @@ export default function Projects() {
   const { user } = useAuth();
   const canManageProjects = user?.role === "admin" || user?.role === "project_manager";
   const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
-  const getProjectLink = (projectId: number) =>
-    isContractor ? `/projects/${projectId}/activities` : `/projects/${projectId}`;
+  const getProjectLink = (projectId: number) => `/projects/${projectId}`;
 
   const { data: projects, isLoading } = useListProjects({
     search: debouncedSearch || undefined,

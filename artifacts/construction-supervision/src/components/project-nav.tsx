@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 
 const allNavItems = [
-  { label: "ملخص المشروع", path: "", roles: ["admin", "project_manager", "engineer"] },
+  { label: "ملخص المشروع", path: "", roles: null },
   { label: "الجدول الزمني", path: "/activities", roles: null },
   { label: "التمديدات", path: "/extensions", roles: ["admin", "project_manager", "engineer"] },
   { label: "التوقفات", path: "/suspensions", roles: ["admin", "project_manager", "engineer"] },
@@ -23,8 +23,10 @@ export function ProjectNav({ projectId }: ProjectNavProps) {
   const basePath = `/projects/${projectId}`;
   const userRole = user?.role;
 
+  const isContractorCompanyUser = user?.isContractorCompanyUser === true;
   const navItems = allNavItems.filter(item => {
     if (!item.roles) return true;
+    if (isContractorCompanyUser) return false;
     return userRole && item.roles.includes(userRole);
   });
 

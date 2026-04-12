@@ -23,6 +23,7 @@ import {
 import { ProjectNav } from "@/components/project-nav";
 import { ProjectMembers } from "@/components/project-members";
 import { previewExecutiveSummary, type ActivityForReport } from "@/lib/report-pdf";
+import { useAuth } from "@/hooks/use-auth";
 
 interface ProjectExtension {
   id: number;
@@ -43,6 +44,8 @@ export default function ProjectDetails() {
   const [, setLocation] = useLocation();
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
   const queryClient = useQueryClient();
   const [ownerPassword, setOwnerPassword] = useState("");
   const [ownerSlug, setOwnerSlug] = useState("");
@@ -180,7 +183,7 @@ export default function ProjectDetails() {
           </div>
         </div>
 
-        <div className="shrink-0">
+        {!isContractor && <div className="shrink-0">
           <Dialog open={isLinkDialogOpen} onOpenChange={(open) => {
             setIsLinkDialogOpen(open);
             if (open) {
@@ -280,7 +283,7 @@ export default function ProjectDetails() {
               </div>
             </DialogContent>
           </Dialog>
-        </div>
+        </div>}
       </div>
 
       {/* ── Project Navigation ── */}
@@ -433,8 +436,7 @@ export default function ProjectDetails() {
           </CardContent>
         </Card>
 
-        {/* Team Members */}
-        <ProjectMembers projectId={project.id} />
+        {!isContractor && <ProjectMembers projectId={project.id} />}
       </div>
     </div>
   );

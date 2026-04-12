@@ -104,8 +104,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { data: summary, isLoading } = useGetDashboardSummary();
   const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
-  const getProjectLink = (projectId: number) =>
-    isContractor ? `/projects/${projectId}/activities` : `/projects/${projectId}`;
+  const getProjectLink = (projectId: number) => `/projects/${projectId}`;
 
   const today = new Date();
   const dateStr = today.toLocaleDateString("ar-u-nu-latn", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
