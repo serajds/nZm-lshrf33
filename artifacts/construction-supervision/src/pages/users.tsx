@@ -61,7 +61,7 @@ interface Company {
 const userSchema = z.object({
   fullName: z.string().min(1, "الاسم الكامل مطلوب"),
   phone: z.string().min(1, "رقم الهاتف مطلوب"),
-  role: z.enum(["admin", "project_manager", "engineer", "owner"]),
+  role: z.enum(["admin", "project_manager", "engineer", "contractor", "owner"]),
   password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل").optional().or(z.literal('')),
   companyIds: z.array(z.number()).optional(),
 });
@@ -115,7 +115,7 @@ export default function Users() {
     form.reset({
       fullName: u.fullName,
       phone: u.phone,
-      role: u.role as "admin" | "project_manager" | "engineer" | "owner",
+      role: u.role as "admin" | "project_manager" | "engineer" | "contractor" | "owner",
       password: "",
       companyIds: cIds,
     });
@@ -198,6 +198,7 @@ export default function Users() {
       case 'admin': return <Badge className="bg-destructive hover:bg-destructive">مدير نظام</Badge>;
       case 'project_manager': return <Badge className="bg-amber-600 hover:bg-amber-600">مدير مشروع</Badge>;
       case 'engineer': return <Badge className="bg-primary hover:bg-primary">مهندس</Badge>;
+      case 'contractor': return <Badge className="bg-orange-600 hover:bg-orange-600">مقاول</Badge>;
       case 'owner': return <Badge className="bg-emerald-600 hover:bg-emerald-600">مالك</Badge>;
       default: return <Badge variant="outline">{role}</Badge>;
     }
@@ -290,6 +291,7 @@ export default function Users() {
                             <SelectItem value="admin">مدير نظام</SelectItem>
                             <SelectItem value="project_manager">مدير مشروع</SelectItem>
                             <SelectItem value="engineer">مهندس</SelectItem>
+                            <SelectItem value="contractor">مقاول</SelectItem>
                             <SelectItem value="owner">مالك</SelectItem>
                           </SelectContent>
                         </Select>

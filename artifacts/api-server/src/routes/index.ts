@@ -17,6 +17,7 @@ import auditLogRouter from "./audit-log";
 import activityGroupsRouter from "./activity-groups";
 import setupRouter from "./setup";
 import testResultsRouter from "./test-results";
+import formsRouter from "./forms";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(auditLogRouter);
 router.use(activityGroupsRouter);
 router.use(setupRouter);
 router.use(testResultsRouter);
+router.use(formsRouter);
 
 export default router;

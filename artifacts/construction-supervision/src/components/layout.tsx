@@ -29,14 +29,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isAdmin = user?.role === "admin";
   const isAdminOrPM = isAdmin || user?.role === "project_manager";
+  const isContractor = user?.role === "contractor";
 
   const navigation = [
     { name: "لوحة التحكم", href: "/", icon: LayoutDashboard },
     { name: "المشاريع", href: "/projects", icon: Building2 },
-    ...(isAdminOrPM
+    ...(!isContractor && isAdminOrPM
       ? [{ name: "الشركات", href: "/companies", icon: Landmark }]
       : []),
-    ...(isAdmin
+    ...(!isContractor && isAdmin
       ? [
           { name: "المستخدمون", href: "/users", icon: Users },
           { name: "سجل العمليات", href: "/audit-log", icon: ClipboardList },
@@ -231,7 +232,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 className="text-[11px] truncate"
                 style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.5 }}
               >
-                {user?.role === "admin" ? "مدير النظام" : user?.role === "project_manager" ? "مدير مشروع" : "مهندس مشرف"}
+                {user?.role === "admin" ? "مدير النظام" : user?.role === "project_manager" ? "مدير مشروع" : user?.role === "contractor" ? "مقاول" : "مهندس مشرف"}
               </p>
             </div>
             <button

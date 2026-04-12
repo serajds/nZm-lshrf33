@@ -230,8 +230,8 @@ router.post("/projects/:projectId/members", requireProjectManager("projectId"), 
     return;
   }
 
-  if (role !== "project_manager" && role !== "engineer") {
-    res.status(400).json({ error: "الدور يجب أن يكون مدير مشروع أو مهندس" });
+  if (role !== "project_manager" && role !== "engineer" && role !== "contractor") {
+    res.status(400).json({ error: "الدور يجب أن يكون مدير مشروع أو مهندس أو مقاول" });
     return;
   }
 
@@ -299,8 +299,8 @@ router.patch("/projects/:projectId/members/:id", requireProjectManager("projectI
   const { role, assignedGroupIds } = req.body;
   const user = (req as any).user;
 
-  if (role && role !== "project_manager" && role !== "engineer") {
-    res.status(400).json({ error: "الدور يجب أن يكون مدير مشروع أو مهندس" });
+  if (role && role !== "project_manager" && role !== "engineer" && role !== "contractor") {
+    res.status(400).json({ error: "الدور يجب أن يكون مدير مشروع أو مهندس أو مقاول" });
     return;
   }
 
