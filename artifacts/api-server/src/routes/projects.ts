@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, usersTable, formSubmissionsTable } from "@workspace/db";
+import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, usersTable, formSubmissionsTable, formTemplatesTable } from "@workspace/db";
 import { eq, ilike, or, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireEngineerOrAdmin, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
@@ -334,7 +334,15 @@ router.get("/projects/:id/summary-widgets", requireProjectAccess("id"), async (r
   const widgets = (project.summaryWidgets as any[]) || [];
 
   const results = await Promise.all(widgets.map(async (w: any) => {
-    if (!w.templateId || !w.fieldId) return { ...w, value: null };
+    if (!w.templateId || !w.fieldId) return { ...w, value: null, fieldLabel: null };
+
+    const [template] = await db.select({ fields: formTemplatesTable.fields })
+      .from(formTemplatesTable)
+      .where(eq(formTemplatesTable.id, w.templateId));
+
+    const fieldLabel = template
+      ? (template.fields as any[])?.find((f: any) => f.id === w.fieldId)?.label || null
+      : null;
 
     const [latestSubmission] = await db.select({ data: formSubmissionsTable.data, reportDate: formSubmissionsTable.reportDate, createdAt: formSubmissionsTable.createdAt })
       .from(formSubmissionsTable)
@@ -342,12 +350,13 @@ router.get("/projects/:id/summary-widgets", requireProjectAccess("id"), async (r
       .orderBy(sql`created_at DESC`)
       .limit(1);
 
-    if (!latestSubmission) return { ...w, value: null };
+    if (!latestSubmission) return { ...w, value: null, fieldLabel };
 
     const formData = latestSubmission.data as Record<string, any>;
     return {
       ...w,
       value: formData[w.fieldId] ?? null,
+      fieldLabel,
       reportDate: latestSubmission.reportDate,
       submittedAt: latestSubmission.createdAt,
     };

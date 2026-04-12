@@ -50,6 +50,7 @@ interface SummaryWidget {
   templateId: number | null;
   fieldId: string | null;
   value?: any;
+  fieldLabel?: string;
   reportDate?: string;
   submittedAt?: string;
 }
@@ -137,7 +138,7 @@ export default function ProjectDetails() {
   const handleSaveWidgets = async () => {
     const r = await authFetch(`/api/projects/${projectId}/summary-widgets`, {
       method: "PUT",
-      body: JSON.stringify({ widgets: editWidgets.map(w => ({ id: w.id, label: w.label, templateId: w.templateId, fieldId: w.fieldId })) }),
+      body: JSON.stringify({ widgets: editWidgets.map(w => ({ id: w.id, templateId: w.templateId, fieldId: w.fieldId })) }),
     });
     if (r.ok) {
       toast({ title: "تم حفظ الأدوات" });
@@ -485,7 +486,7 @@ export default function ProjectDetails() {
                 {widgets.map((w) => (
                   <Card key={w.id} className="border-2 border-dashed border-primary/20">
                     <CardContent className="p-4">
-                      <p className="text-xs text-muted-foreground mb-2">{w.label || "بدون عنوان"}</p>
+                      <p className="text-xs text-muted-foreground mb-2">{w.fieldLabel || w.label || "بدون عنوان"}</p>
                       {w.value != null ? (
                         <div className="space-y-1">
                           {String(w.value).split("\n").map((line, i) => (
@@ -530,19 +531,6 @@ export default function ProjectDetails() {
                       <Badge variant="outline" className="text-xs">أداة {idx + 1}</Badge>
                     </div>
                     <div>
-                      <Label>العنوان</Label>
-                      <Input
-                        value={w.label}
-                        onChange={e => {
-                          const copy = [...editWidgets];
-                          copy[idx] = { ...copy[idx], label: e.target.value };
-                          setEditWidgets(copy);
-                        }}
-                        placeholder="مثال: نسبة الإنجاز اليومي"
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
                       <Label>النموذج</Label>
                       <Select
                         value={w.templateId ? String(w.templateId) : ""}
@@ -567,9 +555,7 @@ export default function ProjectDetails() {
                           value={w.fieldId || ""}
                           onValueChange={val => {
                             const copy = [...editWidgets];
-                            const field = templateFields.find((f: any) => f.id === val);
-                            const autoLabel = field ? field.label : "";
-                            copy[idx] = { ...copy[idx], fieldId: val || null, label: copy[idx].label || autoLabel };
+                            copy[idx] = { ...copy[idx], fieldId: val || null };
                             setEditWidgets(copy);
                           }}
                         >
