@@ -81,6 +81,7 @@ export interface User {
   role: UserRole;
   companies?: UserCompany[];
   createdAt: string;
+  isContractorCompanyUser?: boolean;
 }
 
 export interface LoginResponse {

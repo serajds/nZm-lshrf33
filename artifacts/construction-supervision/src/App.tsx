@@ -48,6 +48,11 @@ function ProtectedRoute({ component: Component, allowedRoles }: { component: Rea
     return <Redirect to="/" />;
   }
 
+  const isContractorCompanyUser = user?.isContractorCompanyUser === true;
+  if (isContractorCompanyUser && allowedRoles && !allowedRoles.includes("contractor")) {
+    return <Redirect to="/" />;
+  }
+
   return (
     <AppLayout>
       <Component />
@@ -66,7 +71,7 @@ function HomeRoute() {
     return <Redirect to="/login" />;
   }
 
-  const isContractor = user?.role === "contractor" || (user as Record<string, unknown>)?.isContractorCompanyUser === true;
+  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
   const Component = isContractor ? Projects : Dashboard;
 
   return (

@@ -29,7 +29,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isAdmin = user?.role === "admin";
   const isAdminOrPM = isAdmin || user?.role === "project_manager";
-  const isContractor = user?.role === "contractor" || (user as Record<string, unknown>)?.isContractorCompanyUser === true;
+  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
 
   const navigation = [
     ...(!isContractor

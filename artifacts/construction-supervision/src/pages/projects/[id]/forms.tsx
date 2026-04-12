@@ -849,7 +849,7 @@ export default function ProjectForms() {
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
 
   const isAdminOrPM = user?.role === "admin" || user?.role === "project_manager";
-  const isContractor = user?.role === "contractor" || (user as Record<string, unknown>)?.isContractorCompanyUser === true;
+  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
 
   const { data: templates = [], isLoading: templatesLoading } = useQuery<FormTemplate[]>({
     queryKey: [`/api/projects/${projectId}/form-templates`],
