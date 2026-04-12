@@ -8,10 +8,16 @@ const router: IRouter = Router();
 
 router.get("/projects/:id/form-templates", requireProjectAccess("id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
+
+  const conditions = [eq(formTemplatesTable.projectId, projectId)];
+  if (isContractor) {
+    conditions.push(eq(formTemplatesTable.visibleToContractor, true));
+  }
 
   const templates = await db.select()
     .from(formTemplatesTable)
-    .where(eq(formTemplatesTable.projectId, projectId))
+    .where(and(...conditions))
     .orderBy(desc(formTemplatesTable.createdAt));
 
   res.json(templates);
@@ -30,6 +36,12 @@ router.get("/projects/:id/form-templates/:templateId", requireProjectAccess("id"
     return;
   }
 
+  const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
+  if (isContractor && !template.visibleToContractor) {
+    res.status(403).json({ error: "هذا النموذج غير متاح" });
+    return;
+  }
+
   res.json(template);
 });
 
@@ -43,7 +55,7 @@ router.post("/projects/:id/form-templates", requireProjectAccess("id"), async (r
     return;
   }
 
-  const { name, description, fields, isActive } = req.body;
+  const { name, description, fields, isActive, visibleToContractor } = req.body;
 
   if (!name || !fields || !Array.isArray(fields)) {
     res.status(400).json({ error: "اسم النموذج والحقول مطلوبة" });
@@ -56,6 +68,7 @@ router.post("/projects/:id/form-templates", requireProjectAccess("id"), async (r
     description: description || null,
     fields,
     isActive: isActive !== false,
+    visibleToContractor: visibleToContractor === true,
     createdById: req.user?.userId,
   }).returning();
 
@@ -73,13 +86,14 @@ router.put("/projects/:id/form-templates/:templateId", requireProjectAccess("id"
     return;
   }
 
-  const { name, description, fields, isActive } = req.body;
+  const { name, description, fields, isActive, visibleToContractor } = req.body;
 
   const updateData: Record<string, unknown> = {};
   if (name !== undefined) updateData.name = name;
   if (description !== undefined) updateData.description = description;
   if (fields !== undefined) updateData.fields = fields;
   if (isActive !== undefined) updateData.isActive = isActive;
+  if (visibleToContractor !== undefined) updateData.visibleToContractor = visibleToContractor;
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });
@@ -172,6 +186,12 @@ router.post("/projects/:id/form-submissions", requireProjectAccess("id"), async 
 
   if (!template) {
     res.status(404).json({ error: "النموذج غير موجود" });
+    return;
+  }
+
+  const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
+  if (isContractor && !template.visibleToContractor) {
+    res.status(403).json({ error: "هذا النموذج غير متاح" });
     return;
   }
 

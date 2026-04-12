@@ -10,6 +10,7 @@ export const formTemplatesTable = pgTable("form_templates", {
   description: text("description"),
   fields: jsonb("fields").notNull().default([]),
   isActive: boolean("is_active").notNull().default(true),
+  visibleToContractor: boolean("visible_to_contractor").notNull().default(false),
   createdById: integer("created_by_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

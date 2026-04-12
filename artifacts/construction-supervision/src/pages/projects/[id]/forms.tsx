@@ -21,6 +21,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -115,12 +116,13 @@ function TemplateBuilder({
   onCancel,
 }: {
   template?: FormTemplate | null;
-  onSave: (data: { name: string; description: string; fields: FormField[] }) => void;
+  onSave: (data: { name: string; description: string; fields: FormField[]; visibleToContractor: boolean }) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(template?.name || "");
   const [description, setDescription] = useState(template?.description || "");
   const [fields, setFields] = useState<FormField[]>(template?.fields || []);
+  const [visibleToContractor, setVisibleToContractor] = useState<boolean>((template as any)?.visibleToContractor ?? false);
   const [editingFieldIdx, setEditingFieldIdx] = useState<number | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -162,7 +164,7 @@ function TemplateBuilder({
   const handleSave = () => {
     if (!name.trim()) return;
     const validFields = fields.filter(f => f.label.trim() || f.type === "section");
-    onSave({ name: name.trim(), description: description.trim(), fields: validFields });
+    onSave({ name: name.trim(), description: description.trim(), fields: validFields, visibleToContractor });
   };
 
   return (
@@ -175,6 +177,11 @@ function TemplateBuilder({
         <div className="sm:col-span-2">
           <Label>وصف النموذج</Label>
           <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="وصف اختياري للنموذج..." className="mt-1 min-h-16" />
+        </div>
+        <div className="sm:col-span-2 flex items-center gap-3">
+          <Switch id="visibleToContractor" checked={visibleToContractor} onCheckedChange={setVisibleToContractor} />
+          <Label htmlFor="visibleToContractor" className="cursor-pointer">إظهار للمقاول</Label>
+          <span className="text-xs text-muted-foreground">عند التفعيل يظهر النموذج لمهندس المقاول</span>
         </div>
       </div>
 
@@ -1103,9 +1110,14 @@ export default function ProjectForms() {
                         <h3 className="font-semibold text-sm">{t.name}</h3>
                         {t.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.description}</p>}
                       </div>
-                      <Badge variant={t.isActive ? "default" : "secondary"} className="text-[10px] shrink-0">
-                        {t.isActive ? "فعال" : "معطل"}
-                      </Badge>
+                      <div className="flex gap-1 shrink-0">
+                        {!isContractor && (t as any).visibleToContractor && (
+                          <Badge variant="outline" className="text-[10px]">مرئي للمقاول</Badge>
+                        )}
+                        <Badge variant={t.isActive ? "default" : "secondary"} className="text-[10px]">
+                          {t.isActive ? "فعال" : "معطل"}
+                        </Badge>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
                       <span>{t.fields.length} حقل</span>
