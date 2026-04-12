@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,9 +16,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Building2, MapPin, Calendar, ActivitySquare, CheckCircle2,
-  AlertTriangle, ArrowRight, Share2, Copy, Clock, PauseCircle, FileText
+  AlertTriangle, ArrowRight, Share2, Copy, Clock, PauseCircle, FileText,
+  Settings2, LayoutDashboard
 } from "lucide-react";
 import { ProjectNav } from "@/components/project-nav";
 import { ProjectMembers } from "@/components/project-members";
@@ -34,9 +36,28 @@ interface ProjectExtension {
   documentRef: string | null;
 }
 
-function authFetch(url: string) {
+function authFetch(url: string, opts?: RequestInit) {
   const token = localStorage.getItem("auth_token");
-  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (opts?.body) headers["Content-Type"] = "application/json";
+  return fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> || {}) } });
+}
+
+interface SummaryWidget {
+  id: string;
+  label: string;
+  templateId: number | null;
+  fieldId: string | null;
+  value?: any;
+  reportDate?: string;
+  submittedAt?: string;
+}
+
+interface FormTemplateOption {
+  id: number;
+  name: string;
+  fields: { id: string; label: string; type: string }[];
 }
 
 export default function ProjectDetails() {
@@ -75,6 +96,57 @@ export default function ProjectDetails() {
   const latestEndDate = extensions.length > 0
     ? extensions[extensions.length - 1].newEndDate
     : null;
+
+  const { data: widgets = [], refetch: refetchWidgets } = useQuery<SummaryWidget[]>({
+    queryKey: [`/api/projects/${projectId}/summary-widgets`],
+    queryFn: async () => {
+      const r = await authFetch(`/api/projects/${projectId}/summary-widgets`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const { data: formTemplates = [] } = useQuery<FormTemplateOption[]>({
+    queryKey: [`/api/projects/${projectId}/form-templates-for-widgets`],
+    queryFn: async () => {
+      const r = await authFetch(`/api/projects/${projectId}/form-templates`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const [widgetConfigOpen, setWidgetConfigOpen] = useState(false);
+  const [editWidgets, setEditWidgets] = useState<SummaryWidget[]>([]);
+  const isAdminOrPM = user?.role === "admin" || user?.role === "project_manager" || (user?.role === "engineer" && !isContractor);
+
+  useEffect(() => {
+    if (widgetConfigOpen) {
+      if (widgets.length > 0) {
+        setEditWidgets(widgets.map(w => ({ ...w })));
+      } else {
+        setEditWidgets([
+          { id: "w1", label: "", templateId: null, fieldId: null },
+          { id: "w2", label: "", templateId: null, fieldId: null },
+        ]);
+      }
+    }
+  }, [widgetConfigOpen]);
+
+  const handleSaveWidgets = async () => {
+    const r = await authFetch(`/api/projects/${projectId}/summary-widgets`, {
+      method: "PUT",
+      body: JSON.stringify({ widgets: editWidgets.map(w => ({ id: w.id, label: w.label, templateId: w.templateId, fieldId: w.fieldId })) }),
+    });
+    if (r.ok) {
+      toast({ title: "تم حفظ الأدوات" });
+      refetchWidgets();
+      setWidgetConfigOpen(false);
+    } else {
+      toast({ variant: "destructive", title: "فشل الحفظ" });
+    }
+  };
 
   const generateLink = useGenerateOwnerLink();
 
@@ -392,6 +464,130 @@ export default function ProjectDetails() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Summary Widgets */}
+        {(widgets.length > 0 || isAdminOrPM) && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <LayoutDashboard className="h-4 w-4" />
+                أدوات الملخص
+              </h3>
+              {isAdminOrPM && (
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => setWidgetConfigOpen(true)}>
+                  <Settings2 className="h-3.5 w-3.5" />
+                  تخصيص
+                </Button>
+              )}
+            </div>
+            {widgets.length > 0 ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                {widgets.map((w) => (
+                  <Card key={w.id} className="border-2 border-dashed border-primary/20">
+                    <CardContent className="p-4">
+                      <p className="text-xs text-muted-foreground mb-1">{w.label || "بدون عنوان"}</p>
+                      {w.value != null ? (
+                        <>
+                          <p className="text-2xl font-bold tabular-nums">{String(w.value)}</p>
+                          {w.reportDate && (
+                            <p className="text-[10px] text-muted-foreground mt-1" dir="ltr">
+                              {w.reportDate}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">لا توجد بيانات</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : isAdminOrPM ? (
+              <Card className="border-2 border-dashed border-muted-foreground/20">
+                <CardContent className="p-6 text-center">
+                  <p className="text-sm text-muted-foreground">اضغط "تخصيص" لإعداد أدوات الملخص</p>
+                </CardContent>
+              </Card>
+            ) : null}
+          </div>
+        )}
+
+        {/* Widget Config Dialog */}
+        <Dialog open={widgetConfigOpen} onOpenChange={setWidgetConfigOpen}>
+          <DialogContent className="sm:max-w-[600px]" dir="rtl">
+            <DialogHeader>
+              <DialogTitle>تخصيص أدوات الملخص</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-6 pt-2">
+              {editWidgets.map((w, idx) => {
+                const selectedTemplate = formTemplates.find(t => t.id === w.templateId);
+                const templateFields = (selectedTemplate?.fields as any[])?.filter((f: any) => f.type !== "section") || [];
+                return (
+                  <div key={w.id} className="space-y-3 p-4 border rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge variant="outline" className="text-xs">أداة {idx + 1}</Badge>
+                    </div>
+                    <div>
+                      <Label>العنوان</Label>
+                      <Input
+                        value={w.label}
+                        onChange={e => {
+                          const copy = [...editWidgets];
+                          copy[idx] = { ...copy[idx], label: e.target.value };
+                          setEditWidgets(copy);
+                        }}
+                        placeholder="مثال: نسبة الإنجاز اليومي"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>النموذج</Label>
+                      <Select
+                        value={w.templateId ? String(w.templateId) : ""}
+                        onValueChange={val => {
+                          const copy = [...editWidgets];
+                          copy[idx] = { ...copy[idx], templateId: val ? parseInt(val) : null, fieldId: null };
+                          setEditWidgets(copy);
+                        }}
+                      >
+                        <SelectTrigger className="mt-1"><SelectValue placeholder="اختر النموذج" /></SelectTrigger>
+                        <SelectContent>
+                          {formTemplates.map(t => (
+                            <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {w.templateId && (
+                      <div>
+                        <Label>الحقل</Label>
+                        <Select
+                          value={w.fieldId || ""}
+                          onValueChange={val => {
+                            const copy = [...editWidgets];
+                            copy[idx] = { ...copy[idx], fieldId: val || null };
+                            setEditWidgets(copy);
+                          }}
+                        >
+                          <SelectTrigger className="mt-1"><SelectValue placeholder="اختر الحقل" /></SelectTrigger>
+                          <SelectContent>
+                            {templateFields.map((f: any) => (
+                              <SelectItem key={f.id} value={f.id}>{f.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setWidgetConfigOpen(false)}>إلغاء</Button>
+                <Button onClick={handleSaveWidgets}>حفظ</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Contract Details */}
         <Card>

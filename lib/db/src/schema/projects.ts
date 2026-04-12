@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, real, date, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, date, integer, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -20,6 +20,7 @@ export const projectsTable = pgTable("projects", {
   ownerCompanyId: integer("owner_company_id"),
   contractorCompanyId: integer("contractor_company_id"),
   supervisorCompanyId: integer("supervisor_company_id"),
+  summaryWidgets: jsonb("summary_widgets").default([]),
   onedriveTestResultsFolderId: text("onedrive_test_results_folder_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

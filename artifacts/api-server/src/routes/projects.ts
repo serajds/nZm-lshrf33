@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, usersTable } from "@workspace/db";
+import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, usersTable, formSubmissionsTable } from "@workspace/db";
 import { eq, ilike, or, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireEngineerOrAdmin, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
@@ -317,6 +317,66 @@ router.post("/projects/:projectId/generate-owner-link", requireProjectAccess("pr
   const url = `${protocol}://${host}/owner/${token}`;
 
   res.json({ token, url });
+});
+
+router.get("/projects/:id/summary-widgets", requireProjectAccess("id"), async (req, res): Promise<void> => {
+  const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+
+  const [project] = await db.select({ summaryWidgets: projectsTable.summaryWidgets })
+    .from(projectsTable)
+    .where(eq(projectsTable.id, projectId));
+
+  if (!project) {
+    res.status(404).json({ error: "المشروع غير موجود" });
+    return;
+  }
+
+  const widgets = (project.summaryWidgets as any[]) || [];
+
+  const results = await Promise.all(widgets.map(async (w: any) => {
+    if (!w.templateId || !w.fieldId) return { ...w, value: null };
+
+    const [latestSubmission] = await db.select({ data: formSubmissionsTable.data, reportDate: formSubmissionsTable.reportDate, createdAt: formSubmissionsTable.createdAt })
+      .from(formSubmissionsTable)
+      .where(eq(formSubmissionsTable.templateId, w.templateId))
+      .orderBy(sql`created_at DESC`)
+      .limit(1);
+
+    if (!latestSubmission) return { ...w, value: null };
+
+    const formData = latestSubmission.data as Record<string, any>;
+    return {
+      ...w,
+      value: formData[w.fieldId] ?? null,
+      reportDate: latestSubmission.reportDate,
+      submittedAt: latestSubmission.createdAt,
+    };
+  }));
+
+  res.json(results);
+});
+
+router.put("/projects/:id/summary-widgets", requireProjectAccess("id"), async (req, res): Promise<void> => {
+  const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const userRole = req.user?.role;
+  const projectRole = req.projectRole;
+
+  if (userRole !== "admin" && projectRole !== "project_manager") {
+    res.status(403).json({ error: "فقط المدير أو مدير المشروع يمكنه تعديل الأدوات" });
+    return;
+  }
+
+  const { widgets } = req.body;
+  if (!Array.isArray(widgets)) {
+    res.status(400).json({ error: "البيانات غير صحيحة" });
+    return;
+  }
+
+  await db.update(projectsTable)
+    .set({ summaryWidgets: widgets })
+    .where(eq(projectsTable.id, projectId));
+
+  res.json({ success: true });
 });
 
 export default router;
