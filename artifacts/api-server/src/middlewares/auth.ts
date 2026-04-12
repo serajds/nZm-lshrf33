@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken, JwtPayload } from "../lib/auth";
 import { db } from "@workspace/db";
-import { projectMembersTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { projectMembersTable, userCompaniesTable, projectsTable } from "@workspace/db";
+import { eq, and, inArray } from "drizzle-orm";
 
 declare global {
   namespace Express {
@@ -106,6 +106,29 @@ export function requireProjectAccess(paramName: string = "projectId") {
       const projectId = parseInt(Array.isArray(rawId) ? rawId[0] : rawId, 10);
       if (isNaN(projectId)) {
         res.status(400).json({ error: "معرف المشروع غير صالح" });
+        return;
+      }
+
+      if (role === "contractor") {
+        const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
+          .from(userCompaniesTable)
+          .where(eq(userCompaniesTable.userId, req.user!.userId));
+
+        const companyIds = companyLinks.map(c => c.companyId);
+
+        if (companyIds.length > 0) {
+          const [project] = await db.select({ contractorCompanyId: projectsTable.contractorCompanyId })
+            .from(projectsTable)
+            .where(eq(projectsTable.id, projectId));
+
+          if (project?.contractorCompanyId && companyIds.includes(project.contractorCompanyId)) {
+            req.projectRole = "contractor";
+            next();
+            return;
+          }
+        }
+
+        res.status(403).json({ error: "ليس لديك صلاحية الوصول لهذا المشروع" });
         return;
       }
 
