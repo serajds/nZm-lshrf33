@@ -55,6 +55,26 @@ function ProtectedRoute({ component: Component, allowedRoles }: { component: Rea
   );
 }
 
+function HomeRoute() {
+  const { isAuthenticated, isLoading, user } = useAuth();
+
+  if (isLoading) {
+    return <div className="flex min-h-screen items-center justify-center">جاري التحميل...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <Redirect to="/login" />;
+  }
+
+  const Component = user?.role === "contractor" ? Projects : Dashboard;
+
+  return (
+    <AppLayout>
+      <Component />
+    </AppLayout>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -62,10 +82,13 @@ function Router() {
       <Route path="/owner/:token" component={OwnerPortal} />
       
       <Route path="/">
-        <ProtectedRoute component={Dashboard} />
+        <HomeRoute />
       </Route>
       <Route path="/projects">
         <ProtectedRoute component={Projects} />
+      </Route>
+      <Route path="/dashboard">
+        <ProtectedRoute component={Dashboard} allowedRoles={["admin", "project_manager", "engineer"]} />
       </Route>
       <Route path="/projects/:id/activities">
         <ProtectedRoute component={ProjectActivities} />
