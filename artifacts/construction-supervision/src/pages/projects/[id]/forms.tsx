@@ -28,8 +28,9 @@ import {
   Plus, ArrowRight, FileText, Trash2, Edit2, Eye, Printer,
   GripVertical, Type, Hash, Calendar, List, Table, Heading,
   AlignLeft, Send, ClipboardCheck, ChevronDown, ChevronUp, X,
-  Download, Upload, FileDown, Filter,
+  Download, Upload, FileDown, Filter, ListChecks, CheckCircle2,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { fmtDate } from "@/lib/utils";
 
@@ -47,7 +48,7 @@ function authFetch(url: string, init?: RequestInit) {
   });
 }
 
-type FieldType = "text" | "textarea" | "number" | "date" | "select" | "table" | "section";
+type FieldType = "text" | "textarea" | "number" | "date" | "select" | "checklist_qty" | "table" | "section";
 
 interface FormField {
   id: string;
@@ -92,6 +93,7 @@ const fieldTypeLabels: Record<FieldType, string> = {
   number: "رقم",
   date: "تاريخ",
   select: "قائمة اختيار",
+  checklist_qty: "اختيار متعدد مع عدد",
   table: "جدول",
   section: "عنوان قسم",
 };
@@ -102,6 +104,7 @@ const fieldTypeIcons: Record<FieldType, typeof Type> = {
   number: Hash,
   date: Calendar,
   select: List,
+  checklist_qty: ListChecks,
   table: Table,
   section: Heading,
 };
@@ -133,7 +136,7 @@ function TemplateBuilder({
       label: "",
       required: type !== "section",
     };
-    if (type === "select") newField.options = [""];
+    if (type === "select" || type === "checklist_qty") newField.options = [""];
     if (type === "table") {
       newField.columns = [{ key: "col1", label: "العمود 1" }, { key: "col2", label: "العمود 2" }];
     }
@@ -257,7 +260,7 @@ function TemplateBuilder({
                       </div>
                     )}
 
-                    {field.type === "select" && (
+                    {(field.type === "select" || field.type === "checklist_qty") && (
                       <div>
                         <Label className="text-xs">الخيارات</Label>
                         <div className="space-y-1.5 mt-1">
@@ -370,6 +373,17 @@ function TemplateBuilder({
                         <Select disabled>
                           <SelectTrigger className="mt-1" dir="rtl"><SelectValue placeholder="اختر..." /></SelectTrigger>
                         </Select>
+                      )}
+                      {field.type === "checklist_qty" && (
+                        <div className="mt-1 space-y-2">
+                          {(field.options || []).filter(o => o.trim()).map((opt, i) => (
+                            <div key={i} className="flex items-center gap-3">
+                              <Checkbox disabled />
+                              <span className="text-sm flex-1">{opt}</span>
+                              <Input type="number" disabled placeholder="العدد" className="w-20 h-8 text-xs" />
+                            </div>
+                          ))}
+                        </div>
                       )}
                       {field.type === "table" && field.columns && (
                         <div className="mt-1 border rounded overflow-x-auto">
@@ -594,6 +608,48 @@ function FormFiller({
                 </Select>
               )}
 
+              {field.type === "checklist_qty" && (() => {
+                const checklistData = (formData[field.id] as Record<string, number>) || {};
+                return (
+                  <div className="mt-2 space-y-2">
+                    {(field.options || []).filter(o => o.trim()).map((opt, i) => {
+                      const isChecked = checklistData[opt] !== undefined;
+                      return (
+                        <div key={i} className="flex items-center gap-3 p-2 rounded-lg border bg-background hover:bg-muted/30 transition-colors">
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={(checked) => {
+                              const updated = { ...checklistData };
+                              if (checked) {
+                                updated[opt] = 0;
+                              } else {
+                                delete updated[opt];
+                              }
+                              updateValue(field.id, Object.keys(updated).length > 0 ? updated : undefined);
+                            }}
+                          />
+                          <span className="text-sm flex-1">{opt}</span>
+                          {isChecked && (
+                            <Input
+                              type="number"
+                              min="0"
+                              value={checklistData[opt] || ""}
+                              onChange={e => {
+                                const updated = { ...checklistData };
+                                updated[opt] = parseInt(e.target.value) || 0;
+                                updateValue(field.id, updated);
+                              }}
+                              placeholder="العدد"
+                              className="w-20 h-8 text-xs text-center"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
               {field.type === "table" && field.columns && (
                 <div className="mt-2 border rounded-lg overflow-x-auto">
                   <table className="w-full text-sm">
@@ -675,7 +731,16 @@ function buildSubmissionPageHtml(
     const isEmpty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
     if (isEmpty) continue;
     let displayValue = "";
-    if (field.type === "table" && Array.isArray(value)) {
+    if (field.type === "checklist_qty" && value && typeof value === "object" && !Array.isArray(value)) {
+      const entries = Object.entries(value as Record<string, number>);
+      if (entries.length === 0) continue;
+      let listHtml = `<table style="width:100%;border-collapse:collapse;font-size:9px;"><thead><tr><th style="border:1px solid #ccc;padding:2px 4px;background:#f0f0f0;text-align:right;font-size:8px;">التخصص</th><th style="border:1px solid #ccc;padding:2px 4px;background:#f0f0f0;text-align:right;font-size:8px;width:60px;">العدد</th></tr></thead><tbody>`;
+      entries.forEach(([opt, qty]) => {
+        listHtml += `<tr><td style="border:1px solid #ccc;padding:2px 4px;font-size:9px;">${escHtml(opt)}</td><td style="border:1px solid #ccc;padding:2px 4px;font-size:9px;text-align:center;">${qty}</td></tr>`;
+      });
+      listHtml += `</tbody></table>`;
+      displayValue = listHtml;
+    } else if (field.type === "table" && Array.isArray(value)) {
       const rows = (value as string[][]).filter(row => row.some(cell => cell && cell.trim()));
       if (rows.length === 0) continue;
       let tableHtml = `<table style="width:100%;border-collapse:collapse;font-size:9px;"><thead><tr>`;
@@ -786,7 +851,17 @@ function SubmissionViewer({
             <div key={field.id} className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-2 border-b border-dashed">
               <div className="font-medium text-sm text-muted-foreground">{field.label}</div>
               <div className="sm:col-span-2 text-sm">
-                {field.type === "table" && Array.isArray(value) ? (
+                {field.type === "checklist_qty" && value && typeof value === "object" && !Array.isArray(value) ? (
+                  <div className="space-y-1">
+                    {Object.entries(value as Record<string, number>).map(([opt, qty]) => (
+                      <div key={opt} className="flex items-center gap-2 text-sm">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                        <span className="flex-1">{opt}</span>
+                        <Badge variant="secondary" className="text-xs">{qty}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : field.type === "table" && Array.isArray(value) ? (
                   <div className="border rounded overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
