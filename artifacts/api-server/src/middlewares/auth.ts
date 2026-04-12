@@ -113,25 +113,25 @@ export function requireProjectAccess(paramName: string = "projectId") {
         return;
       }
 
-      if (actualRole === "contractor") {
-        const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
-          .from(userCompaniesTable)
-          .where(eq(userCompaniesTable.userId, req.user!.userId));
+      const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
+        .from(userCompaniesTable)
+        .where(eq(userCompaniesTable.userId, req.user!.userId));
 
-        const companyIds = companyLinks.map(c => c.companyId);
+      const companyIds = companyLinks.map(c => c.companyId);
 
-        if (companyIds.length > 0) {
-          const [project] = await db.select({ contractorCompanyId: projectsTable.contractorCompanyId })
-            .from(projectsTable)
-            .where(eq(projectsTable.id, projectId));
+      if (companyIds.length > 0) {
+        const [project] = await db.select({ contractorCompanyId: projectsTable.contractorCompanyId })
+          .from(projectsTable)
+          .where(eq(projectsTable.id, projectId));
 
-          if (project?.contractorCompanyId && companyIds.includes(project.contractorCompanyId)) {
-            req.projectRole = "contractor";
-            next();
-            return;
-          }
+        if (project?.contractorCompanyId && companyIds.includes(project.contractorCompanyId)) {
+          req.projectRole = "contractor";
+          next();
+          return;
         }
+      }
 
+      if (actualRole === "contractor") {
         res.status(403).json({ error: "ليس لديك صلاحية الوصول لهذا المشروع" });
         return;
       }

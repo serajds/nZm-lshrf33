@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { usersTable, userCompaniesTable, projectsTable } from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
 import { signToken, hashPassword, comparePassword } from "../lib/auth";
 import { requireAuth } from "../middlewares/auth";
 
@@ -47,8 +47,24 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  let isContractorCompanyUser = false;
+  if (user.role !== "contractor") {
+    const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
+      .from(userCompaniesTable)
+      .where(eq(userCompaniesTable.userId, user.id));
+
+    if (companyLinks.length > 0) {
+      const companyIds = companyLinks.map(c => c.companyId);
+      const [hasProject] = await db.select({ id: projectsTable.id })
+        .from(projectsTable)
+        .where(inArray(projectsTable.contractorCompanyId, companyIds));
+
+      if (hasProject) isContractorCompanyUser = true;
+    }
+  }
+
   const { passwordHash: _, ...safeUser } = user;
-  res.json(safeUser);
+  res.json({ ...safeUser, isContractorCompanyUser });
 });
 
 export default router;
