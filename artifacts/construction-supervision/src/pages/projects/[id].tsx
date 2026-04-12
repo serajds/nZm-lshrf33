@@ -485,16 +485,18 @@ export default function ProjectDetails() {
                 {widgets.map((w) => (
                   <Card key={w.id} className="border-2 border-dashed border-primary/20">
                     <CardContent className="p-4">
-                      <p className="text-xs text-muted-foreground mb-1">{w.label || "بدون عنوان"}</p>
+                      <p className="text-xs text-muted-foreground mb-2">{w.label || "بدون عنوان"}</p>
                       {w.value != null ? (
-                        <>
-                          <p className="text-2xl font-bold tabular-nums">{String(w.value)}</p>
+                        <div className="space-y-1">
+                          {String(w.value).split("\n").map((line, i) => (
+                            <p key={i} className="text-sm font-semibold leading-relaxed">{line}</p>
+                          ))}
                           {w.reportDate && (
-                            <p className="text-[10px] text-muted-foreground mt-1" dir="ltr">
+                            <p className="text-[10px] text-muted-foreground mt-2" dir="ltr">
                               {w.reportDate}
                             </p>
                           )}
-                        </>
+                        </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">لا توجد بيانات</p>
                       )}
