@@ -567,7 +567,9 @@ export default function ProjectDetails() {
                           value={w.fieldId || ""}
                           onValueChange={val => {
                             const copy = [...editWidgets];
-                            copy[idx] = { ...copy[idx], fieldId: val || null };
+                            const field = templateFields.find((f: any) => f.id === val);
+                            const autoLabel = field ? field.label : "";
+                            copy[idx] = { ...copy[idx], fieldId: val || null, label: copy[idx].label || autoLabel };
                             setEditWidgets(copy);
                           }}
                         >
