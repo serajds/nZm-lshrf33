@@ -383,12 +383,12 @@ export default function OwnerPortal() {
         triggerBlobDownload(blob, fileName);
         return;
       }
-      const chunks: Uint8Array[] = [];
+      const chunks: BlobPart[] = [];
       let received = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        chunks.push(value);
+        chunks.push(value as unknown as BlobPart);
         received += value.length;
         if (total > 0) {
           setDownloadProgress(Math.min(Math.round((received / total) * 100), 100));
@@ -1603,7 +1603,7 @@ export default function OwnerPortal() {
                       <AlertTriangle className="h-8 w-8 text-red-500" />
                     </div>
                     <p className="text-sm font-medium text-red-600">{testResultsError}</p>
-                    <Button variant="outline" size="sm" onClick={fetchTestResults} className="mt-2">إعادة المحاولة</Button>
+                    <Button variant="outline" size="sm" onClick={() => fetchTestResults()} className="mt-2">إعادة المحاولة</Button>
                   </div>
                 ) : testResultsFolderLinked === false ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">

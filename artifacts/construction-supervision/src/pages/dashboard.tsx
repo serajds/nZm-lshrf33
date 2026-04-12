@@ -403,12 +403,12 @@ export default function Dashboard() {
                           <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.ownerEntity}</p>
                         </td>
                         <td className="px-3 py-3 hidden sm:table-cell">
-                          <StatusBadge status={p.status} />
+                          <StatusBadge status={p.status ?? "active"} />
                         </td>
                         <td className="px-3 py-3 min-w-[120px]">
                           <div className="flex items-center gap-2">
                             <div className="flex-1">
-                              <ProgressBar value={p.overallProgress} planned={p.plannedProgress} />
+                              <ProgressBar value={p.overallProgress ?? 0} planned={p.plannedProgress ?? 0} />
                             </div>
                             <span className="text-xs font-bold tabular-nums w-10 text-left">{p.overallProgress}%</span>
                           </div>
@@ -418,7 +418,7 @@ export default function Dashboard() {
                             <Clock className="h-3.5 w-3.5 shrink-0" />
                             {p.noSchedule ? (
                               <span className="text-muted-foreground">بدون جدول</span>
-                            ) : p.daysRemaining > 0 ? `${p.daysRemaining} يوم` : <span className="text-red-500 font-medium">منتهي</span>}
+                            ) : (p.daysRemaining ?? 0) > 0 ? `${p.daysRemaining} يوم` : <span className="text-red-500 font-medium">منتهي</span>}
                           </div>
                         </td>
                       </tr>
