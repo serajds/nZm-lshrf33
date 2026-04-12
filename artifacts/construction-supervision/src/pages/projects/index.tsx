@@ -121,6 +121,9 @@ export default function Projects() {
 
   const { user } = useAuth();
   const canManageProjects = user?.role === "admin" || user?.role === "project_manager";
+  const isContractor = user?.role === "contractor";
+  const getProjectLink = (projectId: number) =>
+    isContractor ? `/projects/${projectId}/activities` : `/projects/${projectId}`;
 
   const { data: projects, isLoading } = useListProjects({
     search: debouncedSearch || undefined,
@@ -588,7 +591,7 @@ export default function Projects() {
               <CardHeader className="pb-3 border-b border-border/50">
                 <div className="flex justify-between items-start gap-2">
                   <CardTitle className="text-lg line-clamp-2 flex-1">
-                    <Link href={`/projects/${project.id}`} className="hover:text-primary transition-colors">
+                    <Link href={getProjectLink(project.id)} className="hover:text-primary transition-colors">
                       {project.name}
                     </Link>
                   </CardTitle>

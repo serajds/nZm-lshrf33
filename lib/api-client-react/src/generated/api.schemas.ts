@@ -45,7 +45,6 @@ export interface Activity {
   sortOrder: number;
   /** @nullable */
   groupId?: number | null;
-  progressWeight?: number;
   createdAt: string;
 }
 
@@ -67,6 +66,7 @@ export const UserRole = {
   project_manager: "project_manager",
   engineer: "engineer",
   owner: "owner",
+  contractor: "contractor",
 } as const;
 
 export interface UserCompany {
@@ -96,6 +96,7 @@ export const CreateUserBodyRole = {
   project_manager: "project_manager",
   engineer: "engineer",
   owner: "owner",
+  contractor: "contractor",
 } as const;
 
 export interface CreateUserBody {
@@ -112,6 +113,7 @@ export type ProjectMemberRole =
 export const ProjectMemberRole = {
   project_manager: "project_manager",
   engineer: "engineer",
+  contractor: "contractor",
 } as const;
 
 export interface ProjectMember {
@@ -133,6 +135,7 @@ export type AddProjectMemberBodyRole =
 export const AddProjectMemberBodyRole = {
   project_manager: "project_manager",
   engineer: "engineer",
+  contractor: "contractor",
 } as const;
 
 export interface AddProjectMemberBody {
@@ -147,6 +150,7 @@ export type UpdateProjectMemberBodyRole =
 export const UpdateProjectMemberBodyRole = {
   project_manager: "project_manager",
   engineer: "engineer",
+  contractor: "contractor",
 } as const;
 
 export interface UpdateProjectMemberBody {
@@ -484,37 +488,6 @@ export interface OwnerProjectView {
   activities: Activity[];
   reports: Report[];
   summary: ProjectSummary;
-  extensions?: ProjectExtensionItem[];
-  suspensions?: ProjectSuspensionItem[];
-}
-
-export interface ProjectExtensionItem {
-  id: number;
-  projectId: number;
-  extensionDate: string;
-  daysAdded: number;
-  newEndDate: string;
-  reason?: string | null;
-  documentRef?: string | null;
-  approvedBy?: string | null;
-  notes?: string | null;
-  createdAt: string;
-}
-
-export interface ProjectSuspensionItem {
-  id: number;
-  projectId: number;
-  type: "official_holiday" | "force_majeure" | "contractor_delay";
-  title: string;
-  startDate: string;
-  endDate: string;
-  calendarDays: number;
-  reason?: string | null;
-  documentRef?: string | null;
-  approvedBy?: string | null;
-  notes?: string | null;
-  datesShifted: boolean;
-  createdAt: string;
 }
 
 export interface GenerateOwnerLinkBody {

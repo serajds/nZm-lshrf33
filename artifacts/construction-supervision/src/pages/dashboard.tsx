@@ -1,4 +1,5 @@
 import { useGetDashboardSummary } from "@workspace/api-client-react";
+import { useAuth } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -100,7 +101,11 @@ const CustomDonutLabel = ({ viewBox, total }: { viewBox?: { cx: number; cy: numb
 
 export default function Dashboard() {
   usePageTitle("لوحة التحكم");
+  const { user } = useAuth();
   const { data: summary, isLoading } = useGetDashboardSummary();
+  const isContractor = user?.role === "contractor";
+  const getProjectLink = (projectId: number) =>
+    isContractor ? `/projects/${projectId}/activities` : `/projects/${projectId}`;
 
   const today = new Date();
   const dateStr = today.toLocaleDateString("ar-u-nu-latn", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
@@ -397,7 +402,7 @@ export default function Dashboard() {
                     {allProjects.map((p, i) => (
                       <tr key={p.id} className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${i % 2 === 1 ? "bg-muted/10" : ""}`}>
                         <td className="px-4 py-3">
-                          <Link href={`/projects/${p.id}`} className="font-medium hover:text-primary transition-colors line-clamp-1">
+                          <Link href={getProjectLink(p.id)} className="font-medium hover:text-primary transition-colors line-clamp-1">
                             {p.name}
                           </Link>
                           <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.ownerEntity}</p>
