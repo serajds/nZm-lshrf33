@@ -787,6 +787,7 @@ export default function ProjectForms() {
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
 
   const isAdminOrPM = user?.role === "admin" || user?.role === "project_manager";
+  const isContractor = user?.role === "contractor";
 
   const { data: templates = [], isLoading: templatesLoading } = useQuery<FormTemplate[]>({
     queryKey: [`/api/projects/${projectId}/form-templates`],
@@ -1055,7 +1056,7 @@ export default function ProjectForms() {
                               >
                                 <Eye className="h-3.5 w-3.5" />
                               </Button>
-                              {(isAdminOrPM || s.submittedById === user?.id) && (
+                              {(isAdminOrPM || (s.submittedById === user?.id && !isContractor)) && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -1073,7 +1074,7 @@ export default function ProjectForms() {
                                   <ClipboardCheck className="h-3.5 w-3.5" />
                                 </Button>
                               )}
-                              {(isAdminOrPM || s.submittedById === user?.id) && (
+                              {(isAdminOrPM || (s.submittedById === user?.id && !isContractor)) && (
                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeletingSubmissionId(s.id)}>
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
@@ -1107,7 +1108,7 @@ export default function ProjectForms() {
                         }}>
                           <Eye className="h-3 w-3" /> عرض
                         </Button>
-                        {(isAdminOrPM || s.submittedById === user?.id) && (
+                        {(isAdminOrPM || (s.submittedById === user?.id && !isContractor)) && (
                           <Button variant="outline" size="sm" className="text-xs" onClick={() => {
                             const tmpl = getTemplateForSubmission(s.templateId);
                             if (tmpl) { setFillingTemplate(tmpl); setEditingSubmission(s); setFillerOpen(true); }
