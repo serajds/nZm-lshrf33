@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useGetProject } from "@workspace/api-client-react";
@@ -404,24 +404,70 @@ function TemplateBuilder({
   );
 }
 
+const DAY_NAMES_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+
+const AUTO_FILL_MAP: Record<string, string> = {
+  project_name: "name",
+  owner_entity: "ownerEntity",
+  contractor_name: "contractor",
+  consultant_name: "supervisorEntity",
+};
+
+function buildAutoFillData(project: Record<string, unknown> | undefined, reportDate: string): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (project) {
+    for (const [fieldId, projectKey] of Object.entries(AUTO_FILL_MAP)) {
+      const val = project[projectKey];
+      if (val) result[fieldId] = val;
+    }
+  }
+  if (reportDate) {
+    const d = new Date(reportDate + "T00:00:00");
+    if (!isNaN(d.getTime())) {
+      result.day_name = DAY_NAMES_AR[d.getDay()];
+    }
+  }
+  return result;
+}
+
 function FormFiller({
   template,
   submission,
+  project,
   onSubmit,
   onCancel,
 }: {
   template: FormTemplate;
   submission?: FormSubmission | null;
+  project?: Record<string, unknown>;
   onSubmit: (data: { data: Record<string, unknown>; reportDate: string; notes: string }) => void;
   onCancel: () => void;
 }) {
-  const [formData, setFormData] = useState<Record<string, unknown>>(
-    (submission?.data as Record<string, unknown>) || {}
-  );
-  const [reportDate, setReportDate] = useState(
-    submission?.reportDate || new Date().toISOString().split("T")[0]
-  );
+  const today = new Date().toISOString().split("T")[0];
+  const initialDate = submission?.reportDate || today;
+  const isNew = !submission;
+
+  const [formData, setFormData] = useState<Record<string, unknown>>(() => {
+    if (submission?.data) return submission.data as Record<string, unknown>;
+    return buildAutoFillData(project, initialDate);
+  });
+  const [reportDate, setReportDate] = useState(initialDate);
   const [notes, setNotes] = useState(submission?.notes || "");
+
+  useEffect(() => {
+    if (!isNew) return;
+    const autoFill = buildAutoFillData(project, reportDate);
+    setFormData(prev => {
+      const merged = { ...prev };
+      for (const [key, val] of Object.entries(autoFill)) {
+        if (!merged[key] || merged[key] === "") {
+          merged[key] = val;
+        }
+      }
+      if (autoFill.day_name) merged.day_name = autoFill.day_name;
+      return merged;
+    });
+  }, [project, reportDate]);
 
   const updateValue = (fieldId: string, value: unknown) => {
     setFormData(prev => ({ ...prev, [fieldId]: value }));
@@ -625,47 +671,57 @@ function SubmissionViewer({
     let fieldsHtml = "";
     for (const field of template.fields) {
       if (field.type === "section") {
-        fieldsHtml += `<tr><td colspan="2" style="background:#f0f4f8;padding:10px 12px;font-weight:bold;font-size:14px;border-top:2px solid #ccc;">${esc(field.label)}</td></tr>`;
+        fieldsHtml += `<tr><td colspan="2" style="background:#eef2f7;padding:3px 6px;font-weight:700;font-size:10px;border-top:1px solid #bbb;letter-spacing:0.3px;">${esc(field.label)}</td></tr>`;
         continue;
       }
 
       const value = data[field.id];
+      const isEmpty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+      if (isEmpty) continue;
+
       let displayValue = "";
 
       if (field.type === "table" && Array.isArray(value)) {
-        let tableHtml = `<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr>`;
+        const rows = (value as string[][]).filter(row => row.some(cell => cell && cell.trim()));
+        if (rows.length === 0) continue;
+        let tableHtml = `<table style="width:100%;border-collapse:collapse;font-size:9px;"><thead><tr>`;
         (field.columns || []).forEach(col => {
-          tableHtml += `<th style="border:1px solid #ddd;padding:6px 8px;background:#f5f5f5;text-align:right;">${esc(col.label)}</th>`;
+          tableHtml += `<th style="border:1px solid #ccc;padding:2px 4px;background:#f0f0f0;text-align:right;font-size:8px;">${esc(col.label)}</th>`;
         });
         tableHtml += `</tr></thead><tbody>`;
-        (value as string[][]).forEach(row => {
+        rows.forEach(row => {
           tableHtml += `<tr>`;
           row.forEach(cell => {
-            tableHtml += `<td style="border:1px solid #ddd;padding:6px 8px;">${esc(cell)}</td>`;
+            tableHtml += `<td style="border:1px solid #ccc;padding:2px 4px;font-size:9px;">${esc(cell)}</td>`;
           });
           tableHtml += `</tr>`;
         });
         tableHtml += `</tbody></table>`;
         displayValue = tableHtml;
+      } else if (field.type === "textarea") {
+        displayValue = `<span style="white-space:pre-wrap;font-size:9px;">${esc(value as string)}</span>`;
       } else {
-        displayValue = `<span>${esc(value as string) || "—"}</span>`;
+        displayValue = `<span style="font-size:9px;">${esc(value as string)}</span>`;
       }
 
-      fieldsHtml += `<tr><td style="padding:8px 12px;font-weight:600;vertical-align:top;width:160px;background:#fafafa;border-bottom:1px solid #eee;">${esc(field.label)}</td><td style="padding:8px 12px;border-bottom:1px solid #eee;">${displayValue}</td></tr>`;
+      fieldsHtml += `<tr><td style="padding:2px 5px;font-weight:600;vertical-align:top;width:120px;background:#fafafa;border-bottom:1px solid #eee;font-size:9px;">${esc(field.label)}</td><td style="padding:2px 5px;border-bottom:1px solid #eee;">${displayValue}</td></tr>`;
     }
 
     printWindow.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${esc(template.name)}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@300;400;600;700&display=swap');
+@page { size: A4; margin: 8mm; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Noto Kufi Arabic', sans-serif; padding: 20px; color: #333; direction: rtl; }
-.header { text-align: center; margin-bottom: 24px; border-bottom: 3px solid #2563eb; padding-bottom: 16px; }
-.header h1 { font-size: 20px; color: #1e40af; margin-bottom: 4px; }
-.header p { font-size: 12px; color: #666; }
-.meta { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 12px; background: #f8fafc; padding: 10px 14px; border-radius: 6px; }
-table.fields { width: 100%; border-collapse: collapse; border: 1px solid #ddd; border-radius: 6px; overflow: hidden; }
-.footer { margin-top: 40px; display: flex; justify-content: space-between; font-size: 12px; }
-.sig-box { width: 45%; border-top: 1px solid #999; padding-top: 8px; text-align: center; }
+body { font-family: 'Noto Kufi Arabic', sans-serif; padding: 6px; color: #333; direction: rtl; font-size: 9px; line-height: 1.3; }
+.header { text-align: center; margin-bottom: 6px; border-bottom: 2px solid #2563eb; padding-bottom: 4px; }
+.header h1 { font-size: 13px; color: #1e40af; margin-bottom: 1px; }
+.header p { font-size: 10px; color: #666; }
+.meta { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 9px; background: #f8fafc; padding: 3px 8px; border-radius: 3px; }
+table.fields { width: 100%; border-collapse: collapse; border: 1px solid #ccc; }
+.notes-box { margin-top: 4px; padding: 3px 6px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 3px; font-size: 9px; }
+.footer { margin-top: 10px; display: flex; justify-content: space-between; font-size: 9px; }
+.sig-box { width: 45%; border-top: 1px solid #999; padding-top: 4px; text-align: center; }
+.sig-box p { margin-bottom: 2px; }
 @media print { body { padding: 0; } }
 </style></head><body>
 <div class="header">
@@ -678,10 +734,10 @@ table.fields { width: 100%; border-collapse: collapse; border: 1px solid #ddd; b
   <span>الحالة: ${submission.status === "reviewed" ? "تمت المراجعة" : submission.status === "submitted" ? "مرسل" : "مسودة"}</span>
 </div>
 <table class="fields">${fieldsHtml}</table>
-${submission.notes ? `<div style="margin-top:16px;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:12px;"><strong>ملاحظات:</strong> ${esc(submission.notes)}</div>` : ""}
+${submission.notes ? `<div class="notes-box"><strong>ملاحظات:</strong> ${esc(submission.notes)}</div>` : ""}
 <div class="footer">
-  <div class="sig-box"><p>إعداد / المقاول المنفذ</p><br/><p>الاسم: ${esc(submission.submittedByName) || "___________"}</p><p>التوقيع: ___________</p></div>
-  <div class="sig-box"><p>اعتماد /</p><br/><p>الاسم: ___________</p><p>التوقيع: ___________</p></div>
+  <div class="sig-box"><p>إعداد / المقاول المنفذ</p><p>الاسم: ${esc(submission.submittedByName) || "___________"}</p><p>التوقيع: ___________</p></div>
+  <div class="sig-box"><p>اعتماد /</p><p>الاسم: ___________</p><p>التوقيع: ___________</p></div>
 </div>
 </body></html>`);
     printWindow.document.close();
@@ -1148,6 +1204,7 @@ export default function ProjectForms() {
             <FormFiller
               template={fillingTemplate}
               submission={editingSubmission}
+              project={project as Record<string, unknown> | undefined}
               onSubmit={handleSubmitForm}
               onCancel={() => { setFillerOpen(false); setFillingTemplate(null); setEditingSubmission(null); }}
             />
