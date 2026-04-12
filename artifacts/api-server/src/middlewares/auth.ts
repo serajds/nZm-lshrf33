@@ -104,6 +104,25 @@ export function requireProjectAccess(paramName: string = "projectId") {
         return;
       }
 
+      const { usersTable } = await import("@workspace/db");
+      const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, req.user!.userId));
+      const actualRole = dbUser?.role || role;
+
+      const [membership] = await db.select()
+        .from(projectMembersTable)
+        .where(
+          and(
+            eq(projectMembersTable.projectId, projectId),
+            eq(projectMembersTable.userId, req.user!.userId)
+          )
+        );
+
+      if (membership) {
+        req.projectRole = membership.role;
+        next();
+        return;
+      }
+
       const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
         .from(userCompaniesTable)
         .where(eq(userCompaniesTable.userId, req.user!.userId));
@@ -122,36 +141,13 @@ export function requireProjectAccess(paramName: string = "projectId") {
         }
       }
 
-      const { usersTable } = await import("@workspace/db");
-      const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, req.user!.userId));
-      const actualRole = dbUser?.role || role;
-
       if (actualRole === "contractor") {
         res.status(403).json({ error: "ليس لديك صلاحية الوصول لهذا المشروع" });
         return;
       }
 
-      if (actualRole !== "engineer" && actualRole !== "project_manager") {
-        res.status(403).json({ error: "غير مصرح بهذه العملية" });
-        return;
-      }
-
-      const [membership] = await db.select()
-        .from(projectMembersTable)
-        .where(
-          and(
-            eq(projectMembersTable.projectId, projectId),
-            eq(projectMembersTable.userId, req.user!.userId)
-          )
-        );
-
-      if (!membership) {
-        res.status(403).json({ error: "ليس لديك صلاحية الوصول لهذا المشروع" });
-        return;
-      }
-
-      req.projectRole = membership.role;
-      next();
+      res.status(403).json({ error: "ليس لديك صلاحية الوصول لهذا المشروع" });
+      return;
     });
   };
 }
