@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable } from "@workspace/db";
+import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable } from "@workspace/db";
 import { eq, ilike, or, sql, inArray } from "drizzle-orm";
 import { requireEngineerOrAdmin, requireStaffOrContractor, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
@@ -18,7 +18,29 @@ router.get("/projects", requireStaffOrContractor, async (req, res): Promise<void
 
   let projectIds: number[] | null = null;
 
-  if (userRole !== "admin" && userId) {
+  if (userRole === "contractor" && userId) {
+    const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
+      .from(userCompaniesTable)
+      .where(eq(userCompaniesTable.userId, userId));
+
+    const companyIds = companyLinks.map(c => c.companyId);
+
+    if (companyIds.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const companyProjects = await db.select({ id: projectsTable.id })
+      .from(projectsTable)
+      .where(inArray(projectsTable.contractorCompanyId, companyIds));
+
+    projectIds = companyProjects.map(p => p.id);
+
+    if (projectIds.length === 0) {
+      res.json([]);
+      return;
+    }
+  } else if (userRole !== "admin" && userId) {
     const memberships = await db.select({ projectId: projectMembersTable.projectId })
       .from(projectMembersTable)
       .where(eq(projectMembersTable.userId, userId));
