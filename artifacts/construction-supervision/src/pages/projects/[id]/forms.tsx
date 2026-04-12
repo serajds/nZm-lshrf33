@@ -1121,6 +1121,7 @@ export default function ProjectForms() {
                       >
                         <Send className="h-3 w-3" /> تعبئة
                       </Button>
+                      {!isContractor && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -1130,6 +1131,7 @@ export default function ProjectForms() {
                       >
                         <Download className="h-3 w-3" />
                       </Button>
+                      )}
                       {isAdminOrPM && (
                         <>
                           <Button
