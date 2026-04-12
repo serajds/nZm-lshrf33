@@ -48,7 +48,7 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
   }
 
   let isContractorCompanyUser = false;
-  if (user.role !== "contractor") {
+  if (user.role !== "contractor" && user.role !== "admin" && user.role !== "project_manager") {
     const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
       .from(userCompaniesTable)
       .where(eq(userCompaniesTable.userId, user.id));
