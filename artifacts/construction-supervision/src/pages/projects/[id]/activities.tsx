@@ -66,6 +66,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 import { 
   Plus, Edit2, Trash2, ArrowRight, ChevronDown, ChevronLeft,
@@ -307,6 +308,8 @@ export default function ProjectActivities() {
   const [, setLocation] = useLocation();
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
   const queryClient = useQueryClient();
   usePageTitle("بنود الأعمال");
 
@@ -902,7 +905,7 @@ export default function ProjectActivities() {
           );
         })()}
 
-        {/* Progress Comparison Chart */}
+        {!isContractor && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">الإنجاز المخطط مقابل الفعلي</CardTitle>
@@ -925,8 +928,9 @@ export default function ProjectActivities() {
             </div>
           </CardContent>
         </Card>
+        )}
 
-        {/* Activities Table with Quick Actions */}
+        {!isContractor && (
         <Card>
           <CardHeader className="space-y-3">
             <div className="flex items-center justify-between">
@@ -1538,9 +1542,10 @@ export default function ProjectActivities() {
             })()}
           </CardContent>
         </Card>
+        )}
       </div>
 
-      {/* Delete Confirm */}
+      {!isContractor && (
       <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
@@ -1555,6 +1560,7 @@ export default function ProjectActivities() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      )}
     </div>
   );
 }
