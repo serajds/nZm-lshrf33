@@ -183,13 +183,18 @@ router.post("/projects/:id/form-submissions", requireProjectAccess("id"), async 
     if (user) submitterName = user.fullName;
   }
 
+  const userRole = req.user?.role;
+  const projectRole = req.projectRole;
+  const isManagerOrAdmin = userRole === "admin" || projectRole === "project_manager";
+  const effectiveStatus = (status && isManagerOrAdmin) ? status : "submitted";
+
   const [submission] = await db.insert(formSubmissionsTable).values({
     templateId,
     projectId,
     data,
     submittedById: req.user?.userId ?? null,
     submittedByName: submitterName,
-    status: status || "submitted",
+    status: effectiveStatus,
     reportDate,
     notes: notes || null,
   }).returning();

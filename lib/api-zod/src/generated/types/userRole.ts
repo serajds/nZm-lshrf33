@@ -13,4 +13,5 @@ export const UserRole = {
   project_manager: "project_manager",
   engineer: "engineer",
   owner: "owner",
+  contractor: "contractor",
 } as const;

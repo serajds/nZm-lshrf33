@@ -12,4 +12,5 @@ export type UpdateProjectMemberBodyRole =
 export const UpdateProjectMemberBodyRole = {
   project_manager: "project_manager",
   engineer: "engineer",
+  contractor: "contractor",
 } as const;

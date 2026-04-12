@@ -1051,7 +1051,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, project_manager, engineer, owner]
+          enum: [admin, project_manager, engineer, owner, contractor]
         companies:
           type: array
           items:
@@ -1077,7 +1077,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, project_manager, engineer, owner]
+          enum: [admin, project_manager, engineer, owner, contractor]
         companyIds:
           type: array
           items:
@@ -1099,7 +1099,7 @@ components:
           type: integer
         role:
           type: string
-          enum: [project_manager, engineer]
+          enum: [project_manager, engineer, contractor]
         createdAt:
           type: string
           format: date-time
@@ -1134,7 +1134,7 @@ components:
           type: integer
         role:
           type: string
-          enum: [project_manager, engineer]
+          enum: [project_manager, engineer, contractor]
         assignedGroupIds:
           type: array
           items:
@@ -1148,7 +1148,7 @@ components:
       properties:
         role:
           type: string
-          enum: [project_manager, engineer]
+          enum: [project_manager, engineer, contractor]
         assignedGroupIds:
           type: array
           items:
