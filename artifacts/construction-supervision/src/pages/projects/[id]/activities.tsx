@@ -11,7 +11,7 @@ import {
   getListActivitiesQueryKey,
   useGetMyProjectPermissions,
 } from "@workspace/api-client-react";
-import type { Activity, ProjectSuspension } from "@workspace/api-client-react";
+import type { Activity, ProjectSuspension, UpdateActivityBodyStatus } from "@workspace/api-client-react";
 import {
   DndContext,
   closestCenter,
@@ -603,7 +603,7 @@ export default function ProjectActivities() {
       const extra: Record<string, unknown> = {};
       if (newStatus === "completed") extra.actualProgress = 100;
       if (newStatus === "not_started") extra.actualProgress = 0;
-      await updateActivity.mutateAsync({ projectId, id: a.id, data: { status: newStatus, ...extra } });
+      await updateActivity.mutateAsync({ projectId, id: a.id, data: { status: newStatus as UpdateActivityBodyStatus, ...extra } });
       invalidate();
       toast({ title: "تم تحديث الحالة" });
     } catch {
@@ -1229,7 +1229,7 @@ export default function ProjectActivities() {
                                     <FolderPlus className="h-3.5 w-3.5 text-muted-foreground" />
                                   </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start" dir="rtl">
+                                <DropdownMenuContent align="start">
                                   <DropdownMenuLabel className="text-xs text-muted-foreground">نقل إلى مجموعة</DropdownMenuLabel>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem onClick={() => assignToGroup(a.id, null)}>

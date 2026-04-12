@@ -45,6 +45,7 @@ export interface Activity {
   sortOrder: number;
   /** @nullable */
   groupId?: number | null;
+  progressWeight?: number;
   createdAt: string;
 }
 
@@ -483,6 +484,37 @@ export interface OwnerProjectView {
   activities: Activity[];
   reports: Report[];
   summary: ProjectSummary;
+  extensions?: ProjectExtensionItem[];
+  suspensions?: ProjectSuspensionItem[];
+}
+
+export interface ProjectExtensionItem {
+  id: number;
+  projectId: number;
+  extensionDate: string;
+  daysAdded: number;
+  newEndDate: string;
+  reason?: string | null;
+  documentRef?: string | null;
+  approvedBy?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface ProjectSuspensionItem {
+  id: number;
+  projectId: number;
+  type: "official_holiday" | "force_majeure" | "contractor_delay";
+  title: string;
+  startDate: string;
+  endDate: string;
+  calendarDays: number;
+  reason?: string | null;
+  documentRef?: string | null;
+  approvedBy?: string | null;
+  notes?: string | null;
+  datesShifted: boolean;
+  createdAt: string;
 }
 
 export interface GenerateOwnerLinkBody {
