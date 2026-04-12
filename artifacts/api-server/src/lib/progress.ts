@@ -4,6 +4,26 @@ interface ActivityLike {
   actualProgress: number;
 }
 
+function durationDays(start: string | null, end: string | null): number {
+  if (!start || !end) return 1;
+  const diff = Math.ceil(
+    (new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24),
+  );
+  return Math.max(1, diff);
+}
+
+export function calcWeightedProgress(activities: ActivityLike[]): number {
+  if (activities.length === 0) return 0;
+  let totalWeight = 0;
+  let weightedSum = 0;
+  for (const a of activities) {
+    const w = durationDays(a.plannedStartDate, a.plannedEndDate);
+    weightedSum += a.actualProgress * w;
+    totalWeight += w;
+  }
+  return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
+}
+
 
 export function calcActivityPlannedProgress(
   activity: { plannedStartDate: string | null; plannedEndDate: string | null },
