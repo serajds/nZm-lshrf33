@@ -27,6 +27,7 @@ import {
   Plus, ArrowRight, FileText, Trash2, Edit2, Eye, Printer,
   GripVertical, Type, Hash, Calendar, List, Table, Heading,
   AlignLeft, Send, ClipboardCheck, ChevronDown, ChevronUp, X,
+  Download, Upload,
 } from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { fmtDate } from "@/lib/utils";
@@ -944,6 +945,49 @@ export default function ProjectForms() {
     }
   };
 
+  const handleExportTemplate = (t: FormTemplate) => {
+    const exportData = { name: t.name, description: t.description, fields: t.fields };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${t.name.replace(/[^a-zA-Z0-9\u0600-\u06FF_-]/g, "_")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "تم تصدير النموذج" });
+  };
+
+  const handleImportTemplate = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (!data.name || !Array.isArray(data.fields)) {
+          toast({ variant: "destructive", title: "ملف غير صالح", description: "يجب أن يحتوي على اسم النموذج والحقول" });
+          return;
+        }
+        const r = await authFetch(`${API_BASE}/projects/${projectId}/form-templates`, {
+          method: "POST",
+          body: JSON.stringify({ name: data.name, description: data.description || "", fields: data.fields }),
+        });
+        if (r.ok) {
+          toast({ title: "تم استيراد النموذج بنجاح" });
+          invalidate();
+        } else {
+          toast({ variant: "destructive", title: "فشل استيراد النموذج" });
+        }
+      } catch {
+        toast({ variant: "destructive", title: "ملف غير صالح", description: "تأكد من أن الملف بصيغة JSON صحيحة" });
+      }
+    };
+    input.click();
+  };
+
   const getTemplateName = (templateId: number) => {
     return templates.find(t => t.id === templateId)?.name || "نموذج محذوف";
   };
@@ -992,9 +1036,14 @@ export default function ProjectForms() {
       {activeTab === "templates" && (
         <div className="space-y-4">
           {isAdminOrPM && (
-            <Button className="gap-2" onClick={() => { setEditingTemplate(null); setBuilderOpen(true); }}>
-              <Plus className="h-4 w-4" /> إنشاء نموذج جديد
-            </Button>
+            <div className="flex gap-2 flex-wrap">
+              <Button className="gap-2" onClick={() => { setEditingTemplate(null); setBuilderOpen(true); }}>
+                <Plus className="h-4 w-4" /> إنشاء نموذج جديد
+              </Button>
+              <Button variant="outline" className="gap-2" onClick={handleImportTemplate}>
+                <Upload className="h-4 w-4" /> استيراد نموذج
+              </Button>
+            </div>
           )}
 
           {templatesLoading ? (
@@ -1032,6 +1081,15 @@ export default function ProjectForms() {
                         onClick={() => { setFillingTemplate(t); setEditingSubmission(null); setFillerOpen(true); }}
                       >
                         <Send className="h-3 w-3" /> تعبئة
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        title="تصدير النموذج"
+                        onClick={() => handleExportTemplate(t)}
+                      >
+                        <Download className="h-3 w-3" />
                       </Button>
                       {isAdminOrPM && (
                         <>
