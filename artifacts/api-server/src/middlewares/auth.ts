@@ -55,6 +55,17 @@ export function requireAdminOrPM(req: Request, res: Response, next: NextFunction
 export function requireEngineerOrAdmin(req: Request, res: Response, next: NextFunction): void {
   requireAuth(req, res, () => {
     const role = req.user?.role;
+    if (role !== "admin" && role !== "engineer" && role !== "project_manager") {
+      res.status(403).json({ error: "غير مصرح بهذه العملية" });
+      return;
+    }
+    next();
+  });
+}
+
+export function requireStaffOrContractor(req: Request, res: Response, next: NextFunction): void {
+  requireAuth(req, res, () => {
+    const role = req.user?.role;
     if (role !== "admin" && role !== "engineer" && role !== "project_manager" && role !== "contractor") {
       res.status(403).json({ error: "غير مصرح بهذه العملية" });
       return;

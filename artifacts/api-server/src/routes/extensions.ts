@@ -26,7 +26,7 @@ async function recomputeExtensionChain(projectId: number, baseEndDate: string) {
   }
 }
 
-router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
 
   const extensions = await db.select()

@@ -7,7 +7,7 @@ import { calcActivityPlannedProgress } from "../lib/progress";
 
 const router: IRouter = Router();
 
-router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const { type, dateFrom, dateTo } = req.query;
@@ -98,7 +98,7 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
   res.status(201).json(report);
 });
 
-router.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);

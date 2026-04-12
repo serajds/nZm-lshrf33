@@ -41,7 +41,7 @@ async function shiftActivities(projectId: number, suspStartDate: string, calenda
   }
 }
 
-router.get("/projects/:projectId/suspensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/suspensions", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
 
   const suspensions = await db.select()
