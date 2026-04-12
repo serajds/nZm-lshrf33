@@ -141,16 +141,25 @@ router.delete("/projects/:id/form-templates/:templateId", requireProjectAccess("
 router.get("/projects/:id/form-submissions", requireProjectAccess("id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = req.query.templateId ? parseInt(req.query.templateId as string, 10) : undefined;
+  const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
 
   const conditions = [eq(formSubmissionsTable.projectId, projectId)];
   if (templateId) {
     conditions.push(eq(formSubmissionsTable.templateId, templateId));
   }
+  if (isContractor) {
+    conditions.push(eq(formTemplatesTable.visibleToContractor, true));
+  }
 
-  const submissions = await db.select()
+  const rows = await db.select({
+    submission: formSubmissionsTable,
+  })
     .from(formSubmissionsTable)
-    .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+    .innerJoin(formTemplatesTable, eq(formSubmissionsTable.templateId, formTemplatesTable.id))
+    .where(and(...conditions))
     .orderBy(desc(formSubmissionsTable.createdAt));
+
+  const submissions = rows.map(r => r.submission);
 
   res.json(submissions);
 });
