@@ -71,25 +71,25 @@ function Router() {
         <ProtectedRoute component={ProjectActivities} />
       </Route>
       <Route path="/projects/:id/reports">
-        <ProtectedRoute component={ProjectReports} />
+        <ProtectedRoute component={ProjectReports} allowedRoles={["admin", "project_manager", "engineer"]} />
       </Route>
       <Route path="/projects/:id/files">
-        <ProtectedRoute component={ProjectFiles} />
+        <ProtectedRoute component={ProjectFiles} allowedRoles={["admin", "project_manager", "engineer"]} />
       </Route>
       <Route path="/projects/:id/deviation">
-        <ProtectedRoute component={ProjectDeviation} />
+        <ProtectedRoute component={ProjectDeviation} allowedRoles={["admin", "project_manager", "engineer"]} />
       </Route>
       <Route path="/projects/:id/extensions">
-        <ProtectedRoute component={ProjectExtensions} />
+        <ProtectedRoute component={ProjectExtensions} allowedRoles={["admin", "project_manager", "engineer"]} />
       </Route>
       <Route path="/projects/:id/suspensions">
-        <ProtectedRoute component={ProjectSuspensions} />
+        <ProtectedRoute component={ProjectSuspensions} allowedRoles={["admin", "project_manager", "engineer"]} />
       </Route>
       <Route path="/projects/:id/forms">
         <ProtectedRoute component={ProjectForms} />
       </Route>
       <Route path="/projects/:id">
-        <ProtectedRoute component={ProjectDetails} />
+        <ProtectedRoute component={ProjectDetails} allowedRoles={["admin", "project_manager", "engineer"]} />
       </Route>
       <Route path="/users">
         <ProtectedRoute component={Users} allowedRoles={["admin"]} />

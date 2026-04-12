@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { reportsTable, activitiesTable } from "@workspace/db";
 import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
-import { requireProjectAccess } from "../middlewares/auth";
+import { requireProjectAccess, rejectContractor } from "../middlewares/auth";
 import { calcActivityPlannedProgress } from "../lib/progress";
 
 const router: IRouter = Router();
@@ -37,7 +37,7 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), as
   res.json(reports);
 });
 
-router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -115,7 +115,7 @@ router.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId")
   res.json(report);
 });
 
-router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
@@ -154,7 +154,7 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
   res.json(report);
 });
 
-router.delete("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);

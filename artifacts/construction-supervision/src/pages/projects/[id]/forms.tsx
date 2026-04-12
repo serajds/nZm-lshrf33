@@ -121,6 +121,7 @@ function TemplateBuilder({
   const [description, setDescription] = useState(template?.description || "");
   const [fields, setFields] = useState<FormField[]>(template?.fields || []);
   const [editingFieldIdx, setEditingFieldIdx] = useState<number | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const addField = (type: FieldType) => {
     const newField: FormField = {
@@ -319,6 +320,79 @@ function TemplateBuilder({
           })}
         </div>
       </div>
+
+      {fields.length > 0 && (
+        <div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 mb-3"
+            onClick={() => setShowPreview(!showPreview)}
+          >
+            <Eye className="h-4 w-4" />
+            {showPreview ? "إخفاء المعاينة" : "معاينة النموذج"}
+          </Button>
+
+          {showPreview && (
+            <Card className="border-2 border-dashed border-primary/30">
+              <CardContent className="p-5 space-y-4">
+                <div className="text-center border-b pb-3">
+                  <h2 className="font-bold text-lg">{name || "بدون عنوان"}</h2>
+                  {description && <p className="text-sm text-muted-foreground">{description}</p>}
+                </div>
+                {fields.map(field => {
+                  if (field.type === "section") {
+                    return (
+                      <div key={field.id} className="border-b pb-1 pt-2">
+                        <h3 className="font-semibold">{field.label || "عنوان القسم"}</h3>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={field.id}>
+                      <Label className="text-sm">
+                        {field.label || "بدون عنوان"}
+                        {field.required && <span className="text-destructive mr-1">*</span>}
+                      </Label>
+                      {field.type === "text" && <Input disabled placeholder={field.placeholder || ""} className="mt-1" />}
+                      {field.type === "textarea" && <Textarea disabled placeholder={field.placeholder || ""} className="mt-1 min-h-16" />}
+                      {field.type === "number" && <Input type="number" disabled className="mt-1" />}
+                      {field.type === "date" && <Input type="date" disabled className="mt-1" />}
+                      {field.type === "select" && (
+                        <Select disabled>
+                          <SelectTrigger className="mt-1" dir="rtl"><SelectValue placeholder="اختر..." /></SelectTrigger>
+                        </Select>
+                      )}
+                      {field.type === "table" && field.columns && (
+                        <div className="mt-1 border rounded overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-muted/40">
+                                <th className="px-3 py-1.5 text-right font-medium text-xs w-10">#</th>
+                                {field.columns.map((col, ci) => (
+                                  <th key={ci} className="px-3 py-1.5 text-right font-medium text-xs">{col.label || `عمود ${ci + 1}`}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="border-t">
+                                <td className="px-3 py-1 text-muted-foreground text-xs">1</td>
+                                {field.columns.map((_, ci) => (
+                                  <td key={ci} className="px-1 py-1"><Input disabled className="h-7 text-xs" /></td>
+                                ))}
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-end gap-2 pt-2 border-t">
         <Button variant="outline" onClick={onCancel}>إلغاء</Button>
@@ -536,7 +610,7 @@ function SubmissionViewer({
 }: {
   submission: FormSubmission;
   template: FormTemplate;
-  project: any;
+  project: { name?: string } | undefined;
   onClose: () => void;
 }) {
   const data = submission.data as Record<string, unknown>;
