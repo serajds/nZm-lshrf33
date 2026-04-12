@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectMembersTable, usersTable, memberGroupAssignmentsTable, activityGroupsTable, projectsTable, companiesTable, userCompaniesTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
-import { requireProjectManager, requireProjectAccess, requireAdmin } from "../middlewares/auth";
+import { requireProjectManager, requireProjectAccess, requireAdmin, rejectContractor } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
@@ -78,7 +78,7 @@ async function getMemberWithUser(memberId: number) {
   return { ...memberWithUser, companyNames, assignedGroupIds };
 }
 
-router.get("/projects/:projectId/members", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/members", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
