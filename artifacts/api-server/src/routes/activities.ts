@@ -1,10 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { activitiesTable, projectsTable, activityGroupsTable, projectMembersTable, memberGroupAssignmentsTable } from "@workspace/db";
-import { eq, and, max } from "drizzle-orm";
+import { eq, and, avg, max } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
-import { calcWeightedProgress } from "../lib/progress";
 import multer from "multer";
 import * as XLSX from "xlsx";
 
@@ -35,16 +34,12 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const router: IRouter = Router();
 
 async function syncProjectProgress(projectId: number) {
-  const rows = await db
-    .select({
-      actualProgress: activitiesTable.actualProgress,
-      plannedStartDate: activitiesTable.plannedStartDate,
-      plannedEndDate: activitiesTable.plannedEndDate,
-    })
+  const [result] = await db
+    .select({ avgProgress: avg(activitiesTable.actualProgress) })
     .from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId));
 
-  const computed = calcWeightedProgress(rows);
+  const computed = result?.avgProgress ? Math.round(Number(result.avgProgress)) : 0;
 
   await db
     .update(projectsTable)
