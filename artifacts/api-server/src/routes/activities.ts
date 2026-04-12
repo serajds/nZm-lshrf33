@@ -4,6 +4,7 @@ import { activitiesTable, projectsTable, activityGroupsTable, projectMembersTabl
 import { eq, and, avg, max } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
+import { calcActivityPlannedProgress } from "../lib/progress";
 import multer from "multer";
 import * as XLSX from "xlsx";
 
@@ -89,6 +90,11 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     }
   }
 
+  const autoPlannedProgress = calcActivityPlannedProgress({
+    plannedStartDate: plannedStartDate || null,
+    plannedEndDate: plannedEndDate || null,
+  });
+
   const [activity] = await db.insert(activitiesTable).values({
     projectId,
     name,
@@ -96,7 +102,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     plannedEndDate: plannedEndDate || null,
     actualStartDate: actualStartDate ?? null,
     actualEndDate: actualEndDate ?? null,
-    plannedProgress: plannedProgress ?? 0,
+    plannedProgress: Math.round(autoPlannedProgress),
     actualProgress: actualProgress ?? 0,
     status: status ?? "not_started",
     groupId: groupId ?? null,
@@ -151,7 +157,6 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   }
   if (body.actualStartDate !== undefined) updateData.actualStartDate = body.actualStartDate;
   if (body.actualEndDate !== undefined) updateData.actualEndDate = body.actualEndDate;
-  if (body.plannedProgress !== undefined) updateData.plannedProgress = body.plannedProgress;
   if (body.actualProgress !== undefined) updateData.actualProgress = body.actualProgress;
   if (body.status !== undefined) updateData.status = body.status;
   if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder;
@@ -173,10 +178,11 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   }
 
   const todayStr = new Date().toISOString().split("T")[0];
-  if (body.actualProgress !== undefined) {
-    const [existing] = await db.select().from(activitiesTable)
-      .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
-    if (existing) {
+  const [existing] = await db.select().from(activitiesTable)
+    .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
+
+  if (existing) {
+    if (body.actualProgress !== undefined) {
       const newProgress = Number(body.actualProgress);
       if (newProgress > 0 && !existing.actualStartDate && !updateData.actualStartDate) {
         updateData.actualStartDate = todayStr;
@@ -189,6 +195,13 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
         if (!updateData.status && existing.status === "not_started") updateData.status = "in_progress";
       }
     }
+
+    const finalStart = (updateData.plannedStartDate as string | null | undefined) ?? existing.plannedStartDate;
+    const finalEnd = (updateData.plannedEndDate as string | null | undefined) ?? existing.plannedEndDate;
+    updateData.plannedProgress = Math.round(calcActivityPlannedProgress({
+      plannedStartDate: finalStart ?? null,
+      plannedEndDate: finalEnd ?? null,
+    }));
   }
 
   const [activity] = await db.update(activitiesTable)

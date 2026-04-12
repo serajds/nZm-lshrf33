@@ -117,11 +117,23 @@ const createActivitySchema = (isNoSchedule: boolean) => z.object({
   plannedEndDate: isNoSchedule ? z.string().optional().default("") : z.string().min(1, "تاريخ النهاية المخطط مطلوب"),
   actualStartDate: z.string().optional().nullable(),
   actualEndDate: z.string().optional().nullable(),
-  plannedProgress: z.coerce.number().min(0).max(100),
   actualProgress: z.coerce.number().min(0).max(100),
   status: z.enum(["not_started", "in_progress", "completed", "delayed"]).default("not_started"),
   sortOrder: z.coerce.number().default(0),
 });
+
+function calcPlannedProgress(a: { plannedStartDate?: string | null; plannedEndDate?: string | null }): number {
+  if (!a.plannedStartDate || !a.plannedEndDate) return 0;
+  const start = new Date(a.plannedStartDate).getTime();
+  const end = new Date(a.plannedEndDate).getTime();
+  const now = new Date().getTime();
+  const duration = end - start;
+  if (duration <= 0) return now >= end ? 100 : 0;
+  const elapsed = now - start;
+  if (elapsed <= 0) return 0;
+  if (elapsed >= duration) return 100;
+  return Math.round((elapsed / duration) * 100);
+}
 
 const activitySchema = createActivitySchema(false);
 type ActivityFormValues = z.infer<typeof activitySchema>;
@@ -470,7 +482,7 @@ export default function ProjectActivities() {
     defaultValues: {
       name: "", plannedStartDate: "", plannedEndDate: "",
       actualStartDate: "", actualEndDate: "",
-      plannedProgress: 0, actualProgress: 0,
+      actualProgress: 0,
       status: "not_started", sortOrder: 0,
     }
   });
@@ -493,7 +505,7 @@ export default function ProjectActivities() {
         a.plannedEndDate?.split("T")[0] || "",
         a.actualStartDate?.split("T")[0] || "",
         a.actualEndDate?.split("T")[0] || "",
-        a.plannedProgress ?? 0,
+        calcPlannedProgress(a),
         a.actualProgress ?? 0,
         statusLabels[a.status] || a.status,
       ]),
@@ -563,7 +575,6 @@ export default function ProjectActivities() {
       plannedEndDate: a.plannedEndDate ? new Date(a.plannedEndDate).toISOString().split('T')[0] : "",
       actualStartDate: a.actualStartDate ? new Date(a.actualStartDate).toISOString().split('T')[0] : "",
       actualEndDate: a.actualEndDate ? new Date(a.actualEndDate).toISOString().split('T')[0] : "",
-      plannedProgress: a.plannedProgress,
       actualProgress: a.actualProgress,
       status: a.status as ActivityFormValues["status"],
       sortOrder: a.sortOrder ?? 0,
@@ -656,7 +667,7 @@ export default function ProjectActivities() {
 
   const ganttData = (activities ?? []).map((a) => ({
     name: a.name.length > 14 ? a.name.slice(0, 14) + "…" : a.name,
-    "المخطط": a.plannedProgress,
+    "المخطط": calcPlannedProgress(a),
     "الفعلي": a.actualProgress,
   }));
 
@@ -1072,13 +1083,6 @@ export default function ProjectActivities() {
                           <FormMessage />
                         </FormItem>
                       )} />
-                      <FormField control={form.control} name="plannedProgress" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>الإنجاز المخطط (%)</FormLabel>
-                          <FormControl><Input type="number" min={0} max={100} {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
                       <FormField control={form.control} name="actualProgress" render={({ field }) => (
                         <FormItem>
                           <FormLabel>الإنجاز الفعلي (%)</FormLabel>
@@ -1139,7 +1143,8 @@ export default function ProjectActivities() {
 
               const renderActivityRow = (a: Activity) => {
                 const isBusy = updatingId === a.id;
-                const deviation = a.actualProgress - a.plannedProgress;
+                const planned = calcPlannedProgress(a);
+                const deviation = a.actualProgress - planned;
                 const delayInfo = calcActivityDelay(a);
                 const editable = canEditActivity(a);
                 return (
@@ -1167,7 +1172,7 @@ export default function ProjectActivities() {
                     </TableCell>
                     <TableCell className="w-[160px]">
                       <div className="space-y-1">
-                        <ProgressBar value={a.plannedProgress} color="hsl(var(--muted-foreground)/0.4)" />
+                        <ProgressBar value={planned} color="hsl(var(--muted-foreground)/0.4)" />
                         <ProgressBar value={a.actualProgress} color="hsl(var(--primary))" />
                         <div className={`text-xs flex items-center gap-0.5 justify-end ${deviation < 0 ? 'text-destructive' : deviation > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
                           {deviation < 0 ? <TrendingDown className="h-3 w-3" /> : deviation > 0 ? <TrendingUp className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
@@ -1380,7 +1385,8 @@ export default function ProjectActivities() {
 
               const renderMobileCard = (a: Activity) => {
                 const isBusy = updatingId === a.id;
-                const deviation = a.actualProgress - a.plannedProgress;
+                const planned = calcPlannedProgress(a);
+                const deviation = a.actualProgress - planned;
                 const delayInfo = calcActivityDelay(a);
                 const editable = canEditActivity(a);
                 return (
@@ -1395,7 +1401,7 @@ export default function ProjectActivities() {
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">مخطط {a.plannedProgress}%</span>
+                        <span className="text-muted-foreground">مخطط {planned}%</span>
                         <span className="text-muted-foreground">فعلي {a.actualProgress}%</span>
                         <span className={deviation < 0 ? 'text-destructive font-medium' : deviation > 0 ? 'text-emerald-600 font-medium' : 'text-muted-foreground'}>
                           {deviation > 0 ? '+' : ''}{deviation}%
