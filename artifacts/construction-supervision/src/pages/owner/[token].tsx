@@ -436,12 +436,28 @@ export default function OwnerPortal() {
     );
     const snapshotActivities = (report as any).activitiesSnapshot as any[] | null;
     const sourceActivities = snapshotActivities ?? (activities as Activity[]);
-    const activityList: ActivityForReport[] = sourceActivities.map((a: any) => ({
-      name: a.name,
-      plannedProgress: a.plannedProgress ?? 0,
-      actualProgress: a.actualProgress ?? 0,
-      status: a.status ?? "not_started",
-    }));
+    const activityList: ActivityForReport[] = sourceActivities.map((a: any) => {
+      let planned = a.plannedProgress ?? 0;
+      if (a.plannedStartDate && a.plannedEndDate) {
+        const start = new Date(a.plannedStartDate).getTime();
+        const end = new Date(a.plannedEndDate).getTime();
+        const now = new Date().getTime();
+        const duration = end - start;
+        if (duration <= 0) { planned = now >= end ? 100 : 0; }
+        else {
+          const elapsed = now - start;
+          if (elapsed <= 0) planned = 0;
+          else if (elapsed >= duration) planned = 100;
+          else planned = Math.round((elapsed / duration) * 100);
+        }
+      }
+      return {
+        name: a.name,
+        plannedProgress: planned,
+        actualProgress: a.actualProgress ?? 0,
+        status: a.status ?? "not_started",
+      };
+    });
     previewReport({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -989,7 +1005,19 @@ export default function OwnerPortal() {
                       )}
 
                       {(() => {
-                        const reportActivities = (report.activitiesSnapshot as any[] | null) ?? activities;
+                        const rawActivities = (report.activitiesSnapshot as any[] | null) ?? activities;
+                        const reportActivities = rawActivities.map((act: any) => {
+                          let planned = act.plannedProgress ?? 0;
+                          if (act.plannedStartDate && act.plannedEndDate) {
+                            const s = new Date(act.plannedStartDate).getTime();
+                            const e = new Date(act.plannedEndDate).getTime();
+                            const n = new Date().getTime();
+                            const dur = e - s;
+                            if (dur <= 0) { planned = n >= e ? 100 : 0; }
+                            else { const el = n - s; planned = el <= 0 ? 0 : el >= dur ? 100 : Math.round((el / dur) * 100); }
+                          }
+                          return { ...act, plannedProgress: planned };
+                        });
                         if (reportActivities.length === 0) return null;
                         return (
                           <div className="pt-3 border-t">
