@@ -61,7 +61,7 @@ interface Company {
 const userSchema = z.object({
   fullName: z.string().min(1, "الاسم الكامل مطلوب"),
   phone: z.string().min(1, "رقم الهاتف مطلوب"),
-  role: z.enum(["admin", "project_manager", "engineer", "contractor", "owner"]),
+  role: z.enum(["admin", "project_manager", "engineer"]),
   password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل").optional().or(z.literal('')),
   companyIds: z.array(z.number()).optional(),
 });
@@ -291,8 +291,6 @@ export default function Users() {
                             <SelectItem value="admin">مدير نظام</SelectItem>
                             <SelectItem value="project_manager">مدير مشروع</SelectItem>
                             <SelectItem value="engineer">مهندس</SelectItem>
-                            <SelectItem value="contractor">مقاول</SelectItem>
-                            <SelectItem value="owner">مالك</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
