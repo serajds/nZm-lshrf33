@@ -1370,7 +1370,7 @@ export default function ProjectForms() {
                                   <ClipboardCheck className="h-3.5 w-3.5" />
                                 </Button>
                               )}
-                              {(isAdminOrPM || (s.submittedById === user?.id && (!isContractor || s.status === "submitted"))) && (
+                              {!isContractor && (
                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeletingSubmissionId(s.id)}>
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
