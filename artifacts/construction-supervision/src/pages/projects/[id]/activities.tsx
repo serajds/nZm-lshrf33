@@ -864,23 +864,24 @@ export default function ProjectActivities() {
                               </div>
 
                               {/* Actual bar */}
-                              {a.actualStartDate && actualEnd && (
+                              {a.actualProgress > 0 && a.plannedStartDate && a.plannedEndDate && (
                                 <div className="relative h-4">
                                   {(() => {
-                                    const sl = toPct(new Date(a.actualStartDate));
-                                    const el = toPct(new Date(actualEnd));
-                                    const w = Math.max(0.5, el - sl);
+                                    const plannedSl = toPct(new Date(a.plannedStartDate));
+                                    const plannedEl = toPct(new Date(a.plannedEndDate));
+                                    const plannedW = Math.max(0.5, plannedEl - plannedSl);
+                                    const w = Math.max(0.5, plannedW * a.actualProgress / 100);
                                     const ongoing = !a.actualEndDate && a.status !== "completed";
                                     return (
                                       <div
                                         className="absolute h-full rounded-full flex items-center overflow-hidden"
                                         style={{
-                                          right: `${sl}%`,
+                                          right: `${plannedSl}%`,
                                           width: `${w}%`,
                                           backgroundColor: barColor,
                                           ...(ongoing ? { borderLeft: "3px solid white" } : {}),
                                         }}
-                                        title={`فعلي: ${fmtDate(a.actualStartDate)} → ${a.actualEndDate ? fmtDate(a.actualEndDate) : "جارٍ"} (${a.actualProgress}%)`}
+                                        title={`فعلي: ${a.actualStartDate ? fmtDate(a.actualStartDate) : "—"} → ${a.actualEndDate ? fmtDate(a.actualEndDate) : "جارٍ"} (${a.actualProgress}%)`}
                                       >
                                         {w > 8 && (
                                           <span className="text-[9px] font-bold text-white px-1.5 truncate">
