@@ -1,10 +1,10 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import { db } from "@workspace/db";
 import { formTemplatesTable, formSubmissionsTable, usersTable, skippedDaysTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { requireProjectAccess, requireAuth } from "../middlewares/auth";
+import { requireProjectAccess } from "../middlewares/auth";
 
-const router: IRouter = Router();
+const router = Router();
 
 router.get("/projects/:id/form-templates", requireProjectAccess("id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
@@ -352,13 +352,14 @@ router.get("/projects/:id/daily-gaps", requireProjectAccess("id"), async (req, r
     );
 
     const startDate = tmpl.createdAt.toISOString().split("T")[0];
-    const d = new Date(startDate);
-    while (d.toISOString().split("T")[0] <= today) {
+    const d = new Date(startDate + "T00:00:00Z");
+    const todayDate = new Date(today + "T00:00:00Z");
+    while (d < todayDate) {
       const dateStr = d.toISOString().split("T")[0];
-      if (dateStr < today && !tmplSubmissionDates.has(dateStr) && !tmplSkippedDates.has(dateStr)) {
+      if (!tmplSubmissionDates.has(dateStr) && !tmplSkippedDates.has(dateStr)) {
         gaps.push({ templateId: tmpl.id, templateName: tmpl.name, date: dateStr });
       }
-      d.setDate(d.getDate() + 1);
+      d.setUTCDate(d.getUTCDate() + 1);
     }
   }
 
@@ -423,7 +424,6 @@ router.get("/projects/:id/submission-stats", requireProjectAccess("id"), async (
 
   let subs;
   if (isContractor) {
-    const { innerJoin } = await import("drizzle-orm");
     subs = await db.select({
       status: formSubmissionsTable.status,
     }).from(formSubmissionsTable)
@@ -472,11 +472,12 @@ router.get("/projects/:id/submission-stats", requireProjectAccess("id"), async (
         const dates = new Set(submissions.filter(s => s.templateId === tmpl.id).map(s => s.reportDate));
         const skippedDates = new Set(skipped.filter(s => s.templateId === tmpl.id).map(s => s.date));
         const startDate = tmpl.createdAt.toISOString().split("T")[0];
-        const d = new Date(startDate);
-        while (d.toISOString().split("T")[0] < today) {
+        const d = new Date(startDate + "T00:00:00Z");
+        const todayDate = new Date(today + "T00:00:00Z");
+        while (d < todayDate) {
           const dateStr = d.toISOString().split("T")[0];
           if (!dates.has(dateStr) && !skippedDates.has(dateStr)) overdue++;
-          d.setDate(d.getDate() + 1);
+          d.setUTCDate(d.getUTCDate() + 1);
         }
       }
     }
