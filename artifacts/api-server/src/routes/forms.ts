@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { formTemplatesTable, formSubmissionsTable, usersTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { formTemplatesTable, formSubmissionsTable, usersTable, skippedDaysTable } from "@workspace/db";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireProjectAccess, requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -55,7 +55,7 @@ router.post("/projects/:id/form-templates", requireProjectAccess("id"), async (r
     return;
   }
 
-  const { name, description, fields, isActive, visibleToContractor } = req.body;
+  const { name, description, fields, isActive, visibleToContractor, isDailyReport } = req.body;
 
   if (!name || !fields || !Array.isArray(fields)) {
     res.status(400).json({ error: "اسم النموذج والحقول مطلوبة" });
@@ -69,6 +69,7 @@ router.post("/projects/:id/form-templates", requireProjectAccess("id"), async (r
     fields,
     isActive: isActive !== false,
     visibleToContractor: visibleToContractor === true,
+    isDailyReport: isDailyReport === true,
     createdById: req.user?.userId,
   }).returning();
 
@@ -86,7 +87,7 @@ router.put("/projects/:id/form-templates/:templateId", requireProjectAccess("id"
     return;
   }
 
-  const { name, description, fields, isActive, visibleToContractor } = req.body;
+  const { name, description, fields, isActive, visibleToContractor, isDailyReport } = req.body;
 
   const updateData: Record<string, unknown> = {};
   if (name !== undefined) updateData.name = name;
@@ -94,6 +95,7 @@ router.put("/projects/:id/form-templates/:templateId", requireProjectAccess("id"
   if (fields !== undefined) updateData.fields = fields;
   if (isActive !== undefined) updateData.isActive = isActive;
   if (visibleToContractor !== undefined) updateData.visibleToContractor = visibleToContractor;
+  if (isDailyReport !== undefined) updateData.isDailyReport = isDailyReport;
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });
@@ -301,6 +303,186 @@ router.delete("/projects/:id/form-submissions/:submissionId", requireProjectAcce
 
   await db.delete(formSubmissionsTable).where(eq(formSubmissionsTable.id, submissionId));
   res.sendStatus(204);
+});
+
+router.get("/projects/:id/daily-gaps", requireProjectAccess("id"), async (req, res): Promise<void> => {
+  const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
+  if (isContractor) {
+    res.json([]);
+    return;
+  }
+
+  const dailyTemplates = await db.select()
+    .from(formTemplatesTable)
+    .where(and(eq(formTemplatesTable.projectId, projectId), eq(formTemplatesTable.isDailyReport, true)));
+
+  if (dailyTemplates.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const templateIds = dailyTemplates.map(t => t.id);
+
+  const submissions = await db.select({
+    templateId: formSubmissionsTable.templateId,
+    reportDate: formSubmissionsTable.reportDate,
+  }).from(formSubmissionsTable)
+    .where(and(
+      eq(formSubmissionsTable.projectId, projectId),
+      inArray(formSubmissionsTable.templateId, templateIds)
+    ));
+
+  const skipped = await db.select()
+    .from(skippedDaysTable)
+    .where(and(
+      eq(skippedDaysTable.projectId, projectId),
+      inArray(skippedDaysTable.templateId, templateIds)
+    ));
+
+  const today = new Date().toISOString().split("T")[0];
+  const gaps: Array<{ templateId: number; templateName: string; date: string }> = [];
+
+  for (const tmpl of dailyTemplates) {
+    const tmplSubmissionDates = new Set(
+      submissions.filter(s => s.templateId === tmpl.id).map(s => s.reportDate)
+    );
+    const tmplSkippedDates = new Set(
+      skipped.filter(s => s.templateId === tmpl.id).map(s => s.date)
+    );
+
+    const startDate = tmpl.createdAt.toISOString().split("T")[0];
+    const d = new Date(startDate);
+    while (d.toISOString().split("T")[0] <= today) {
+      const dateStr = d.toISOString().split("T")[0];
+      if (dateStr < today && !tmplSubmissionDates.has(dateStr) && !tmplSkippedDates.has(dateStr)) {
+        gaps.push({ templateId: tmpl.id, templateName: tmpl.name, date: dateStr });
+      }
+      d.setDate(d.getDate() + 1);
+    }
+  }
+
+  gaps.sort((a, b) => b.date.localeCompare(a.date));
+  res.json(gaps);
+});
+
+router.post("/projects/:id/skip-day", requireProjectAccess("id"), async (req, res): Promise<void> => {
+  const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
+  if (isContractor) {
+    res.status(403).json({ error: "المقاول غير مصرح له بتخطي الأيام" });
+    return;
+  }
+
+  const { templateId, date, reason } = req.body;
+
+  if (!templateId || !date) {
+    res.status(400).json({ error: "معرف النموذج والتاريخ مطلوبان" });
+    return;
+  }
+
+  const [tmpl] = await db.select()
+    .from(formTemplatesTable)
+    .where(and(
+      eq(formTemplatesTable.id, templateId),
+      eq(formTemplatesTable.projectId, projectId),
+      eq(formTemplatesTable.isDailyReport, true)
+    ));
+  if (!tmpl) {
+    res.status(400).json({ error: "النموذج غير موجود أو ليس يومياً" });
+    return;
+  }
+
+  const [existing] = await db.select()
+    .from(skippedDaysTable)
+    .where(and(
+      eq(skippedDaysTable.projectId, projectId),
+      eq(skippedDaysTable.templateId, templateId),
+      eq(skippedDaysTable.date, date)
+    ));
+
+  if (existing) {
+    res.json(existing);
+    return;
+  }
+
+  const [record] = await db.insert(skippedDaysTable).values({
+    projectId,
+    templateId,
+    date,
+    reason: reason || "عطلة",
+    skippedById: req.user?.userId,
+  }).returning();
+
+  res.status(201).json(record);
+});
+
+router.get("/projects/:id/submission-stats", requireProjectAccess("id"), async (req, res): Promise<void> => {
+  const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
+
+  let subs;
+  if (isContractor) {
+    const { innerJoin } = await import("drizzle-orm");
+    subs = await db.select({
+      status: formSubmissionsTable.status,
+    }).from(formSubmissionsTable)
+      .innerJoin(formTemplatesTable, eq(formSubmissionsTable.templateId, formTemplatesTable.id))
+      .where(and(
+        eq(formSubmissionsTable.projectId, projectId),
+        eq(formTemplatesTable.visibleToContractor, true)
+      ));
+  } else {
+    subs = await db.select({
+      status: formSubmissionsTable.status,
+    }).from(formSubmissionsTable)
+      .where(eq(formSubmissionsTable.projectId, projectId));
+  }
+
+  const total = subs.length;
+  const pending = subs.filter(s => s.status === "submitted").length;
+  const reviewed = subs.filter(s => s.status === "reviewed").length;
+
+  let overdue = 0;
+  if (!isContractor) {
+    const dailyTemplates = await db.select()
+      .from(formTemplatesTable)
+      .where(and(eq(formTemplatesTable.projectId, projectId), eq(formTemplatesTable.isDailyReport, true)));
+
+    if (dailyTemplates.length > 0) {
+      const templateIds = dailyTemplates.map(t => t.id);
+      const submissions = await db.select({
+        templateId: formSubmissionsTable.templateId,
+        reportDate: formSubmissionsTable.reportDate,
+      }).from(formSubmissionsTable)
+        .where(and(
+          eq(formSubmissionsTable.projectId, projectId),
+          inArray(formSubmissionsTable.templateId, templateIds)
+        ));
+
+      const skipped = await db.select({ templateId: skippedDaysTable.templateId, date: skippedDaysTable.date })
+        .from(skippedDaysTable)
+        .where(and(
+          eq(skippedDaysTable.projectId, projectId),
+          inArray(skippedDaysTable.templateId, templateIds)
+        ));
+
+      const today = new Date().toISOString().split("T")[0];
+      for (const tmpl of dailyTemplates) {
+        const dates = new Set(submissions.filter(s => s.templateId === tmpl.id).map(s => s.reportDate));
+        const skippedDates = new Set(skipped.filter(s => s.templateId === tmpl.id).map(s => s.date));
+        const startDate = tmpl.createdAt.toISOString().split("T")[0];
+        const d = new Date(startDate);
+        while (d.toISOString().split("T")[0] < today) {
+          const dateStr = d.toISOString().split("T")[0];
+          if (!dates.has(dateStr) && !skippedDates.has(dateStr)) overdue++;
+          d.setDate(d.getDate() + 1);
+        }
+      }
+    }
+  }
+
+  res.json({ total, pending, reviewed, overdue });
 });
 
 export default router;

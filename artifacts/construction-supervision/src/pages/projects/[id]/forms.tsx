@@ -28,7 +28,7 @@ import {
   Plus, ArrowRight, FileText, Trash2, Edit2, Eye, Printer,
   GripVertical, Type, Hash, Calendar, List, Table, Heading,
   AlignLeft, Send, ClipboardCheck, ChevronDown, ChevronUp, X,
-  Download, Upload, FileDown, Filter, ListChecks, CheckCircle2,
+  Download, Upload, FileDown, Filter, ListChecks, CheckCircle2, AlertTriangle,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
@@ -119,13 +119,14 @@ function TemplateBuilder({
   onCancel,
 }: {
   template?: FormTemplate | null;
-  onSave: (data: { name: string; description: string; fields: FormField[]; visibleToContractor: boolean }) => void;
+  onSave: (data: { name: string; description: string; fields: FormField[]; visibleToContractor: boolean; isDailyReport: boolean }) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(template?.name || "");
   const [description, setDescription] = useState(template?.description || "");
   const [fields, setFields] = useState<FormField[]>(template?.fields || []);
   const [visibleToContractor, setVisibleToContractor] = useState<boolean>((template as any)?.visibleToContractor ?? false);
+  const [isDailyReport, setIsDailyReport] = useState<boolean>((template as any)?.isDailyReport ?? false);
   const [editingFieldIdx, setEditingFieldIdx] = useState<number | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -167,7 +168,7 @@ function TemplateBuilder({
   const handleSave = () => {
     if (!name.trim()) return;
     const validFields = fields.filter(f => f.label.trim() || f.type === "section");
-    onSave({ name: name.trim(), description: description.trim(), fields: validFields, visibleToContractor });
+    onSave({ name: name.trim(), description: description.trim(), fields: validFields, visibleToContractor, isDailyReport });
   };
 
   return (
@@ -185,6 +186,11 @@ function TemplateBuilder({
           <Switch id="visibleToContractor" checked={visibleToContractor} onCheckedChange={setVisibleToContractor} />
           <Label htmlFor="visibleToContractor" className="cursor-pointer">إظهار للمقاول</Label>
           <span className="text-xs text-muted-foreground">عند التفعيل يظهر النموذج لمهندس المقاول</span>
+        </div>
+        <div className="sm:col-span-2 flex items-center gap-3">
+          <Switch id="isDailyReport" checked={isDailyReport} onCheckedChange={setIsDailyReport} />
+          <Label htmlFor="isDailyReport" className="cursor-pointer">نموذج يومي</Label>
+          <span className="text-xs text-muted-foreground">تنبيه عند عدم تعبئة النموذج لأي يوم</span>
         </div>
       </div>
 
@@ -953,12 +959,34 @@ export default function ProjectForms() {
     enabled: !!projectId,
   });
 
+  const { data: submissionStats } = useQuery<{ total: number; pending: number; reviewed: number; overdue: number }>({
+    queryKey: [`/api/projects/${projectId}/submission-stats`],
+    queryFn: async () => {
+      const r = await authFetch(`${API_BASE}/projects/${projectId}/submission-stats`);
+      if (!r.ok) return { total: 0, pending: 0, reviewed: 0, overdue: 0 };
+      return r.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const { data: dailyGaps = [] } = useQuery<Array<{ templateId: number; templateName: string; date: string }>>({
+    queryKey: [`/api/projects/${projectId}/daily-gaps`],
+    queryFn: async () => {
+      const r = await authFetch(`${API_BASE}/projects/${projectId}/daily-gaps`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!projectId && !isContractor,
+  });
+
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/form-templates`] });
     queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/form-submissions`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/submission-stats`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/daily-gaps`] });
   }, [queryClient, projectId]);
 
-  const handleSaveTemplate = async (data: { name: string; description: string; fields: FormField[] }) => {
+  const handleSaveTemplate = async (data: { name: string; description: string; fields: FormField[]; visibleToContractor?: boolean; isDailyReport?: boolean }) => {
     const url = editingTemplate
       ? `${API_BASE}/projects/${projectId}/form-templates/${editingTemplate.id}`
       : `${API_BASE}/projects/${projectId}/form-templates`;
@@ -1021,6 +1049,17 @@ export default function ProjectForms() {
       toast({ variant: "destructive", title: "فشل الحذف" });
     }
     setDeletingSubmissionId(null);
+  };
+
+  const handleSkipDay = async (templateId: number, date: string) => {
+    const r = await authFetch(`${API_BASE}/projects/${projectId}/skip-day`, {
+      method: "POST",
+      body: JSON.stringify({ templateId, date, reason: "عطلة" }),
+    });
+    if (r.ok) {
+      toast({ title: "تم تخطي اليوم" });
+      invalidate();
+    }
   };
 
   const handleMarkReviewed = async (submissionId: number) => {
@@ -1186,6 +1225,9 @@ export default function ProjectForms() {
                         {t.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.description}</p>}
                       </div>
                       <div className="flex gap-1 shrink-0">
+                        {!isContractor && (t as any).isDailyReport && (
+                          <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">يومي</Badge>
+                        )}
                         {!isContractor && (t as any).visibleToContractor && (
                           <Badge variant="outline" className="text-[10px]">مرئي للمقاول</Badge>
                         )}
@@ -1250,6 +1292,81 @@ export default function ProjectForms() {
 
       {activeTab === "submissions" && (
         <div className="space-y-4">
+          {submissionStats && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Card>
+                <CardContent className="p-3 text-center">
+                  <p className="text-2xl font-bold">{submissionStats.total}</p>
+                  <p className="text-xs text-muted-foreground">إجمالي المرسلة</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-3 text-center">
+                  <p className="text-2xl font-bold text-amber-600">{submissionStats.pending}</p>
+                  <p className="text-xs text-muted-foreground">بانتظار الاعتماد</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-3 text-center">
+                  <p className="text-2xl font-bold text-emerald-600">{submissionStats.reviewed}</p>
+                  <p className="text-xs text-muted-foreground">تم الاعتماد</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-3 text-center">
+                  <p className="text-2xl font-bold text-red-600">{submissionStats.overdue}</p>
+                  <p className="text-xs text-muted-foreground">متأخرة</p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {dailyGaps.length > 0 && !isContractor && (
+            <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+              <CardContent className="p-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>تنبيه: نماذج يومية ناقصة ({dailyGaps.length})</span>
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-1.5">
+                  {dailyGaps.slice(0, 10).map((gap, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2 bg-white dark:bg-background rounded-md px-3 py-1.5 border border-amber-100 dark:border-amber-900">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Calendar className="h-3.5 w-3.5 text-amber-600" />
+                        <span className="font-medium">{gap.templateName}</span>
+                        <span className="text-muted-foreground" dir="ltr">{gap.date}</span>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs text-amber-700 hover:text-amber-900"
+                          onClick={() => handleSkipDay(gap.templateId, gap.date)}
+                        >
+                          تخطي
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs"
+                          onClick={() => {
+                            const tmpl = templates.find(t => t.id === gap.templateId);
+                            if (tmpl) { setFillingTemplate(tmpl); setFillerOpen(true); }
+                          }}
+                        >
+                          تعبئة
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {dailyGaps.length > 10 && (
+                    <p className="text-xs text-center text-amber-600 pt-1">و {dailyGaps.length - 10} أيام أخرى...</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {submissions.length > 0 && (
             <Card>
               <CardContent className="p-3 space-y-3">
