@@ -1410,6 +1410,16 @@ export default function ProjectForms() {
                             <Edit2 className="h-3 w-3" />
                           </Button>
                         )}
+                        {isAdminOrPM && s.status !== "reviewed" && (
+                          <Button variant="outline" size="sm" className="text-xs text-emerald-600" onClick={() => handleMarkReviewed(s.id)}>
+                            <ClipboardCheck className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {!isContractor && (
+                          <Button variant="outline" size="sm" className="text-xs text-destructive" onClick={() => setDeletingSubmissionId(s.id)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
