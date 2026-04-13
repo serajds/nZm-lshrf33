@@ -295,12 +295,7 @@ router.delete("/projects/:id/form-submissions/:submissionId", requireProjectAcce
   const isManagerOrAdmin = userRole === "admin" || projectRole === "project_manager";
 
   if (isContractorDel) {
-    if (!isOwner || existing.status !== "submitted") {
-      res.status(403).json({ error: "المقاول يمكنه حذف نماذجه المرسلة فقط (قبل المراجعة)" });
-      return;
-    }
-  } else if (!isOwner && !isManagerOrAdmin) {
-    res.status(403).json({ error: "لا يمكنك حذف هذه التعبئة" });
+    res.status(403).json({ error: "المقاول غير مصرح له بحذف النماذج المرسلة" });
     return;
   }
 
