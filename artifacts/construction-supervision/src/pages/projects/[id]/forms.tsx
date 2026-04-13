@@ -68,6 +68,8 @@ interface FormTemplate {
   description: string | null;
   fields: FormField[];
   isActive: boolean;
+  visibleToContractor: boolean;
+  isDailyReport: boolean;
   createdById: number | null;
   createdAt: string;
   updatedAt: string;
@@ -125,8 +127,8 @@ function TemplateBuilder({
   const [name, setName] = useState(template?.name || "");
   const [description, setDescription] = useState(template?.description || "");
   const [fields, setFields] = useState<FormField[]>(template?.fields || []);
-  const [visibleToContractor, setVisibleToContractor] = useState<boolean>((template as any)?.visibleToContractor ?? false);
-  const [isDailyReport, setIsDailyReport] = useState<boolean>((template as any)?.isDailyReport ?? false);
+  const [visibleToContractor, setVisibleToContractor] = useState<boolean>(template?.visibleToContractor ?? false);
+  const [isDailyReport, setIsDailyReport] = useState<boolean>(template?.isDailyReport ?? false);
   const [editingFieldIdx, setEditingFieldIdx] = useState<number | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -1225,10 +1227,10 @@ export default function ProjectForms() {
                         {t.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.description}</p>}
                       </div>
                       <div className="flex gap-1 shrink-0">
-                        {!isContractor && (t as any).isDailyReport && (
+                        {!isContractor && t.isDailyReport && (
                           <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">يومي</Badge>
                         )}
-                        {!isContractor && (t as any).visibleToContractor && (
+                        {!isContractor && t.visibleToContractor && (
                           <Badge variant="outline" className="text-[10px]">مرئي للمقاول</Badge>
                         )}
                         <Badge variant={t.isActive ? "default" : "secondary"} className="text-[10px]">
