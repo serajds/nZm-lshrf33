@@ -1029,7 +1029,7 @@ export default function ProjectForms() {
 
     const r = await authFetch(url, { method, body: JSON.stringify(body) });
     if (r.ok) {
-      toast({ title: editingSubmission ? "تم تحديث التعبئة" : "تم إرسال النموذج" });
+      toast({ title: editingSubmission ? "تم تحديث النموذج" : "تم إرسال النموذج" });
       invalidate();
       setFillerOpen(false);
       setFillingTemplate(null);
@@ -1043,7 +1043,7 @@ export default function ProjectForms() {
     if (!deletingSubmissionId) return;
     const r = await authFetch(`${API_BASE}/projects/${projectId}/form-submissions/${deletingSubmissionId}`, { method: "DELETE" });
     if (r.ok) {
-      toast({ title: "تم حذف التعبئة" });
+      toast({ title: "تم حذف النموذج" });
       invalidate();
     } else {
       toast({ variant: "destructive", title: "فشل الحذف" });
@@ -1096,7 +1096,7 @@ export default function ProjectForms() {
       if (!tmpl) return "";
       return buildSubmissionPageHtml(s, tmpl, project?.name);
     }).filter(Boolean).join("\n");
-    openPrintWindow(pages, `تعبئات - ${project?.name || ""}`);
+    openPrintWindow(pages, `النماذج - ${project?.name || ""}`);
   };
 
   const clearFilters = () => {
@@ -1188,7 +1188,7 @@ export default function ProjectForms() {
           onClick={() => setActiveTab("submissions")}
         >
           <ClipboardCheck className="h-4 w-4" />
-          التعبئات المرسلة
+          النماذج المرسلة
           {submissions.length > 0 && <Badge variant="secondary" className="mr-1 text-xs">{submissions.length}</Badge>}
         </Button>
       </div>
@@ -1239,7 +1239,7 @@ export default function ProjectForms() {
                     <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
                       <span>{t.fields.length} حقل</span>
                       <span>•</span>
-                      <span>{submissions.filter(s => s.templateId === t.id).length} تعبئة</span>
+                      <span>{submissions.filter(s => s.templateId === t.id).length} نموذج</span>
                     </div>
                     <div className="flex gap-1.5">
                       <Button
@@ -1372,7 +1372,7 @@ export default function ProjectForms() {
               <CardContent className="p-3 space-y-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Filter className="h-4 w-4" />
-                  <span>فلترة التعبئات</span>
+                  <span>فلترة النماذج</span>
                   {hasActiveFilters && (
                     <Button variant="ghost" size="sm" className="text-xs h-6 px-2 mr-auto" onClick={clearFilters}>
                       <X className="h-3 w-3 ml-1" /> مسح الفلاتر
@@ -1403,7 +1403,7 @@ export default function ProjectForms() {
                 </div>
                 <div className="flex items-center justify-between pt-1 border-t">
                   <span className="text-xs text-muted-foreground">
-                    {filteredSubmissions.length} من {submissions.length} تعبئة
+                    {filteredSubmissions.length} من {submissions.length} نموذج
                   </span>
                   <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={handlePrintAll} disabled={filteredSubmissions.length === 0}>
                     <FileDown className="h-3.5 w-3.5" />
@@ -1415,18 +1415,18 @@ export default function ProjectForms() {
           )}
 
           {submissionsLoading ? (
-            <LoadingSpinner text="جاري تحميل التعبئات..." />
+            <LoadingSpinner text="جاري تحميل النماذج..." />
           ) : submissions.length === 0 ? (
             <EmptyState
               icon={<ClipboardCheck className="h-6 w-6 text-muted-foreground" />}
-              title="لا توجد تعبئات"
-              description="لم يتم إرسال أي تعبئات بعد"
+              title="لا توجد نماذج مرسلة"
+              description="لم يتم إرسال أي نماذج بعد"
             />
           ) : filteredSubmissions.length === 0 ? (
             <EmptyState
               icon={<Filter className="h-6 w-6 text-muted-foreground" />}
               title="لا توجد نتائج"
-              description="لا توجد تعبئات تطابق معايير الفلترة"
+              description="لا توجد نماذج تطابق معايير الفلترة"
             />
           ) : (
             <div className="space-y-2">
@@ -1563,7 +1563,7 @@ export default function ProjectForms() {
       <Dialog open={fillerOpen} onOpenChange={open => { if (!open) { setFillerOpen(false); setFillingTemplate(null); setEditingSubmission(null); } }}>
         <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
-            <DialogTitle>{fillingTemplate?.name || "تعبئة النموذج"}</DialogTitle>
+            <DialogTitle>{fillingTemplate?.name || "إرسال النموذج"}</DialogTitle>
           </DialogHeader>
           {fillingTemplate && (
             <FormFiller
@@ -1580,7 +1580,7 @@ export default function ProjectForms() {
       <Dialog open={!!viewingSubmission} onOpenChange={open => { if (!open) { setViewingSubmission(null); setViewingTemplate(null); } }}>
         <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
-            <DialogTitle>عرض التعبئة</DialogTitle>
+            <DialogTitle>عرض النموذج</DialogTitle>
           </DialogHeader>
           {viewingSubmission && viewingTemplate && (
             <SubmissionViewer
@@ -1597,7 +1597,7 @@ export default function ProjectForms() {
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
             <AlertDialogTitle>حذف النموذج</AlertDialogTitle>
-            <AlertDialogDescription>سيتم حذف النموذج وجميع التعبئات المرتبطة به. لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
+            <AlertDialogDescription>سيتم حذف النموذج وجميع النماذج المرسلة المرتبطة به. لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row-reverse gap-2">
             <AlertDialogCancel>إلغاء</AlertDialogCancel>
@@ -1609,8 +1609,8 @@ export default function ProjectForms() {
       <AlertDialog open={!!deletingSubmissionId} onOpenChange={() => setDeletingSubmissionId(null)}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
-            <AlertDialogTitle>حذف التعبئة</AlertDialogTitle>
-            <AlertDialogDescription>هل أنت متأكد من حذف هذه التعبئة؟</AlertDialogDescription>
+            <AlertDialogTitle>حذف النموذج المرسل</AlertDialogTitle>
+            <AlertDialogDescription>هل أنت متأكد من حذف هذا النموذج المرسل؟</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row-reverse gap-2">
             <AlertDialogCancel>إلغاء</AlertDialogCancel>
