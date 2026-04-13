@@ -63,7 +63,8 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - User management with roles: admin, project_manager, engineer, owner, contractor
 - **Contractor role**: restricted access — sidebar shows only dashboard + projects; within projects, can only see timeline (read-only) and forms tab; cannot access extensions, suspensions, reports, files, or deviation analysis
 - Project team management (add/remove members, assign project roles)
-- **Form Builder System (النماذج)**: Custom form templates with field types: text, textarea, number, date, select (with options), table (dynamic rows), section (header/divider). Admins/PMs create templates; all project members can fill and submit forms; admins/PMs can review submissions and mark as reviewed. Print-ready submission viewer with Arabic layout. DB tables: `form_templates`, `form_submissions`. Routes: `GET/POST/PUT/DELETE /api/projects/:id/form-templates`, `GET/POST/PUT/DELETE /api/projects/:id/form-submissions`.
+- **Form Builder System (النماذج)**: Custom form templates with field types: text, textarea, number, date, select (with options), table (dynamic rows), section (header/divider), checklist_qty (checkbox list with quantity). Admins/PMs create templates; all project members can fill and submit forms; admins/PMs can review submissions and mark as reviewed. Print-ready submission viewer with Arabic layout. DB tables: `form_templates`, `form_submissions`. Routes: `GET/POST/PUT/DELETE /api/projects/:id/form-templates`, `GET/POST/PUT/DELETE /api/projects/:id/form-submissions`.
+- **Daily Template Tracking**: Templates can be flagged as "يومي" (daily) via `isDailyReport` toggle. System tracks missing days (gaps between template creation date and today where no submission exists). Alerts shown on submissions tab with skip button (for holidays). `skipped_days` table stores skipped dates with reason. Stats cards on submissions tab show: total, pending review, reviewed, overdue counts.
 - **Activity Groups & Drag-and-Drop**: Activities can be organized into colored groups with collapsible headers. Drag-and-drop reordering via `@dnd-kit` with handle-only drag activation. Groups show aggregate progress. Mobile view includes collapsible group sections. API: `GET/POST/PUT/DELETE /api/projects/:id/activity-groups`, `PUT /api/projects/:id/activity-groups/reorder`, `PUT /api/projects/:id/activities/reorder`. DB: `activity_groups` table with `groupId` FK on activities.
 - File uploads via multer (served at `/api/uploads/`). Report/project images auto-compressed via sharp (JPEG quality 80, mozjpeg, same dimensions preserved). Company logos are NOT compressed. Non-image files stored as-is.
 - **Persistent Cloud Storage**: All uploaded files (images, documents, logos) are stored in Google Cloud Storage via Replit Object Storage. Local filesystem used as cache; cloud used as durable fallback. On startup, existing local files are migrated to GCS. Files served from local first, then cloud. Key files: `artifacts/api-server/src/lib/fileStorage.ts` (upload/download/delete/migrate), `artifacts/api-server/src/lib/objectStorage.ts` (GCS client).
@@ -137,8 +138,11 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - `GET/POST/PATCH/DELETE /api/projects/:id/members` — project team membership (admin/PM)
 - `GET/POST/PUT/DELETE /api/users` — user management (admin only, list accessible to all staff)
 - `GET/POST/PATCH/DELETE /api/companies` — companies management with logo upload
-- `GET/POST/PUT/DELETE /api/projects/:id/form-templates` — form template CRUD (create/edit admin/PM only)
+- `GET/POST/PUT/DELETE /api/projects/:id/form-templates` — form template CRUD (create/edit admin/PM only), includes `isDailyReport` flag
 - `GET/POST/PUT/DELETE /api/projects/:id/form-submissions` — form submission CRUD
+- `GET /api/projects/:id/submission-stats` — returns `{ total, pending, reviewed, overdue }` counts
+- `GET /api/projects/:id/daily-gaps` — returns missing days for daily templates (non-contractor only)
+- `POST /api/projects/:id/skip-day` — skip a day for a daily template (non-contractor only, validates template ownership)
 - `GET /api/owner/:token/test-results` — list files from project's linked OneDrive folder (JWT authenticated)
 
 ### OneDrive Integration (Test Results)
