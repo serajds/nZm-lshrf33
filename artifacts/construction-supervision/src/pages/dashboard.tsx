@@ -401,7 +401,7 @@ export default function Dashboard() {
                     {allProjects.map((p, i) => (
                       <tr key={p.id} className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${i % 2 === 1 ? "bg-muted/10" : ""}`}>
                         <td className="px-4 py-3">
-                          <Link href={getProjectLink(p.id)} className="font-medium hover:text-primary transition-colors line-clamp-1">
+                          <Link href={getProjectLink(p.id!)} className="font-medium hover:text-primary transition-colors line-clamp-1">
                             {p.name}
                           </Link>
                           <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.ownerEntity}</p>

@@ -103,9 +103,9 @@ export default function ProjectReports() {
   const calcAutoProgress = () => {
     const acts = (activities ?? []) as Activity[];
     if (acts.length === 0) return null;
-    const totalWeight = acts.reduce((s, a) => s + (a.progressWeight ?? 1), 0);
+    const totalWeight = acts.reduce((s, a) => s + ((a as any).progressWeight ?? 1), 0);
     if (totalWeight === 0) return null;
-    const weighted = acts.reduce((s, a) => s + (a.actualProgress ?? 0) * (a.progressWeight ?? 1), 0);
+    const weighted = acts.reduce((s, a) => s + (a.actualProgress ?? 0) * ((a as any).progressWeight ?? 1), 0);
     return Math.round((weighted / totalWeight) * 10) / 10;
   };
 
