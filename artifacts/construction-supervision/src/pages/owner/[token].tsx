@@ -1416,8 +1416,7 @@ export default function OwnerPortal() {
                           <div className="space-y-0">
                             {activitiesWithDates.map((a: Activity, i: number) => {
                               const planned = getBarStyle(a.plannedStartDate!, a.plannedEndDate!);
-                              const hasActual = a.actualStartDate && a.actualEndDate;
-                              const actual = hasActual ? getBarStyle(a.actualStartDate!, a.actualEndDate!) : null;
+                              const hasActual = a.actualProgress > 0;
                               const isDelayed = a.status === "delayed";
                               const isCompleted = a.status === "completed";
 
@@ -1451,32 +1450,28 @@ export default function OwnerPortal() {
                                       title={`المخطط: ${fmtDate(a.plannedStartDate!)} → ${fmtDate(a.plannedEndDate!)}`}
                                     />
 
-                                    {actual && (
-                                      <div
-                                        className={`absolute rounded-sm shadow-sm ${isDelayed ? "bg-red-500/80" : "bg-emerald-500/80"}`}
-                                        style={{ ...actual, top: "28px", height: "14px" }}
-                                        title={`الفعلي: ${fmtDate(a.actualStartDate!)} → ${fmtDate(a.actualEndDate!)}`}
-                                      />
-                                    )}
-
-                                    {a.actualStartDate && !a.actualEndDate && (() => {
-                                      const s = new Date(a.actualStartDate!).getTime();
-                                      if (!Number.isFinite(s)) return null;
-                                      const end = today.getTime();
-                                      const rightPos = ((s - minMs) / rangeMs) * 100;
-                                      const width = ((end - s) / rangeMs) * 100;
+                                    {a.actualProgress > 0 && (() => {
+                                      const s = new Date(a.plannedStartDate!).getTime();
+                                      const e = new Date(a.plannedEndDate!).getTime();
+                                      if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
+                                      const plannedRight = ((s - minMs) / rangeMs) * 100;
+                                      const plannedWidth = ((e - s) / rangeMs) * 100;
+                                      const actualWidth = Math.max(0.5, plannedWidth * a.actualProgress / 100);
+                                      const ongoing = !a.actualEndDate && a.status !== "completed";
                                       return (
                                         <div
-                                          className={`absolute rounded-sm shadow-sm ${isDelayed ? "bg-red-500/60" : "bg-emerald-500/60"}`}
+                                          className={`absolute rounded-sm shadow-sm ${isDelayed ? "bg-red-500/80" : "bg-emerald-500/80"}`}
                                           style={{
-                                            right: `${Math.max(0, rightPos)}%`,
-                                            width: `${Math.max(0.5, width)}%`,
+                                            right: `${Math.max(0, plannedRight)}%`,
+                                            width: `${actualWidth}%`,
                                             top: "28px",
                                             height: "14px",
                                           }}
-                                          title={`الفعلي: ${fmtDate(a.actualStartDate!)} → مستمر`}
+                                          title={`الفعلي: ${a.actualStartDate ? fmtDate(a.actualStartDate) : "—"} → ${a.actualEndDate ? fmtDate(a.actualEndDate) : "مستمر"} (${a.actualProgress}%)`}
                                         >
-                                          <div className="absolute inset-y-0 start-0 w-2 bg-gradient-to-r from-white/60 to-transparent rounded-s-sm" />
+                                          {ongoing && (
+                                            <div className="absolute inset-y-0 start-0 w-2 bg-gradient-to-r from-white/60 to-transparent rounded-s-sm" />
+                                          )}
                                         </div>
                                       );
                                     })()}
