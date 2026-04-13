@@ -270,7 +270,7 @@ export default function Users() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>رقم الهاتف</FormLabel>
-                        <FormControl><Input type="tel" {...field} dir="ltr" className="text-right" placeholder="05XXXXXXXX" /></FormControl>
+                        <FormControl><Input type="tel" {...field} dir="ltr" className="text-right" placeholder="09XXXXXXXX" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
