@@ -5,6 +5,16 @@ import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
 import { requireProjectAccess } from "../middlewares/auth";
 
+function generateShortToken(length = 5): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = crypto.randomBytes(length);
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += chars[bytes[i] % chars.length];
+  }
+  return result;
+}
+
 const router = Router();
 
 router.post("/projects/:id/form-templates/:templateId/public-link", requireProjectAccess("id"), async (req, res): Promise<void> => {
@@ -32,7 +42,17 @@ router.post("/projects/:id/form-templates/:templateId/public-link", requireProje
     return;
   }
 
-  const token = crypto.randomUUID();
+  let token = generateShortToken(5);
+  let attempts = 0;
+  while (attempts < 10) {
+    const [existing] = await db.select({ id: formTemplatesTable.id })
+      .from(formTemplatesTable)
+      .where(eq(formTemplatesTable.publicToken, token));
+    if (!existing) break;
+    token = generateShortToken(5);
+    attempts++;
+  }
+
   const [updated] = await db.update(formTemplatesTable)
     .set({ publicToken: token })
     .where(eq(formTemplatesTable.id, templateId))
@@ -78,13 +98,21 @@ router.get("/public/form/:token", async (req, res): Promise<void> => {
     return;
   }
 
-  const [project] = await db.select({ name: projectsTable.name })
+  const [project] = await db.select({
+    name: projectsTable.name,
+    ownerEntity: projectsTable.ownerEntity,
+    contractor: projectsTable.contractor,
+    supervisorEntity: projectsTable.supervisorEntity,
+  })
     .from(projectsTable)
     .where(eq(projectsTable.id, template.projectId));
 
   res.json({
     ...template,
     projectName: project?.name || "",
+    ownerEntity: project?.ownerEntity || "",
+    contractor: project?.contractor || "",
+    supervisorEntity: project?.supervisorEntity || "",
   });
 });
 
@@ -100,7 +128,7 @@ router.post("/public/form/:token/submit", async (req, res): Promise<void> => {
     return;
   }
 
-  const { data, reportDate, notes, submitterName } = req.body;
+  const { data, reportDate, notes } = req.body;
 
   if (!data || !reportDate) {
     res.status(400).json({ error: "البيانات والتاريخ مطلوبة" });
@@ -117,17 +145,12 @@ router.post("/public/form/:token/submit", async (req, res): Promise<void> => {
     return;
   }
 
-  if (submitterName && typeof submitterName === "string" && submitterName.length > 200) {
-    res.status(400).json({ error: "اسم المرسل طويل جداً" });
-    return;
-  }
-
   const [submission] = await db.insert(formSubmissionsTable).values({
     templateId: template.id,
     projectId: template.projectId,
     data,
     submittedById: null,
-    submittedByName: submitterName || "مستخدم خارجي",
+    submittedByName: "مستخدم خارجي",
     status: "submitted",
     reportDate,
     notes: notes || null,
