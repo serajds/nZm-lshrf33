@@ -14,10 +14,42 @@ import path from "path";
 const router: IRouter = Router();
 
 const BACKUP_DIR = path.join(process.cwd(), "backups");
+const RETENTION_DAYS = 7;
 
 function ensureBackupDir() {
   if (!fs.existsSync(BACKUP_DIR)) {
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  }
+}
+
+function cleanupOldBackups() {
+  try {
+    const files = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.endsWith(".json") && f.startsWith("backup-"));
+
+    if (files.length === 0) return;
+
+    const fileInfos = files.map(f => {
+      const stat = fs.statSync(path.join(BACKUP_DIR, f));
+      return { filename: f, mtime: stat.mtime.getTime() };
+    }).sort((a, b) => b.mtime - a.mtime);
+
+    const latestTime = fileInfos[0].mtime;
+    const cutoff = latestTime - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+    let deleted = 0;
+    for (const file of fileInfos) {
+      if (file.mtime < cutoff) {
+        fs.unlinkSync(path.join(BACKUP_DIR, file.filename));
+        deleted++;
+      }
+    }
+
+    if (deleted > 0) {
+      console.log(`Backup cleanup: deleted ${deleted} backup(s) older than ${RETENTION_DAYS} days from latest backup`);
+    }
+  } catch (err) {
+    console.error("Backup cleanup error:", err);
   }
 }
 
@@ -98,6 +130,8 @@ router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => 
     const filepath = path.join(BACKUP_DIR, filename);
 
     fs.writeFileSync(filepath, JSON.stringify(backupData, null, 2), "utf-8");
+
+    cleanupOldBackups();
 
     const fileStat = fs.statSync(filepath);
 
