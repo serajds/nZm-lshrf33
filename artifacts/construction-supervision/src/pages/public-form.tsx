@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Plus, X, Send, FileText, CheckCircle, Loader2,
+  Plus, X, Send, FileText, CheckCircle, Loader2, Building2,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
@@ -36,6 +36,9 @@ interface PublicTemplate {
   fields: FormField[];
   isActive: boolean;
   projectName: string;
+  ownerEntity: string;
+  contractor: string;
+  supervisorEntity: string;
 }
 
 export default function PublicForm() {
@@ -53,7 +56,6 @@ export default function PublicForm() {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [reportDate, setReportDate] = useState(today);
   const [notes, setNotes] = useState("");
-  const [submitterName, setSubmitterName] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -124,7 +126,6 @@ export default function PublicForm() {
           data: formData,
           reportDate,
           notes,
-          submitterName: submitterName.trim() || "مستخدم خارجي",
         }),
       });
 
@@ -184,7 +185,6 @@ export default function PublicForm() {
                 setFormData({});
                 setNotes("");
                 setReportDate(new Date().toISOString().split("T")[0]);
-                setSubmitterName("");
               }}
             >
               تعبئة نموذج جديد
@@ -204,16 +204,37 @@ export default function PublicForm() {
       <div className="max-w-2xl mx-auto space-y-4">
         <Card>
           <CardContent className="p-6">
-            <div className="flex items-start gap-3 mb-1">
+            <div className="flex items-start gap-3 mb-4">
               <div className="p-2.5 rounded-xl bg-blue-500/10 shrink-0">
                 <FileText className="h-5 w-5 text-blue-600" />
               </div>
               <div>
                 <h1 className="text-lg font-bold text-gray-800">{template.name}</h1>
-                <p className="text-sm text-muted-foreground mt-0.5">{template.projectName}</p>
                 {template.description && (
                   <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
                 )}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg bg-muted/40 border">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground">المشروع:</span>
+                <span className="text-xs font-medium">{template.projectName}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground">الجهة المالكة:</span>
+                <span className="text-xs font-medium">{template.ownerEntity}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground">المقاول:</span>
+                <span className="text-xs font-medium">{template.contractor}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground">الاستشاري:</span>
+                <span className="text-xs font-medium">{template.supervisorEntity}</span>
               </div>
             </div>
           </CardContent>
@@ -221,20 +242,9 @@ export default function PublicForm() {
 
         <Card>
           <CardContent className="p-6 space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label>الاسم <span className="text-xs text-muted-foreground">(اختياري)</span></Label>
-                <Input
-                  value={submitterName}
-                  onChange={e => setSubmitterName(e.target.value)}
-                  placeholder="أدخل اسمك"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>تاريخ التقرير *</Label>
-                <Input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="mt-1" />
-              </div>
+            <div>
+              <Label>تاريخ التقرير *</Label>
+              <Input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="mt-1 max-w-xs" />
             </div>
 
             <div className="space-y-5 pt-2">
