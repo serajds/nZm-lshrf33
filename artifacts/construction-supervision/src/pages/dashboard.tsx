@@ -1,4 +1,4 @@
-import { useGetDashboardSummary } from "@workspace/api-client-react";
+import { useGetDashboardSummary, useCreateBackup, useListBackups, useDeleteBackup } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,13 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { fmtDate } from "@/lib/utils";
 import {
   Building2, ActivitySquare, AlertTriangle, CheckCircle2,
-  FileText, TrendingUp, PauseCircle, BarChart3, Clock, ChevronLeft
+  FileText, TrendingUp, PauseCircle, BarChart3, Clock, ChevronLeft,
+  HardDrive, Download, Trash2, Loader2, Database, X
 } from "lucide-react";
 import { Link } from "wouter";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from "recharts";
+import { useState } from "react";
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; ring: string }> = {
   active:    { label: "نشط",    color: "text-blue-600",   bg: "bg-blue-100",    ring: "ring-blue-400" },
@@ -99,12 +101,23 @@ const CustomDonutLabel = ({ viewBox, total }: { viewBox?: { cx: number; cy: numb
   );
 };
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function Dashboard() {
   usePageTitle("لوحة التحكم");
   const { user } = useAuth();
   const { data: summary, isLoading } = useGetDashboardSummary();
   const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
   const getProjectLink = (projectId: number) => `/projects/${projectId}`;
+  const isAdmin = user?.role === "admin";
+  const [showBackupPanel, setShowBackupPanel] = useState(false);
+  const createBackup = useCreateBackup();
+  const { data: backupListData, refetch: refetchBackups } = useListBackups({ query: { enabled: showBackupPanel && isAdmin } });
+  const deleteBackup = useDeleteBackup();
 
   const today = new Date();
   const dateStr = today.toLocaleDateString("ar-u-nu-latn", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
@@ -160,9 +173,20 @@ export default function Dashboard() {
             <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{dateStr}</p>
           </div>
         </div>
-        <Link href="/projects" className="flex items-center gap-1 text-xs sm:text-sm text-primary hover:text-primary/80 font-medium transition-colors shrink-0">
-          <span className="hidden sm:inline">عرض جميع</span> المشاريع <ChevronLeft className="h-4 w-4" />
-        </Link>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => { setShowBackupPanel(true); refetchBackups(); }}
+              className="flex items-center gap-1.5 text-xs sm:text-sm px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-medium transition-colors shrink-0"
+            >
+              <Database className="h-4 w-4" />
+              <span className="hidden sm:inline">نسخة احتياطية</span>
+            </button>
+          )}
+          <Link href="/projects" className="flex items-center gap-1 text-xs sm:text-sm text-primary hover:text-primary/80 font-medium transition-colors shrink-0">
+            <span className="hidden sm:inline">عرض جميع</span> المشاريع <ChevronLeft className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
 
       {/* ── KPI Cards ── */}
@@ -469,6 +493,117 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {showBackupPanel && isAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowBackupPanel(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-emerald-100">
+                  <Database className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold">النسخ الاحتياطية</h2>
+                  <p className="text-xs text-muted-foreground">إدارة النسخ الاحتياطية لقاعدة البيانات</p>
+                </div>
+              </div>
+              <button onClick={() => setShowBackupPanel(false)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-5 border-b">
+              <button
+                onClick={() => {
+                  createBackup.mutate(undefined, {
+                    onSuccess: () => { refetchBackups(); },
+                  });
+                }}
+                disabled={createBackup.isPending}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 font-medium transition-colors"
+              >
+                {createBackup.isPending ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> جاري إنشاء النسخة...</>
+                ) : (
+                  <><HardDrive className="h-4 w-4" /> إنشاء نسخة احتياطية جديدة</>
+                )}
+              </button>
+              {createBackup.isSuccess && (
+                <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-sm text-emerald-700">
+                  تم إنشاء النسخة الاحتياطية بنجاح
+                </div>
+              )}
+              {createBackup.isError && (
+                <div className="mt-3 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+                  فشل إنشاء النسخة الاحتياطية
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3">النسخ المحفوظة</h3>
+              {(backupListData?.backups?.length ?? 0) === 0 ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  <HardDrive className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                  لا توجد نسخ احتياطية
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {backupListData!.backups!.map((b: any) => (
+                    <div key={b.filename} className="flex items-center justify-between p-3 rounded-lg border hover:border-emerald-200 transition-colors">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{b.filename}</p>
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(b.createdAt).toLocaleDateString("ar-u-nu-latn", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{formatFileSize(b.size)}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => {
+                            const token = localStorage.getItem("auth_token");
+                            fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/backup/download/${b.filename}`, {
+                              headers: { Authorization: `Bearer ${token}` },
+                            })
+                              .then(r => r.blob())
+                              .then(blob => {
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.download = b.filename;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                              });
+                          }}
+                          className="p-2 rounded-lg hover:bg-emerald-50 text-emerald-600 transition-colors"
+                          title="تحميل"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm("هل أنت متأكد من حذف هذه النسخة الاحتياطية؟")) {
+                              deleteBackup.mutate({ filename: b.filename }, {
+                                onSuccess: () => { refetchBackups(); },
+                              });
+                            }
+                          }}
+                          className="p-2 rounded-lg hover:bg-red-50 text-red-500 transition-colors"
+                          title="حذف"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

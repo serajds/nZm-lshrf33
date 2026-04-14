@@ -18,6 +18,7 @@ import activityGroupsRouter from "./activity-groups";
 import setupRouter from "./setup";
 import testResultsRouter from "./test-results";
 import formsRouter from "./forms";
+import backupRouter from "./backup";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(activityGroupsRouter);
 router.use(setupRouter);
 router.use(testResultsRouter);
 router.use(formsRouter);
+router.use(backupRouter);
 
 export default router;

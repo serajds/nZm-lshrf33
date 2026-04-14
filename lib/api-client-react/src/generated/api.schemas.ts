@@ -81,7 +81,6 @@ export interface User {
   role: UserRole;
   companies?: UserCompany[];
   createdAt: string;
-  isContractorCompanyUser?: boolean;
 }
 
 export interface LoginResponse {
@@ -488,38 +487,7 @@ export interface OwnerProjectView {
   project: Project;
   activities: Activity[];
   reports: Report[];
-  extensions?: ProjectExtension[];
-  suspensions?: ProjectSuspension[];
   summary: ProjectSummary;
-}
-
-export interface ProjectExtension {
-  id: number;
-  projectId: number;
-  extensionDate: string;
-  daysAdded: number;
-  newEndDate: string;
-  reason?: string | null;
-  documentRef?: string | null;
-  approvedBy?: string | null;
-  notes?: string | null;
-  createdAt: string;
-}
-
-export interface ProjectSuspension {
-  id: number;
-  projectId: number;
-  type: "official_holiday" | "force_majeure" | "contractor_delay";
-  title: string;
-  startDate: string;
-  endDate: string;
-  calendarDays: number;
-  reason?: string | null;
-  documentRef?: string | null;
-  approvedBy?: string | null;
-  notes?: string | null;
-  datesShifted: boolean;
-  createdAt: string;
 }
 
 export interface GenerateOwnerLinkBody {
@@ -674,4 +642,28 @@ export type UpdateMemberGroups200 = {
 export type GetOwnerProjectByToken200 = {
   exists: boolean;
   projectName: string;
+};
+
+export type CreateBackup200Stats = { [key: string]: unknown };
+
+export type CreateBackup200 = {
+  success?: boolean;
+  filename?: string;
+  size?: number;
+  createdAt?: string;
+  stats?: CreateBackup200Stats;
+};
+
+export type ListBackups200BackupsItem = {
+  filename?: string;
+  size?: number;
+  createdAt?: string;
+};
+
+export type ListBackups200 = {
+  backups?: ListBackups200BackupsItem[];
+};
+
+export type DeleteBackup200 = {
+  success?: boolean;
 };
