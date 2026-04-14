@@ -55,7 +55,7 @@ router.post("/projects/:id/form-templates", requireProjectAccess("id"), async (r
     return;
   }
 
-  const { name, description, fields, isActive, visibleToContractor, isDailyReport } = req.body;
+  const { name, description, fields, isActive, visibleToContractor, isDailyReport, signatures } = req.body;
 
   if (!name || !fields || !Array.isArray(fields)) {
     res.status(400).json({ error: "اسم النموذج والحقول مطلوبة" });
@@ -70,6 +70,7 @@ router.post("/projects/:id/form-templates", requireProjectAccess("id"), async (r
     isActive: isActive !== false,
     visibleToContractor: visibleToContractor === true,
     isDailyReport: isDailyReport === true,
+    signatures: Array.isArray(signatures) ? signatures : [],
     createdById: req.user?.userId,
   }).returning();
 
@@ -87,7 +88,7 @@ router.put("/projects/:id/form-templates/:templateId", requireProjectAccess("id"
     return;
   }
 
-  const { name, description, fields, isActive, visibleToContractor, isDailyReport } = req.body;
+  const { name, description, fields, isActive, visibleToContractor, isDailyReport, signatures } = req.body;
 
   const updateData: Record<string, unknown> = {};
   if (name !== undefined) updateData.name = name;
@@ -96,6 +97,7 @@ router.put("/projects/:id/form-templates/:templateId", requireProjectAccess("id"
   if (isActive !== undefined) updateData.isActive = isActive;
   if (visibleToContractor !== undefined) updateData.visibleToContractor = visibleToContractor;
   if (isDailyReport !== undefined) updateData.isDailyReport = isDailyReport;
+  if (signatures !== undefined) updateData.signatures = Array.isArray(signatures) ? signatures : [];
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });

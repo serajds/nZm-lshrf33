@@ -62,6 +62,8 @@ interface FormField {
   defaultRows?: string[][];
 }
 
+type SignatureType = "supervisor" | "contractor" | "owner";
+
 interface FormTemplate {
   id: number;
   projectId: number;
@@ -72,6 +74,7 @@ interface FormTemplate {
   visibleToContractor: boolean;
   isDailyReport: boolean;
   publicToken: string | null;
+  signatures: SignatureType[];
   createdById: number | null;
   createdAt: string;
   updatedAt: string;
@@ -117,13 +120,19 @@ function genId() {
   return "f_" + Math.random().toString(36).slice(2, 9);
 }
 
+const SIGNATURE_OPTIONS: { value: SignatureType; label: string }[] = [
+  { value: "supervisor", label: "الاستشاري" },
+  { value: "contractor", label: "المقاول" },
+  { value: "owner", label: "الجهة المالكة" },
+];
+
 function TemplateBuilder({
   template,
   onSave,
   onCancel,
 }: {
   template?: FormTemplate | null;
-  onSave: (data: { name: string; description: string; fields: FormField[]; visibleToContractor: boolean; isDailyReport: boolean }) => void;
+  onSave: (data: { name: string; description: string; fields: FormField[]; visibleToContractor: boolean; isDailyReport: boolean; signatures: SignatureType[] }) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(template?.name || "");
@@ -131,6 +140,7 @@ function TemplateBuilder({
   const [fields, setFields] = useState<FormField[]>(template?.fields || []);
   const [visibleToContractor, setVisibleToContractor] = useState<boolean>(template?.visibleToContractor ?? false);
   const [isDailyReport, setIsDailyReport] = useState<boolean>(template?.isDailyReport ?? false);
+  const [signatures, setSignatures] = useState<SignatureType[]>(template?.signatures || []);
   const [editingFieldIdx, setEditingFieldIdx] = useState<number | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -169,10 +179,16 @@ function TemplateBuilder({
     setEditingFieldIdx(newIdx);
   };
 
+  const toggleSignature = (sig: SignatureType) => {
+    setSignatures(prev =>
+      prev.includes(sig) ? prev.filter(s => s !== sig) : [...prev, sig]
+    );
+  };
+
   const handleSave = () => {
     if (!name.trim()) return;
     const validFields = fields.filter(f => f.label.trim() || f.type === "section");
-    onSave({ name: name.trim(), description: description.trim(), fields: validFields, visibleToContractor, isDailyReport });
+    onSave({ name: name.trim(), description: description.trim(), fields: validFields, visibleToContractor, isDailyReport, signatures });
   };
 
   return (
@@ -195,6 +211,21 @@ function TemplateBuilder({
           <Switch id="isDailyReport" checked={isDailyReport} onCheckedChange={setIsDailyReport} />
           <Label htmlFor="isDailyReport" className="cursor-pointer">نموذج يومي</Label>
           <span className="text-xs text-muted-foreground">تنبيه عند عدم تعبئة النموذج لأي يوم</span>
+        </div>
+        <div className="sm:col-span-2">
+          <Label className="text-sm font-medium">التوقيعات</Label>
+          <p className="text-xs text-muted-foreground mb-2">اختر التوقيعات التي تظهر في أسفل النموذج عند الطباعة</p>
+          <div className="flex flex-wrap gap-3">
+            {SIGNATURE_OPTIONS.map(opt => (
+              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={signatures.includes(opt.value)}
+                  onCheckedChange={() => toggleSignature(opt.value)}
+                />
+                <span className="text-sm">{opt.label}</span>
+              </label>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -782,7 +813,14 @@ function buildSubmissionPageHtml(
 </div>
 <table class="fields">${fieldsHtml}</table>
 ${submission.notes ? `<div class="notes-box"><strong>ملاحظات:</strong> ${escHtml(submission.notes)}</div>` : ""}
-<div class="footer"><div class="sig-box"><p>اعتماد</p><p>التوقيع: ___________</p></div></div>
+${(() => {
+  const sigs = (template.signatures as string[]) || [];
+  const sigLabels: Record<string, string> = { supervisor: "الاستشاري", contractor: "المقاول", owner: "الجهة المالكة" };
+  if (sigs.length === 0) return `<div class="footer"><div class="sig-box"><p>اعتماد</p><p>التوقيع: ___________</p></div></div>`;
+  const sigWidth = sigs.length === 1 ? "100%" : sigs.length === 2 ? "45%" : "30%";
+  const sigBoxes = sigs.map(s => `<div class="sig-box" style="width:${sigWidth}"><p>${sigLabels[s] || s}</p><p>التوقيع: ___________</p></div>`).join("");
+  return `<div class="footer">${sigBoxes}</div>`;
+})()}
 </div>`;
 }
 
@@ -990,7 +1028,7 @@ export default function ProjectForms() {
     queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/daily-gaps`] });
   }, [queryClient, projectId]);
 
-  const handleSaveTemplate = async (data: { name: string; description: string; fields: FormField[]; visibleToContractor?: boolean; isDailyReport?: boolean }) => {
+  const handleSaveTemplate = async (data: { name: string; description: string; fields: FormField[]; visibleToContractor?: boolean; isDailyReport?: boolean; signatures?: SignatureType[] }) => {
     const url = editingTemplate
       ? `${API_BASE}/projects/${projectId}/form-templates/${editingTemplate.id}`
       : `${API_BASE}/projects/${projectId}/form-templates`;
