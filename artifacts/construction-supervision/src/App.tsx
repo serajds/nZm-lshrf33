@@ -20,6 +20,7 @@ import Users from "@/pages/users";
 import Companies from "@/pages/companies";
 import AuditLog from "@/pages/audit-log";
 import OwnerPortal from "@/pages/owner/[token]";
+import PublicForm from "@/pages/public-form";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -86,6 +87,7 @@ function Router() {
     <Switch>
       <Route path="/login" component={Login} />
       <Route path="/owner/:token" component={OwnerPortal} />
+      <Route path="/form/:token" component={PublicForm} />
       
       <Route path="/">
         <HomeRoute />
