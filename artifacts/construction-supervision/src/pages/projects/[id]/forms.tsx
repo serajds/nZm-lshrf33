@@ -29,6 +29,7 @@ import {
   GripVertical, Type, Hash, Calendar, List, Table, Heading,
   AlignLeft, Send, ClipboardCheck, ChevronDown, ChevronUp, X,
   Download, Upload, FileDown, Filter, ListChecks, CheckCircle2, AlertTriangle,
+  Link2, Copy, LinkIcon, Unlink,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
@@ -70,6 +71,7 @@ interface FormTemplate {
   isActive: boolean;
   visibleToContractor: boolean;
   isDailyReport: boolean;
+  publicToken: string | null;
   createdById: number | null;
   createdAt: string;
   updatedAt: string;
@@ -1150,6 +1152,37 @@ export default function ProjectForms() {
     input.click();
   };
 
+  const handleGeneratePublicLink = async (templateId: number) => {
+    const r = await authFetch(`${API_BASE}/projects/${projectId}/form-templates/${templateId}/public-link`, { method: "POST" });
+    if (r.ok) {
+      const { publicToken } = await r.json();
+      const baseUrl = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "");
+      const link = `${baseUrl}/form/${publicToken}`;
+      await navigator.clipboard.writeText(link);
+      toast({ title: "تم نسخ الرابط العام", description: "يمكنك مشاركة هذا الرابط مع أي شخص" });
+      invalidate();
+    } else {
+      toast({ variant: "destructive", title: "فشل إنشاء الرابط العام" });
+    }
+  };
+
+  const handleCopyPublicLink = async (publicToken: string) => {
+    const baseUrl = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "");
+    const link = `${baseUrl}/form/${publicToken}`;
+    await navigator.clipboard.writeText(link);
+    toast({ title: "تم نسخ الرابط" });
+  };
+
+  const handleRemovePublicLink = async (templateId: number) => {
+    const r = await authFetch(`${API_BASE}/projects/${projectId}/form-templates/${templateId}/public-link`, { method: "DELETE" });
+    if (r.ok) {
+      toast({ title: "تم إلغاء الرابط العام" });
+      invalidate();
+    } else {
+      toast({ variant: "destructive", title: "فشل إلغاء الرابط" });
+    }
+  };
+
   const getTemplateName = (templateId: number) => {
     return templates.find(t => t.id === templateId)?.name || "نموذج محذوف";
   };
@@ -1243,6 +1276,18 @@ export default function ProjectForms() {
                       <span>•</span>
                       <span>{submissions.filter(s => s.templateId === t.id).length} نموذج</span>
                     </div>
+                    {isAdminOrPM && t.publicToken && (
+                      <div className="flex items-center gap-1.5 mb-2 p-1.5 rounded-md bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800">
+                        <Link2 className="h-3 w-3 text-emerald-600 shrink-0" />
+                        <span className="text-[10px] text-emerald-700 dark:text-emerald-400 flex-1">رابط عام مفعّل</span>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" title="نسخ الرابط" onClick={() => handleCopyPublicLink(t.publicToken!)}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" title="إلغاء الرابط العام" onClick={() => handleRemovePublicLink(t.id)}>
+                          <Unlink className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
                     <div className="flex gap-1.5">
                       <Button
                         variant="default"
@@ -1262,6 +1307,17 @@ export default function ProjectForms() {
                       >
                         <Download className="h-3 w-3" />
                       </Button>
+                      )}
+                      {isAdminOrPM && !t.publicToken && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs gap-1"
+                          title="إنشاء رابط عام"
+                          onClick={() => handleGeneratePublicLink(t.id)}
+                        >
+                          <Link2 className="h-3 w-3" />
+                        </Button>
                       )}
                       {isAdminOrPM && (
                         <>
