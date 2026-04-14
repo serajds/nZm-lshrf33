@@ -67,6 +67,7 @@ export default function PublicForm() {
         }
         const data = await r.json();
         setTemplate(data);
+        document.title = data.name || "نموذج";
       })
       .catch(() => setError("حدث خطأ في تحميل النموذج"))
       .finally(() => setLoading(false));
