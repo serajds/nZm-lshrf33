@@ -20,10 +20,12 @@ import type {
   Activity,
   AddProjectMemberBody,
   CreateActivityBody,
+  CreateBackup200,
   CreateProjectBody,
   CreateReportBody,
   CreateUserBody,
   DashboardSummary,
+  DeleteBackup200,
   DeviationAnalysis,
   ErrorResponse,
   GenerateOwnerLinkBody,
@@ -32,6 +34,7 @@ import type {
   ImportActivities400,
   ImportActivitiesBody,
   ImportActivitiesResponse,
+  ListBackups200,
   ListFilesParams,
   ListProjectsParams,
   ListReportsParams,
@@ -91,11 +94,11 @@ export const getHealthCheckQueryOptions = <
   TData = Awaited<ReturnType<typeof healthCheck>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof healthCheck>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -126,11 +129,11 @@ export function useHealthCheck<
   TData = Awaited<ReturnType<typeof healthCheck>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof healthCheck>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
@@ -331,7 +334,7 @@ export const getGetMeQueryOptions = <
   TData = Awaited<ReturnType<typeof getMe>>,
   TError = ErrorType<ErrorResponse>,
 >(options?: {
-  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>>;
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -360,7 +363,7 @@ export function useGetMe<
   TData = Awaited<ReturnType<typeof getMe>>,
   TError = ErrorType<ErrorResponse>,
 >(options?: {
-  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>>;
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetMeQueryOptions(options);
@@ -411,11 +414,11 @@ export const getListProjectsQueryOptions = <
 >(
   params?: ListProjectsParams,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listProjects>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -449,11 +452,11 @@ export function useListProjects<
 >(
   params?: ListProjectsParams,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listProjects>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -579,11 +582,11 @@ export const getGetProjectQueryOptions = <
 >(
   id: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getProject>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -622,11 +625,11 @@ export function useGetProject<
 >(
   id: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getProject>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -837,11 +840,11 @@ export const getListActivitiesQueryOptions = <
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listActivities>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -881,11 +884,11 @@ export function useListActivities<
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listActivities>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -1300,11 +1303,11 @@ export const getListReportsQueryOptions = <
   projectId: number,
   params?: ListReportsParams,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listReports>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -1345,11 +1348,11 @@ export function useListReports<
   projectId: number,
   params?: ListReportsParams,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listReports>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -1478,11 +1481,11 @@ export const getGetReportQueryOptions = <
   projectId: number,
   id: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getReport>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -1521,11 +1524,11 @@ export function useGetReport<
   projectId: number,
   id: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getReport>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -1738,11 +1741,11 @@ export const getExportReportsPdfQueryOptions = <
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof exportReportsPdf>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -1783,11 +1786,11 @@ export function useExportReportsPdf<
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof exportReportsPdf>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -1850,11 +1853,11 @@ export const getListFilesQueryOptions = <
   projectId: number,
   params?: ListFilesParams,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listFiles>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -1893,11 +1896,11 @@ export function useListFiles<
   projectId: number,
   params?: ListFilesParams,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listFiles>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -2118,11 +2121,11 @@ export const getListProjectMembersQueryOptions = <
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listProjectMembers>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -2163,11 +2166,11 @@ export function useListProjectMembers<
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof listProjectMembers>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -2294,11 +2297,11 @@ export const getGetEligibleUsersQueryOptions = <
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getEligibleUsers>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -2339,11 +2342,11 @@ export function useGetEligibleUsers<
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getEligibleUsers>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -2650,11 +2653,11 @@ export const getGetMyProjectPermissionsQueryOptions = <
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getMyProjectPermissions>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -2695,11 +2698,11 @@ export function useGetMyProjectPermissions<
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getMyProjectPermissions>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -2737,7 +2740,7 @@ export const getListUsersQueryOptions = <
   TData = Awaited<ReturnType<typeof listUsers>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listUsers>>, TError, TData>>;
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listUsers>>, TError, TData>;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -2768,7 +2771,7 @@ export function useListUsers<
   TData = Awaited<ReturnType<typeof listUsers>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listUsers>>, TError, TData>>;
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listUsers>>, TError, TData>;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListUsersQueryOptions(options);
@@ -3067,11 +3070,11 @@ export const getGetOwnerProjectByTokenQueryOptions = <
 >(
   token: string,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getOwnerProjectByToken>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -3112,11 +3115,11 @@ export function useGetOwnerProjectByToken<
 >(
   token: string,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getOwnerProjectByToken>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -3216,6 +3219,334 @@ export const useVerifyOwnerAccess = <
 };
 
 /**
+ * @summary Create a full database backup
+ */
+export const getCreateBackupUrl = () => {
+  return `/api/backup/create`;
+};
+
+export const createBackup = async (
+  options?: RequestInit,
+): Promise<CreateBackup200> => {
+  return customFetch<CreateBackup200>(getCreateBackupUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCreateBackupMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createBackup>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createBackup>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["createBackup"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createBackup>>,
+    void
+  > = () => {
+    return createBackup(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateBackupMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createBackup>>
+>;
+
+export type CreateBackupMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a full database backup
+ */
+export const useCreateBackup = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createBackup>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createBackup>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getCreateBackupMutationOptions(options));
+};
+
+/**
+ * @summary List all available backups
+ */
+export const getListBackupsUrl = () => {
+  return `/api/backup/list`;
+};
+
+export const listBackups = async (
+  options?: RequestInit,
+): Promise<ListBackups200> => {
+  return customFetch<ListBackups200>(getListBackupsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListBackupsQueryKey = () => {
+  return [`/api/backup/list`] as const;
+};
+
+export const getListBackupsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listBackups>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listBackups>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListBackupsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listBackups>>> = ({
+    signal,
+  }) => listBackups({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listBackups>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListBackupsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listBackups>>
+>;
+export type ListBackupsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all available backups
+ */
+
+export function useListBackups<
+  TData = Awaited<ReturnType<typeof listBackups>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listBackups>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListBackupsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Download a backup file
+ */
+export const getDownloadBackupUrl = (filename: string) => {
+  return `/api/backup/download/${filename}`;
+};
+
+export const downloadBackup = async (
+  filename: string,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getDownloadBackupUrl(filename), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getDownloadBackupQueryKey = (filename: string) => {
+  return [`/api/backup/download/${filename}`] as const;
+};
+
+export const getDownloadBackupQueryOptions = <
+  TData = Awaited<ReturnType<typeof downloadBackup>>,
+  TError = ErrorType<unknown>,
+>(
+  filename: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof downloadBackup>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getDownloadBackupQueryKey(filename);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadBackup>>> = ({
+    signal,
+  }) => downloadBackup(filename, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!filename,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof downloadBackup>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type DownloadBackupQueryResult = NonNullable<
+  Awaited<ReturnType<typeof downloadBackup>>
+>;
+export type DownloadBackupQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Download a backup file
+ */
+
+export function useDownloadBackup<
+  TData = Awaited<ReturnType<typeof downloadBackup>>,
+  TError = ErrorType<unknown>,
+>(
+  filename: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof downloadBackup>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getDownloadBackupQueryOptions(filename, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Delete a backup file
+ */
+export const getDeleteBackupUrl = (filename: string) => {
+  return `/api/backup/${filename}`;
+};
+
+export const deleteBackup = async (
+  filename: string,
+  options?: RequestInit,
+): Promise<DeleteBackup200> => {
+  return customFetch<DeleteBackup200>(getDeleteBackupUrl(filename), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteBackupMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteBackup>>,
+    TError,
+    { filename: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteBackup>>,
+  TError,
+  { filename: string },
+  TContext
+> => {
+  const mutationKey = ["deleteBackup"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteBackup>>,
+    { filename: string }
+  > = (props) => {
+    const { filename } = props ?? {};
+
+    return deleteBackup(filename, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteBackupMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteBackup>>
+>;
+
+export type DeleteBackupMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a backup file
+ */
+export const useDeleteBackup = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteBackup>>,
+    TError,
+    { filename: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteBackup>>,
+  TError,
+  { filename: string },
+  TContext
+> => {
+  return useMutation(getDeleteBackupMutationOptions(options));
+};
+
+/**
  * @summary Get dashboard summary stats
  */
 export const getGetDashboardSummaryUrl = () => {
@@ -3239,11 +3570,11 @@ export const getGetDashboardSummaryQueryOptions = <
   TData = Awaited<ReturnType<typeof getDashboardSummary>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getDashboardSummary>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -3274,11 +3605,11 @@ export function useGetDashboardSummary<
   TData = Awaited<ReturnType<typeof getDashboardSummary>>,
   TError = ErrorType<unknown>,
 >(options?: {
-  query?: Partial<UseQueryOptions<
+  query?: UseQueryOptions<
     Awaited<ReturnType<typeof getDashboardSummary>>,
     TError,
     TData
-  >>;
+  >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetDashboardSummaryQueryOptions(options);
@@ -3317,11 +3648,11 @@ export const getGetProjectSummaryQueryOptions = <
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getProjectSummary>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -3362,11 +3693,11 @@ export function useGetProjectSummary<
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getProjectSummary>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -3406,11 +3737,11 @@ export const getGetProjectDeviationQueryOptions = <
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getProjectDeviation>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ) => {
@@ -3451,11 +3782,11 @@ export function useGetProjectDeviation<
 >(
   projectId: number,
   options?: {
-    query?: Partial<UseQueryOptions<
+    query?: UseQueryOptions<
       Awaited<ReturnType<typeof getProjectDeviation>>,
       TError,
       TData
-    >>;
+    >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {

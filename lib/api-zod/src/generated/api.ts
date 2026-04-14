@@ -875,6 +875,50 @@ export const VerifyOwnerAccessResponse = zod.object({
 });
 
 /**
+ * @summary Create a full database backup
+ */
+export const CreateBackupResponse = zod.object({
+  success: zod.boolean().optional(),
+  filename: zod.string().optional(),
+  size: zod.number().optional(),
+  createdAt: zod.string().optional(),
+  stats: zod.object({}).passthrough().optional(),
+});
+
+/**
+ * @summary List all available backups
+ */
+export const ListBackupsResponse = zod.object({
+  backups: zod
+    .array(
+      zod.object({
+        filename: zod.string().optional(),
+        size: zod.number().optional(),
+        createdAt: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Download a backup file
+ */
+export const DownloadBackupParams = zod.object({
+  filename: zod.coerce.string(),
+});
+
+/**
+ * @summary Delete a backup file
+ */
+export const DeleteBackupParams = zod.object({
+  filename: zod.coerce.string(),
+});
+
+export const DeleteBackupResponse = zod.object({
+  success: zod.boolean().optional(),
+});
+
+/**
  * @summary Get dashboard summary stats
  */
 export const GetDashboardSummaryResponse = zod.object({

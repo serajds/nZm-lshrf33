@@ -144,6 +144,18 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 - `GET /api/projects/:id/daily-gaps` — returns missing days for daily templates (non-contractor only)
 - `POST /api/projects/:id/skip-day` — skip a day for a daily template (non-contractor only, validates template ownership)
 - `GET /api/owner/:token/test-results` — list files from project's linked OneDrive folder (JWT authenticated)
+- `POST /api/backup/create` — create full database backup (admin only), saves JSON to server `backups/` directory
+- `GET /api/backup/list` — list all backup files (admin only)
+- `GET /api/backup/download/:filename` — download a backup file (admin only)
+- `DELETE /api/backup/:filename` — delete a backup file (admin only)
+
+### Database Backup System
+- Admin-only backup button in dashboard header opens a modal panel
+- Creates a complete JSON snapshot of all 16 database tables with stats
+- Backups stored on the server in `backups/` directory with timestamped filenames
+- Modal shows list of all backups with date, size, download and delete actions
+- Path traversal protection on filename validation
+- Route: `artifacts/api-server/src/routes/backup.ts`
 
 ### OneDrive Integration (Test Results)
 - Each project can have a `onedriveTestResultsFolderId` field linking to a OneDrive folder

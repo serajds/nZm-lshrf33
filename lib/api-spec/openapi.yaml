@@ -885,6 +885,95 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # Backup
+  /backup/create:
+    post:
+      operationId: createBackup
+      tags: [backup]
+      summary: Create a full database backup
+      responses:
+        "200":
+          description: Backup created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  filename:
+                    type: string
+                  size:
+                    type: integer
+                  createdAt:
+                    type: string
+                  stats:
+                    type: object
+  /backup/list:
+    get:
+      operationId: listBackups
+      tags: [backup]
+      summary: List all available backups
+      responses:
+        "200":
+          description: List of backups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        size:
+                          type: integer
+                        createdAt:
+                          type: string
+  /backup/download/{filename}:
+    get:
+      operationId: downloadBackup
+      tags: [backup]
+      summary: Download a backup file
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Backup file download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+  /backup/{filename}:
+    delete:
+      operationId: deleteBackup
+      tags: [backup]
+      summary: Delete a backup file
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Backup deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
   # Dashboard
   /dashboard/summary:
     get:
