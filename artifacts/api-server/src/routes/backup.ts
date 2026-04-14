@@ -85,7 +85,7 @@ router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => 
     const backupData = {
       version: 1,
       createdAt: new Date().toISOString(),
-      createdBy: _req.user?.name ?? "admin",
+      createdBy: (_req.user as any)?.name ?? _req.user?.phone ?? "admin",
       tables: {
         users,
         projects,
