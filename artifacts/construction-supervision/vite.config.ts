@@ -62,7 +62,7 @@ export default defineConfig({
         description:
           "نظام إدارة الإشراف والمتابعة للمشاريع الإنشائية - متابعة التقدم والأنشطة والتقارير",
         theme_color: "#1f4d8b",
-        background_color: "#1f4d8b",
+        background_color: "#ffffff",
         display: "standalone",
         orientation: "portrait",
         lang: "ar",

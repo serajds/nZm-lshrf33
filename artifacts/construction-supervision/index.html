@@ -33,7 +33,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <style>
-      html, body { margin: 0; padding: 0; background: #1f4d8b; }
+      html, body { margin: 0; padding: 0; background: #ffffff; }
       #app-splash {
         position: fixed;
         inset: 0;
@@ -43,8 +43,8 @@
         align-items: center;
         justify-content: center;
         gap: 28px;
-        background: linear-gradient(160deg, #1f4d8b 0%, #173a6b 50%, #0f2647 100%);
-        color: #fff;
+        background: #ffffff;
+        color: #1f4d8b;
         font-family: 'Noto Kufi Arabic', sans-serif;
         transition: opacity 0.45s ease, visibility 0.45s ease;
         padding: 24px;
@@ -58,26 +58,24 @@
         width: 132px;
         height: 132px;
         border-radius: 28px;
-        background: rgba(255,255,255,0.10);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+        background: #ffffff;
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 24px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.2);
+        box-shadow: 0 18px 40px rgba(31, 77, 139, 0.18), 0 2px 6px rgba(0,0,0,0.06);
         animation: splash-pop 0.7s cubic-bezier(.2,.9,.3,1.2);
       }
       #app-splash .splash-logo img {
         width: 92px;
         height: 92px;
         object-fit: contain;
-        filter: drop-shadow(0 6px 14px rgba(0,0,0,0.3));
       }
       #app-splash .splash-title {
         font-size: 22px;
         font-weight: 700;
         letter-spacing: 0.3px;
         margin: 0;
+        color: #1f4d8b;
         opacity: 0;
         animation: splash-fade 0.6s ease 0.15s forwards;
       }
@@ -85,15 +83,15 @@
         font-size: 13px;
         font-weight: 400;
         opacity: 0;
-        color: rgba(255,255,255,0.75);
+        color: rgba(31, 77, 139, 0.65);
         margin: 0;
         animation: splash-fade 0.6s ease 0.3s forwards;
       }
       #app-splash .splash-spinner {
         width: 36px;
         height: 36px;
-        border: 3px solid rgba(255,255,255,0.18);
-        border-top-color: #fff;
+        border: 3px solid rgba(31, 77, 139, 0.15);
+        border-top-color: #1f4d8b;
         border-radius: 50%;
         animation: splash-spin 0.9s linear infinite;
         margin-top: 8px;
@@ -107,9 +105,6 @@
       }
       @keyframes splash-spin {
         to { transform: rotate(360deg); }
-      }
-      @media (prefers-color-scheme: dark) {
-        html, body { background: #0f2647; }
       }
     </style>
   </head>
