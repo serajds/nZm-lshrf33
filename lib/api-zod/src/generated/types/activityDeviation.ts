@@ -12,6 +12,14 @@ export interface ActivityDeviation {
   plannedProgress: number;
   actualProgress: number;
   deviation: number;
-  /** @nullable */
+  /**
+   * Deprecated alias for overrunDays (kept for backward compatibility)
+   * @nullable
+   */
   delayDays?: number | null;
+  /**
+   * Days past activity plannedEndDate while not completed
+   * @nullable
+   */
+  overrunDays?: number | null;
 }

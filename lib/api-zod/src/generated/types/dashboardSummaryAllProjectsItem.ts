@@ -20,4 +20,6 @@ export type DashboardSummaryAllProjectsItem = {
   /** @nullable */
   expectedEndDate?: string | null;
   noSchedule?: boolean;
+  /** Days passed after expectedEndDate while progress < 100% */
+  overrunDays?: number;
 };

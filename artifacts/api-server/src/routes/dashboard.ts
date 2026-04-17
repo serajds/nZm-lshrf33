@@ -125,7 +125,7 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
   const noScheduleProjectIds = new Set(allProjects.filter(p => p.noSchedule === true).map(p => p.id));
   const delayedActivitiesList = allActivities
     .filter(a => {
-      if (a.status === "completed") return false;
+      if (a.actualProgress >= 100) return false;
       if (noScheduleProjectIds.has(a.projectId)) return false;
       if (!a.plannedEndDate) return false;
       const plannedEnd = new Date(a.plannedEndDate);
@@ -163,6 +163,7 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
         startDate: p.startDate,
         expectedEndDate: p.expectedEndDate,
         noSchedule: true,
+        overrunDays: 0,
       };
     }
     const startDate = new Date(p.startDate ?? Date.now());
@@ -172,6 +173,9 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
     const daysRemaining = Math.max(0, totalDays - daysElapsed);
     const projActivities = activitiesByProject.get(p.id) ?? [];
     const plannedProgress = Math.round(calcPlannedProgressForProject(projActivities, daysElapsed, totalDays));
+    const overrunDays = p.overallProgress < 100
+      ? Math.max(0, Math.ceil((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24)))
+      : 0;
     return {
       id: p.id,
       name: p.name,
@@ -183,6 +187,7 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
       startDate: p.startDate,
       expectedEndDate: p.expectedEndDate,
       noSchedule: false,
+      overrunDays,
     };
   });
 
@@ -237,6 +242,7 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
       delayDays: 0,
       suspensionDays: 0,
       netDelayDays: 0,
+      overrunDays: 0,
       reportsCount: Number(reportCount?.count ?? 0),
       filesCount: Number(fileCount?.count ?? 0),
     });
@@ -253,6 +259,9 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
   const delayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
   const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
   const netDelayDays = Math.max(0, delayDays - suspensionDays);
+  const overrunDays = project.overallProgress < 100
+    ? Math.max(0, Math.ceil((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
 
   res.json({
     projectId,
@@ -268,6 +277,7 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
     delayDays,
     suspensionDays,
     netDelayDays,
+    overrunDays,
     reportsCount: Number(reportCount?.count ?? 0),
     filesCount: Number(fileCount?.count ?? 0),
   });
@@ -296,6 +306,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
       actualProgress: a.actualProgress,
       deviation: 0,
       delayDays: null,
+      overrunDays: null,
     }));
 
     res.json({
@@ -306,6 +317,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
       suspensionDays: 0,
       grossDelayDays: 0,
       netDelayDays: 0,
+      overrunDays: 0,
       status: "on_track",
       activitiesAnalysis,
     });
@@ -324,6 +336,9 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
   const grossDelayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
   const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
+  const overrunDays = project.overallProgress < 100
+    ? Math.max(0, Math.ceil((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
 
   let overallStatus: "on_track" | "slightly_delayed" | "significantly_delayed" | "ahead";
   if (progressDeviation > 5) {
@@ -339,14 +354,14 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   const activitiesAnalysis = activities.map(a => {
     const actPlanned = Math.round(calcActivityPlannedProgress(a, today) * 100) / 100;
     const deviation = Math.round((a.actualProgress - actPlanned) * 100) / 100;
-    let delayDays: number | null = null;
+    let overrun: number | null = null;
 
     if (a.plannedEndDate) {
       const plannedEnd = new Date(a.plannedEndDate);
       const todayTime = today.getTime();
       const plannedTime = plannedEnd.getTime();
       if (todayTime > plannedTime && a.actualProgress < 100) {
-        delayDays = Math.ceil((todayTime - plannedTime) / (1000 * 60 * 60 * 24));
+        overrun = Math.ceil((todayTime - plannedTime) / (1000 * 60 * 60 * 24));
       }
     }
 
@@ -356,7 +371,8 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
       plannedProgress: actPlanned,
       actualProgress: a.actualProgress,
       deviation,
-      delayDays,
+      delayDays: overrun,
+      overrunDays: overrun,
     };
   });
 
@@ -368,6 +384,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
     suspensionDays,
     grossDelayDays,
     netDelayDays,
+    overrunDays,
     status: overallStatus,
     activitiesAnalysis,
   });

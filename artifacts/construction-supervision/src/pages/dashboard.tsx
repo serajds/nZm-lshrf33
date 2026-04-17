@@ -448,7 +448,7 @@ export default function Dashboard() {
             </div>
             <div>
               <CardTitle className="text-sm font-semibold text-red-700">
-                تنبيهات التأخر — {delayedActivitiesList.length} بند متأخر
+                بنود تجاوزت المدة — {delayedActivitiesList.length} بند
               </CardTitle>
               <p className="text-xs text-red-500/80 mt-0.5">بنود تجاوزت موعد انتهائها المخطط</p>
             </div>
@@ -468,7 +468,7 @@ export default function Dashboard() {
                         <p className="text-sm font-bold tabular-nums">{a.actualProgress}%</p>
                       </div>
                       <span className="inline-flex items-center gap-1 rounded-full px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-semibold bg-red-100 text-red-700 border border-red-200 whitespace-nowrap">
-                        <Clock className="h-3 w-3" /> متأخر {a.delayDays} يوم
+                        <Clock className="h-3 w-3" /> تجاوز {a.delayDays} يوم
                       </span>
                     </div>
                   </div>

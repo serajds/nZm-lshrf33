@@ -89,7 +89,9 @@ function buildPrintHTML(data: ReportPdfData): string {
 
   const totalDuration = daysBetween(data.startDate, data.expectedEndDate);
   const elapsed = daysBetween(data.startDate, data.reportDate);
-  const remaining = daysBetween(data.reportDate, data.expectedEndDate);
+  const remainingRaw = daysBetween(data.reportDate, data.expectedEndDate);
+  const overrunDays = remainingRaw != null && remainingRaw < 0 && pct < 100 ? -remainingRaw : 0;
+  const remaining = remainingRaw != null ? Math.max(0, remainingRaw) : null;
   const elapsedPct = totalDuration && elapsed != null ? Math.min(100, Math.round((elapsed / totalDuration) * 100)) : null;
 
   const acts = data.activities ?? [];
@@ -406,7 +408,8 @@ ${(() => {
 <div class="dual-box avoid-break">
   <div class="dual-head">
     <span class="dual-title">مقارنة الإنجاز</span>
-    ${deviation != null ? `<span class="dev-badge ${deviation >= 0 ? "dev-ok" : "dev-warn"}">${deviation >= 0 ? "+" : ""}${deviation}% ${deviation >= 0 ? "متقدم" : "متأخر"}</span>` : ""}
+    ${deviation != null ? `<span class="dev-badge ${deviation >= 0 ? "dev-ok" : "dev-warn"}">${deviation >= 0 ? "+" : ""}${deviation}% ${deviation >= 0 ? "متقدم عن الخطة" : "خلف الخطة"}</span>` : ""}
+    ${overrunDays > 0 ? `<span class="dev-badge dev-warn">تجاوز المدة: ${overrunDays} يوم</span>` : ""}
   </div>
   <div class="dp-row">
     <span class="dp-lbl">الفعلي</span>
@@ -434,7 +437,10 @@ ${(() => {
     <div class="stat-icon" style="background:#fefce8;color:#ca8a04">⏱️</div>
     <div><div class="stat-lbl">الأيام المنقضية</div><div class="stat-val">${elapsed} <span class="stat-unit">يوم (${elapsedPct ?? 0}%)</span></div></div>
   </div>` : ""}
-  ${remaining != null ? `<div class="stat">
+  ${overrunDays > 0 ? `<div class="stat">
+    <div class="stat-icon" style="background:#fef2f2;color:#dc2626">⚠️</div>
+    <div><div class="stat-lbl">تجاوز المدة التعاقدية</div><div class="stat-val">${overrunDays} <span class="stat-unit">يوم</span></div></div>
+  </div>` : remaining != null ? `<div class="stat">
     <div class="stat-icon" style="background:${remaining < 180 ? "#fef2f2" : "#f0f9ff"};color:${remaining < 180 ? "#dc2626" : "#0284c7"}">⏳</div>
     <div><div class="stat-lbl">الأيام المتبقية</div><div class="stat-val">${remaining} <span class="stat-unit">يوم</span></div></div>
   </div>` : ""}

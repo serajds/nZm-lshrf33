@@ -868,6 +868,10 @@ export const VerifyOwnerAccessResponse = zod.object({
     delayDays: zod.number(),
     suspensionDays: zod.number(),
     netDelayDays: zod.number(),
+    overrunDays: zod
+      .number()
+      .optional()
+      .describe("Days passed after expectedEndDate while progress < 100%"),
     reportsCount: zod.number(),
     filesCount: zod.number(),
     noSchedule: zod.boolean().optional(),
@@ -964,6 +968,10 @@ export const GetDashboardSummaryResponse = zod.object({
       startDate: zod.string().nullish(),
       expectedEndDate: zod.string().nullish(),
       noSchedule: zod.boolean().optional(),
+      overrunDays: zod
+        .number()
+        .optional()
+        .describe("Days passed after expectedEndDate while progress < 100%"),
     }),
   ),
   recentReports: zod.array(
@@ -1008,6 +1016,10 @@ export const GetProjectSummaryResponse = zod.object({
   delayDays: zod.number(),
   suspensionDays: zod.number(),
   netDelayDays: zod.number(),
+  overrunDays: zod
+    .number()
+    .optional()
+    .describe("Days passed after expectedEndDate while progress < 100%"),
   reportsCount: zod.number(),
   filesCount: zod.number(),
   noSchedule: zod.boolean().optional(),
@@ -1030,6 +1042,13 @@ export const GetProjectDeviationResponse = zod.object({
     "significantly_delayed",
     "ahead",
   ]),
+  suspensionDays: zod.number().optional(),
+  grossDelayDays: zod.number().optional(),
+  netDelayDays: zod.number().optional(),
+  overrunDays: zod
+    .number()
+    .optional()
+    .describe("Days passed after expectedEndDate while progress < 100%"),
   activitiesAnalysis: zod.array(
     zod.object({
       activityId: zod.number(),
@@ -1037,7 +1056,16 @@ export const GetProjectDeviationResponse = zod.object({
       plannedProgress: zod.number(),
       actualProgress: zod.number(),
       deviation: zod.number(),
-      delayDays: zod.number().nullish(),
+      delayDays: zod
+        .number()
+        .nullish()
+        .describe(
+          "Deprecated alias for overrunDays (kept for backward compatibility)",
+        ),
+      overrunDays: zod
+        .number()
+        .nullish()
+        .describe("Days past activity plannedEndDate while not completed"),
     }),
   ),
   noSchedule: zod.boolean().optional(),

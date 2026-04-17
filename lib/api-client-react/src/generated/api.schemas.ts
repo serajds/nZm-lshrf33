@@ -478,6 +478,8 @@ export interface ProjectSummary {
   delayDays: number;
   suspensionDays: number;
   netDelayDays: number;
+  /** Days passed after expectedEndDate while progress < 100% */
+  overrunDays?: number;
   reportsCount: number;
   filesCount: number;
   noSchedule?: boolean;
@@ -514,6 +516,8 @@ export type DashboardSummaryAllProjectsItem = {
   /** @nullable */
   expectedEndDate?: string | null;
   noSchedule?: boolean;
+  /** Days passed after expectedEndDate while progress < 100% */
+  overrunDays?: number;
 };
 
 export type DashboardSummaryRecentReportsItem = {
@@ -569,8 +573,16 @@ export interface ActivityDeviation {
   plannedProgress: number;
   actualProgress: number;
   deviation: number;
-  /** @nullable */
+  /**
+   * Deprecated alias for overrunDays (kept for backward compatibility)
+   * @nullable
+   */
   delayDays?: number | null;
+  /**
+   * Days past activity plannedEndDate while not completed
+   * @nullable
+   */
+  overrunDays?: number | null;
 }
 
 export interface DeviationAnalysis {
@@ -578,6 +590,11 @@ export interface DeviationAnalysis {
   timeDeviation: number;
   progressDeviation: number;
   status: DeviationAnalysisStatus;
+  suspensionDays?: number;
+  grossDelayDays?: number;
+  netDelayDays?: number;
+  /** Days passed after expectedEndDate while progress < 100% */
+  overrunDays?: number;
   activitiesAnalysis: ActivityDeviation[];
   noSchedule?: boolean;
 }
