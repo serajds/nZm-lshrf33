@@ -9,7 +9,14 @@ import {
   FileText, TrendingUp, PauseCircle, BarChart3, Clock, ChevronLeft,
   HardDrive, Download, Trash2, Loader2, Database, X
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend
@@ -110,6 +117,7 @@ function formatFileSize(bytes: number): string {
 export default function Dashboard() {
   usePageTitle("لوحة التحكم");
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const { data: summary, isLoading } = useGetDashboardSummary();
   const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
   const getProjectLink = (projectId: number) => `/projects/${projectId}`;
@@ -173,7 +181,32 @@ export default function Dashboard() {
             <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{dateStr}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {allProjects.length > 0 && (
+            <Select
+              value=""
+              onValueChange={(v) => {
+                if (v) setLocation(`/projects/${v}`);
+              }}
+            >
+              <SelectTrigger
+                className="h-8 text-xs sm:text-sm rounded-lg bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary font-medium w-[180px] sm:w-[220px] shrink-0"
+                aria-label="فتح مشروع مباشرة"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Building2 className="h-4 w-4 shrink-0" />
+                  <SelectValue placeholder="فتح مشروع مباشرة..." />
+                </div>
+              </SelectTrigger>
+              <SelectContent align="end" className="max-h-[60vh]">
+                {allProjects.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {isAdmin && (
             <button
               onClick={() => { setShowBackupPanel(true); refetchBackups(); }}
