@@ -4,7 +4,7 @@ import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projec
 import { eq, count, desc } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
 import jwt from "jsonwebtoken";
-import { calcPlannedProgressForProject, calcDelayDays } from "../lib/progress";
+import { calcPlannedProgressForProject, calcDelayDays, calcOverrunDays } from "../lib/progress";
 
 const router: IRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
@@ -82,9 +82,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     // انحراف عن الخطة (planned vs actual progress only)
     const delayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
     // تجاوز المدة (calendar overrun past expectedEndDate while not complete)
-    const overrunDays = project.overallProgress < 100
-      ? Math.max(0, Math.ceil((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24)))
-      : 0;
+    const overrunDays = calcOverrunDays(today, project.expectedEndDate, project.overallProgress);
     const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
     const netDelayDays = Math.max(0, delayDays - suspensionDays);
     const activitiesDelayed = activities.filter(a => a.status === "delayed").length;

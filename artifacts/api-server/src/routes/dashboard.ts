@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectSuspensionsTable, projectMembersTable } from "@workspace/db";
 import { eq, count, avg, sql, desc, inArray } from "drizzle-orm";
 import { requireStaffOrContractor, requireProjectAccess } from "../middlewares/auth";
-import { calcPlannedProgressForProject, calcDelayDays, calcActivityPlannedProgress } from "../lib/progress";
+import { calcPlannedProgressForProject, calcDelayDays, calcActivityPlannedProgress, calcOverrunDays } from "../lib/progress";
 
 const router: IRouter = Router();
 
@@ -173,9 +173,7 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
     const daysRemaining = Math.max(0, totalDays - daysElapsed);
     const projActivities = activitiesByProject.get(p.id) ?? [];
     const plannedProgress = Math.round(calcPlannedProgressForProject(projActivities, daysElapsed, totalDays));
-    const overrunDays = p.overallProgress < 100
-      ? Math.max(0, Math.ceil((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24)))
-      : 0;
+    const overrunDays = calcOverrunDays(today, p.expectedEndDate, p.overallProgress);
     return {
       id: p.id,
       name: p.name,
@@ -259,9 +257,7 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
   const delayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
   const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
   const netDelayDays = Math.max(0, delayDays - suspensionDays);
-  const overrunDays = project.overallProgress < 100
-    ? Math.max(0, Math.ceil((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24)))
-    : 0;
+  const overrunDays = calcOverrunDays(today, project.expectedEndDate, project.overallProgress);
 
   res.json({
     projectId,
@@ -336,9 +332,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
   const grossDelayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
   const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
-  const overrunDays = project.overallProgress < 100
-    ? Math.max(0, Math.ceil((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24)))
-    : 0;
+  const overrunDays = calcOverrunDays(today, project.expectedEndDate, project.overallProgress);
 
   let overallStatus: "on_track" | "slightly_delayed" | "significantly_delayed" | "ahead";
   if (progressDeviation > 5) {
@@ -354,17 +348,9 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   const activitiesAnalysis = activities.map(a => {
     const actPlanned = Math.round(calcActivityPlannedProgress(a, today) * 100) / 100;
     const deviation = Math.round((a.actualProgress - actPlanned) * 100) / 100;
-    let overrun: number | null = null;
-
-    if (a.plannedEndDate) {
-      if (a.actualProgress >= 100) {
-        overrun = 0;
-      } else {
-        const plannedEnd = new Date(a.plannedEndDate);
-        const diffDays = Math.ceil((today.getTime() - plannedEnd.getTime()) / (1000 * 60 * 60 * 24));
-        overrun = Math.max(0, diffDays);
-      }
-    }
+    const overrun: number | null = a.plannedEndDate
+      ? calcOverrunDays(today, a.plannedEndDate, a.actualProgress)
+      : null;
 
     return {
       activityId: a.id,
