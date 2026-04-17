@@ -563,7 +563,16 @@ function buildExecutiveSummaryHTML(data: ExecutiveSummaryData): string {
   const totalDays = daysBetween(data.startDate, data.expectedEndDate);
   const elapsed = daysBetween(data.startDate, new Date().toISOString());
   const remaining = totalDays != null && elapsed != null ? Math.max(0, totalDays - elapsed) : null;
-  const delayDays = data.expectedEndDate ? Math.max(0, Math.ceil((new Date().getTime() - new Date(data.expectedEndDate).getTime()) / 86400000)) : 0;
+  const overrunDays = data.expectedEndDate && data.overallProgress < 100
+    ? (() => {
+        const t = new Date();
+        const e = new Date(data.expectedEndDate);
+        const tu = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+        const eu = Date.UTC(e.getUTCFullYear(), e.getUTCMonth(), e.getUTCDate());
+        return Math.max(0, Math.floor((tu - eu) / 86400000));
+      })()
+    : 0;
+  const scheduleDeviation = deviation < 0 ? Math.abs(deviation) : 0;
 
   const completed = data.activities.filter(a => a.status === "completed").length;
   const inProgress = data.activities.filter(a => a.status === "in_progress").length;
@@ -659,7 +668,7 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
       </div>
       <div class="metric" style="border-color:${deviation >= 0 ? '#10b981' : '#ef4444'}">
         <div class="value" style="color:${deviation >= 0 ? '#10b981' : '#ef4444'}">${deviation > 0 ? '+' : ''}${deviation.toFixed(1)}%</div>
-        <div class="label">${deviation >= 0 ? 'متقدم عن الخطة' : 'متأخر عن الخطة'}</div>
+        <div class="label">${deviation >= 0 ? 'متقدم عن الخطة' : 'انحراف عن الخطة'}</div>
       </div>
     </div>
     <div class="metric-grid">
@@ -668,8 +677,12 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
         <div class="label">إجمالي أيام المشروع</div>
       </div>
       <div class="metric">
-        <div class="value" style="color:${delayDays > 0 ? '#ef4444' : '#3b82f6'}">${delayDays > 0 ? delayDays : (remaining ?? '—')}</div>
-        <div class="label">${delayDays > 0 ? 'أيام التأخير' : 'أيام متبقية'}</div>
+        <div class="value" style="color:${overrunDays > 0 ? '#ef4444' : '#3b82f6'}">${overrunDays > 0 ? overrunDays : (remaining ?? '—')}</div>
+        <div class="label">${overrunDays > 0 ? 'تجاوز المدة التعاقدية (يوم)' : 'أيام متبقية'}</div>
+      </div>
+      <div class="metric">
+        <div class="value" style="color:${scheduleDeviation > 0 ? '#ef4444' : '#10b981'}">${scheduleDeviation > 0 ? scheduleDeviation.toFixed(1) + '%' : '—'}</div>
+        <div class="label">${scheduleDeviation > 0 ? 'فجوة الانحراف عن الخطة' : 'لا يوجد انحراف عن الخطة'}</div>
       </div>
       <div class="metric">
         <div class="value" style="color:#1e3a5f">${data.reportsCount}</div>

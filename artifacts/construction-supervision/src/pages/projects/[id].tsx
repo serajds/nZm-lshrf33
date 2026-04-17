@@ -397,7 +397,7 @@ export default function ProjectDetails() {
                 <div className="mt-3">
                   <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                     <Clock className="h-4 w-4 shrink-0" />
-                    مشروع بدون جدول زمني معتمد — لا يُحسب التأخير
+                    مشروع بدون جدول زمني معتمد — لا يُحسب الانحراف عن الخطة ولا تجاوز المدة
                   </p>
                 </div>
               ) : (
