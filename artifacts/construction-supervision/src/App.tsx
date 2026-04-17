@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/layout";
+import { getDefaultProjectId } from "@/lib/user-prefs";
 
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -73,6 +74,14 @@ function HomeRoute() {
   }
 
   const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
+
+  if (!isContractor) {
+    const defaultProjectId = getDefaultProjectId(user?.id);
+    if (defaultProjectId) {
+      return <Redirect to={`/projects/${defaultProjectId}`} />;
+    }
+  }
+
   const Component = isContractor ? Projects : Dashboard;
 
   return (

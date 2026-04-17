@@ -33,7 +33,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const navigation = [
     ...(!isContractor
-      ? [{ name: "لوحة التحكم", href: "/", icon: LayoutDashboard }]
+      ? [{ name: "لوحة التحكم", href: "/dashboard", icon: LayoutDashboard }]
       : []),
     { name: "المشاريع", href: isContractor ? "/" : "/projects", icon: Building2 },
     ...(!isContractor && isAdminOrPM
