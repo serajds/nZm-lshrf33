@@ -5,20 +5,33 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
-function detectIOS(): boolean {
-  if (typeof navigator === "undefined") return false;
+export type Platform =
+  | "ios"
+  | "android"
+  | "desktop-chrome"
+  | "firefox"
+  | "safari-desktop"
+  | "other";
+
+function detectPlatform(): Platform {
+  if (typeof navigator === "undefined") return "other";
   const ua = navigator.userAgent || "";
   const isIPad =
     /iPad|Macintosh/.test(ua) &&
     typeof document !== "undefined" &&
     "ontouchend" in document;
-  return /iPhone|iPod/.test(ua) || isIPad;
+  const isIOS = /iPhone|iPod/.test(ua) || isIPad;
+  if (isIOS) return "ios";
+  if (/Android/.test(ua)) return "android";
+  if (/Firefox/.test(ua)) return "firefox";
+  if (/Chrome|Edg|OPR|Brave/.test(ua)) return "desktop-chrome";
+  if (/Safari/.test(ua)) return "safari-desktop";
+  return "other";
 }
 
 function detectStandalone(): boolean {
   if (typeof window === "undefined") return false;
   const mq = window.matchMedia?.("(display-mode: standalone)").matches;
-  // iOS Safari
   const iosStandalone = (window.navigator as any).standalone === true;
   return Boolean(mq || iosStandalone);
 }
@@ -27,7 +40,7 @@ export function usePwaInstall() {
   const [deferredPrompt, setDeferredPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState<boolean>(detectStandalone());
-  const [isIOS] = useState<boolean>(detectIOS());
+  const [platform] = useState<Platform>(detectPlatform());
 
   useEffect(() => {
     const onBeforeInstall = (e: Event) => {
@@ -60,12 +73,9 @@ export function usePwaInstall() {
     return choice.outcome;
   }, [deferredPrompt]);
 
-  const canInstall = !isInstalled && (!!deferredPrompt || isIOS);
-
   return {
     isInstalled,
-    isIOS,
-    canInstall,
+    platform,
     hasNativePrompt: !!deferredPrompt,
     promptInstall,
   };

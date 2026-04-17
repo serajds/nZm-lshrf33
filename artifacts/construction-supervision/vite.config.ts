@@ -57,6 +57,7 @@ export default defineConfig({
         enabled: false,
       },
       manifest: {
+        id: basePath,
         name: "إدارة الإشراف والمتابعة",
         short_name: "الإشراف",
         description:
