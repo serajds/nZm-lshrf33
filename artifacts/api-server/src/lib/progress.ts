@@ -46,3 +46,21 @@ export function calcDelayDays(
   if (actualProgress >= plannedProgress) return 0;
   return Math.round((plannedProgress - actualProgress) / 100 * totalDays);
 }
+
+/**
+ * تجاوز المدة (calendar overrun): days strictly after plannedEnd while progress < 100.
+ * Both dates normalized to UTC midnight so on-the-day comparisons return 0.
+ */
+export function calcOverrunDays(
+  today: Date,
+  plannedEnd: Date | string | null | undefined,
+  actualProgress: number,
+): number {
+  if (actualProgress >= 100 || plannedEnd == null) return 0;
+  const end = plannedEnd instanceof Date ? new Date(plannedEnd) : new Date(plannedEnd);
+  if (Number.isNaN(end.getTime())) return 0;
+  const t = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const e = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  const diff = Math.floor((t - e) / 86400000);
+  return Math.max(0, diff);
+}
