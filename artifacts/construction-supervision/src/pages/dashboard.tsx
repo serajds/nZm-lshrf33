@@ -32,7 +32,7 @@ import { useState } from "react";
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; ring: string }> = {
   active:    { label: "نشط",    color: "text-blue-600",   bg: "bg-blue-100",    ring: "ring-blue-400" },
   completed: { label: "مكتمل",  color: "text-emerald-600",bg: "bg-emerald-100", ring: "ring-emerald-400" },
-  delayed:   { label: "متأخر",  color: "text-red-600",    bg: "bg-red-100",     ring: "ring-red-400" },
+  delayed:   { label: "منحرف عن الخطة",  color: "text-red-600",    bg: "bg-red-100",     ring: "ring-red-400" },
   suspended: { label: "متوقف",  color: "text-orange-600", bg: "bg-orange-100",  ring: "ring-orange-400" },
 };
 
@@ -154,7 +154,7 @@ export default function Dashboard() {
   const pieData = [
     { name: "نشط",   value: summary?.activeProjects    ?? 0, color: PIE_COLORS.active },
     { name: "مكتمل", value: summary?.completedProjects ?? 0, color: PIE_COLORS.completed },
-    { name: "متأخر", value: summary?.delayedProjects   ?? 0, color: PIE_COLORS.delayed },
+    { name: "منحرف عن الخطة", value: summary?.delayedProjects   ?? 0, color: PIE_COLORS.delayed },
     { name: "متوقف", value: summary?.suspendedProjects ?? 0, color: PIE_COLORS.suspended },
   ].filter(d => d.value > 0);
 
@@ -290,7 +290,7 @@ export default function Dashboard() {
           sub="عبر جميع المشاريع"
         />
         <KpiCard
-          label="مشاريع متأخرة"
+          label="مشاريع منحرفة عن الخطة"
           value={summary?.delayedProjects ?? 0}
           icon={AlertTriangle}
           gradient={
@@ -298,7 +298,7 @@ export default function Dashboard() {
               ? "bg-gradient-to-br from-red-500 to-rose-700"
               : "bg-gradient-to-br from-emerald-500 to-green-700"
           }
-          sub={(summary?.delayedProjects ?? 0) === 0 ? "لا يوجد تأخير" : "تحتاج متابعة"}
+          sub={(summary?.delayedProjects ?? 0) === 0 ? "لا يوجد انحراف عن الخطة" : "تحتاج متابعة"}
         />
         <KpiCard
           label="التقارير المرفوعة"
@@ -424,7 +424,7 @@ export default function Dashboard() {
               {[
                 { label: "مكتملة",    val: completedActs,  pct: actPct(completedActs),  color: "bg-emerald-500", textColor: "text-emerald-600" },
                 { label: "جارية",     val: inProgressActs, pct: actPct(inProgressActs), color: "bg-blue-500",    textColor: "text-blue-600" },
-                { label: "متأخرة",    val: delayedActs,    pct: actPct(delayedActs),    color: "bg-red-500",     textColor: "text-red-600" },
+                { label: "منحرفة عن الخطة",    val: delayedActs,    pct: actPct(delayedActs),    color: "bg-red-500",     textColor: "text-red-600" },
               ].map(a => (
                 <div key={a.label} className="text-center">
                   <div className={`text-2xl font-extrabold tabular-nums ${a.textColor}`}>{a.val}</div>
