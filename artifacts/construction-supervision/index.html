@@ -2,9 +2,17 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
     <title>إدارة الإشراف والمتابعة</title>
     <meta name="description" content="نظام إدارة الإشراف والمتابعة للمشاريع الإنشائية - متابعة التقدم والأنشطة والتقارير" />
+
+    <meta name="theme-color" content="#1f4d8b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="الإشراف" />
+    <meta name="application-name" content="إدارة الإشراف والمتابعة" />
+    <meta name="format-detection" content="telephone=no" />
 
     <meta property="og:type" content="website" />
     <meta property="og:title" content="إدارة الإشراف والمتابعة" />
@@ -18,12 +26,105 @@
     <meta name="twitter:image" content="/opengraph.jpg" />
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="mask-icon" href="/favicon.svg" color="#1f4d8b" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+      html, body { margin: 0; padding: 0; background: #1f4d8b; }
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 999999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        background: linear-gradient(160deg, #1f4d8b 0%, #173a6b 50%, #0f2647 100%);
+        color: #fff;
+        font-family: 'Noto Kufi Arabic', sans-serif;
+        transition: opacity 0.45s ease, visibility 0.45s ease;
+        padding: 24px;
+        text-align: center;
+      }
+      #app-splash.splash-hide {
+        opacity: 0;
+        visibility: hidden;
+      }
+      #app-splash .splash-logo {
+        width: 132px;
+        height: 132px;
+        border-radius: 28px;
+        background: rgba(255,255,255,0.10);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 24px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.2);
+        animation: splash-pop 0.7s cubic-bezier(.2,.9,.3,1.2);
+      }
+      #app-splash .splash-logo img {
+        width: 92px;
+        height: 92px;
+        object-fit: contain;
+        filter: drop-shadow(0 6px 14px rgba(0,0,0,0.3));
+      }
+      #app-splash .splash-title {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        margin: 0;
+        opacity: 0;
+        animation: splash-fade 0.6s ease 0.15s forwards;
+      }
+      #app-splash .splash-sub {
+        font-size: 13px;
+        font-weight: 400;
+        opacity: 0;
+        color: rgba(255,255,255,0.75);
+        margin: 0;
+        animation: splash-fade 0.6s ease 0.3s forwards;
+      }
+      #app-splash .splash-spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid rgba(255,255,255,0.18);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: splash-spin 0.9s linear infinite;
+        margin-top: 8px;
+      }
+      @keyframes splash-pop {
+        0% { transform: scale(0.6); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      @keyframes splash-fade {
+        to { opacity: 1; }
+      }
+      @keyframes splash-spin {
+        to { transform: rotate(360deg); }
+      }
+      @media (prefers-color-scheme: dark) {
+        html, body { background: #0f2647; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+
+    <div id="app-splash" role="status" aria-live="polite" aria-label="جاري تحميل التطبيق">
+      <div class="splash-logo">
+        <img src="/app-icon.png" alt="" />
+      </div>
+      <h1 class="splash-title">إدارة الإشراف والمتابعة</h1>
+      <p class="splash-sub">جاري تحميل التطبيق…</p>
+      <div class="splash-spinner" aria-hidden="true"></div>
+    </div>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
