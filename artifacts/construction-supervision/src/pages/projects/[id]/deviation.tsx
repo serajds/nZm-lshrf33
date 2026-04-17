@@ -98,6 +98,7 @@ export default function ProjectDeviation() {
   const suspensionDays = dd?.suspensionDays ?? 0;
   const grossDelayDays = dd?.grossDelayDays ?? 0;
   const netDelayDays = dd?.netDelayDays ?? 0;
+  const overrunDays = dd?.overrunDays ?? 0;
 
   return (
     <div className="space-y-6">
@@ -134,7 +135,7 @@ export default function ProjectDeviation() {
             </div>
           </div>
 
-          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
             <Card className="relative overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-l from-blue-400 to-blue-600" />
               <CardContent className="pt-5 pb-4">
@@ -154,12 +155,12 @@ export default function ProjectDeviation() {
               <CardContent className="pt-5 pb-4">
                 <div className="flex items-center gap-2 text-muted-foreground mb-2">
                   <Clock className="h-4 w-4" />
-                  <span className="text-xs font-medium">التأخير الإجمالي</span>
+                  <span className="text-xs font-medium">انحراف عن الخطة</span>
                 </div>
                 <div className={`text-2xl font-bold ${grossDelayDays > 0 ? 'text-red-600' : 'text-emerald-600'}`} dir="ltr">
                   {grossDelayDays} <span className="text-sm font-normal">يوم</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">إجمالي أيام التأخير</p>
+                <p className="text-xs text-muted-foreground mt-1">إجمالي الانحراف عن المخطط</p>
               </CardContent>
             </Card>
 
@@ -182,12 +183,26 @@ export default function ProjectDeviation() {
               <CardContent className="pt-5 pb-4">
                 <div className="flex items-center gap-2 text-muted-foreground mb-2">
                   <Activity className="h-4 w-4" />
-                  <span className="text-xs font-medium">التأخير الصافي</span>
+                  <span className="text-xs font-medium">صافي الانحراف</span>
                 </div>
                 <div className={`text-2xl font-bold ${netDelayDays > 0 ? 'text-red-600' : 'text-emerald-600'}`} dir="ltr">
                   {netDelayDays} <span className="text-sm font-normal">يوم</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">بعد خصم التوقفات</p>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-l from-rose-400 to-rose-600" />
+              <CardContent className="pt-5 pb-4">
+                <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span className="text-xs font-medium">تجاوز المدة التعاقدية</span>
+                </div>
+                <div className={`text-2xl font-bold ${overrunDays > 0 ? 'text-red-600' : 'text-emerald-600'}`} dir="ltr">
+                  {overrunDays} <span className="text-sm font-normal">يوم</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">أيام بعد الموعد النهائي</p>
               </CardContent>
             </Card>
           </div>
@@ -354,10 +369,10 @@ export default function ProjectDeviation() {
                             </div>
                           </div>
                         </div>
-                        {activity.delayDays != null && activity.delayDays > 0 && (
+                        {(activity as any).overrunDays != null && (activity as any).overrunDays > 0 && (
                           <div className="mt-2 text-xs text-red-600 flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            متأخر {activity.delayDays} يوم عن الموعد المحدد
+                            تجاوز المدة: {(activity as any).overrunDays} يوم بعد التاريخ المخطط
                           </div>
                         )}
                       </div>
@@ -428,6 +443,7 @@ export default function ProjectDeviation() {
                         <th className="py-3 px-3 text-center font-medium">المخطط</th>
                         <th className="py-3 px-3 text-center font-medium">الفعلي</th>
                         <th className="py-3 px-3 text-center font-medium">الانحراف</th>
+                        <th className="py-3 px-3 text-center font-medium">تجاوز المدة</th>
                         <th className="py-3 px-3 text-center font-medium w-48">مؤشر الأداء</th>
                       </tr>
                     </thead>
@@ -442,6 +458,14 @@ export default function ProjectDeviation() {
                             <td className="py-3 px-3 text-center" dir="ltr">{a.actualProgress}%</td>
                             <td className={`py-3 px-3 text-center font-bold ${devColor}`} dir="ltr">
                               {a.deviation > 0 ? '+' : ''}{a.deviation}%
+                            </td>
+                            <td className="py-3 px-3 text-center" dir="ltr">
+                              {(() => {
+                                const ov = (a as any).overrunDays as number | null | undefined;
+                                if (ov == null) return <span className="text-muted-foreground">—</span>;
+                                if (ov === 0) return <span className="text-emerald-600">0</span>;
+                                return <span className="font-bold text-red-600">{ov} يوم</span>;
+                              })()}
                             </td>
                             <td className="py-3 px-3">
                               <div className="relative h-2 rounded-full bg-muted overflow-hidden">

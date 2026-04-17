@@ -44,6 +44,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     delayDays: number;
     suspensionDays: number;
     netDelayDays: number;
+    overrunDays: number;
     reportsCount: number;
     filesCount: number | bigint;
   }
@@ -65,6 +66,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
       delayDays: 0,
       suspensionDays: 0,
       netDelayDays: 0,
+      overrunDays: 0,
       reportsCount: reports.length,
       filesCount: filesCountResult?.count ?? 0,
     };
@@ -77,9 +79,12 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     const rawDaysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     const daysRemaining = Math.max(0, rawDaysRemaining);
     const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays);
-    const calendarDelayDays = rawDaysRemaining < 0 ? Math.abs(rawDaysRemaining) : 0;
-    const progressDelayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
-    const delayDays = Math.max(calendarDelayDays, progressDelayDays);
+    // انحراف عن الخطة (planned vs actual progress only)
+    const delayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
+    // تجاوز المدة (calendar overrun past expectedEndDate while not complete)
+    const overrunDays = project.overallProgress < 100
+      ? Math.max(0, Math.ceil((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24)))
+      : 0;
     const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
     const netDelayDays = Math.max(0, delayDays - suspensionDays);
     const activitiesDelayed = activities.filter(a => a.status === "delayed").length;
@@ -98,6 +103,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
       delayDays,
       suspensionDays,
       netDelayDays,
+      overrunDays,
       reportsCount: reports.length,
       filesCount: filesCountResult?.count ?? 0,
     };

@@ -603,10 +603,18 @@ export default function OwnerPortal() {
               </div>
               {sm.delayDays > 0 ? (
                 <>
-                  <div className="text-3xl font-black text-red-600">{sm.delayDays} <span className="text-sm font-normal">يوم تأخير</span></div>
+                  <div className="text-3xl font-black text-red-600">{sm.delayDays} <span className="text-sm font-normal">يوم انحراف</span></div>
                   {sm.suspensionDays > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">صافي التأخير: {sm.netDelayDays} يوم (بعد خصم {sm.suspensionDays} يوم توقف)</p>
+                    <p className="text-xs text-muted-foreground mt-1">صافي الانحراف: {sm.netDelayDays} يوم (بعد خصم {sm.suspensionDays} يوم توقف)</p>
                   )}
+                  {(sm as any).overrunDays > 0 && (
+                    <p className="text-xs font-semibold text-red-600 mt-1">تجاوز المدة التعاقدية: {(sm as any).overrunDays} يوم</p>
+                  )}
+                </>
+              ) : (sm as any).overrunDays > 0 ? (
+                <>
+                  <div className="text-3xl font-black text-red-600">{(sm as any).overrunDays} <span className="text-sm font-normal">يوم تجاوز للمدة</span></div>
+                  <p className="text-xs text-muted-foreground mt-1">بعد الموعد التعاقدي للإنهاء</p>
                 </>
               ) : (
                 <>

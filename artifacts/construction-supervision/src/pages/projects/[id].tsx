@@ -404,9 +404,9 @@ export default function ProjectDetails() {
                 <div className="mt-3 space-y-1.5">
                   <p className={`text-sm flex items-center gap-1.5 font-medium ${(summary?.delayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
                     {(summary?.delayDays ?? 0) > 0 ? (
-                      <><AlertTriangle className="h-4 w-4 shrink-0" /> تأخير إجمالي: {summary!.delayDays} يوم</>
+                      <><AlertTriangle className="h-4 w-4 shrink-0" /> انحراف عن الخطة: {summary!.delayDays} يوم</>
                     ) : (
-                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا تأخير إجمالي</>
+                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا يوجد انحراف عن الخطة</>
                     )}
                   </p>
                   <p className="text-sm text-amber-600 flex items-center gap-1.5 font-medium">
@@ -415,9 +415,16 @@ export default function ProjectDetails() {
                   </p>
                   <p className={`text-sm flex items-center gap-1.5 font-semibold ${(summary?.netDelayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
                     {(summary?.netDelayDays ?? 0) > 0 ? (
-                      <><AlertTriangle className="h-4 w-4 shrink-0" /> صافي التأخير: {summary!.netDelayDays} يوم</>
+                      <><AlertTriangle className="h-4 w-4 shrink-0" /> صافي الانحراف: {summary!.netDelayDays} يوم</>
                     ) : (
-                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا تأخير صافي</>
+                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا يوجد انحراف صافٍ</>
+                    )}
+                  </p>
+                  <p className={`text-sm flex items-center gap-1.5 font-semibold pt-1.5 border-t ${(summary?.overrunDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
+                    {(summary?.overrunDays ?? 0) > 0 ? (
+                      <><AlertTriangle className="h-4 w-4 shrink-0" /> تجاوز المدة التعاقدية: {summary!.overrunDays} يوم</>
+                    ) : (
+                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> ضمن المدة التعاقدية</>
                     )}
                   </p>
                 </div>

@@ -1788,6 +1788,9 @@ components:
                 type: ["string", "null"]
               noSchedule:
                 type: boolean
+              overrunDays:
+                type: integer
+                description: Days passed after expectedEndDate while progress < 100%
         recentReports:
           type: array
           items:
@@ -1866,6 +1869,9 @@ components:
           type: integer
         netDelayDays:
           type: integer
+        overrunDays:
+          type: integer
+          description: Days passed after expectedEndDate while progress < 100%
         reportsCount:
           type: integer
         filesCount:
@@ -1900,6 +1906,15 @@ components:
         status:
           type: string
           enum: [on_track, slightly_delayed, significantly_delayed, ahead]
+        suspensionDays:
+          type: integer
+        grossDelayDays:
+          type: integer
+        netDelayDays:
+          type: integer
+        overrunDays:
+          type: integer
+          description: Days passed after expectedEndDate while progress < 100%
         activitiesAnalysis:
           type: array
           items:
@@ -1928,6 +1943,10 @@ components:
           type: number
         delayDays:
           type: ["integer", "null"]
+          description: Deprecated alias for overrunDays (kept for backward compatibility)
+        overrunDays:
+          type: ["integer", "null"]
+          description: Days past activity plannedEndDate while not completed
       required:
         - activityId
         - activityName

@@ -13,6 +13,11 @@ export interface DeviationAnalysis {
   timeDeviation: number;
   progressDeviation: number;
   status: DeviationAnalysisStatus;
+  suspensionDays?: number;
+  grossDelayDays?: number;
+  netDelayDays?: number;
+  /** Days passed after expectedEndDate while progress < 100% */
+  overrunDays?: number;
   activitiesAnalysis: ActivityDeviation[];
   noSchedule?: boolean;
 }
