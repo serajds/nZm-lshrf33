@@ -36,6 +36,7 @@ A full-stack Arabic RTL engineering supervision system for construction projects
 
 ### Features
 - Full Arabic RTL layout with Noto Kufi Arabic font
+- Installable PWA (vite-plugin-pwa, autoUpdate) with manifest, offline service worker, and animated splash screen (in `index.html` + dismissed in `src/main.tsx`). Icons live in `public/` (`pwa-192x192.png`, `pwa-512x512.png`, `pwa-maskable-512x512.png`, `apple-touch-icon.png`). SW only registers in production.
 - JWT authentication (stored in `localStorage` as `auth_token`)
 - Dashboard with project statistics and charts (Recharts)
 - Delay calculation uses auto-calculated planned progress from activity dates (`lib/progress.ts`): each activity's planned progress = time elapsed since its `plannedStartDate` / total duration. Project planned progress = average of all activities. Falls back to linear time ratio when no activities exist.
