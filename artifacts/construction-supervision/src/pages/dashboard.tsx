@@ -18,6 +18,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  getDefaultProjectId,
+  setDefaultProjectId,
+  clearDefaultProjectId,
+} from "@/lib/user-prefs";
+import { useToast } from "@/hooks/use-toast";
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from "recharts";
@@ -118,7 +124,11 @@ export default function Dashboard() {
   usePageTitle("لوحة التحكم");
   const { user } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const { data: summary, isLoading } = useGetDashboardSummary();
+  const [defaultProjectId, setDefaultProjectIdState] = useState<string | null>(
+    () => getDefaultProjectId(user?.id),
+  );
   const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
   const getProjectLink = (projectId: number) => `/projects/${projectId}`;
   const isAdmin = user?.role === "admin";
@@ -184,9 +194,19 @@ export default function Dashboard() {
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {allProjects.length > 0 && (
             <Select
-              value=""
+              value={defaultProjectId ?? ""}
               onValueChange={(v) => {
-                if (v) setLocation(`/projects/${v}`);
+                if (!v || user?.id == null) return;
+                setDefaultProjectId(user.id, v);
+                setDefaultProjectIdState(v);
+                const proj = allProjects.find((p) => String(p.id) === v);
+                toast({
+                  title: "تم تعيين المشروع الافتراضي",
+                  description: proj?.name
+                    ? `سيتم فتح "${proj.name}" تلقائياً عند تشغيل التطبيق`
+                    : "سيتم فتح المشروع تلقائياً عند تشغيل التطبيق",
+                });
+                setLocation(`/projects/${v}`);
               }}
             >
               <SelectTrigger
@@ -221,6 +241,37 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      {/* ── Default Project Banner ── */}
+      {defaultProjectId && (() => {
+        const proj = allProjects.find((p) => String(p.id) === defaultProjectId);
+        return (
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg border border-primary/20 bg-primary/5 text-xs sm:text-sm">
+            <Building2 className="h-4 w-4 text-primary shrink-0" />
+            <span className="text-foreground">
+              عند فتح التطبيق سيتم الانتقال تلقائياً إلى:{" "}
+              <span className="font-semibold text-primary">
+                {proj?.name ?? `مشروع #${defaultProjectId}`}
+              </span>
+            </span>
+            <button
+              onClick={() => {
+                if (user?.id == null) return;
+                clearDefaultProjectId(user.id);
+                setDefaultProjectIdState(null);
+                toast({
+                  title: "تم إلغاء التحديد التلقائي",
+                  description: "سيُفتح التطبيق على لوحة التحكم كالمعتاد",
+                });
+              }}
+              className="mr-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+              إلغاء
+            </button>
+          </div>
+        );
+      })()}
 
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
