@@ -63,14 +63,13 @@ export default function ProjectDeviation() {
     );
   }
 
-  const dd = deviationData as any;
 
   const getStatusInfo = (status: string) => {
     switch (status) {
       case 'on_track': return { label: 'على المسار الصحيح', color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800', icon: CheckCircle2, barColor: 'bg-emerald-500' };
       case 'ahead': return { label: 'متقدم عن الجدول الزمني', color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800', icon: TrendingUp, barColor: 'bg-blue-500' };
-      case 'slightly_delayed': return { label: 'تأخير بسيط عن الجدول', color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800', icon: TrendingDown, barColor: 'bg-amber-500' };
-      case 'significantly_delayed': return { label: 'تأخير كبير - يحتاج تدخل', color: 'text-red-600', bg: 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800', icon: AlertTriangle, barColor: 'bg-red-500' };
+      case 'slightly_delayed': return { label: 'انحراف بسيط عن الخطة', color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800', icon: TrendingDown, barColor: 'bg-amber-500' };
+      case 'significantly_delayed': return { label: 'انحراف كبير عن الخطة - يحتاج تدخل', color: 'text-red-600', bg: 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800', icon: AlertTriangle, barColor: 'bg-red-500' };
       default: return { label: status, color: 'text-muted-foreground', bg: 'bg-muted border-border', icon: AlertTriangle, barColor: 'bg-muted' };
     }
   };
@@ -95,10 +94,10 @@ export default function ProjectDeviation() {
     .sort((a: ActivityDeviation, b: ActivityDeviation) => b.deviation - a.deviation);
 
   const progressDev = deviationData?.progressDeviation ?? 0;
-  const suspensionDays = dd?.suspensionDays ?? 0;
-  const grossDelayDays = dd?.grossDelayDays ?? 0;
-  const netDelayDays = dd?.netDelayDays ?? 0;
-  const overrunDays = dd?.overrunDays ?? 0;
+  const suspensionDays = deviationData?.suspensionDays ?? 0;
+  const grossDelayDays = deviationData?.grossDelayDays ?? 0;
+  const netDelayDays = deviationData?.netDelayDays ?? 0;
+  const overrunDays = deviationData?.overrunDays ?? 0;
 
   return (
     <div className="space-y-6">
@@ -126,8 +125,8 @@ export default function ProjectDeviation() {
               <p className="text-muted-foreground mt-1 text-sm">
                 {deviationData.status === 'on_track' && 'المشروع يسير وفق الخطة الزمنية المعتمدة بشكل جيد.'}
                 {deviationData.status === 'ahead' && 'المشروع متقدم عن الجدول الزمني المخطط. أداء ممتاز!'}
-                {deviationData.status === 'slightly_delayed' && 'هناك تأخير بسيط يمكن تداركه بتكثيف العمل في الفترة القادمة.'}
-                {deviationData.status === 'significantly_delayed' && 'تأخير كبير يستوجب اتخاذ إجراءات تصحيحية عاجلة ومراجعة الخطة.'}
+                {deviationData.status === 'slightly_delayed' && 'هناك انحراف بسيط عن الخطة يمكن تداركه بتكثيف العمل في الفترة القادمة.'}
+                {deviationData.status === 'significantly_delayed' && 'انحراف كبير عن الخطة يستوجب اتخاذ إجراءات تصحيحية عاجلة ومراجعة الخطة.'}
               </p>
             </div>
             <div className={`text-3xl font-black ${statusInfo.color}`} dir="ltr">
@@ -369,10 +368,10 @@ export default function ProjectDeviation() {
                             </div>
                           </div>
                         </div>
-                        {(activity as any).overrunDays != null && (activity as any).overrunDays > 0 && (
+                        {activity.overrunDays != null && activity.overrunDays > 0 && (
                           <div className="mt-2 text-xs text-red-600 flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            تجاوز المدة: {(activity as any).overrunDays} يوم بعد التاريخ المخطط
+                            تجاوز المدة: {activity.overrunDays} يوم بعد التاريخ المخطط
                           </div>
                         )}
                       </div>
@@ -461,7 +460,7 @@ export default function ProjectDeviation() {
                             </td>
                             <td className="py-3 px-3 text-center" dir="ltr">
                               {(() => {
-                                const ov = (a as any).overrunDays as number | null | undefined;
+                                const ov = a.overrunDays;
                                 if (ov == null) return <span className="text-muted-foreground">—</span>;
                                 if (ov === 0) return <span className="text-emerald-600">0</span>;
                                 return <span className="font-bold text-red-600">{ov} يوم</span>;
