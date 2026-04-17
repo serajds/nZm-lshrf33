@@ -288,7 +288,7 @@ export default function OwnerPortal() {
   const latestExt = extensions.length > 0 ? extensions[extensions.length - 1] : null;
   const totalSuspDays = (suspensions as ProjectSuspension[]).reduce((s: number, x: ProjectSuspension) => s + x.calendarDays, 0);
 
-  const sm = summary as any;
+  const sm = summary;
   const progressDiff = (sm.overallProgress ?? 0) - (sm.plannedProgress ?? 0);
 
   const ownerJwt = sessionStorage.getItem(`owner_jwt_${token}`) ?? "";
@@ -607,13 +607,13 @@ export default function OwnerPortal() {
                   {sm.suspensionDays > 0 && (
                     <p className="text-xs text-muted-foreground mt-1">صافي الانحراف: {sm.netDelayDays} يوم (بعد خصم {sm.suspensionDays} يوم توقف)</p>
                   )}
-                  {(sm as any).overrunDays > 0 && (
-                    <p className="text-xs font-semibold text-red-600 mt-1">تجاوز المدة التعاقدية: {(sm as any).overrunDays} يوم</p>
+                  {(sm.overrunDays ?? 0) > 0 && (
+                    <p className="text-xs font-semibold text-red-600 mt-1">تجاوز المدة التعاقدية: {sm.overrunDays} يوم</p>
                   )}
                 </>
-              ) : (sm as any).overrunDays > 0 ? (
+              ) : (sm.overrunDays ?? 0) > 0 ? (
                 <>
-                  <div className="text-3xl font-black text-red-600">{(sm as any).overrunDays} <span className="text-sm font-normal">يوم تجاوز للمدة</span></div>
+                  <div className="text-3xl font-black text-red-600">{sm.overrunDays} <span className="text-sm font-normal">يوم تجاوز للمدة</span></div>
                   <p className="text-xs text-muted-foreground mt-1">بعد الموعد التعاقدي للإنهاء</p>
                 </>
               ) : (

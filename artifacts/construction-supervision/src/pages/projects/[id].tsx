@@ -402,6 +402,9 @@ export default function ProjectDetails() {
                 </div>
               ) : (
                 <div className="mt-3 space-y-1.5">
+                  <p className="text-[11px] text-muted-foreground leading-relaxed border-r-2 border-muted pr-2">
+                    «الانحراف عن الخطة» مؤشر إنذار مبكر يقارن التقدم الفعلي بالمخطط، أما «تجاوز المدة التعاقدية» فهو القيمة الفعلية لتجاوز تاريخ الإنهاء التعاقدي.
+                  </p>
                   <p className={`text-sm flex items-center gap-1.5 font-medium ${(summary?.delayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
                     {(summary?.delayDays ?? 0) > 0 ? (
                       <><AlertTriangle className="h-4 w-4 shrink-0" /> انحراف عن الخطة: {summary!.delayDays} يوم</>
