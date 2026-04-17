@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { InstallButton } from "@/components/install-button";
 import {
   LayoutDashboard,
   Building2,
@@ -340,6 +341,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <h1 className="font-semibold text-base text-foreground truncate">
               {currentPage?.name || "إدارة الإشراف والمتابعة"}
             </h1>
+            <div className="mr-auto flex items-center gap-2">
+              <InstallButton />
+            </div>
           </header>
 
           {/* ---- Page Content ---- */}
