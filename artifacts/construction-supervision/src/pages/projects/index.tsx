@@ -285,7 +285,7 @@ export default function Projects() {
     switch (status) {
       case 'active': return <Badge variant="default" className="bg-primary hover:bg-primary">نشط</Badge>;
       case 'completed': return <Badge variant="secondary" className="bg-emerald-500 hover:bg-emerald-600 text-white">مكتمل</Badge>;
-      case 'delayed': return <Badge variant="destructive">متأخر</Badge>;
+      case 'delayed': return <Badge variant="destructive">منحرف عن الخطة</Badge>;
       case 'suspended': return <Badge variant="outline" className="bg-orange-500 text-white hover:bg-orange-600 border-none">متوقف</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
@@ -466,7 +466,7 @@ export default function Projects() {
                             بدون جدول زمني معتمد
                           </FormLabel>
                           <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">
-                            لن يُحسب التأخير وتصبح التواريخ اختيارية
+                            لن يُحسب الانحراف عن الخطة ولا تجاوز المدة، وتصبح التواريخ اختيارية
                           </p>
                         </div>
                         <FormControl>
@@ -526,7 +526,7 @@ export default function Projects() {
                           <SelectContent dir="rtl">
                             <SelectItem value="active">نشط</SelectItem>
                             <SelectItem value="completed">مكتمل</SelectItem>
-                            <SelectItem value="delayed">متأخر</SelectItem>
+                            <SelectItem value="delayed">منحرف عن الخطة</SelectItem>
                             <SelectItem value="suspended">متوقف</SelectItem>
                           </SelectContent>
                         </Select>
@@ -566,7 +566,7 @@ export default function Projects() {
               <SelectItem value="all">الكل</SelectItem>
               <SelectItem value="active">نشط</SelectItem>
               <SelectItem value="completed">مكتمل</SelectItem>
-              <SelectItem value="delayed">متأخر</SelectItem>
+              <SelectItem value="delayed">منحرف عن الخطة</SelectItem>
               <SelectItem value="suspended">متوقف</SelectItem>
             </SelectContent>
           </Select>

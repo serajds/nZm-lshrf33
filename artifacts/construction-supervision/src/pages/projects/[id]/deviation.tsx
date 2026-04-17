@@ -462,7 +462,7 @@ export default function ProjectDeviation() {
                               {(() => {
                                 const ov = a.overrunDays;
                                 if (ov == null) return <span className="text-muted-foreground">—</span>;
-                                if (ov === 0) return <span className="text-emerald-600">0</span>;
+                                if (ov === 0) return <span className="text-emerald-600">لا يوجد تجاوز</span>;
                                 return <span className="font-bold text-red-600">{ov} يوم</span>;
                               })()}
                             </td>

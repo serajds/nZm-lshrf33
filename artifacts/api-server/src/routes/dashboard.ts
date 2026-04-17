@@ -357,11 +357,12 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
     let overrun: number | null = null;
 
     if (a.plannedEndDate) {
-      const plannedEnd = new Date(a.plannedEndDate);
-      const todayTime = today.getTime();
-      const plannedTime = plannedEnd.getTime();
-      if (todayTime > plannedTime && a.actualProgress < 100) {
-        overrun = Math.ceil((todayTime - plannedTime) / (1000 * 60 * 60 * 24));
+      if (a.actualProgress >= 100) {
+        overrun = 0;
+      } else {
+        const plannedEnd = new Date(a.plannedEndDate);
+        const diffDays = Math.ceil((today.getTime() - plannedEnd.getTime()) / (1000 * 60 * 60 * 24));
+        overrun = Math.max(0, diffDays);
       }
     }
 
