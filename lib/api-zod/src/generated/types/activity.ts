@@ -21,6 +21,8 @@ export interface Activity {
   actualEndDate?: Date | null;
   plannedProgress: number;
   actualProgress: number;
+  /** Relative weight (cost share / volume share). Default 1. */
+  weight: number;
   status: ActivityStatus;
   sortOrder: number;
   /** @nullable */

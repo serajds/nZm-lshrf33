@@ -1,9 +1,18 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectSuspensionsTable, projectMembersTable } from "@workspace/db";
-import { eq, count, avg, sql, desc, inArray } from "drizzle-orm";
+import { eq, count, avg, sql, desc, asc, inArray } from "drizzle-orm";
 import { requireStaffOrContractor, requireProjectAccess } from "../middlewares/auth";
-import { calcPlannedProgressForProject, calcDelayDays, calcActivityPlannedProgress, calcOverrunDays } from "../lib/progress";
+import {
+  calcPlannedProgressForProject,
+  calcDelayDays,
+  calcActivityPlannedProgress,
+  calcOverrunDays,
+  calcSPI,
+  calcForecastCompletionDate,
+  calcExpectedProgressAtEnd,
+  type PlannedCurve,
+} from "../lib/progress";
 
 const router: IRouter = Router();
 
@@ -282,6 +291,8 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
 router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
+  const curveParam = (Array.isArray(req.query.curve) ? req.query.curve[0] : req.query.curve) as string | undefined;
+  const curve: PlannedCurve = curveParam === "scurve" ? "scurve" : "linear";
 
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   if (!project) {
@@ -301,6 +312,8 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
       plannedProgress: 0,
       actualProgress: a.actualProgress,
       deviation: 0,
+      weight: a.weight ?? 1,
+      weightedImpact: 0,
       delayDays: null,
       overrunDays: null,
     }));
@@ -310,10 +323,19 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
       noSchedule: true,
       timeDeviation: 0,
       progressDeviation: 0,
+      plannedProgress: 0,
+      actualProgress: project.overallProgress,
       suspensionDays: 0,
       grossDelayDays: 0,
       netDelayDays: 0,
       overrunDays: 0,
+      spi: null,
+      forecastCompletionDate: null,
+      expectedProgressAtEnd: 0,
+      contractEndDate: project.expectedEndDate ?? null,
+      forecastDelayDays: 0,
+      suspensionsBreakdown: [],
+      recommendations: [],
       status: "on_track",
       activitiesAnalysis,
     });
@@ -325,14 +347,39 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   const endDate = new Date(project.expectedEndDate ?? Date.now());
   const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-  const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays);
+  const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, curve);
+  const actualProgress = project.overallProgress;
 
-  const progressDeviation = project.overallProgress - plannedProgress;
-  const timeDeviation = progressDeviation < -10 ? (plannedProgress - project.overallProgress) / 100 * totalDays : 0;
+  const progressDeviation = actualProgress - plannedProgress;
+  const timeDeviation = progressDeviation < -10 ? (plannedProgress - actualProgress) / 100 * totalDays : 0;
   const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
-  const grossDelayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
+  const grossDelayDays = calcDelayDays(plannedProgress, actualProgress, totalDays);
   const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
-  const overrunDays = calcOverrunDays(today, project.expectedEndDate, project.overallProgress);
+  const overrunDays = calcOverrunDays(today, project.expectedEndDate, actualProgress);
+
+  const spi = calcSPI(plannedProgress, actualProgress);
+  const forecastCompletion = calcForecastCompletionDate(startDate, today, actualProgress);
+  const forecastCompletionDate = forecastCompletion ? forecastCompletion.toISOString().slice(0, 10) : null;
+  const expectedProgressAtEnd = Math.round(calcExpectedProgressAtEnd(startDate, endDate, today, actualProgress) * 100) / 100;
+  const forecastDelayDays = forecastCompletion && project.expectedEndDate
+    ? Math.max(0, Math.ceil((forecastCompletion.getTime() - new Date(project.expectedEndDate).getTime()) / 86400000))
+    : 0;
+
+  const breakdownMap: Record<string, { days: number; count: number }> = {
+    official_holiday: { days: 0, count: 0 },
+    force_majeure: { days: 0, count: 0 },
+    contractor_delay: { days: 0, count: 0 },
+  };
+  for (const s of suspensions) {
+    const b = breakdownMap[s.type];
+    if (b) {
+      b.days += s.calendarDays;
+      b.count += 1;
+    }
+  }
+  const suspensionsBreakdown = Object.entries(breakdownMap)
+    .map(([type, v]) => ({ type, days: v.days, count: v.count }))
+    .filter(b => b.count > 0);
 
   let overallStatus: "on_track" | "slightly_delayed" | "significantly_delayed" | "ahead";
   if (progressDeviation > 5) {
@@ -345,9 +392,12 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
     overallStatus = "significantly_delayed";
   }
 
+  const totalWeight = activities.reduce((s, a) => s + (a.weight && a.weight > 0 ? a.weight : 1), 0) || 1;
   const activitiesAnalysis = activities.map(a => {
-    const actPlanned = Math.round(calcActivityPlannedProgress(a, today) * 100) / 100;
+    const actPlanned = Math.round(calcActivityPlannedProgress(a, today, curve) * 100) / 100;
     const deviation = Math.round((a.actualProgress - actPlanned) * 100) / 100;
+    const w = a.weight && a.weight > 0 ? a.weight : 1;
+    const weightedImpact = Math.round((deviation * w / totalWeight) * 100) / 100;
     const overrun: number | null = a.plannedEndDate
       ? calcOverrunDays(today, a.plannedEndDate, a.actualProgress)
       : null;
@@ -358,23 +408,160 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
       plannedProgress: actPlanned,
       actualProgress: a.actualProgress,
       deviation,
+      weight: w,
+      weightedImpact,
       delayDays: overrun,
       overrunDays: overrun,
     };
   });
 
+  // Auto recommendations
+  const recommendations: { severity: "info" | "warning" | "critical"; title: string; description: string }[] = [];
+  const criticalActs = activitiesAnalysis.filter(a => a.deviation < -10);
+  if (overallStatus === "significantly_delayed") {
+    recommendations.push({
+      severity: "critical",
+      title: "انحراف كبير يستوجب تدخلاً عاجلاً",
+      description: `المشروع متأخر بنسبة ${Math.abs(progressDeviation).toFixed(1)}% عن الخطة (${netDelayDays} يوم صافي). ينصح بمراجعة الجدول الزمني وطلب تمديد رسمي إن لزم.`,
+    });
+  } else if (overallStatus === "slightly_delayed") {
+    recommendations.push({
+      severity: "warning",
+      title: "انحراف بسيط يمكن تداركه",
+      description: `هناك تأخر بسيط بنسبة ${Math.abs(progressDeviation).toFixed(1)}%. يمكن تعويضه بتكثيف العمل خلال الأسابيع القادمة.`,
+    });
+  }
+  if (criticalActs.length > 0) {
+    recommendations.push({
+      severity: criticalActs.length >= 3 ? "critical" : "warning",
+      title: `${criticalActs.length} بند${criticalActs.length === 1 ? "" : criticalActs.length === 2 ? "ان" : ""} حرج${criticalActs.length === 1 ? "" : "ة"} متأخر${criticalActs.length === 1 ? "" : "ة"}`,
+      description: `يجب تكثيف العمل في: ${criticalActs.slice(0, 3).map(a => a.activityName).join("، ")}${criticalActs.length > 3 ? "، وغيرها" : ""}.`,
+    });
+  }
+  if (forecastDelayDays > 0 && project.expectedEndDate) {
+    recommendations.push({
+      severity: forecastDelayDays > 30 ? "critical" : "warning",
+      title: "تاريخ الإكمال المتوقع متأخر عن التعاقدي",
+      description: `بناءً على المعدل الحالي، يُتوقع إنجاز المشروع بعد ${forecastDelayDays} يوم${forecastDelayDays === 1 ? "" : "اً"} من الموعد التعاقدي.`,
+    });
+  }
+  if (suspensionDays > 0) {
+    recommendations.push({
+      severity: "info",
+      title: "خصم أيام التوقف من الانحراف",
+      description: `تم خصم ${suspensionDays} يوم توقف معتمد، مما خفّض الانحراف من ${grossDelayDays} يوم إلى ${netDelayDays} يوم صافي.`,
+    });
+  }
+  if (overallStatus === "on_track") {
+    recommendations.push({
+      severity: "info",
+      title: "المشروع على المسار الصحيح",
+      description: "حافظ على نفس وتيرة العمل الحالية ومراقبة البنود الحرجة باستمرار.",
+    });
+  } else if (overallStatus === "ahead") {
+    recommendations.push({
+      severity: "info",
+      title: "المشروع متقدم عن الخطة",
+      description: `تقدم بنسبة ${progressDeviation.toFixed(1)}% عن المخطط. حافظ على هذا الأداء واحرص على ضبط الجودة.`,
+    });
+  }
+
   res.json({
     projectId,
     noSchedule: false,
     timeDeviation,
-    progressDeviation,
+    progressDeviation: Math.round(progressDeviation * 100) / 100,
+    plannedProgress: Math.round(plannedProgress * 100) / 100,
+    actualProgress,
     suspensionDays,
     grossDelayDays,
     netDelayDays,
     overrunDays,
+    spi,
+    forecastCompletionDate,
+    expectedProgressAtEnd,
+    contractEndDate: project.expectedEndDate ?? null,
+    forecastDelayDays,
+    suspensionsBreakdown,
+    recommendations,
     status: overallStatus,
     activitiesAnalysis,
   });
+});
+
+router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
+  const projectId = parseInt(raw, 10);
+  const curveParam = (Array.isArray(req.query.curve) ? req.query.curve[0] : req.query.curve) as string | undefined;
+  const curve: PlannedCurve = curveParam === "scurve" ? "scurve" : "linear";
+
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!project) {
+    res.status(404).json({ error: "المشروع غير موجود" });
+    return;
+  }
+
+  if (project.noSchedule === true) {
+    res.json({ projectId, noSchedule: true, points: [] });
+    return;
+  }
+
+  const reports = await db
+    .select({
+      reportDate: reportsTable.reportDate,
+      progressPercentage: reportsTable.progressPercentage,
+      activitiesSnapshot: reportsTable.activitiesSnapshot,
+    })
+    .from(reportsTable)
+    .where(eq(reportsTable.projectId, projectId))
+    .orderBy(asc(reportsTable.reportDate));
+
+  const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+
+  const startDate = new Date(project.startDate ?? Date.now());
+  const endDate = new Date(project.expectedEndDate ?? Date.now());
+  const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000));
+
+  const points = reports.map(r => {
+    const reportDate = new Date(r.reportDate);
+    const daysElapsed = Math.max(0, Math.ceil((reportDate.getTime() - startDate.getTime()) / 86400000));
+    const snapshot = Array.isArray(r.activitiesSnapshot) ? (r.activitiesSnapshot as any[]) : null;
+    const activitiesForCalc = snapshot && snapshot.length > 0
+      ? snapshot.map(a => ({
+          plannedStartDate: a.plannedStartDate ?? null,
+          plannedEndDate: a.plannedEndDate ?? null,
+          actualProgress: a.actualProgress ?? 0,
+          weight: a.weight ?? 1,
+        }))
+      : activities;
+    const planned = Math.round(calcPlannedProgressForProject(activitiesForCalc, daysElapsed, totalDays, reportDate, curve) * 100) / 100;
+    const actual = Math.round((r.progressPercentage ?? 0) * 100) / 100;
+    return {
+      date: r.reportDate,
+      plannedProgress: planned,
+      actualProgress: actual,
+      deviation: Math.round((actual - planned) * 100) / 100,
+    };
+  });
+
+  // Always append a "today" data point so the chart shows the current state
+  const today = new Date();
+  if (today >= startDate) {
+    const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / 86400000));
+    const planned = Math.round(calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, "linear") * 100) / 100;
+    const actual = Math.round(project.overallProgress * 100) / 100;
+    const isoToday = today.toISOString().slice(0, 10);
+    if (points.length === 0 || points[points.length - 1].date !== isoToday) {
+      points.push({
+        date: isoToday,
+        plannedProgress: planned,
+        actualProgress: actual,
+        deviation: Math.round((actual - planned) * 100) / 100,
+      });
+    }
+  }
+
+  res.json({ projectId, noSchedule: false, points });
 });
 
 export default router;
