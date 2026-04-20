@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { ProjectNav } from "@/components/project-nav";
 import { ProjectMembers } from "@/components/project-members";
+import { ProjectQuickViewDialog } from "@/components/project-quick-view-dialog";
 import { previewExecutiveSummary, type ActivityForReport } from "@/lib/report-pdf";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -234,6 +235,11 @@ export default function ProjectDetails() {
 
   return (
     <div className="space-y-5">
+      <ProjectQuickViewDialog
+        projectId={projectId}
+        widgets={widgets}
+        enabled={!!projectId}
+      />
       {/* ── Header ── */}
       <div className="flex flex-wrap items-start gap-3">
         <Button
