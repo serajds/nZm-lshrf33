@@ -10,20 +10,17 @@ import type { ActivityDeviation } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProjectNav } from "@/components/project-nav";
 import {
   ArrowRight, AlertTriangle, TrendingDown, TrendingUp, CheckCircle2, Clock,
   CalendarOff, BarChart3, Activity, Gauge, Lightbulb, CalendarClock, Target,
-  Download, LineChart as LineChartIcon, Info,
+  LineChart as LineChartIcon, Info,
   type LucideIcon,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
   LineChart, Line, Legend, PieChart, Pie,
 } from "recharts";
-
-type CurveType = "linear" | "scurve";
 
 type ChartRow = {
   name: string;
@@ -68,101 +65,22 @@ export default function ProjectDeviation() {
   const projectId = parseInt(params.id || "0", 10);
   usePageTitle("الانحرافات");
 
-  const [curve, setCurve] = useState<CurveType>("linear");
   const [sortKey, setSortKey] = useState<"default" | "name" | "weight" | "planned" | "actual" | "deviation" | "weightedImpact" | "overrun">("default");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: deviationData, isLoading } = useGetProjectDeviation(
     projectId,
-    { curve },
+    { curve: "linear" },
     { query: { enabled: !!projectId } },
   );
   const { data: timelineData } = useGetProjectDeviationTimeline(
     projectId,
-    { curve },
+    { curve: "linear" },
     { query: { enabled: !!projectId } },
   );
 
   const isNoSchedule = deviationData?.noSchedule === true;
-
-  const exportExcel = async () => {
-    if (!deviationData) return;
-    const XLSX = await import("xlsx");
-    const wb = XLSX.utils.book_new();
-
-    const summary = [
-      ["تحليل الانحراف للمشروع", project?.name || ""],
-      ["تاريخ التقرير", new Date().toLocaleDateString("ar-EG-u-nu-latn")],
-      ["نموذج المنحنى المخطط", curve === "scurve" ? "S-Curve" : "خطي"],
-      [],
-      ["المؤشر", "القيمة"],
-      ["الإنجاز المخطط %", deviationData.plannedProgress ?? 0],
-      ["الإنجاز الفعلي %", deviationData.actualProgress ?? 0],
-      ["انحراف الإنجاز %", deviationData.progressDeviation ?? 0],
-      ["مؤشر أداء الجدول SPI", deviationData.spi ?? "—"],
-      ["إجمالي الانحراف (يوم)", deviationData.grossDelayDays ?? 0],
-      ["أيام التوقف المعتمدة", deviationData.suspensionDays ?? 0],
-      ["صافي الانحراف (يوم)", deviationData.netDelayDays ?? 0],
-      ["تجاوز المدة التعاقدية (يوم)", deviationData.overrunDays ?? 0],
-      ["تاريخ الإكمال المتوقع", deviationData.forecastCompletionDate ?? "—"],
-      ["تأخر متوقع عن التعاقدي (يوم)", deviationData.forecastDelayDays ?? 0],
-      ["الإنجاز المتوقع عند نهاية العقد %", deviationData.expectedProgressAtEnd ?? 0],
-    ];
-    const wsSummary = XLSX.utils.aoa_to_sheet(summary);
-    wsSummary["!cols"] = [{ wch: 36 }, { wch: 22 }];
-    XLSX.utils.book_append_sheet(wb, wsSummary, "ملخص الانحراف");
-
-    const actsHeader = ["البند", "الوزن", "المخطط %", "الفعلي %", "الانحراف %", "الأثر الموزون %", "تجاوز المدة (يوم)"];
-    const actsRows = (deviationData.activitiesAnalysis ?? []).map(a => [
-      a.activityName,
-      a.weight ?? 1,
-      a.plannedProgress,
-      a.actualProgress,
-      a.deviation,
-      a.weightedImpact ?? 0,
-      a.overrunDays ?? "—",
-    ]);
-    const wsActs = XLSX.utils.aoa_to_sheet([actsHeader, ...actsRows]);
-    wsActs["!cols"] = [{ wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 16 }];
-    XLSX.utils.book_append_sheet(wb, wsActs, "تفاصيل البنود");
-
-    if (timelineData?.points && timelineData.points.length > 0) {
-      const tHeader = ["التاريخ", "المخطط %", "الفعلي %", "الانحراف %"];
-      const tRows = timelineData.points.map(p => [p.date, p.plannedProgress, p.actualProgress, p.deviation]);
-      const wsT = XLSX.utils.aoa_to_sheet([tHeader, ...tRows]);
-      wsT["!cols"] = [{ wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(wb, wsT, "تطور الانحراف");
-    }
-
-    XLSX.writeFile(wb, `تحليل_الانحراف_${project?.name || "مشروع"}.xlsx`);
-  };
-
-  const exportCsv = () => {
-    if (!deviationData) return;
-    const header = ["البند", "الوزن", "المخطط %", "الفعلي %", "الانحراف %", "الأثر الموزون %", "تجاوز المدة (يوم)"];
-    const rows = (deviationData.activitiesAnalysis ?? []).map(a => [
-      a.activityName,
-      String(a.weight ?? 1),
-      String(a.plannedProgress),
-      String(a.actualProgress),
-      String(a.deviation),
-      String(a.weightedImpact ?? 0),
-      a.overrunDays != null ? String(a.overrunDays) : "",
-    ]);
-    const escape = (v: string) => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-    const csv = [header, ...rows].map(r => r.map(escape).join(",")).join("\n");
-    // BOM for Excel UTF-8 Arabic compatibility
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `تحليل_الانحراف_${project?.name || "مشروع"}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
 
   const chartData = useMemo(() => (deviationData?.activitiesAnalysis ?? [])
     .slice()
@@ -303,25 +221,6 @@ export default function ProjectDeviation() {
         <div className="flex-1 min-w-0">
           <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">تحليل الانحراف عن الجدول الزمني</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={curve} onValueChange={(v) => setCurve(v as CurveType)}>
-            <SelectTrigger className="w-[180px]" dir="rtl">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent dir="rtl">
-              <SelectItem value="linear">منحنى خطي</SelectItem>
-              <SelectItem value="scurve">منحنى S-Curve</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm" onClick={exportExcel} disabled={!deviationData}>
-            <Download className="h-4 w-4 ml-1" />
-            تصدير Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportCsv} disabled={!deviationData}>
-            <Download className="h-4 w-4 ml-1" />
-            تصدير CSV
-          </Button>
         </div>
       </div>
 
