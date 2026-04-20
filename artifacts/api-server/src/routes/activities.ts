@@ -35,12 +35,19 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const router: IRouter = Router();
 
 async function syncProjectProgress(projectId: number) {
-  const [result] = await db
-    .select({ avgProgress: avg(activitiesTable.actualProgress) })
+  const acts = await db
+    .select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight })
     .from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId));
 
-  const computed = result?.avgProgress ? Math.round(Number(result.avgProgress)) : 0;
+  let totalWeight = 0;
+  let weightedSum = 0;
+  for (const a of acts) {
+    const w = a.weight && a.weight > 0 ? a.weight : 1;
+    totalWeight += w;
+    weightedSum += (a.actualProgress ?? 0) * w;
+  }
+  const computed = totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
 
   await db
     .update(projectsTable)
@@ -65,7 +72,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
 
   const {
     name, plannedStartDate, plannedEndDate, actualStartDate, actualEndDate,
-    plannedProgress, actualProgress, status, sortOrder, groupId
+    plannedProgress, actualProgress, weight, status, sortOrder, groupId
   } = req.body;
 
   if (!name) {
@@ -104,6 +111,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     actualEndDate: actualEndDate ?? null,
     plannedProgress: Math.round(autoPlannedProgress),
     actualProgress: actualProgress ?? 0,
+    weight: weight !== undefined && weight !== null && Number(weight) > 0 ? Number(weight) : 1,
     status: status ?? "not_started",
     groupId: groupId ?? null,
     sortOrder: sortOrder ?? 0,
@@ -158,6 +166,10 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   if (body.actualStartDate !== undefined) updateData.actualStartDate = body.actualStartDate;
   if (body.actualEndDate !== undefined) updateData.actualEndDate = body.actualEndDate;
   if (body.actualProgress !== undefined) updateData.actualProgress = body.actualProgress;
+  if (body.weight !== undefined) {
+    const w = Number(body.weight);
+    if (Number.isFinite(w) && w >= 0) updateData.weight = w > 0 ? w : 1;
+  }
   if (body.status !== undefined) updateData.status = body.status;
   if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder;
   if (body.groupId !== undefined) {

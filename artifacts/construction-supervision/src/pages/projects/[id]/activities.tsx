@@ -581,7 +581,7 @@ export default function ProjectActivities() {
       actualStartDate: a.actualStartDate ? new Date(a.actualStartDate).toISOString().split('T')[0] : "",
       actualEndDate: a.actualEndDate ? new Date(a.actualEndDate).toISOString().split('T')[0] : "",
       actualProgress: a.actualProgress,
-      weight: (a as any).weight ?? 1,
+      weight: a.weight ?? 1,
       status: a.status as ActivityFormValues["status"],
       sortOrder: a.sortOrder ?? 0,
     });
