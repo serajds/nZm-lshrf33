@@ -829,7 +829,8 @@ const PDF_STYLES = `
 @page { size: A4; margin: 8mm; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Noto Kufi Arabic', sans-serif; padding: 6px; color: #333; direction: rtl; font-size: 10px; line-height: 1.35; }
-.page { page-break-after: auto; }
+.page { page-break-after: auto; break-inside: avoid; }
+.page + .page { page-break-before: always; break-before: page; }
 .header { text-align: center; margin-bottom: 6px; border-bottom: 2px solid #2563eb; padding-bottom: 4px; }
 .header h1 { font-size: 14px; color: #1e40af; margin-bottom: 1px; }
 .header p { font-size: 11px; color: #666; }
