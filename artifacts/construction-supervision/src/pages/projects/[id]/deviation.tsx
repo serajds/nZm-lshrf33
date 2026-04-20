@@ -56,7 +56,7 @@ const SUSPENSION_COLORS: Record<string, string> = {
 function fmtDate(d?: string | null) {
   if (!d) return "—";
   try {
-    return new Date(d).toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric" });
+    return new Date(d).toLocaleDateString("ar-EG-u-nu-latn", { year: "numeric", month: "short", day: "numeric" });
   } catch {
     return d;
   }
@@ -93,7 +93,7 @@ export default function ProjectDeviation() {
 
     const summary = [
       ["تحليل الانحراف للمشروع", project?.name || ""],
-      ["تاريخ التقرير", new Date().toLocaleDateString("ar-EG")],
+      ["تاريخ التقرير", new Date().toLocaleDateString("ar-EG-u-nu-latn")],
       ["نموذج المنحنى المخطط", curve === "scurve" ? "S-Curve" : "خطي"],
       [],
       ["المؤشر", "القيمة"],
@@ -178,7 +178,7 @@ export default function ProjectDeviation() {
 
   const timelinePoints = useMemo(() => (timelineData?.points ?? []).map(p => ({
     date: p.date,
-    label: new Date(p.date).toLocaleDateString("ar-EG", { month: "short", day: "numeric" }),
+    label: new Date(p.date).toLocaleDateString("ar-EG-u-nu-latn", { month: "short", day: "numeric" }),
     planned: p.plannedProgress,
     actual: p.actualProgress,
     deviation: p.deviation,
