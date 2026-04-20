@@ -119,7 +119,7 @@ const createActivitySchema = (isNoSchedule: boolean) => z.object({
   actualStartDate: z.string().optional().nullable(),
   actualEndDate: z.string().optional().nullable(),
   actualProgress: z.coerce.number().min(0).max(100),
-  weight: z.coerce.number().min(0).max(100).default(1),
+  weight: z.coerce.number().min(0.01, "الوزن يجب أن يكون أكبر من صفر").max(100, "الوزن لا يتجاوز 100").default(1),
   status: z.enum(["not_started", "in_progress", "completed", "delayed"]).default("not_started"),
   sortOrder: z.coerce.number().default(0),
 });
