@@ -129,36 +129,55 @@ export function calcSPI(plannedProgress: number, actualProgress: number): number
 }
 
 /**
- * Forecast project completion date based on current pace.
- * Uses the elapsed days and current actual progress to extrapolate when 100% will be reached.
- * Returns null when progress is 0 (cannot extrapolate) or when already complete.
+ * Forecast project completion date using the EVM EAC(t) formula:
+ *   EAC(t) = start + (Planned Duration / SPI)
+ * where SPI = actualProgress / plannedProgress.
+ *
+ * This respects the baseline schedule: a project that is on its planned curve
+ * (SPI ≈ 1) is forecast to finish on time, even if absolute progress is still low
+ * because most planned work has not started yet. Falls back to a naive
+ * pace-based extrapolation only when there is no usable planned baseline.
  */
 export function calcForecastCompletionDate(
   startDate: Date,
+  endDate: Date | null | undefined,
   today: Date,
+  plannedProgress: number,
   actualProgress: number,
 ): Date | null {
   if (actualProgress >= 100) return today;
-  if (actualProgress <= 0) return null;
-  const daysElapsed = Math.max(1, Math.ceil((today.getTime() - startDate.getTime()) / 86400000));
-  const totalEstimatedDays = (daysElapsed / actualProgress) * 100;
-  const forecast = new Date(startDate.getTime() + totalEstimatedDays * 86400000);
-  return forecast;
+  if (actualProgress <= 0 && plannedProgress <= 0) return null;
+
+  if (endDate && plannedProgress > 0 && actualProgress > 0) {
+    const plannedDurationDays = Math.max(
+      1,
+      Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000),
+    );
+    const spi = actualProgress / plannedProgress;
+    if (spi > 0) {
+      const forecastDays = plannedDurationDays / spi;
+      return new Date(startDate.getTime() + forecastDays * 86400000);
+    }
+  }
+
+  if (actualProgress > 0) {
+    const daysElapsed = Math.max(1, Math.ceil((today.getTime() - startDate.getTime()) / 86400000));
+    const totalEstimatedDays = (daysElapsed / actualProgress) * 100;
+    return new Date(startDate.getTime() + totalEstimatedDays * 86400000);
+  }
+  return null;
 }
 
 /**
- * Expected progress percentage at the contractual end date if the current pace continues.
+ * Expected progress percentage at the contractual end date if the current SPI is sustained.
+ * Uses EVM logic: at the contract end, planned progress is 100, so expected actual = 100 × SPI.
  */
 export function calcExpectedProgressAtEnd(
-  startDate: Date,
-  endDate: Date,
-  today: Date,
+  plannedProgress: number,
   actualProgress: number,
 ): number {
   if (actualProgress >= 100) return 100;
-  if (actualProgress <= 0) return 0;
-  const daysElapsed = Math.max(1, Math.ceil((today.getTime() - startDate.getTime()) / 86400000));
-  const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000));
-  const pace = actualProgress / daysElapsed;
-  return Math.min(100, Math.max(0, pace * totalDays));
+  if (plannedProgress <= 0) return actualProgress;
+  const spi = actualProgress / plannedProgress;
+  return Math.min(100, Math.max(0, 100 * spi));
 }

@@ -386,9 +386,9 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   const overrunDays = calcOverrunDays(today, project.expectedEndDate, actualProgress);
 
   const spi = calcSPI(plannedProgress, actualProgress);
-  const forecastCompletion = calcForecastCompletionDate(startDate, today, actualProgress);
+  const forecastCompletion = calcForecastCompletionDate(startDate, endDate, today, plannedProgress, actualProgress);
   const forecastCompletionDate = forecastCompletion ? forecastCompletion.toISOString().slice(0, 10) : null;
-  const expectedProgressAtEnd = Math.round(calcExpectedProgressAtEnd(startDate, endDate, today, actualProgress) * 100) / 100;
+  const expectedProgressAtEnd = Math.round(calcExpectedProgressAtEnd(plannedProgress, actualProgress) * 100) / 100;
   const forecastDelayDays = forecastCompletion && project.expectedEndDate
     ? Math.max(0, Math.ceil((forecastCompletion.getTime() - new Date(project.expectedEndDate).getTime()) / 86400000))
     : 0;
