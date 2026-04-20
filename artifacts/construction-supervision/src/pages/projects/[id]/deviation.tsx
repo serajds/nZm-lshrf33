@@ -69,7 +69,7 @@ export default function ProjectDeviation() {
   usePageTitle("الانحرافات");
 
   const [curve, setCurve] = useState<CurveType>("linear");
-  const [sortKey, setSortKey] = useState<"name" | "weight" | "planned" | "actual" | "deviation" | "weightedImpact" | "overrun">("deviation");
+  const [sortKey, setSortKey] = useState<"default" | "name" | "weight" | "planned" | "actual" | "deviation" | "weightedImpact" | "overrun">("default");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
@@ -186,6 +186,7 @@ export default function ProjectDeviation() {
 
   const sortedActivities = useMemo<ActivityDeviation[]>(() => {
     const list = (deviationData?.activitiesAnalysis ?? []).slice() as ActivityDeviation[];
+    if (sortKey === "default") return list;
     const dir = sortDir === "asc" ? 1 : -1;
     list.sort((a, b) => {
       let av: number | string;
