@@ -597,7 +597,7 @@ router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("proj
     }
   }
 
-  res.json({ projectId, noSchedule: false, points });
+  res.json({ projectId, noSchedule: false, points, suspensionsBreakdown });
 });
 
 export default router;
