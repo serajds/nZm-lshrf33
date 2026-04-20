@@ -36,7 +36,9 @@ function stableSerialize(value: unknown): string {
 
 function computeFingerprint(widgets: SummaryWidget[]): string {
   if (!widgets.length) return "empty";
-  const parts = widgets.map((w) => [
+  // Sort by stable id so reordering by the backend doesn't trigger false reopens.
+  const sorted = [...widgets].sort((a, b) => (a.id ?? "").localeCompare(b.id ?? ""));
+  const parts = sorted.map((w) => [
     w.id ?? "",
     w.fieldId ?? "",
     w.templateId ?? "",
@@ -44,7 +46,7 @@ function computeFingerprint(widgets: SummaryWidget[]): string {
     w.reportDate ?? "",
     w.submittedAt ?? "",
   ].join("|"));
-  return `${widgets.length}::${parts.join("##")}`;
+  return `${sorted.length}::${parts.join("##")}`;
 }
 
 function dismissalKey(projectId: number) {
