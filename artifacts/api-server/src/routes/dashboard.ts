@@ -493,13 +493,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
       description: `تم خصم ${suspensionDays} يوم توقف معتمد، مما خفّض الانحراف من ${grossDelayDays} يوم إلى ${netDelayDays} يوم صافي.`,
     });
   }
-  if (overallStatus === "on_track") {
-    recommendations.push({
-      severity: "info",
-      title: "المشروع على المسار الصحيح",
-      description: "حافظ على نفس وتيرة العمل الحالية ومراقبة البنود الحرجة باستمرار.",
-    });
-  } else if (overallStatus === "ahead") {
+  if (overallStatus === "ahead") {
     recommendations.push({
       severity: "info",
       title: "المشروع متقدم عن الخطة",
