@@ -58,8 +58,8 @@ export default defineConfig({
       },
       manifest: {
         id: basePath,
-        name: "إدارة الإشراف والمتابعة",
-        short_name: "الإشراف",
+        name: "نظام الاشراف",
+        short_name: "نظام الاشراف",
         description:
           "نظام إدارة الإشراف والمتابعة للمشاريع الإنشائية - متابعة التقدم والأنشطة والتقارير",
         theme_color: "#1f4d8b",
