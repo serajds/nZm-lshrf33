@@ -212,6 +212,8 @@ export const ListActivitiesParams = zod.object({
   projectId: zod.coerce.number(),
 });
 
+export const listActivitiesResponseWeightDefault = 1;
+
 export const ListActivitiesResponseItem = zod.object({
   id: zod.number(),
   projectId: zod.number(),
@@ -222,6 +224,10 @@ export const ListActivitiesResponseItem = zod.object({
   actualEndDate: zod.coerce.date().nullish(),
   plannedProgress: zod.number(),
   actualProgress: zod.number(),
+  weight: zod
+    .number()
+    .default(listActivitiesResponseWeightDefault)
+    .describe("Relative weight (cost share \/ volume share). Default 1."),
   status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
   sortOrder: zod.number(),
   groupId: zod.number().nullish(),
@@ -238,6 +244,7 @@ export const CreateActivityParams = zod.object({
 
 export const createActivityBodyPlannedProgressDefault = 0;
 export const createActivityBodyActualProgressDefault = 0;
+export const createActivityBodyWeightDefault = 1;
 export const createActivityBodyStatusDefault = `not_started`;
 export const createActivityBodySortOrderDefault = 0;
 
@@ -251,6 +258,7 @@ export const CreateActivityBody = zod.object({
     .number()
     .default(createActivityBodyPlannedProgressDefault),
   actualProgress: zod.number().default(createActivityBodyActualProgressDefault),
+  weight: zod.number().default(createActivityBodyWeightDefault),
   status: zod
     .enum(["not_started", "in_progress", "completed", "delayed"])
     .default(createActivityBodyStatusDefault),
@@ -285,6 +293,7 @@ export const UpdateActivityBody = zod.object({
   actualEndDate: zod.coerce.date().nullish(),
   plannedProgress: zod.number().nullish(),
   actualProgress: zod.number().nullish(),
+  weight: zod.number().nullish(),
   status: zod
     .union([
       zod.literal("not_started"),
@@ -298,6 +307,8 @@ export const UpdateActivityBody = zod.object({
   groupId: zod.number().nullish(),
 });
 
+export const updateActivityResponseWeightDefault = 1;
+
 export const UpdateActivityResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
@@ -308,6 +319,10 @@ export const UpdateActivityResponse = zod.object({
   actualEndDate: zod.coerce.date().nullish(),
   plannedProgress: zod.number(),
   actualProgress: zod.number(),
+  weight: zod
+    .number()
+    .default(updateActivityResponseWeightDefault)
+    .describe("Relative weight (cost share \/ volume share). Default 1."),
   status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
   sortOrder: zod.number(),
   groupId: zod.number().nullish(),
@@ -785,6 +800,8 @@ export const VerifyOwnerAccessBody = zod.object({
   password: zod.string().optional(),
 });
 
+export const verifyOwnerAccessResponseActivitiesItemWeightDefault = 1;
+
 export const VerifyOwnerAccessResponse = zod.object({
   project: zod.object({
     id: zod.number(),
@@ -814,6 +831,10 @@ export const VerifyOwnerAccessResponse = zod.object({
       actualEndDate: zod.coerce.date().nullish(),
       plannedProgress: zod.number(),
       actualProgress: zod.number(),
+      weight: zod
+        .number()
+        .default(verifyOwnerAccessResponseActivitiesItemWeightDefault)
+        .describe("Relative weight (cost share \/ volume share). Default 1."),
       status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
       sortOrder: zod.number(),
       groupId: zod.number().nullish(),
@@ -1032,10 +1053,27 @@ export const GetProjectDeviationParams = zod.object({
   projectId: zod.coerce.number(),
 });
 
+export const getProjectDeviationQueryCurveDefault = `linear`;
+
+export const GetProjectDeviationQueryParams = zod.object({
+  curve: zod
+    .enum(["linear", "scurve"])
+    .default(getProjectDeviationQueryCurveDefault)
+    .describe("Planned-progress curve model used for the calculation."),
+});
+
 export const GetProjectDeviationResponse = zod.object({
   projectId: zod.number(),
   timeDeviation: zod.number(),
   progressDeviation: zod.number(),
+  plannedProgress: zod
+    .number()
+    .optional()
+    .describe("Weighted planned progress for the project at today's date."),
+  actualProgress: zod
+    .number()
+    .optional()
+    .describe("Weighted actual progress (overall project progress)."),
   status: zod.enum([
     "on_track",
     "slightly_delayed",
@@ -1049,6 +1087,53 @@ export const GetProjectDeviationResponse = zod.object({
     .number()
     .optional()
     .describe("Days passed after expectedEndDate while progress < 100%"),
+  spi: zod
+    .number()
+    .nullish()
+    .describe(
+      "Schedule Performance Index = actual \/ planned (>1 ahead, <1 behind).",
+    ),
+  forecastCompletionDate: zod.coerce
+    .date()
+    .nullish()
+    .describe("Forecast completion date if the current pace continues."),
+  expectedProgressAtEnd: zod
+    .number()
+    .optional()
+    .describe(
+      "Expected progress percentage at the contractual end date if the current pace continues.",
+    ),
+  contractEndDate: zod.coerce.date().nullish(),
+  forecastDelayDays: zod
+    .number()
+    .optional()
+    .describe(
+      "Days between forecastCompletionDate and contractEndDate (positive = late).",
+    ),
+  suspensionsBreakdown: zod
+    .array(
+      zod.object({
+        type: zod.enum([
+          "official_holiday",
+          "force_majeure",
+          "contractor_delay",
+        ]),
+        days: zod.number(),
+        count: zod.number(),
+      }),
+    )
+    .optional()
+    .describe("Breakdown of suspension days by cause type."),
+  recommendations: zod
+    .array(
+      zod.object({
+        severity: zod.enum(["info", "warning", "critical"]),
+        title: zod.string(),
+        description: zod.string(),
+      }),
+    )
+    .optional()
+    .describe("Auto-generated recommendations based on the project state."),
   activitiesAnalysis: zod.array(
     zod.object({
       activityId: zod.number(),
@@ -1056,6 +1141,18 @@ export const GetProjectDeviationResponse = zod.object({
       plannedProgress: zod.number(),
       actualProgress: zod.number(),
       deviation: zod.number(),
+      weight: zod
+        .number()
+        .optional()
+        .describe(
+          "Activity weight used in the project-level weighted average.",
+        ),
+      weightedImpact: zod
+        .number()
+        .optional()
+        .describe(
+          "Contribution of this activity's deviation to overall project deviation (= deviation × weight \/ totalWeight).",
+        ),
       delayDays: zod
         .number()
         .nullish()
@@ -1069,6 +1166,35 @@ export const GetProjectDeviationResponse = zod.object({
     }),
   ),
   noSchedule: zod.boolean().optional(),
+});
+
+/**
+ * @summary Get historical deviation time-series for a project
+ */
+export const GetProjectDeviationTimelineParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const getProjectDeviationTimelineQueryCurveDefault = `linear`;
+
+export const GetProjectDeviationTimelineQueryParams = zod.object({
+  curve: zod
+    .enum(["linear", "scurve"])
+    .default(getProjectDeviationTimelineQueryCurveDefault)
+    .describe("Planned-progress curve model used for the historical points."),
+});
+
+export const GetProjectDeviationTimelineResponse = zod.object({
+  projectId: zod.number(),
+  noSchedule: zod.boolean().optional(),
+  points: zod.array(
+    zod.object({
+      date: zod.coerce.date(),
+      plannedProgress: zod.number(),
+      actualProgress: zod.number(),
+      deviation: zod.number(),
+    }),
+  ),
 });
 
 /**

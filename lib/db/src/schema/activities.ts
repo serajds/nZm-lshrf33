@@ -12,6 +12,7 @@ export const activitiesTable = pgTable("activities", {
   actualEndDate: date("actual_end_date"),
   plannedProgress: real("planned_progress").notNull().default(0),
   actualProgress: real("actual_progress").notNull().default(0),
+  weight: real("weight").notNull().default(1),
   status: text("status", { enum: ["not_started", "in_progress", "completed", "delayed"] }).notNull().default("not_started"),
   groupId: integer("group_id"),
   sortOrder: integer("sort_order").notNull().default(0),

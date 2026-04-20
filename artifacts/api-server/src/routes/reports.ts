@@ -72,6 +72,7 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
       plannedEndDate: a.plannedEndDate,
     })),
     actualProgress: a.actualProgress,
+    weight: a.weight ?? 1,
     status: a.status,
     sortOrder: a.sortOrder,
   }));

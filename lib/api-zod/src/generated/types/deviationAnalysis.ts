@@ -6,18 +6,44 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ActivityDeviation } from "./activityDeviation";
+import type { DeviationAnalysisRecommendationsItem } from "./deviationAnalysisRecommendationsItem";
 import type { DeviationAnalysisStatus } from "./deviationAnalysisStatus";
+import type { DeviationAnalysisSuspensionsBreakdownItem } from "./deviationAnalysisSuspensionsBreakdownItem";
 
 export interface DeviationAnalysis {
   projectId: number;
   timeDeviation: number;
   progressDeviation: number;
+  /** Weighted planned progress for the project at today's date. */
+  plannedProgress?: number;
+  /** Weighted actual progress (overall project progress). */
+  actualProgress?: number;
   status: DeviationAnalysisStatus;
   suspensionDays?: number;
   grossDelayDays?: number;
   netDelayDays?: number;
   /** Days passed after expectedEndDate while progress < 100% */
   overrunDays?: number;
+  /**
+   * Schedule Performance Index = actual / planned (>1 ahead, <1 behind).
+   * @nullable
+   */
+  spi?: number | null;
+  /**
+   * Forecast completion date if the current pace continues.
+   * @nullable
+   */
+  forecastCompletionDate?: Date | null;
+  /** Expected progress percentage at the contractual end date if the current pace continues. */
+  expectedProgressAtEnd?: number;
+  /** @nullable */
+  contractEndDate?: Date | null;
+  /** Days between forecastCompletionDate and contractEndDate (positive = late). */
+  forecastDelayDays?: number;
+  /** Breakdown of suspension days by cause type. */
+  suspensionsBreakdown?: DeviationAnalysisSuspensionsBreakdownItem[];
+  /** Auto-generated recommendations based on the project state. */
+  recommendations?: DeviationAnalysisRecommendationsItem[];
   activitiesAnalysis: ActivityDeviation[];
   noSchedule?: boolean;
 }

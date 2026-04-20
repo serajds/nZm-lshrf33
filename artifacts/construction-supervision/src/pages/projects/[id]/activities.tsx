@@ -119,6 +119,7 @@ const createActivitySchema = (isNoSchedule: boolean) => z.object({
   actualStartDate: z.string().optional().nullable(),
   actualEndDate: z.string().optional().nullable(),
   actualProgress: z.coerce.number().min(0).max(100),
+  weight: z.coerce.number().min(0).default(1),
   status: z.enum(["not_started", "in_progress", "completed", "delayed"]).default("not_started"),
   sortOrder: z.coerce.number().default(0),
 });
@@ -486,6 +487,7 @@ export default function ProjectActivities() {
       name: "", plannedStartDate: "", plannedEndDate: "",
       actualStartDate: "", actualEndDate: "",
       actualProgress: 0,
+      weight: 1,
       status: "not_started", sortOrder: 0,
     }
   });
@@ -579,6 +581,7 @@ export default function ProjectActivities() {
       actualStartDate: a.actualStartDate ? new Date(a.actualStartDate).toISOString().split('T')[0] : "",
       actualEndDate: a.actualEndDate ? new Date(a.actualEndDate).toISOString().split('T')[0] : "",
       actualProgress: a.actualProgress,
+      weight: (a as any).weight ?? 1,
       status: a.status as ActivityFormValues["status"],
       sortOrder: a.sortOrder ?? 0,
     });
@@ -1092,6 +1095,14 @@ export default function ProjectActivities() {
                         <FormItem>
                           <FormLabel>الإنجاز الفعلي (%)</FormLabel>
                           <FormControl><Input type="number" min={0} max={100} {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="weight" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>الوزن النسبي</FormLabel>
+                          <FormControl><Input type="number" min={0} step="0.1" {...field} /></FormControl>
+                          <p className="text-xs text-muted-foreground">يستخدم لحساب نسبة المشروع الإجمالية. الافتراضي 1.</p>
                           <FormMessage />
                         </FormItem>
                       )} />

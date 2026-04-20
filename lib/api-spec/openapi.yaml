@@ -1018,6 +1018,14 @@ paths:
           required: true
           schema:
             type: integer
+        - name: curve
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [linear, scurve]
+            default: linear
+          description: Planned-progress curve model used for the calculation.
       responses:
         "200":
           description: Deviation analysis
@@ -1025,6 +1033,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeviationAnalysis"
+
+  /projects/{projectId}/deviation/timeline:
+    get:
+      operationId: getProjectDeviationTimeline
+      tags: [dashboard]
+      summary: Get historical deviation time-series for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: curve
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [linear, scurve]
+            default: linear
+          description: Planned-progress curve model used for the historical points.
+      responses:
+        "200":
+          description: Deviation timeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviationTimeline"
 
   /projects/{projectId}/generate-owner-link:
     post:
@@ -1418,6 +1453,10 @@ components:
           type: number
         actualProgress:
           type: number
+        weight:
+          type: number
+          description: Relative weight (cost share / volume share). Default 1.
+          default: 1
         status:
           type: string
           enum: [not_started, in_progress, completed, delayed]
@@ -1434,6 +1473,7 @@ components:
         - name
         - plannedProgress
         - actualProgress
+        - weight
         - status
         - sortOrder
         - createdAt
@@ -1461,6 +1501,9 @@ components:
         actualProgress:
           type: number
           default: 0
+        weight:
+          type: number
+          default: 1
         status:
           type: string
           enum: [not_started, in_progress, completed, delayed]
@@ -1493,6 +1536,8 @@ components:
         plannedProgress:
           type: ["number", "null"]
         actualProgress:
+          type: ["number", "null"]
+        weight:
           type: ["number", "null"]
         status:
           type: ["string", "null"]
@@ -1903,6 +1948,12 @@ components:
           type: number
         progressDeviation:
           type: number
+        plannedProgress:
+          type: number
+          description: Weighted planned progress for the project at today's date.
+        actualProgress:
+          type: number
+          description: Weighted actual progress (overall project progress).
         status:
           type: string
           enum: [on_track, slightly_delayed, significantly_delayed, ahead]
@@ -1915,6 +1966,56 @@ components:
         overrunDays:
           type: integer
           description: Days passed after expectedEndDate while progress < 100%
+        spi:
+          type: ["number", "null"]
+          description: Schedule Performance Index = actual / planned (>1 ahead, <1 behind).
+        forecastCompletionDate:
+          type: ["string", "null"]
+          format: date
+          description: Forecast completion date if the current pace continues.
+        expectedProgressAtEnd:
+          type: number
+          description: Expected progress percentage at the contractual end date if the current pace continues.
+        contractEndDate:
+          type: ["string", "null"]
+          format: date
+        forecastDelayDays:
+          type: integer
+          description: Days between forecastCompletionDate and contractEndDate (positive = late).
+        suspensionsBreakdown:
+          type: array
+          description: Breakdown of suspension days by cause type.
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [official_holiday, force_majeure, contractor_delay]
+              days:
+                type: integer
+              count:
+                type: integer
+            required:
+              - type
+              - days
+              - count
+        recommendations:
+          type: array
+          description: Auto-generated recommendations based on the project state.
+          items:
+            type: object
+            properties:
+              severity:
+                type: string
+                enum: [info, warning, critical]
+              title:
+                type: string
+              description:
+                type: string
+            required:
+              - severity
+              - title
+              - description
         activitiesAnalysis:
           type: array
           items:
@@ -1941,6 +2042,12 @@ components:
           type: number
         deviation:
           type: number
+        weight:
+          type: number
+          description: Activity weight used in the project-level weighted average.
+        weightedImpact:
+          type: number
+          description: Contribution of this activity's deviation to overall project deviation (= deviation × weight / totalWeight).
         delayDays:
           type: ["integer", "null"]
           description: Deprecated alias for overrunDays (kept for backward compatibility)
@@ -1953,3 +2060,36 @@ components:
         - plannedProgress
         - actualProgress
         - deviation
+
+    DeviationTimelinePoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        plannedProgress:
+          type: number
+        actualProgress:
+          type: number
+        deviation:
+          type: number
+      required:
+        - date
+        - plannedProgress
+        - actualProgress
+        - deviation
+
+    DeviationTimeline:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        noSchedule:
+          type: boolean
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviationTimelinePoint"
+      required:
+        - projectId
+        - points

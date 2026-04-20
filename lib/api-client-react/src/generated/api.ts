@@ -27,9 +27,12 @@ import type {
   DashboardSummary,
   DeleteBackup200,
   DeviationAnalysis,
+  DeviationTimeline,
   ErrorResponse,
   GenerateOwnerLinkBody,
   GetOwnerProjectByToken200,
+  GetProjectDeviationParams,
+  GetProjectDeviationTimelineParams,
   HealthStatus,
   ImportActivities400,
   ImportActivitiesBody,
@@ -3713,22 +3716,47 @@ export function useGetProjectSummary<
 /**
  * @summary Get project deviation analysis
  */
-export const getGetProjectDeviationUrl = (projectId: number) => {
-  return `/api/projects/${projectId}/deviation`;
+export const getGetProjectDeviationUrl = (
+  projectId: number,
+  params?: GetProjectDeviationParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/projects/${projectId}/deviation?${stringifiedParams}`
+    : `/api/projects/${projectId}/deviation`;
 };
 
 export const getProjectDeviation = async (
   projectId: number,
+  params?: GetProjectDeviationParams,
   options?: RequestInit,
 ): Promise<DeviationAnalysis> => {
-  return customFetch<DeviationAnalysis>(getGetProjectDeviationUrl(projectId), {
-    ...options,
-    method: "GET",
-  });
+  return customFetch<DeviationAnalysis>(
+    getGetProjectDeviationUrl(projectId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
 };
 
-export const getGetProjectDeviationQueryKey = (projectId: number) => {
-  return [`/api/projects/${projectId}/deviation`] as const;
+export const getGetProjectDeviationQueryKey = (
+  projectId: number,
+  params?: GetProjectDeviationParams,
+) => {
+  return [
+    `/api/projects/${projectId}/deviation`,
+    ...(params ? [params] : []),
+  ] as const;
 };
 
 export const getGetProjectDeviationQueryOptions = <
@@ -3736,6 +3764,7 @@ export const getGetProjectDeviationQueryOptions = <
   TError = ErrorType<unknown>,
 >(
   projectId: number,
+  params?: GetProjectDeviationParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getProjectDeviation>>,
@@ -3748,12 +3777,12 @@ export const getGetProjectDeviationQueryOptions = <
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ?? getGetProjectDeviationQueryKey(projectId);
+    queryOptions?.queryKey ?? getGetProjectDeviationQueryKey(projectId, params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getProjectDeviation>>
   > = ({ signal }) =>
-    getProjectDeviation(projectId, { signal, ...requestOptions });
+    getProjectDeviation(projectId, params, { signal, ...requestOptions });
 
   return {
     queryKey,
@@ -3781,6 +3810,7 @@ export function useGetProjectDeviation<
   TError = ErrorType<unknown>,
 >(
   projectId: number,
+  params?: GetProjectDeviationParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof getProjectDeviation>>,
@@ -3790,7 +3820,135 @@ export function useGetProjectDeviation<
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetProjectDeviationQueryOptions(projectId, options);
+  const queryOptions = getGetProjectDeviationQueryOptions(
+    projectId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get historical deviation time-series for a project
+ */
+export const getGetProjectDeviationTimelineUrl = (
+  projectId: number,
+  params?: GetProjectDeviationTimelineParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/projects/${projectId}/deviation/timeline?${stringifiedParams}`
+    : `/api/projects/${projectId}/deviation/timeline`;
+};
+
+export const getProjectDeviationTimeline = async (
+  projectId: number,
+  params?: GetProjectDeviationTimelineParams,
+  options?: RequestInit,
+): Promise<DeviationTimeline> => {
+  return customFetch<DeviationTimeline>(
+    getGetProjectDeviationTimelineUrl(projectId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetProjectDeviationTimelineQueryKey = (
+  projectId: number,
+  params?: GetProjectDeviationTimelineParams,
+) => {
+  return [
+    `/api/projects/${projectId}/deviation/timeline`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetProjectDeviationTimelineQueryOptions = <
+  TData = Awaited<ReturnType<typeof getProjectDeviationTimeline>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  params?: GetProjectDeviationTimelineParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getProjectDeviationTimeline>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetProjectDeviationTimelineQueryKey(projectId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getProjectDeviationTimeline>>
+  > = ({ signal }) =>
+    getProjectDeviationTimeline(projectId, params, {
+      signal,
+      ...requestOptions,
+    });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!projectId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getProjectDeviationTimeline>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetProjectDeviationTimelineQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getProjectDeviationTimeline>>
+>;
+export type GetProjectDeviationTimelineQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get historical deviation time-series for a project
+ */
+
+export function useGetProjectDeviationTimeline<
+  TData = Awaited<ReturnType<typeof getProjectDeviationTimeline>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  params?: GetProjectDeviationTimelineParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getProjectDeviationTimeline>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetProjectDeviationTimelineQueryOptions(
+    projectId,
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

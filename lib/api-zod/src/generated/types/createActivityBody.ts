@@ -19,6 +19,7 @@ export interface CreateActivityBody {
   actualEndDate?: Date | null;
   plannedProgress?: number;
   actualProgress?: number;
+  weight?: number;
   status?: CreateActivityBodyStatus;
   sortOrder?: number;
   /** @nullable */

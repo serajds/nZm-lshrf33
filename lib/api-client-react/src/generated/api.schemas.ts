@@ -41,6 +41,8 @@ export interface Activity {
   actualEndDate?: string | null;
   plannedProgress: number;
   actualProgress: number;
+  /** Relative weight (cost share / volume share). Default 1. */
+  weight: number;
   status: ActivityStatus;
   sortOrder: number;
   /** @nullable */
@@ -293,6 +295,7 @@ export interface CreateActivityBody {
   actualEndDate?: string | null;
   plannedProgress?: number;
   actualProgress?: number;
+  weight?: number;
   status?: CreateActivityBodyStatus;
   sortOrder?: number;
   /** @nullable */
@@ -328,6 +331,8 @@ export interface UpdateActivityBody {
   plannedProgress?: number | null;
   /** @nullable */
   actualProgress?: number | null;
+  /** @nullable */
+  weight?: number | null;
   /** @nullable */
   status?: UpdateActivityBodyStatus;
   /** @nullable */
@@ -567,12 +572,46 @@ export const DeviationAnalysisStatus = {
   ahead: "ahead",
 } as const;
 
+export type DeviationAnalysisSuspensionsBreakdownItemType =
+  (typeof DeviationAnalysisSuspensionsBreakdownItemType)[keyof typeof DeviationAnalysisSuspensionsBreakdownItemType];
+
+export const DeviationAnalysisSuspensionsBreakdownItemType = {
+  official_holiday: "official_holiday",
+  force_majeure: "force_majeure",
+  contractor_delay: "contractor_delay",
+} as const;
+
+export type DeviationAnalysisSuspensionsBreakdownItem = {
+  type: DeviationAnalysisSuspensionsBreakdownItemType;
+  days: number;
+  count: number;
+};
+
+export type DeviationAnalysisRecommendationsItemSeverity =
+  (typeof DeviationAnalysisRecommendationsItemSeverity)[keyof typeof DeviationAnalysisRecommendationsItemSeverity];
+
+export const DeviationAnalysisRecommendationsItemSeverity = {
+  info: "info",
+  warning: "warning",
+  critical: "critical",
+} as const;
+
+export type DeviationAnalysisRecommendationsItem = {
+  severity: DeviationAnalysisRecommendationsItemSeverity;
+  title: string;
+  description: string;
+};
+
 export interface ActivityDeviation {
   activityId: number;
   activityName: string;
   plannedProgress: number;
   actualProgress: number;
   deviation: number;
+  /** Activity weight used in the project-level weighted average. */
+  weight?: number;
+  /** Contribution of this activity's deviation to overall project deviation (= deviation × weight / totalWeight). */
+  weightedImpact?: number;
   /**
    * Deprecated alias for overrunDays (kept for backward compatibility)
    * @nullable
@@ -589,14 +628,51 @@ export interface DeviationAnalysis {
   projectId: number;
   timeDeviation: number;
   progressDeviation: number;
+  /** Weighted planned progress for the project at today's date. */
+  plannedProgress?: number;
+  /** Weighted actual progress (overall project progress). */
+  actualProgress?: number;
   status: DeviationAnalysisStatus;
   suspensionDays?: number;
   grossDelayDays?: number;
   netDelayDays?: number;
   /** Days passed after expectedEndDate while progress < 100% */
   overrunDays?: number;
+  /**
+   * Schedule Performance Index = actual / planned (>1 ahead, <1 behind).
+   * @nullable
+   */
+  spi?: number | null;
+  /**
+   * Forecast completion date if the current pace continues.
+   * @nullable
+   */
+  forecastCompletionDate?: string | null;
+  /** Expected progress percentage at the contractual end date if the current pace continues. */
+  expectedProgressAtEnd?: number;
+  /** @nullable */
+  contractEndDate?: string | null;
+  /** Days between forecastCompletionDate and contractEndDate (positive = late). */
+  forecastDelayDays?: number;
+  /** Breakdown of suspension days by cause type. */
+  suspensionsBreakdown?: DeviationAnalysisSuspensionsBreakdownItem[];
+  /** Auto-generated recommendations based on the project state. */
+  recommendations?: DeviationAnalysisRecommendationsItem[];
   activitiesAnalysis: ActivityDeviation[];
   noSchedule?: boolean;
+}
+
+export interface DeviationTimelinePoint {
+  date: string;
+  plannedProgress: number;
+  actualProgress: number;
+  deviation: number;
+}
+
+export interface DeviationTimeline {
+  projectId: number;
+  noSchedule?: boolean;
+  points: DeviationTimelinePoint[];
 }
 
 export type ListProjectsParams = {
@@ -684,3 +760,33 @@ export type ListBackups200 = {
 export type DeleteBackup200 = {
   success?: boolean;
 };
+
+export type GetProjectDeviationParams = {
+  /**
+   * Planned-progress curve model used for the calculation.
+   */
+  curve?: GetProjectDeviationCurve;
+};
+
+export type GetProjectDeviationCurve =
+  (typeof GetProjectDeviationCurve)[keyof typeof GetProjectDeviationCurve];
+
+export const GetProjectDeviationCurve = {
+  linear: "linear",
+  scurve: "scurve",
+} as const;
+
+export type GetProjectDeviationTimelineParams = {
+  /**
+   * Planned-progress curve model used for the historical points.
+   */
+  curve?: GetProjectDeviationTimelineCurve;
+};
+
+export type GetProjectDeviationTimelineCurve =
+  (typeof GetProjectDeviationTimelineCurve)[keyof typeof GetProjectDeviationTimelineCurve];
+
+export const GetProjectDeviationTimelineCurve = {
+  linear: "linear",
+  scurve: "scurve",
+} as const;
