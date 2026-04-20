@@ -136,13 +136,6 @@ export function ProjectQuickViewDialog({ projectId, widgets, enabled }: Props) {
           dir="rtl"
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
-          onFocusCapture={() => setPaused(true)}
-          onBlurCapture={(e) => {
-            // Only unpause if focus left the dialog entirely.
-            if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
-              setPaused(false);
-            }
-          }}
           className={cn(
             "fixed left-[50%] top-[50%] z-50 w-[calc(100vw-1.5rem)] max-w-xl",
             "translate-x-[-50%] translate-y-[-50%]",
@@ -167,13 +160,10 @@ export function ProjectQuickViewDialog({ projectId, widgets, enabled }: Props) {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <span
-                className={cn(
-                  "text-[11px] tabular-nums px-2 py-0.5 rounded-full bg-muted text-muted-foreground",
-                  paused && "opacity-50",
-                )}
+                className="text-[11px] tabular-nums px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
                 aria-live="polite"
               >
-                {paused ? "متوقف" : `${remainingSec} ث`}
+                {remainingSec} ث
               </span>
               <DialogPrimitive.Close asChild>
                 <Button
