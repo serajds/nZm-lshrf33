@@ -163,9 +163,6 @@ export function ProjectQuickViewDialog({ projectId, widgets, enabled }: Props) {
                 <DialogPrimitive.Title className="text-base font-semibold leading-tight">
                   نظرة سريعة
                 </DialogPrimitive.Title>
-                <DialogPrimitive.Description className="text-xs text-muted-foreground mt-0.5">
-                  آخر مستجدات أدوات الملخص
-                </DialogPrimitive.Description>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
