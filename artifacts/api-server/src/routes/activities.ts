@@ -47,7 +47,9 @@ async function syncProjectProgress(projectId: number) {
     totalWeight += w;
     weightedSum += (a.actualProgress ?? 0) * w;
   }
-  const computed = totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
+  const computed = totalWeight > 0
+    ? Math.round((weightedSum / totalWeight) * 100) / 100
+    : 0;
 
   await db
     .update(projectsTable)
