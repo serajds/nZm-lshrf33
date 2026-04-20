@@ -1080,6 +1080,12 @@ export const GetProjectDeviationResponse = zod.object({
     "significantly_delayed",
     "ahead",
   ]),
+  criticalPathStatus: zod
+    .enum(["healthy", "at_risk", "critical"])
+    .optional()
+    .describe(
+      "Health of the critical path based on the count of activities deviating > 10%.",
+    ),
   suspensionDays: zod.number().optional(),
   grossDelayDays: zod.number().optional(),
   netDelayDays: zod.number().optional(),

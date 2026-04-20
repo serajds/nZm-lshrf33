@@ -1957,6 +1957,10 @@ components:
         status:
           type: string
           enum: [on_track, slightly_delayed, significantly_delayed, ahead]
+        criticalPathStatus:
+          type: string
+          enum: [healthy, at_risk, critical]
+          description: Health of the critical path based on the count of activities deviating > 10%.
         suspensionDays:
           type: integer
         grossDelayDays:

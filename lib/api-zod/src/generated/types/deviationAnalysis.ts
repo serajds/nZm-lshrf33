@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ActivityDeviation } from "./activityDeviation";
+import type { DeviationAnalysisCriticalPathStatus } from "./deviationAnalysisCriticalPathStatus";
 import type { DeviationAnalysisRecommendationsItem } from "./deviationAnalysisRecommendationsItem";
 import type { DeviationAnalysisStatus } from "./deviationAnalysisStatus";
 import type { DeviationAnalysisSuspensionsBreakdownItem } from "./deviationAnalysisSuspensionsBreakdownItem";
@@ -19,6 +20,8 @@ export interface DeviationAnalysis {
   /** Weighted actual progress (overall project progress). */
   actualProgress?: number;
   status: DeviationAnalysisStatus;
+  /** Health of the critical path based on the count of activities deviating > 10%. */
+  criticalPathStatus?: DeviationAnalysisCriticalPathStatus;
   suspensionDays?: number;
   grossDelayDays?: number;
   netDelayDays?: number;
