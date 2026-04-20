@@ -281,16 +281,24 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
   }
 
   const today = new Date();
+  const hasSchedule = !!(project.startDate && project.expectedEndDate);
   const startDate = new Date(project.startDate ?? Date.now());
   const endDate = new Date(project.expectedEndDate ?? Date.now());
-  const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-  const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-  const daysRemaining = Math.max(0, totalDays - daysElapsed);
-  const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays);
-  const delayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
+  const totalDays = hasSchedule
+    ? Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
+  const daysElapsed = hasSchedule
+    ? Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
+  const daysRemaining = hasSchedule ? Math.max(0, totalDays - daysElapsed) : 0;
+  const plannedProgress = hasSchedule ? calcPlannedProgressForProject(activities, daysElapsed, totalDays) : 0;
+  const actualProgressForSummary = activities.length > 0
+    ? Math.round(calcActualProgressForProject(activities) * 100) / 100
+    : project.overallProgress;
+  const delayDays = hasSchedule ? calcDelayDays(plannedProgress, actualProgressForSummary, totalDays) : 0;
   const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
   const netDelayDays = Math.max(0, delayDays - suspensionDays);
-  const overrunDays = calcOverrunDays(today, project.expectedEndDate, project.overallProgress);
+  const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualProgressForSummary) : 0;
 
   res.json({
     projectId,
@@ -379,7 +387,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
     : project.overallProgress;
 
   const progressDeviation = actualProgress - plannedProgress;
-  const timeDeviation = progressDeviation < -10 ? (plannedProgress - actualProgress) / 100 * totalDays : 0;
+  const timeDeviation = Math.max(0, plannedProgress - actualProgress) / 100 * totalDays;
   const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
   const grossDelayDays = calcDelayDays(plannedProgress, actualProgress, totalDays);
   const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
