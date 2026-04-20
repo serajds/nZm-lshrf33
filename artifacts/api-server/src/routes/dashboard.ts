@@ -441,9 +441,14 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
     };
   });
 
+  const criticalActs = activitiesAnalysis.filter(a => a.deviation < -10);
+  const criticalPathStatus: "healthy" | "at_risk" | "critical" =
+    criticalActs.length === 0 ? "healthy"
+    : criticalActs.length <= 2 ? "at_risk"
+    : "critical";
+
   // Auto recommendations
   const recommendations: { severity: "info" | "warning" | "critical"; title: string; description: string }[] = [];
-  const criticalActs = activitiesAnalysis.filter(a => a.deviation < -10);
   if (overallStatus === "significantly_delayed") {
     recommendations.push({
       severity: "critical",
@@ -511,6 +516,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
     suspensionsBreakdown,
     recommendations,
     status: overallStatus,
+    criticalPathStatus,
     activitiesAnalysis,
   });
 });

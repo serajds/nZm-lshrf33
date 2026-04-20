@@ -27,6 +27,7 @@ export * from "./dashboardSummaryDelayedActivitiesListItem";
 export * from "./dashboardSummaryRecentReportsItem";
 export * from "./deleteBackup200";
 export * from "./deviationAnalysis";
+export * from "./deviationAnalysisCriticalPathStatus";
 export * from "./deviationAnalysisRecommendationsItem";
 export * from "./deviationAnalysisRecommendationsItemSeverity";
 export * from "./deviationAnalysisStatus";

@@ -572,6 +572,18 @@ export const DeviationAnalysisStatus = {
   ahead: "ahead",
 } as const;
 
+/**
+ * Health of the critical path based on the count of activities deviating > 10%.
+ */
+export type DeviationAnalysisCriticalPathStatus =
+  (typeof DeviationAnalysisCriticalPathStatus)[keyof typeof DeviationAnalysisCriticalPathStatus];
+
+export const DeviationAnalysisCriticalPathStatus = {
+  healthy: "healthy",
+  at_risk: "at_risk",
+  critical: "critical",
+} as const;
+
 export type DeviationAnalysisSuspensionsBreakdownItemType =
   (typeof DeviationAnalysisSuspensionsBreakdownItemType)[keyof typeof DeviationAnalysisSuspensionsBreakdownItemType];
 
@@ -633,6 +645,8 @@ export interface DeviationAnalysis {
   /** Weighted actual progress (overall project progress). */
   actualProgress?: number;
   status: DeviationAnalysisStatus;
+  /** Health of the critical path based on the count of activities deviating > 10%. */
+  criticalPathStatus?: DeviationAnalysisCriticalPathStatus;
   suspensionDays?: number;
   grossDelayDays?: number;
   netDelayDays?: number;
