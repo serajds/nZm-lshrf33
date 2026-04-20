@@ -400,42 +400,6 @@ export default function ProjectDeviation() {
             </CardContent>
           </Card>
 
-          {/* RECOMMENDATIONS */}
-          {recommendations.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Lightbulb className="h-5 w-5 text-amber-500" />
-                  توصيات تلقائية
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {recommendations.map((rec, idx) => {
-                    const sevColor = rec.severity === 'critical'
-                      ? 'border-red-200 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20'
-                      : rec.severity === 'warning'
-                      ? 'border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20'
-                      : 'border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/20';
-                    const SevIcon = rec.severity === 'critical' ? AlertTriangle : rec.severity === 'warning' ? TrendingDown : Info;
-                    const iconColor = rec.severity === 'critical' ? 'text-red-600' : rec.severity === 'warning' ? 'text-amber-600' : 'text-blue-600';
-                    return (
-                      <div key={idx} className={`p-3 rounded-lg border ${sevColor}`}>
-                        <div className="flex items-start gap-2">
-                          <SevIcon className={`h-4 w-4 shrink-0 mt-0.5 ${iconColor}`} />
-                          <div className="min-w-0">
-                            <p className="font-semibold text-sm">{rec.title}</p>
-                            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{rec.description}</p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* TIMELINE CHART */}
           {timelinePoints.length > 1 && (
             <Card>
