@@ -669,10 +669,27 @@ export interface DeviationTimelinePoint {
   deviation: number;
 }
 
+export type DeviationTimelineSuspensionsBreakdownItemType =
+  (typeof DeviationTimelineSuspensionsBreakdownItemType)[keyof typeof DeviationTimelineSuspensionsBreakdownItemType];
+
+export const DeviationTimelineSuspensionsBreakdownItemType = {
+  official_holiday: "official_holiday",
+  force_majeure: "force_majeure",
+  contractor_delay: "contractor_delay",
+} as const;
+
+export type DeviationTimelineSuspensionsBreakdownItem = {
+  type: DeviationTimelineSuspensionsBreakdownItemType;
+  days: number;
+  count: number;
+};
+
 export interface DeviationTimeline {
   projectId: number;
   noSchedule?: boolean;
   points: DeviationTimelinePoint[];
+  /** Breakdown of suspension days by cause type for this project. */
+  suspensionsBreakdown: DeviationTimelineSuspensionsBreakdownItem[];
 }
 
 export type ListProjectsParams = {

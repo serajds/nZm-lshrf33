@@ -6,9 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DeviationTimelinePoint } from "./deviationTimelinePoint";
+import type { DeviationTimelineSuspensionsBreakdownItem } from "./deviationTimelineSuspensionsBreakdownItem";
 
 export interface DeviationTimeline {
   projectId: number;
   noSchedule?: boolean;
   points: DeviationTimelinePoint[];
+  /** Breakdown of suspension days by cause type for this project. */
+  suspensionsBreakdown: DeviationTimelineSuspensionsBreakdownItem[];
 }

@@ -17,6 +17,29 @@ import {
 
 const router: IRouter = Router();
 
+type ActivitySnapshotItem = {
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
+  actualProgress: number;
+  weight: number;
+};
+
+function parseActivitiesSnapshot(raw: unknown): ActivitySnapshotItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ActivitySnapshotItem[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    out.push({
+      plannedStartDate: typeof o.plannedStartDate === "string" ? o.plannedStartDate : null,
+      plannedEndDate: typeof o.plannedEndDate === "string" ? o.plannedEndDate : null,
+      actualProgress: typeof o.actualProgress === "number" ? o.actualProgress : 0,
+      weight: typeof o.weight === "number" && o.weight > 0 ? o.weight : 1,
+    });
+  }
+  return out;
+}
+
 router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Promise<void> => {
   const userRole = _req.user?.role;
   const userId = _req.user?.userId;
@@ -504,8 +527,25 @@ router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("proj
     return;
   }
 
+  const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId));
+  const suspBreakdownMap: Record<string, { days: number; count: number }> = {
+    official_holiday: { days: 0, count: 0 },
+    force_majeure: { days: 0, count: 0 },
+    contractor_delay: { days: 0, count: 0 },
+  };
+  for (const s of suspensions) {
+    const b = suspBreakdownMap[s.type];
+    if (b) {
+      b.days += s.calendarDays;
+      b.count += 1;
+    }
+  }
+  const suspensionsBreakdown = Object.entries(suspBreakdownMap)
+    .map(([type, v]) => ({ type, days: v.days, count: v.count }))
+    .filter(b => b.count > 0);
+
   if (project.noSchedule === true) {
-    res.json({ projectId, noSchedule: true, points: [] });
+    res.json({ projectId, noSchedule: true, points: [], suspensionsBreakdown });
     return;
   }
 
@@ -528,15 +568,8 @@ router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("proj
   const points = reports.map(r => {
     const reportDate = new Date(r.reportDate);
     const daysElapsed = Math.max(0, Math.ceil((reportDate.getTime() - startDate.getTime()) / 86400000));
-    const snapshot = Array.isArray(r.activitiesSnapshot) ? (r.activitiesSnapshot as any[]) : null;
-    const activitiesForCalc = snapshot && snapshot.length > 0
-      ? snapshot.map(a => ({
-          plannedStartDate: a.plannedStartDate ?? null,
-          plannedEndDate: a.plannedEndDate ?? null,
-          actualProgress: a.actualProgress ?? 0,
-          weight: a.weight ?? 1,
-        }))
-      : activities;
+    const snapshot = parseActivitiesSnapshot(r.activitiesSnapshot);
+    const activitiesForCalc = snapshot.length > 0 ? snapshot : activities;
     const planned = Math.round(calcPlannedProgressForProject(activitiesForCalc, daysElapsed, totalDays, reportDate, curve) * 100) / 100;
     const actual = Math.round((r.progressPercentage ?? 0) * 100) / 100;
     return {
