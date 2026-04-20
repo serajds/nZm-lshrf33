@@ -25,6 +25,23 @@ import {
 
 type CurveType = "linear" | "scurve";
 
+type ChartRow = {
+  name: string;
+  fullName: string;
+  planned: number;
+  actual: number;
+  deviation: number;
+  weightedImpact: number;
+};
+
+type SuspensionRow = {
+  name: string;
+  type: string;
+  value: number;
+  count: number;
+  fill: string;
+};
+
 const SUSPENSION_LABELS: Record<string, string> = {
   official_holiday: "إجازات رسمية",
   force_majeure: "قوة قاهرة",
@@ -52,6 +69,8 @@ export default function ProjectDeviation() {
   usePageTitle("الانحرافات");
 
   const [curve, setCurve] = useState<CurveType>("linear");
+  const [sortKey, setSortKey] = useState<"name" | "weight" | "planned" | "actual" | "deviation" | "weightedImpact" | "overrun">("deviation");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: deviationData, isLoading } = useGetProjectDeviation(
@@ -119,6 +138,32 @@ export default function ProjectDeviation() {
     XLSX.writeFile(wb, `تحليل_الانحراف_${project?.name || "مشروع"}.xlsx`);
   };
 
+  const exportCsv = () => {
+    if (!deviationData) return;
+    const header = ["البند", "الوزن", "المخطط %", "الفعلي %", "الانحراف %", "الأثر الموزون %", "تجاوز المدة (يوم)"];
+    const rows = (deviationData.activitiesAnalysis ?? []).map(a => [
+      a.activityName,
+      String(a.weight ?? 1),
+      String(a.plannedProgress),
+      String(a.actualProgress),
+      String(a.deviation),
+      String(a.weightedImpact ?? 0),
+      a.overrunDays != null ? String(a.overrunDays) : "",
+    ]);
+    const escape = (v: string) => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const csv = [header, ...rows].map(r => r.map(escape).join(",")).join("\n");
+    // BOM for Excel UTF-8 Arabic compatibility
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `تحليل_الانحراف_${project?.name || "مشروع"}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const chartData = useMemo(() => (deviationData?.activitiesAnalysis ?? [])
     .slice()
     .sort((a, b) => a.deviation - b.deviation)
@@ -139,7 +184,34 @@ export default function ProjectDeviation() {
     deviation: p.deviation,
   })), [timelineData]);
 
-  const suspensionsData = useMemo(() => (deviationData?.suspensionsBreakdown ?? []).map(b => ({
+  const sortedActivities = useMemo<ActivityDeviation[]>(() => {
+    const list = (deviationData?.activitiesAnalysis ?? []).slice() as ActivityDeviation[];
+    const dir = sortDir === "asc" ? 1 : -1;
+    list.sort((a, b) => {
+      let av: number | string;
+      let bv: number | string;
+      switch (sortKey) {
+        case "name": av = a.activityName; bv = b.activityName; break;
+        case "weight": av = a.weight ?? 1; bv = b.weight ?? 1; break;
+        case "planned": av = a.plannedProgress; bv = b.plannedProgress; break;
+        case "actual": av = a.actualProgress; bv = b.actualProgress; break;
+        case "weightedImpact": av = a.weightedImpact ?? 0; bv = b.weightedImpact ?? 0; break;
+        case "overrun": av = a.overrunDays ?? -1; bv = b.overrunDays ?? -1; break;
+        default: av = a.deviation; bv = b.deviation;
+      }
+      if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv, "ar") * dir;
+      return ((av as number) - (bv as number)) * dir;
+    });
+    return list;
+  }, [deviationData, sortKey, sortDir]);
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+  const sortIndicator = (key: typeof sortKey) => sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "";
+
+  const suspensionsData = useMemo<SuspensionRow[]>(() => (deviationData?.suspensionsBreakdown ?? []).map(b => ({
     name: SUSPENSION_LABELS[b.type] || b.type,
     type: b.type,
     value: b.days,
@@ -244,6 +316,10 @@ export default function ProjectDeviation() {
           <Button variant="outline" size="sm" onClick={exportExcel} disabled={!deviationData}>
             <Download className="h-4 w-4 ml-1" />
             تصدير Excel
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportCsv} disabled={!deviationData}>
+            <Download className="h-4 w-4 ml-1" />
+            تصدير CSV
           </Button>
         </div>
       </div>
@@ -428,7 +504,7 @@ export default function ProjectDeviation() {
                           contentStyle={{ textAlign: 'right', direction: 'rtl', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', fontSize: '12px' }}
                           formatter={(v: number, name: string) => [`${v}%`, name === 'planned' ? 'المخطط' : 'الفعلي']}
                           labelFormatter={(label: string) => {
-                            const item = chartData.find((c: any) => c.name === label);
+                            const item = chartData.find((c) => c.name === label);
                             return item?.fullName || label;
                           }}
                         />
@@ -466,7 +542,7 @@ export default function ProjectDeviation() {
                           </Pie>
                           <Tooltip
                             contentStyle={{ textAlign: 'right', direction: 'rtl', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', fontSize: '12px' }}
-                            formatter={(v: number, _n: string, p: any) => [`${v} يوم (${p.payload.count} فترة)`, p.payload.name]}
+                            formatter={(v: number, _n: string, p: { payload: SuspensionRow }) => [`${v} يوم (${p.payload.count} فترة)`, p.payload.name]}
                           />
                           <Legend wrapperStyle={{ fontSize: '11px' }} />
                         </PieChart>
@@ -510,13 +586,13 @@ export default function ProjectDeviation() {
                         contentStyle={{ textAlign: 'right', direction: 'rtl', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', fontSize: '12px' }}
                         formatter={(v: number, name: string) => [`${v}%`, name === 'deviation' ? 'الانحراف' : 'الأثر الموزون']}
                         labelFormatter={(label: string) => {
-                          const item = chartData.find((c: any) => c.name === label);
+                          const item = chartData.find((c) => c.name === label);
                           return item?.fullName || label;
                         }}
                       />
                       <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                       <Bar dataKey="deviation" radius={[4, 4, 0, 0]} name="deviation">
-                        {chartData.map((entry: any, index: number) => (
+                        {chartData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.deviation < -10 ? 'hsl(0, 84%, 60%)' : entry.deviation < 0 ? 'hsl(38, 92%, 50%)' : 'hsl(160, 84%, 39%)'} />
                         ))}
                       </Bar>
@@ -632,18 +708,18 @@ export default function ProjectDeviation() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-muted-foreground">
-                        <th className="py-3 px-3 text-right font-medium">البند</th>
-                        <th className="py-3 px-3 text-center font-medium">الوزن</th>
-                        <th className="py-3 px-3 text-center font-medium">المخطط</th>
-                        <th className="py-3 px-3 text-center font-medium">الفعلي</th>
-                        <th className="py-3 px-3 text-center font-medium">الانحراف</th>
-                        <th className="py-3 px-3 text-center font-medium">الأثر الموزون</th>
-                        <th className="py-3 px-3 text-center font-medium">تجاوز المدة</th>
+                        <th className="py-3 px-3 text-right font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("name")}>البند{sortIndicator("name")}</th>
+                        <th className="py-3 px-3 text-center font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("weight")}>الوزن{sortIndicator("weight")}</th>
+                        <th className="py-3 px-3 text-center font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("planned")}>المخطط{sortIndicator("planned")}</th>
+                        <th className="py-3 px-3 text-center font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("actual")}>الفعلي{sortIndicator("actual")}</th>
+                        <th className="py-3 px-3 text-center font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("deviation")}>الانحراف{sortIndicator("deviation")}</th>
+                        <th className="py-3 px-3 text-center font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("weightedImpact")}>الأثر الموزون{sortIndicator("weightedImpact")}</th>
+                        <th className="py-3 px-3 text-center font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("overrun")}>تجاوز المدة{sortIndicator("overrun")}</th>
                         <th className="py-3 px-3 text-center font-medium w-40">مؤشر الأداء</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {(deviationData.activitiesAnalysis as ActivityDeviation[]).map((a, idx) => {
+                      {sortedActivities.map((a, idx) => {
                         const weight = a.weight ?? 1;
                         const wImpact = a.weightedImpact ?? 0;
                         const devColor = a.deviation < -10 ? 'text-red-600' : a.deviation < 0 ? 'text-amber-600' : a.deviation > 0 ? 'text-emerald-600' : 'text-muted-foreground';
