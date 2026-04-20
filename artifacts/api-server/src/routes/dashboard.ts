@@ -324,7 +324,9 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
     return;
   }
 
-  const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+  const activities = await db.select().from(activitiesTable)
+    .where(eq(activitiesTable.projectId, projectId))
+    .orderBy(asc(activitiesTable.sortOrder), asc(activitiesTable.id));
   const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId));
 
   const isNoSchedule = project.noSchedule === true;
