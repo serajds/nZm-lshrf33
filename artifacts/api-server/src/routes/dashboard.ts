@@ -5,6 +5,7 @@ import { eq, count, avg, sql, desc, asc, inArray } from "drizzle-orm";
 import { requireStaffOrContractor, requireProjectAccess } from "../middlewares/auth";
 import {
   calcPlannedProgressForProject,
+  calcActualProgressForProject,
   calcDelayDays,
   calcActivityPlannedProgress,
   calcOverrunDays,
@@ -348,7 +349,9 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, curve);
-  const actualProgress = project.overallProgress;
+  const actualProgress = activities.length > 0
+    ? Math.round(calcActualProgressForProject(activities) * 100) / 100
+    : project.overallProgress;
 
   const progressDeviation = actualProgress - plannedProgress;
   const timeDeviation = progressDeviation < -10 ? (plannedProgress - actualProgress) / 100 * totalDays : 0;
@@ -548,7 +551,7 @@ router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("proj
   const today = new Date();
   if (today >= startDate) {
     const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / 86400000));
-    const planned = Math.round(calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, "linear") * 100) / 100;
+    const planned = Math.round(calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, curve) * 100) / 100;
     const actual = Math.round(project.overallProgress * 100) / 100;
     const isoToday = today.toISOString().slice(0, 10);
     if (points.length === 0 || points[points.length - 1].date !== isoToday) {

@@ -16,6 +16,7 @@ import {
   ArrowRight, AlertTriangle, TrendingDown, TrendingUp, CheckCircle2, Clock,
   CalendarOff, BarChart3, Activity, Gauge, Lightbulb, CalendarClock, Target,
   Download, LineChart as LineChartIcon, Info,
+  type LucideIcon,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
@@ -96,11 +97,11 @@ export default function ProjectDeviation() {
     const actsHeader = ["البند", "الوزن", "المخطط %", "الفعلي %", "الانحراف %", "الأثر الموزون %", "تجاوز المدة (يوم)"];
     const actsRows = (deviationData.activitiesAnalysis ?? []).map(a => [
       a.activityName,
-      (a as any).weight ?? 1,
+      a.weight ?? 1,
       a.plannedProgress,
       a.actualProgress,
       a.deviation,
-      (a as any).weightedImpact ?? 0,
+      a.weightedImpact ?? 0,
       a.overrunDays ?? "—",
     ]);
     const wsActs = XLSX.utils.aoa_to_sheet([actsHeader, ...actsRows]);
@@ -127,7 +128,7 @@ export default function ProjectDeviation() {
       planned: a.plannedProgress,
       actual: a.actualProgress,
       deviation: a.deviation,
-      weightedImpact: (a as any).weightedImpact ?? 0,
+      weightedImpact: a.weightedImpact ?? 0,
     })), [deviationData]);
 
   const timelinePoints = useMemo(() => (timelineData?.points ?? []).map(p => ({
@@ -643,8 +644,8 @@ export default function ProjectDeviation() {
                     </thead>
                     <tbody>
                       {(deviationData.activitiesAnalysis as ActivityDeviation[]).map((a, idx) => {
-                        const weight = (a as any).weight ?? 1;
-                        const wImpact = (a as any).weightedImpact ?? 0;
+                        const weight = a.weight ?? 1;
+                        const wImpact = a.weightedImpact ?? 0;
                         const devColor = a.deviation < -10 ? 'text-red-600' : a.deviation < 0 ? 'text-amber-600' : a.deviation > 0 ? 'text-emerald-600' : 'text-muted-foreground';
                         const impactColor = wImpact < -1 ? 'text-red-600' : wImpact < 0 ? 'text-amber-600' : wImpact > 0 ? 'text-emerald-600' : 'text-muted-foreground';
                         const barColor = a.deviation < -10 ? 'bg-red-500' : a.deviation < 0 ? 'bg-amber-500' : 'bg-emerald-500';
@@ -701,7 +702,7 @@ export default function ProjectDeviation() {
 function KpiCard({
   icon: Icon, label, value, unit, hint, valueClass, accent,
 }: {
-  icon: any; label: string; value: string; unit?: string; hint?: string; valueClass?: string; accent: string;
+  icon: LucideIcon; label: string; value: string; unit?: string; hint?: string; valueClass?: string; accent: string;
 }) {
   return (
     <Card className="relative overflow-hidden">
