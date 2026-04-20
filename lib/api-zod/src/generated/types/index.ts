@@ -34,6 +34,8 @@ export * from "./deviationAnalysisSuspensionsBreakdownItem";
 export * from "./deviationAnalysisSuspensionsBreakdownItemType";
 export * from "./deviationTimeline";
 export * from "./deviationTimelinePoint";
+export * from "./deviationTimelineSuspensionsBreakdownItem";
+export * from "./deviationTimelineSuspensionsBreakdownItemType";
 export * from "./errorResponse";
 export * from "./generateOwnerLinkBody";
 export * from "./getOwnerProjectByToken200";

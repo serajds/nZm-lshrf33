@@ -2090,6 +2090,24 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DeviationTimelinePoint"
+        suspensionsBreakdown:
+          type: array
+          description: Breakdown of suspension days by cause type for this project.
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [official_holiday, force_majeure, contractor_delay]
+              days:
+                type: integer
+              count:
+                type: integer
+            required:
+              - type
+              - days
+              - count
       required:
         - projectId
         - points
+        - suspensionsBreakdown

@@ -1195,6 +1195,19 @@ export const GetProjectDeviationTimelineResponse = zod.object({
       deviation: zod.number(),
     }),
   ),
+  suspensionsBreakdown: zod
+    .array(
+      zod.object({
+        type: zod.enum([
+          "official_holiday",
+          "force_majeure",
+          "contractor_delay",
+        ]),
+        days: zod.number(),
+        count: zod.number(),
+      }),
+    )
+    .describe("Breakdown of suspension days by cause type for this project."),
 });
 
 /**
