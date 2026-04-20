@@ -111,7 +111,11 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     actualEndDate: actualEndDate ?? null,
     plannedProgress: Math.round(autoPlannedProgress),
     actualProgress: actualProgress ?? 0,
-    weight: weight !== undefined && weight !== null && Number(weight) > 0 ? Number(weight) : 1,
+    weight: (() => {
+      const w = Number(weight);
+      if (!Number.isFinite(w) || w <= 0) return 1;
+      return Math.min(100, w);
+    })(),
     status: status ?? "not_started",
     groupId: groupId ?? null,
     sortOrder: sortOrder ?? 0,
@@ -168,7 +172,7 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   if (body.actualProgress !== undefined) updateData.actualProgress = body.actualProgress;
   if (body.weight !== undefined) {
     const w = Number(body.weight);
-    if (Number.isFinite(w) && w >= 0) updateData.weight = w > 0 ? w : 1;
+    if (Number.isFinite(w) && w >= 0) updateData.weight = Math.min(100, w > 0 ? w : 1);
   }
   if (body.status !== undefined) updateData.status = body.status;
   if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder;
