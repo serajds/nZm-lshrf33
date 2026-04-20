@@ -581,7 +581,13 @@ router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("proj
     const snapshot = parseActivitiesSnapshot(r.activitiesSnapshot);
     const activitiesForCalc = snapshot.length > 0 ? snapshot : activities;
     const planned = Math.round(calcPlannedProgressForProject(activitiesForCalc, daysElapsed, totalDays, reportDate, curve) * 100) / 100;
-    const actual = Math.round((r.progressPercentage ?? 0) * 100) / 100;
+    // Prefer the weighted actual computed from the per-report activities snapshot
+    // so the historical "actual" line matches the same methodology used on the
+    // deviation page (and won't drift from a manually-entered progressPercentage).
+    const actualRaw = snapshot.length > 0
+      ? calcActualProgressForProject(snapshot)
+      : (r.progressPercentage ?? 0);
+    const actual = Math.round(actualRaw * 100) / 100;
     return {
       date: r.reportDate,
       plannedProgress: planned,
@@ -590,12 +596,23 @@ router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("proj
     };
   });
 
-  // Always append a "today" data point so the chart shows the current state
+  // Prepend a baseline (project start) point so the chart begins at 0/0 instead
+  // of jumping in mid-project at the date of the first report.
+  const isoStart = startDate.toISOString().slice(0, 10);
+  if (points.length === 0 || points[0].date !== isoStart) {
+    points.unshift({ date: isoStart, plannedProgress: 0, actualProgress: 0, deviation: 0 });
+  }
+
+  // Always append a "today" data point so the chart shows the current state.
+  // Use the weighted actual from current activities (consistent with deviation page).
   const today = new Date();
   if (today >= startDate) {
     const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / 86400000));
     const planned = Math.round(calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, curve) * 100) / 100;
-    const actual = Math.round(project.overallProgress * 100) / 100;
+    const actualRaw = activities.length > 0
+      ? calcActualProgressForProject(activities)
+      : project.overallProgress;
+    const actual = Math.round(actualRaw * 100) / 100;
     const isoToday = today.toISOString().slice(0, 10);
     if (points.length === 0 || points[points.length - 1].date !== isoToday) {
       points.push({
