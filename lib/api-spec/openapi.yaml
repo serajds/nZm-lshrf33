@@ -1223,7 +1223,7 @@ components:
           type: integer
         role:
           type: string
-          enum: [project_manager, engineer, contractor]
+          enum: [project_manager, engineer, contractor, viewer]
         createdAt:
           type: string
           format: date-time
@@ -1258,7 +1258,7 @@ components:
           type: integer
         role:
           type: string
-          enum: [project_manager, engineer, contractor]
+          enum: [project_manager, engineer, contractor, viewer]
         assignedGroupIds:
           type: array
           items:
@@ -1272,7 +1272,7 @@ components:
       properties:
         role:
           type: string
-          enum: [project_manager, engineer, contractor]
+          enum: [project_manager, engineer, contractor, viewer]
         assignedGroupIds:
           type: array
           items:

@@ -116,6 +116,7 @@ export const ProjectMemberRole = {
   project_manager: "project_manager",
   engineer: "engineer",
   contractor: "contractor",
+  viewer: "viewer",
 } as const;
 
 export interface ProjectMember {
@@ -138,6 +139,7 @@ export const AddProjectMemberBodyRole = {
   project_manager: "project_manager",
   engineer: "engineer",
   contractor: "contractor",
+  viewer: "viewer",
 } as const;
 
 export interface AddProjectMemberBody {
@@ -153,6 +155,7 @@ export const UpdateProjectMemberBodyRole = {
   project_manager: "project_manager",
   engineer: "engineer",
   contractor: "contractor",
+  viewer: "viewer",
 } as const;
 
 export interface UpdateProjectMemberBody {
