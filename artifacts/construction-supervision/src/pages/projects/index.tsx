@@ -635,7 +635,7 @@ export default function Projects() {
                 <div className="space-y-1.5 mt-auto pt-4">
                   <div className="flex justify-between text-sm font-medium">
                     <span>نسبة الإنجاز</span>
-                    <span>%{project.overallProgress}</span>
+                    <span>%{(project.overallProgress ?? 0).toFixed(1)}</span>
                   </div>
                   <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
                     <div 

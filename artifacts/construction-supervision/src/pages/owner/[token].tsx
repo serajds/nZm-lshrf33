@@ -436,28 +436,12 @@ export default function OwnerPortal() {
     );
     const snapshotActivities = (report as any).activitiesSnapshot as any[] | null;
     const sourceActivities = snapshotActivities ?? (activities as Activity[]);
-    const activityList: ActivityForReport[] = sourceActivities.map((a: any) => {
-      let planned = a.plannedProgress ?? 0;
-      if (a.plannedStartDate && a.plannedEndDate) {
-        const start = new Date(a.plannedStartDate).getTime();
-        const end = new Date(a.plannedEndDate).getTime();
-        const now = new Date().getTime();
-        const duration = end - start;
-        if (duration <= 0) { planned = now >= end ? 100 : 0; }
-        else {
-          const elapsed = now - start;
-          if (elapsed <= 0) planned = 0;
-          else if (elapsed >= duration) planned = 100;
-          else planned = Math.round((elapsed / duration) * 100);
-        }
-      }
-      return {
-        name: a.name,
-        plannedProgress: planned,
-        actualProgress: a.actualProgress ?? 0,
-        status: a.status ?? "not_started",
-      };
-    });
+    const activityList: ActivityForReport[] = sourceActivities.map((a: any) => ({
+      name: a.name,
+      plannedProgress: a.plannedProgress ?? 0,
+      actualProgress: a.actualProgress ?? 0,
+      status: a.status ?? "not_started",
+    }));
     previewReport({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -581,12 +565,12 @@ export default function OwnerPortal() {
                 <Gauge className="h-4 w-4" />
                 <span className="text-xs font-medium">الإنجاز الفعلي</span>
               </div>
-              <div className="text-3xl font-black text-emerald-600">{sm.overallProgress}%</div>
+              <div className="text-3xl font-black text-emerald-600">{(sm.overallProgress ?? 0).toFixed(1)}%</div>
               <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden" dir="ltr">
                 <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${sm.overallProgress}%` }} />
               </div>
               <div className="flex justify-between mt-1.5 text-xs text-muted-foreground">
-                <span>المخطط: {sm.plannedProgress?.toFixed(0)}%</span>
+                <span>المخطط: {(sm.plannedProgress ?? 0).toFixed(1)}%</span>
                 <span className={progressDiff >= 0 ? 'text-emerald-600' : 'text-red-500'}>
                   {progressDiff > 0 ? '+' : ''}{progressDiff.toFixed(1)}%
                 </span>
@@ -756,7 +740,7 @@ export default function OwnerPortal() {
                 <div>
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-muted-foreground">الإنجاز الفعلي</span>
-                    <span className="font-medium">{sm.overallProgress}%</span>
+                    <span className="font-medium">{(sm.overallProgress ?? 0).toFixed(1)}%</span>
                   </div>
                   <div className="h-2.5 rounded-full bg-muted overflow-hidden" dir="ltr">
                     <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${sm.overallProgress}%` }} />
@@ -927,11 +911,11 @@ export default function OwnerPortal() {
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="text-center p-4 rounded-lg bg-blue-50 border border-blue-100">
-                    <div className="text-3xl font-black text-blue-600">{sm.plannedProgress?.toFixed(0) ?? 0}%</div>
+                    <div className="text-3xl font-black text-blue-600">{(sm.plannedProgress ?? 0).toFixed(1)}%</div>
                     <div className="text-sm text-blue-600/80 mt-1">الإنجاز المخطط</div>
                   </div>
                   <div className="text-center p-4 rounded-lg bg-emerald-50 border border-emerald-100">
-                    <div className="text-3xl font-black text-emerald-600">{sm.overallProgress ?? 0}%</div>
+                    <div className="text-3xl font-black text-emerald-600">{(sm.overallProgress ?? 0).toFixed(1)}%</div>
                     <div className="text-sm text-emerald-600/80 mt-1">الإنجاز الفعلي</div>
                   </div>
                   <div className={`text-center p-4 rounded-lg ${progressDiff >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
@@ -1014,18 +998,10 @@ export default function OwnerPortal() {
 
                       {(() => {
                         const rawActivities = (report.activitiesSnapshot as any[] | null) ?? activities;
-                        const reportActivities = rawActivities.map((act: any) => {
-                          let planned = act.plannedProgress ?? 0;
-                          if (act.plannedStartDate && act.plannedEndDate) {
-                            const s = new Date(act.plannedStartDate).getTime();
-                            const e = new Date(act.plannedEndDate).getTime();
-                            const n = new Date().getTime();
-                            const dur = e - s;
-                            if (dur <= 0) { planned = n >= e ? 100 : 0; }
-                            else { const el = n - s; planned = el <= 0 ? 0 : el >= dur ? 100 : Math.round((el / dur) * 100); }
-                          }
-                          return { ...act, plannedProgress: planned };
-                        });
+                        const reportActivities = rawActivities.map((act: any) => ({
+                          ...act,
+                          plannedProgress: act.plannedProgress ?? 0,
+                        }));
                         if (reportActivities.length === 0) return null;
                         return (
                           <div className="pt-3 border-t">

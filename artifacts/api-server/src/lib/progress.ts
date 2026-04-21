@@ -8,6 +8,16 @@ interface ActivityLike {
 export type PlannedCurve = "linear" | "scurve";
 
 /**
+ * Standard rounding for ALL displayed percentages across the system.
+ * Single source of truth: 1 decimal place. Use everywhere a percentage
+ * leaves the API or is shown to the user to keep numbers consistent.
+ */
+export function roundPercent(n: number | null | undefined): number {
+  if (n == null || !Number.isFinite(n)) return 0;
+  return Math.round(n * 10) / 10;
+}
+
+/**
  * S-curve approximation using a logistic function.
  * Maps elapsed fraction f ∈ [0,1] to progress ∈ [0,100] with slow start, fast middle, slow end.
  * f=0 → 0, f=0.5 → 50, f=1 → 100.

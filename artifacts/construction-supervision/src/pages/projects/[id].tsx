@@ -379,11 +379,11 @@ export default function ProjectDetails() {
             <CardContent>
               <div className="flex items-end justify-between mb-3">
                 <div className="text-4xl font-bold tabular-nums">
-                  {summary?.overallProgress ?? 0}%
+                  {(summary?.overallProgress ?? 0).toFixed(1)}%
                 </div>
                 {!summary?.noSchedule && (
                   <div className="text-sm text-muted-foreground">
-                    المخطط: {summary?.plannedProgress ?? 0}%
+                    المخطط: {(summary?.plannedProgress ?? 0).toFixed(1)}%
                   </div>
                 )}
               </div>

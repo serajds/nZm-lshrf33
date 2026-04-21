@@ -106,9 +106,13 @@ export default function ProjectReports() {
   const calcAutoProgress = () => {
     const acts = (activities ?? []) as Activity[];
     if (acts.length === 0) return null;
-    const totalWeight = acts.reduce((s, a) => s + ((a as any).progressWeight ?? 1), 0);
+    const weightOf = (a: any) => {
+      const w = Number(a?.weight);
+      return Number.isFinite(w) && w > 0 ? w : 1;
+    };
+    const totalWeight = acts.reduce((s, a) => s + weightOf(a), 0);
     if (totalWeight === 0) return null;
-    const weighted = acts.reduce((s, a) => s + (a.actualProgress ?? 0) * ((a as any).progressWeight ?? 1), 0);
+    const weighted = acts.reduce((s, a) => s + (a.actualProgress ?? 0) * weightOf(a), 0);
     return Math.round((weighted / totalWeight) * 10) / 10;
   };
 
@@ -181,28 +185,12 @@ export default function ProjectReports() {
     );
     const snapshotActivities = (report as any).activitiesSnapshot as any[] | null;
     const sourceActivities = snapshotActivities ?? ((activities ?? []) as Activity[]);
-    const activityList: ActivityForReport[] = sourceActivities.map((a: any) => {
-      let planned = a.plannedProgress ?? 0;
-      if (a.plannedStartDate && a.plannedEndDate) {
-        const start = new Date(a.plannedStartDate).getTime();
-        const end = new Date(a.plannedEndDate).getTime();
-        const now = new Date().getTime();
-        const duration = end - start;
-        if (duration <= 0) { planned = now >= end ? 100 : 0; }
-        else {
-          const elapsed = now - start;
-          if (elapsed <= 0) planned = 0;
-          else if (elapsed >= duration) planned = 100;
-          else planned = Math.round((elapsed / duration) * 100);
-        }
-      }
-      return {
-        name: a.name,
-        plannedProgress: planned,
-        actualProgress: a.actualProgress ?? 0,
-        status: a.status ?? "not_started",
-      };
-    });
+    const activityList: ActivityForReport[] = sourceActivities.map((a: any) => ({
+      name: a.name,
+      plannedProgress: a.plannedProgress ?? 0,
+      actualProgress: a.actualProgress ?? 0,
+      status: a.status ?? "not_started",
+    }));
     const apiBase = API_BASE.replace("/api", "");
     previewReport({
       projectName: project.name,

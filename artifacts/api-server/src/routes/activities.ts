@@ -4,7 +4,7 @@ import { activitiesTable, projectsTable, activityGroupsTable, projectMembersTabl
 import { eq, and, avg, max } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
-import { calcActivityPlannedProgress } from "../lib/progress";
+import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
 import multer from "multer";
 import * as XLSX from "xlsx";
 
@@ -48,7 +48,7 @@ async function syncProjectProgress(projectId: number) {
     weightedSum += (a.actualProgress ?? 0) * w;
   }
   const computed = totalWeight > 0
-    ? Math.round((weightedSum / totalWeight) * 100) / 100
+    ? roundPercent(weightedSum / totalWeight)
     : 0;
 
   await db
@@ -111,7 +111,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     plannedEndDate: plannedEndDate || null,
     actualStartDate: actualStartDate ?? null,
     actualEndDate: actualEndDate ?? null,
-    plannedProgress: Math.round(autoPlannedProgress),
+    plannedProgress: roundPercent(autoPlannedProgress),
     actualProgress: actualProgress ?? 0,
     weight: (() => {
       const w = Number(weight);
@@ -216,7 +216,7 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
 
     const finalStart = (updateData.plannedStartDate as string | null | undefined) ?? existing.plannedStartDate;
     const finalEnd = (updateData.plannedEndDate as string | null | undefined) ?? existing.plannedEndDate;
-    updateData.plannedProgress = Math.round(calcActivityPlannedProgress({
+    updateData.plannedProgress = roundPercent(calcActivityPlannedProgress({
       plannedStartDate: finalStart ?? null,
       plannedEndDate: finalEnd ?? null,
     }));
