@@ -351,17 +351,18 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
         const nameX = MARGIN + cols.period + cols.status + cols.dev + cols.actual + cols.planned + 4;
         doc.text(a.name, nameX, y + 4, { width: cols.name - 8, align: "right" });
 
-        const actPlanned = Math.round(calcActivityPlannedProgress(a, today));
+        const actPlanned = roundPercent(calcActivityPlannedProgress(a, today));
+        const actActual = roundPercent(a.actualProgress);
         const plX = MARGIN + cols.period + cols.status + cols.dev + cols.actual + 4;
         setFont(9, C.textMuted);
         doc.text(`${actPlanned}%`, plX, y + 10, { width: cols.planned - 8, align: "center" });
 
         const acX = MARGIN + cols.period + cols.status + cols.dev + 4;
         setFont(9, C.textDark);
-        doc.text(`${a.actualProgress}%`, acX, y + 4, { width: cols.actual - 8, align: "center" });
-        drawProgressBar(doc, acX + 2, y + 18, cols.actual - 12, 5, a.actualProgress, statusColor(a.status));
+        doc.text(`${actActual}%`, acX, y + 4, { width: cols.actual - 8, align: "center" });
+        drawProgressBar(doc, acX + 2, y + 18, cols.actual - 12, 5, actActual, statusColor(a.status));
 
-        const devN = a.actualProgress - actPlanned;
+        const devN = roundPercent(actActual - actPlanned);
         const dvX = MARGIN + cols.period + cols.status + 4;
         setFont(8, devN < 0 ? C.danger : devN > 0 ? C.success : C.textMuted);
         doc.text(`${devN > 0 ? "+" : ""}${devN}%`, dvX, y + 10, { width: cols.dev - 8, align: "center" });

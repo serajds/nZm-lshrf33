@@ -125,8 +125,8 @@ function buildPrintHTML(data: ReportPdfData): string {
             const barW = Math.min(100, Math.max(0, a.actualProgress));
             return `<tr style="background:${i % 2 === 0 ? "#fff" : "#f8fafc"}">
               <td class="td">${esc(a.name)}</td>
-              <td class="td tc">${a.plannedProgress}%</td>
-              <td class="td tc" style="font-weight:700">${a.actualProgress}%</td>
+              <td class="td tc">${(a.plannedProgress ?? 0).toFixed(1)}%</td>
+              <td class="td tc" style="font-weight:700">${(a.actualProgress ?? 0).toFixed(1)}%</td>
               <td class="td tc">
                 <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;background:${statusBg(a.status)};color:${statusColor(a.status)};border:1px solid ${statusColor(a.status)}">
                   ${statusLabel(a.status)}
@@ -657,12 +657,12 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
     <div class="section-title">📊 مؤشرات الأداء الرئيسية</div>
     <div class="metric-grid">
       <div class="metric" style="border-color:#10b981">
-        <div class="value" style="color:#10b981">${data.overallProgress.toFixed(0)}%</div>
+        <div class="value" style="color:#10b981">${data.overallProgress.toFixed(1)}%</div>
         <div class="label">الإنجاز الفعلي</div>
         <div class="progress-bar"><div class="progress-fill" style="width:${data.overallProgress}%;background:#10b981"></div></div>
       </div>
       <div class="metric" style="border-color:#3b82f6">
-        <div class="value" style="color:#3b82f6">${data.plannedProgress.toFixed(0)}%</div>
+        <div class="value" style="color:#3b82f6">${data.plannedProgress.toFixed(1)}%</div>
         <div class="label">الإنجاز المخطط</div>
         <div class="progress-bar"><div class="progress-fill" style="width:${data.plannedProgress}%;background:#3b82f6"></div></div>
       </div>
@@ -721,9 +721,9 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
         return `<tr>
           <td style="text-align:center;color:#94a3b8">${i + 1}</td>
           <td>${esc(a.name)}</td>
-          <td style="text-align:center">${a.plannedProgress}%</td>
-          <td style="text-align:center">${a.actualProgress}%</td>
-          <td style="text-align:center;color:${diff >= 0 ? '#10b981' : '#ef4444'};font-weight:600">${diff > 0 ? '+' : ''}${diff.toFixed(0)}%</td>
+          <td style="text-align:center">${(a.plannedProgress ?? 0).toFixed(1)}%</td>
+          <td style="text-align:center">${(a.actualProgress ?? 0).toFixed(1)}%</td>
+          <td style="text-align:center;color:${diff >= 0 ? '#10b981' : '#ef4444'};font-weight:600">${diff > 0 ? '+' : ''}${diff.toFixed(1)}%</td>
           <td style="text-align:center"><span class="status-badge" style="color:${statusColor(a.status)};background:${statusBg(a.status)}">${statusLabel(a.status)}</span></td>
         </tr>`;
       }).join("")}</tbody>

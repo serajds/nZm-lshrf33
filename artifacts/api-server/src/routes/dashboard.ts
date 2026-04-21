@@ -584,19 +584,19 @@ router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("proj
     const daysElapsed = Math.max(0, Math.ceil((reportDate.getTime() - startDate.getTime()) / 86400000));
     const snapshot = parseActivitiesSnapshot(r.activitiesSnapshot);
     const activitiesForCalc = snapshot.length > 0 ? snapshot : activities;
-    const planned = Math.round(calcPlannedProgressForProject(activitiesForCalc, daysElapsed, totalDays, reportDate, curve) * 100) / 100;
+    const planned = roundPercent(calcPlannedProgressForProject(activitiesForCalc, daysElapsed, totalDays, reportDate, curve));
     // Prefer the weighted actual computed from the per-report activities snapshot
     // so the historical "actual" line matches the same methodology used on the
     // deviation page (and won't drift from a manually-entered progressPercentage).
     const actualRaw = snapshot.length > 0
       ? calcActualProgressForProject(snapshot)
       : (r.progressPercentage ?? 0);
-    const actual = Math.round(actualRaw * 100) / 100;
+    const actual = roundPercent(actualRaw);
     return {
       date: r.reportDate,
       plannedProgress: planned,
       actualProgress: actual,
-      deviation: Math.round((actual - planned) * 100) / 100,
+      deviation: roundPercent(actual - planned),
     };
   });
 

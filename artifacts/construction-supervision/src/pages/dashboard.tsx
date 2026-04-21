@@ -465,7 +465,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="text-left">
                         <span className="text-xs text-muted-foreground">الإنجاز</span>
-                        <p className="text-sm font-bold tabular-nums">{a.actualProgress}%</p>
+                        <p className="text-sm font-bold tabular-nums">{(a.actualProgress ?? 0).toFixed(1)}%</p>
                       </div>
                       <span className="inline-flex items-center gap-1 rounded-full px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-semibold bg-red-100 text-red-700 border border-red-200 whitespace-nowrap">
                         <Clock className="h-3 w-3" /> تجاوز {a.delayDays} يوم
