@@ -292,7 +292,6 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
               <TableRow>
                 <TableHead className="text-right">العضو</TableHead>
                 <TableHead className="text-right">الشركة</TableHead>
-                <TableHead className="text-right">الدور في المشروع</TableHead>
                 <TableHead className="text-right">المجموعات</TableHead>
                 {canManageMembers && <TableHead className="text-left w-[100px]">الإجراءات</TableHead>}
               </TableRow>
@@ -322,26 +321,6 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {canManageMembers && member.userId !== user?.id ? (
-                        <Select
-                          value={member.role}
-                          onValueChange={(val) => handleChangeRole(member, val)}
-                        >
-                          <SelectTrigger className="w-[140px]" dir="rtl">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent dir="rtl">
-                            <SelectItem value="project_manager">مدير مشروع</SelectItem>
-                            <SelectItem value="engineer">مهندس</SelectItem>
-                            <SelectItem value="contractor">مقاول</SelectItem>
-                            <SelectItem value="viewer">مشاهد (قراءة فقط)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        getRoleBadge(member.role)
                       )}
                     </TableCell>
                     <TableCell>
