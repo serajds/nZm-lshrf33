@@ -8,6 +8,7 @@ import {
   useDeleteReport,
   useGetProject,
   useListActivities,
+  useGetMyProjectPermissions,
   getListReportsQueryKey 
 } from "@workspace/api-client-react";
 import type { Report, Activity } from "@workspace/api-client-react";
@@ -81,6 +82,8 @@ export default function ProjectReports() {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
+  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
+  const isViewer = myPermissions?.isViewer === true;
 
   const { data: companyLogos } = useQuery<Record<string, CompanyLogo>>({
     queryKey: ["project-company-logos", projectId],
@@ -320,6 +323,7 @@ export default function ProjectReports() {
           </div>
         </div>
         
+        {!isViewer && (
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           setIsDialogOpen(open);
           if (!open) { form.reset(); setEditingId(null); }
@@ -570,6 +574,7 @@ export default function ProjectReports() {
             </Form>
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       <div className="grid gap-4">
@@ -616,12 +621,16 @@ export default function ProjectReports() {
                       >
                         <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">معاينة و</span>طباعة
                       </Button>
+                      {!isViewer && (
+                      <>
                       <Button variant="outline" size="sm" className="gap-1 h-8 text-xs sm:text-sm sm:gap-1.5" onClick={() => handleEdit(report)}>
                         <Edit2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> تعديل
                       </Button>
                       <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive hover:text-white gap-1 h-8 text-xs sm:text-sm sm:gap-1.5" onClick={() => setDeletingId(report.id)}>
                         <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> حذف
                       </Button>
+                      </>
+                      )}
                     </div>
                   </div>
                   
