@@ -398,7 +398,12 @@ router.get("/projects/:projectId/my-permissions", requireProjectAccess("projectI
   }
 
   if (membership.role === "project_manager") {
-    res.json({ role: user.role, projectRole: "project_manager", assignedGroupIds: [], canEditAll: true });
+    res.json({ role: user.role, projectRole: "project_manager", assignedGroupIds: [], canEditAll: true, isViewer: false });
+    return;
+  }
+
+  if (membership.role === "viewer") {
+    res.json({ role: user.role, projectRole: "viewer", assignedGroupIds: [], canEditAll: false, isViewer: true });
     return;
   }
 
@@ -410,6 +415,7 @@ router.get("/projects/:projectId/my-permissions", requireProjectAccess("projectI
     projectRole: membership.role,
     assignedGroupIds,
     canEditAll,
+    isViewer: false,
   });
 });
 

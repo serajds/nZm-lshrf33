@@ -693,6 +693,7 @@ export const GetMyProjectPermissionsResponse = zod.object({
   projectRole: zod.string().optional(),
   assignedGroupIds: zod.array(zod.number()).optional(),
   canEditAll: zod.boolean(),
+  isViewer: zod.boolean().optional(),
 });
 
 /**

@@ -1291,6 +1291,8 @@ components:
             type: integer
         canEditAll:
           type: boolean
+        isViewer:
+          type: boolean
       required:
         - role
         - canEditAll
