@@ -612,18 +612,18 @@ router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("proj
   const today = new Date();
   if (today >= startDate) {
     const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / 86400000));
-    const planned = Math.round(calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, curve) * 100) / 100;
+    const planned = roundPercent(calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, curve));
     const actualRaw = activities.length > 0
       ? calcActualProgressForProject(activities)
-      : project.overallProgress;
-    const actual = Math.round(actualRaw * 100) / 100;
+      : (project.overallProgress ?? 0);
+    const actual = roundPercent(actualRaw);
     const isoToday = today.toISOString().slice(0, 10);
     if (points.length === 0 || points[points.length - 1].date !== isoToday) {
       points.push({
         date: isoToday,
         plannedProgress: planned,
         actualProgress: actual,
-        deviation: Math.round((actual - planned) * 100) / 100,
+        deviation: roundPercent(actual - planned),
       });
     }
   }

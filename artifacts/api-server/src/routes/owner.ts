@@ -4,7 +4,7 @@ import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projec
 import { eq, count, desc } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
 import jwt from "jsonwebtoken";
-import { calcPlannedProgressForProject, calcDelayDays, calcOverrunDays } from "../lib/progress";
+import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcOverrunDays, roundPercent } from "../lib/progress";
 
 const router: IRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
@@ -51,11 +51,15 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
 
   let summary: OwnerSummary;
 
+  const computedActual = activities.length > 0
+    ? roundPercent(calcActualProgressForProject(activities))
+    : roundPercent(project.overallProgress ?? 0);
+
   if (isNoSchedule) {
     summary = {
       projectId: project.id,
       noSchedule: true,
-      overallProgress: project.overallProgress,
+      overallProgress: computedActual,
       plannedProgress: 0,
       activitiesTotal: activities.length,
       activitiesCompleted,
@@ -78,11 +82,11 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
     const rawDaysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     const daysRemaining = Math.max(0, rawDaysRemaining);
-    const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays);
+    const plannedProgress = roundPercent(calcPlannedProgressForProject(activities, daysElapsed, totalDays));
     // انحراف عن الخطة (planned vs actual progress only)
-    const delayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
+    const delayDays = calcDelayDays(plannedProgress, computedActual, totalDays);
     // تجاوز المدة (calendar overrun past expectedEndDate while not complete)
-    const overrunDays = calcOverrunDays(today, project.expectedEndDate, project.overallProgress);
+    const overrunDays = calcOverrunDays(today, project.expectedEndDate, computedActual);
     const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
     const netDelayDays = Math.max(0, delayDays - suspensionDays);
     const activitiesDelayed = activities.filter(a => a.status === "delayed").length;
@@ -90,7 +94,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     summary = {
       projectId: project.id,
       noSchedule: false,
-      overallProgress: project.overallProgress,
+      overallProgress: computedActual,
       plannedProgress,
       activitiesTotal: activities.length,
       activitiesCompleted,
