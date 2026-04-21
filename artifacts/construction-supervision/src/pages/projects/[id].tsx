@@ -177,7 +177,7 @@ export default function ProjectDetails() {
       expectedEndDate: project.expectedEndDate,
       actualEndDate: (project as any).actualEndDate,
       status: project.status,
-      overallProgress: summary?.overallProgress ?? project.overallProgress ?? 0,
+      overallProgress: summary?.overallProgress ?? 0,
       plannedProgress: summary?.plannedProgress ?? 0,
       activities: actList,
       reportsCount: summary?.reportsCount ?? 0,
