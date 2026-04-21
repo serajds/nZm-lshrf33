@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable, projectSuspensionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
-import { calcPlannedProgressForProject, calcDelayDays, calcActivityPlannedProgress } from "../lib/progress";
+import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcActivityPlannedProgress, roundPercent } from "../lib/progress";
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
@@ -196,7 +196,9 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
 
   y += infoItems.length / 2 * 26 + 20;
 
-  const overall = project.overallProgress ?? 0;
+  const overall = activities.length > 0
+    ? roundPercent(calcActualProgressForProject(activities))
+    : roundPercent(project.overallProgress ?? 0);
 
   if (isNoSchedule) {
     doc.rect(MARGIN, y, CONTENT_W, 60).fill(C.light).stroke(C.border);
@@ -220,8 +222,8 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     const end = new Date(project.expectedEndDate!);
     const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
     const elapsed = Math.max(0, Math.ceil((today.getTime() - start.getTime()) / 86400000));
-    const planned = Math.round(calcPlannedProgressForProject(activities, elapsed, totalDays));
-    const deviation = overall - planned;
+    const planned = roundPercent(calcPlannedProgressForProject(activities, elapsed, totalDays));
+    const deviation = roundPercent(overall - planned);
     const delayDays = calcDelayDays(planned, overall, totalDays);
 
     doc.rect(MARGIN, y, CONTENT_W, 90).fill(C.light).stroke(C.border);
