@@ -911,7 +911,7 @@ export default function ProjectActivities() {
           );
         })()}
 
-        {!isContractorBase && !isViewer && (
+        {!isContractorBase && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">الإنجاز المخطط مقابل الفعلي</CardTitle>
@@ -936,7 +936,7 @@ export default function ProjectActivities() {
         </Card>
         )}
 
-        {!isContractorBase && !isViewer && (
+        {!isContractorBase && (
         <Card>
           <CardHeader className="space-y-3">
             <div className="flex items-center justify-between">
@@ -946,6 +946,7 @@ export default function ProjectActivities() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+            {!isViewer && (
             <Dialog open={isGroupDialogOpen} onOpenChange={setIsGroupDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm">
@@ -985,9 +986,11 @@ export default function ProjectActivities() {
                 </div>
               </DialogContent>
             </Dialog>
+            )}
             <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm" onClick={exportActivities} disabled={!activities || activities.length === 0}>
               <Download className="h-4 w-4" /> <span className="hidden xs:inline">تصدير</span> <span className="hidden sm:inline">Excel</span>
             </Button>
+            {!isViewer && (
             <Dialog open={isImportOpen} onOpenChange={(open) => {
               setIsImportOpen(open);
               if (!open) setImportFile(null);
@@ -1042,6 +1045,8 @@ export default function ProjectActivities() {
                 </div>
               </DialogContent>
             </Dialog>
+            )}
+            {!isViewer && (
             <Dialog open={isDialogOpen} onOpenChange={(open) => {
               setIsDialogOpen(open);
               if (!open) { form.reset(); setEditingId(null); }
@@ -1140,6 +1145,7 @@ export default function ProjectActivities() {
                 </Form>
               </DialogContent>
             </Dialog>
+            )}
             </div>
           </CardHeader>
 
@@ -1169,7 +1175,7 @@ export default function ProjectActivities() {
                   <SortableActivityRow key={a.id} id={a.id}>
                     <TableCell className="font-medium max-w-[200px]">
                       <div className="flex items-center gap-1">
-                        <DragHandle />
+                        {!isViewer && <DragHandle />}
                         <span className="block truncate" title={a.name}>{a.name}</span>
                       </div>
                     </TableCell>
@@ -1322,7 +1328,7 @@ export default function ProjectActivities() {
                                 <SortableGroupRow id={`group-${g.id}`}>
                                   <TableCell colSpan={4} onClick={() => toggleGroupCollapse(g.id)}>
                                     <div className="flex items-center gap-2">
-                                      <DragHandle />
+                                      {!isViewer && <DragHandle />}
                                       {isCollapsed ? <ChevronLeft className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                                       <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                                       <span className="font-semibold text-sm">{g.name}</span>
@@ -1335,6 +1341,7 @@ export default function ProjectActivities() {
                                       <div className="flex-1 max-w-[80px]">
                                         <ProgressBar value={groupProgress} color={g.color} />
                                       </div>
+                                      {!isViewer && (
                                       <Button
                                         variant="ghost"
                                         size="icon"
@@ -1343,6 +1350,7 @@ export default function ProjectActivities() {
                                       >
                                         <X className="h-3 w-3 text-muted-foreground" />
                                       </Button>
+                                      )}
                                     </div>
                                   </TableCell>
                                 </SortableGroupRow>
@@ -1559,7 +1567,7 @@ export default function ProjectActivities() {
         )}
       </div>
 
-      {!isContractorBase && !isViewer && (
+      {!isContractorBase && (
       <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>

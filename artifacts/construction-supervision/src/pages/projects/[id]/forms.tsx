@@ -1330,6 +1330,7 @@ export default function ProjectForms() {
                       </div>
                     )}
                     <div className="flex gap-1.5">
+                      {!isViewer && (
                       <Button
                         variant="default"
                         size="sm"
@@ -1338,6 +1339,7 @@ export default function ProjectForms() {
                       >
                         <Send className="h-3 w-3" /> تعبئة
                       </Button>
+                      )}
                       {!isContractor && (
                       <Button
                         variant="outline"
@@ -1448,7 +1450,9 @@ export default function ProjectForms() {
                           variant="ghost"
                           size="sm"
                           className="h-6 text-xs"
+                          disabled={isViewer}
                           onClick={() => {
+                            if (isViewer) return;
                             const tmpl = templates.find(t => t.id === gap.templateId);
                             if (tmpl) { setFillingTemplate(tmpl); setFillerOpen(true); }
                           }}
