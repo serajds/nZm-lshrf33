@@ -1437,25 +1437,6 @@ export default function ProjectActivities() {
                     </div>
                     {editable ? (
                       <div className="flex items-center gap-1 pt-1 border-t">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="sm" className="gap-1 h-7 text-xs">
-                              تغيير الحالة <ChevronDown className="h-3 w-3" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start">
-                            <DropdownMenuLabel className="text-xs text-muted-foreground">تغيير الحالة</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            {STATUS_OPTIONS.map(opt => {
-                              const Icon = opt.icon;
-                              return (
-                                <DropdownMenuItem key={opt.value} className={`gap-2 ${opt.cls} ${a.status === opt.value ? 'font-bold bg-accent' : ''}`} onClick={() => quickUpdateStatus(a, opt.value)}>
-                                  <Icon className="h-4 w-4" /> {opt.label}
-                                </DropdownMenuItem>
-                              );
-                            })}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
                         <div className="flex items-center gap-1 mr-auto">
                           <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
                             <span className="text-xs font-bold text-muted-foreground">-10</span>
