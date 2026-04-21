@@ -284,7 +284,7 @@ export default function Dashboard() {
         />
         <KpiCard
           label="متوسط الإنجاز"
-          value={`${summary?.averageProgress ?? 0}%`}
+          value={`${(summary?.averageProgress ?? 0).toFixed(1)}%`}
           icon={TrendingUp}
           gradient="bg-gradient-to-br from-indigo-600 to-purple-700"
           sub="عبر جميع المشاريع"
@@ -522,7 +522,7 @@ export default function Dashboard() {
                             <div className="flex-1">
                               <ProgressBar value={p.overallProgress ?? 0} planned={p.plannedProgress ?? 0} />
                             </div>
-                            <span className="text-xs font-bold tabular-nums w-10 text-left">{p.overallProgress}%</span>
+                            <span className="text-xs font-bold tabular-nums w-12 text-left">{(p.overallProgress ?? 0).toFixed(1)}%</span>
                           </div>
                         </td>
                         <td className="px-3 py-3 hidden md:table-cell">

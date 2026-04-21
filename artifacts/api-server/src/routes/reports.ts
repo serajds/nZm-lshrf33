@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { reportsTable, activitiesTable } from "@workspace/db";
 import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { calcActivityPlannedProgress } from "../lib/progress";
+import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
 
 const router: IRouter = Router();
 
@@ -67,11 +67,11 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
     plannedEndDate: a.plannedEndDate,
     actualStartDate: a.actualStartDate,
     actualEndDate: a.actualEndDate,
-    plannedProgress: Math.round(calcActivityPlannedProgress({
+    plannedProgress: roundPercent(calcActivityPlannedProgress({
       plannedStartDate: a.plannedStartDate,
       plannedEndDate: a.plannedEndDate,
     })),
-    actualProgress: a.actualProgress,
+    actualProgress: roundPercent(a.actualProgress),
     weight: a.weight ?? 1,
     status: a.status,
     sortOrder: a.sortOrder,

@@ -1320,9 +1320,16 @@ export default function ProjectActivities() {
                           {sortedGroups.map(g => {
                             const groupActs = groupMap.get(g.id) ?? [];
                             const isCollapsed = collapsedGroups.has(g.id);
-                            const groupProgress = groupActs.length > 0
-                              ? Math.round(groupActs.reduce((s, a) => s + a.actualProgress, 0) / groupActs.length)
-                              : 0;
+                            const groupProgress = (() => {
+                              if (groupActs.length === 0) return 0;
+                              let s = 0, w = 0;
+                              for (const a of groupActs) {
+                                const ww = (a as any).weight && (a as any).weight > 0 ? (a as any).weight : 1;
+                                s += (a.actualProgress ?? 0) * ww;
+                                w += ww;
+                              }
+                              return w > 0 ? Math.round((s / w) * 10) / 10 : 0;
+                            })();
                             return (
                               <React.Fragment key={g.id}>
                                 <SortableGroupRow id={`group-${g.id}`}>
@@ -1468,9 +1475,16 @@ export default function ProjectActivities() {
                   {sortedGroups.map((g, gi) => {
                     const groupActs = groupMap.get(g.id) ?? [];
                     const isCollapsed = collapsedGroups.has(g.id);
-                    const groupProgress = groupActs.length > 0
-                      ? Math.round(groupActs.reduce((s, a) => s + a.actualProgress, 0) / groupActs.length)
-                      : 0;
+                    const groupProgress = (() => {
+                      if (groupActs.length === 0) return 0;
+                      let s = 0, w = 0;
+                      for (const a of groupActs) {
+                        const ww = (a as any).weight && (a as any).weight > 0 ? (a as any).weight : 1;
+                        s += (a.actualProgress ?? 0) * ww;
+                        w += ww;
+                      }
+                      return w > 0 ? Math.round((s / w) * 10) / 10 : 0;
+                    })();
                     const moveGroup = (dir: -1 | 1) => {
                       const newIdx = gi + dir;
                       if (newIdx < 0 || newIdx >= sortedGroups.length) return;
