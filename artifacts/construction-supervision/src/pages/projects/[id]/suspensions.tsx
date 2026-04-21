@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useGetProject } from "@workspace/api-client-react";
+import { useGetProject, useGetMyProjectPermissions } from "@workspace/api-client-react";
 import type { ProjectSuspension } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -100,6 +100,8 @@ export default function ProjectSuspensions() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
+  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
+  const isViewer = myPermissions?.isViewer === true;
 
   const queryKey = [`/api/projects/${projectId}/suspensions`];
 
@@ -263,6 +265,7 @@ export default function ProjectSuspensions() {
               أيام التوقف تُخصم من التأخير الإجمالي لحساب صافي التأخير الفعلي
             </p>
           </div>
+          {!isViewer && (
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
             if (!open) form.reset();
@@ -408,6 +411,7 @@ export default function ProjectSuspensions() {
               </Form>
             </DialogContent>
           </Dialog>
+          )}
         </CardHeader>
 
         <CardContent className="p-0 overflow-x-auto">
@@ -472,12 +476,14 @@ export default function ProjectSuspensions() {
                       {s.approvedBy ?? <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell>
+                      {!isViewer && (
                       <Button
                         variant="ghost" size="icon" className="h-7 w-7"
                         onClick={() => setDeletingId(s.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5 text-destructive" />
                       </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

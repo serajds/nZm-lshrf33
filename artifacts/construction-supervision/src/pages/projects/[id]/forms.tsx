@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useGetProject } from "@workspace/api-client-react";
+import { useGetProject, useGetMyProjectPermissions } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -979,7 +979,10 @@ export default function ProjectForms() {
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
 
   const isAdminOrPM = user?.role === "admin" || user?.role === "project_manager";
-  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
+  const isContractorBase = user?.role === "contractor" || user?.isContractorCompanyUser === true;
+  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
+  const isViewer = myPermissions?.isViewer === true;
+  const isContractor = isContractorBase || isViewer;
 
   const { data: templates = [], isLoading: templatesLoading } = useQuery<FormTemplate[]>({
     queryKey: [`/api/projects/${projectId}/form-templates`],
