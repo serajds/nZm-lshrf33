@@ -168,6 +168,7 @@ export interface ProjectPermissions {
   projectRole?: string;
   assignedGroupIds?: number[];
   canEditAll: boolean;
+  isViewer?: boolean;
 }
 
 export interface UpdateUserBody {

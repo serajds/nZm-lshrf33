@@ -310,7 +310,7 @@ export default function ProjectActivities() {
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
   const { user } = useAuth();
-  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
+  const isContractorBase = user?.role === "contractor" || user?.isContractorCompanyUser === true;
   const queryClient = useQueryClient();
   usePageTitle("بنود الأعمال");
 
@@ -343,11 +343,13 @@ export default function ProjectActivities() {
   const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
   const canEditAll = myPermissions?.canEditAll ?? true;
   const assignedGroupIds = myPermissions?.assignedGroupIds ?? [];
+  const isViewer = myPermissions?.isViewer === true;
   const canEditActivity = useCallback((a: Activity) => {
+    if (isViewer) return false;
     if (canEditAll) return true;
     if (assignedGroupIds.length === 0) return true;
     return a.groupId != null && assignedGroupIds.includes(a.groupId);
-  }, [canEditAll, assignedGroupIds]);
+  }, [canEditAll, assignedGroupIds, isViewer]);
 
   const createGroup = useMutation({
     mutationFn: async (data: { name: string; color: string }) => {
@@ -909,7 +911,7 @@ export default function ProjectActivities() {
           );
         })()}
 
-        {!isContractor && (
+        {!isContractorBase && !isViewer && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">الإنجاز المخطط مقابل الفعلي</CardTitle>
@@ -934,7 +936,7 @@ export default function ProjectActivities() {
         </Card>
         )}
 
-        {!isContractor && (
+        {!isContractorBase && !isViewer && (
         <Card>
           <CardHeader className="space-y-3">
             <div className="flex items-center justify-between">
@@ -1557,7 +1559,7 @@ export default function ProjectActivities() {
         )}
       </div>
 
-      {!isContractor && (
+      {!isContractorBase && !isViewer && (
       <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
