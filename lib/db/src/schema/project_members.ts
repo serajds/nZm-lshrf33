@@ -8,7 +8,7 @@ export const projectMembersTable = pgTable("project_members", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull().references(() => projectsTable.id, { onDelete: "cascade" }),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
-  role: text("role", { enum: ["project_manager", "engineer", "contractor"] }).notNull().default("engineer"),
+  role: text("role", { enum: ["project_manager", "engineer", "contractor", "viewer"] }).notNull().default("engineer"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique("project_members_project_user_unique").on(table.projectId, table.userId),

@@ -79,6 +79,18 @@ export function rejectContractor(req: Request, res: Response, next: NextFunction
     res.status(403).json({ error: "المقاول غير مصرح له بهذا الإجراء" });
     return;
   }
+  if (req.projectRole === "viewer") {
+    res.status(403).json({ error: "صلاحيتك للقراءة فقط، لا يمكنك تعديل هذا المشروع" });
+    return;
+  }
+  next();
+}
+
+export function rejectViewer(req: Request, res: Response, next: NextFunction): void {
+  if (req.projectRole === "viewer") {
+    res.status(403).json({ error: "صلاحيتك للقراءة فقط، لا يمكنك تعديل هذا المشروع" });
+    return;
+  }
   next();
 }
 

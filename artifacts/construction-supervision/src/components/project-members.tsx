@@ -125,7 +125,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
         projectId,
         data: {
           userId: parseInt(selectedUserId),
-          role: selectedRole as "project_manager" | "engineer",
+          role: selectedRole as "project_manager" | "engineer" | "contractor" | "viewer",
           assignedGroupIds: selectedRole === "engineer" ? selectedGroupIds : undefined,
         }
       });
@@ -145,7 +145,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
       await updateMember.mutateAsync({
         projectId,
         id: member.id,
-        data: { role: newRole as "project_manager" | "engineer" }
+        data: { role: newRole as "project_manager" | "engineer" | "contractor" | "viewer" }
       });
       queryClient.invalidateQueries({ queryKey: getListProjectMembersQueryKey(projectId) });
       toast({ title: "تم تحديث الدور بنجاح" });
@@ -182,6 +182,9 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
     }
     if (role === "contractor") {
       return <Badge className="bg-orange-600 hover:bg-orange-600">مقاول</Badge>;
+    }
+    if (role === "viewer") {
+      return <Badge className="bg-slate-500 hover:bg-slate-500">مشاهد</Badge>;
     }
     return <Badge className="bg-primary hover:bg-primary">مهندس</Badge>;
   };
@@ -246,6 +249,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                         <SelectItem value="project_manager">مدير مشروع</SelectItem>
                         <SelectItem value="engineer">مهندس</SelectItem>
                         <SelectItem value="contractor">مقاول</SelectItem>
+                        <SelectItem value="viewer">مشاهد (قراءة فقط)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -333,6 +337,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                             <SelectItem value="project_manager">مدير مشروع</SelectItem>
                             <SelectItem value="engineer">مهندس</SelectItem>
                             <SelectItem value="contractor">مقاول</SelectItem>
+                            <SelectItem value="viewer">مشاهد (قراءة فقط)</SelectItem>
                           </SelectContent>
                         </Select>
                       ) : (
@@ -369,6 +374,8 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                             </Button>
                           )}
                         </div>
+                      ) : member.role === "viewer" ? (
+                        <span className="text-xs text-muted-foreground">قراءة فقط</span>
                       ) : (
                         <span className="text-xs text-muted-foreground">صلاحية كاملة</span>
                       )}

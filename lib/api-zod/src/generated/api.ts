@@ -574,7 +574,7 @@ export const ListProjectMembersResponseItem = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   userId: zod.number(),
-  role: zod.enum(["project_manager", "engineer", "contractor"]),
+  role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
   createdAt: zod.coerce.date(),
   fullName: zod.string(),
   phone: zod.string(),
@@ -595,7 +595,7 @@ export const AddProjectMemberParams = zod.object({
 
 export const AddProjectMemberBody = zod.object({
   userId: zod.number(),
-  role: zod.enum(["project_manager", "engineer", "contractor"]),
+  role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
   assignedGroupIds: zod.array(zod.number()).optional(),
 });
 
@@ -638,7 +638,9 @@ export const UpdateProjectMemberParams = zod.object({
 });
 
 export const UpdateProjectMemberBody = zod.object({
-  role: zod.enum(["project_manager", "engineer", "contractor"]).optional(),
+  role: zod
+    .enum(["project_manager", "engineer", "contractor", "viewer"])
+    .optional(),
   assignedGroupIds: zod.array(zod.number()).optional(),
 });
 
@@ -646,7 +648,7 @@ export const UpdateProjectMemberResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   userId: zod.number(),
-  role: zod.enum(["project_manager", "engineer", "contractor"]),
+  role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
   createdAt: zod.coerce.date(),
   fullName: zod.string(),
   phone: zod.string(),
