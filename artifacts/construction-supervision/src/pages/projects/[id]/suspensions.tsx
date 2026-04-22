@@ -376,23 +376,6 @@ export default function ProjectSuspensions() {
                     </FormItem>
                   )} />
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <FormField control={form.control} name="documentRef" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>رقم الوثيقة / الخطاب</FormLabel>
-                        <FormControl><Input placeholder="مثال: خ/5001/2025" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="approvedBy" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>الجهة الموثِّقة</FormLabel>
-                        <FormControl><Input placeholder="مثال: وزارة العدل" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                  </div>
-
                   <FormField control={form.control} name="notes" render={({ field }) => (
                     <FormItem>
                       <FormLabel>ملاحظات</FormLabel>
