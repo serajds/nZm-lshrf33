@@ -3,7 +3,6 @@ import { db } from "@workspace/db";
 import { projectSuspensionsTable, projectsTable, activitiesTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { recalcExpectedEndDate } from "../lib/recalc-end-date";
 
 const router: IRouter = Router();
 
@@ -100,7 +99,11 @@ router.post("/projects/:projectId/suspensions", requireProjectAccess("projectId"
 
   if (shouldShift) {
     await shiftActivities(projectId, startDate, calendarDays, 1);
-    await recalcExpectedEndDate(projectId);
+    if (project.expectedEndDate) {
+      await db.update(projectsTable)
+        .set({ expectedEndDate: addDays(project.expectedEndDate, calendarDays) })
+        .where(eq(projectsTable.id, projectId));
+    }
   }
 
   res.status(201).json({ ...suspension, activitiesShifted: shouldShift });
@@ -126,7 +129,11 @@ router.delete("/projects/:projectId/suspensions/:id", requireProjectAccess("proj
 
   if (susp.datesShifted) {
     await shiftActivities(projectId, susp.startDate, susp.calendarDays, -1);
-    await recalcExpectedEndDate(projectId);
+    if (project?.expectedEndDate) {
+      await db.update(projectsTable)
+        .set({ expectedEndDate: addDays(project.expectedEndDate, -susp.calendarDays) })
+        .where(eq(projectsTable.id, projectId));
+    }
   }
 
   res.sendStatus(204);
