@@ -627,7 +627,7 @@ function FormFiller({
               {field.type === "date" && (
                 <Input
                   type="date"
-                  value={(formData[field.id] as string) || ""}
+                  value={(formData[field.id] as string) || new Date().toISOString().slice(0, 10)}
                   onChange={e => updateValue(field.id, e.target.value)}
                   className="mt-1"
                 />
