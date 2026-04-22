@@ -493,6 +493,29 @@ function buildAutoFillData(project: Record<string, unknown> | undefined, reportD
   return result;
 }
 
+function ProjectInfoHeader({ project }: { project?: Record<string, unknown> }) {
+  if (!project) return null;
+  const items: { label: string; value: unknown }[] = [
+    { label: "المشروع", value: project.name },
+    { label: "الجهة المالكة", value: project.ownerEntity },
+    { label: "المقاول", value: project.contractor },
+    { label: "الاستشاري", value: project.supervisorEntity },
+  ];
+  const visible = items.filter(i => i.value);
+  if (visible.length === 0) return null;
+  return (
+    <div className="rounded-lg border bg-muted/30 px-3 py-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-xs">
+      {visible.map(i => (
+        <div key={i.label} className="flex items-center gap-1.5">
+          <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-muted-foreground">{i.label}:</span>
+          <span className="font-medium truncate">{String(i.value)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FormFiller({
   template,
   submission,
@@ -573,6 +596,7 @@ function FormFiller({
 
   return (
     <div className="space-y-6">
+      <ProjectInfoHeader project={project} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Label>تاريخ التقرير *</Label>
@@ -760,6 +784,7 @@ function buildSubmissionPageHtml(
   submission: FormSubmission,
   template: FormTemplate,
   projectName: string | undefined,
+  project?: Record<string, unknown>,
 ): string {
   const data = submission.data as Record<string, unknown>;
   let fieldsHtml = "";
@@ -805,8 +830,18 @@ function buildSubmissionPageHtml(
     }
     fieldsHtml += `<tr><td style="padding:2px 5px;font-weight:600;vertical-align:top;width:125px;background:#fafafa;border-bottom:1px solid #eee;font-size:10px;">${escHtml(field.label)}</td><td style="padding:2px 5px;border-bottom:1px solid #eee;">${displayValue}</td></tr>`;
   }
+  const projInfo: { label: string; value: unknown }[] = project ? [
+    { label: "المشروع", value: project.name },
+    { label: "الجهة المالكة", value: project.ownerEntity },
+    { label: "المقاول", value: project.contractor },
+    { label: "الاستشاري", value: project.supervisorEntity },
+  ].filter(i => i.value) : [];
+  const projHeaderHtml = projInfo.length > 0
+    ? `<div class="proj-info">${projInfo.map(i => `<div><span class="pi-l">${escHtml(i.label)}:</span> <span class="pi-v">${escHtml(String(i.value))}</span></div>`).join("")}</div>`
+    : "";
   return `<div class="page">
 <div class="header"><h1>${escHtml(template.name)}</h1><p>${escHtml(projectName)}</p></div>
+${projHeaderHtml}
 <div class="meta">
   <span>التاريخ: ${escHtml(fmtDate(submission.reportDate))}</span>
   <span>الحالة: ${submission.status === "reviewed" ? "تمت المراجعة" : submission.status === "submitted" ? "مرسل" : "مسودة"}</span>
@@ -835,6 +870,9 @@ body { font-family: 'Noto Kufi Arabic', sans-serif; padding: 6px; color: #333; d
 .header h1 { font-size: 14px; color: #1e40af; margin-bottom: 1px; }
 .header p { font-size: 11px; color: #666; }
 .meta { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 10px; background: #f8fafc; padding: 3px 8px; border-radius: 3px; }
+.proj-info { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; margin-bottom: 5px; padding: 4px 8px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px; font-size: 10px; }
+.proj-info .pi-l { color: #64748b; }
+.proj-info .pi-v { font-weight: 600; color: #0f172a; }
 table.fields { width: 100%; border-collapse: collapse; border: 1px solid #ccc; }
 .notes-box { margin-top: 4px; padding: 3px 6px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 3px; font-size: 10px; }
 .footer { margin-top: 10px; display: flex; justify-content: space-between; font-size: 10px; }
@@ -864,7 +902,7 @@ function SubmissionViewer({
   const data = submission.data as Record<string, unknown>;
 
   const handlePrint = () => {
-    openPrintWindow(buildSubmissionPageHtml(submission, template, project?.name), template.name);
+    openPrintWindow(buildSubmissionPageHtml(submission, template, project?.name, project as Record<string, unknown> | undefined), template.name);
   };
 
   return (
@@ -882,6 +920,8 @@ function SubmissionViewer({
           </Button>
         </div>
       </div>
+
+      <ProjectInfoHeader project={project as Record<string, unknown> | undefined} />
 
       <div className="space-y-4">
         {template.fields.map(field => {
@@ -1130,7 +1170,7 @@ export default function ProjectForms() {
   const handlePrintSingle = (s: FormSubmission) => {
     const tmpl = getTemplateForSubmission(s.templateId);
     if (!tmpl) return;
-    openPrintWindow(buildSubmissionPageHtml(s, tmpl, project?.name), tmpl.name);
+    openPrintWindow(buildSubmissionPageHtml(s, tmpl, project?.name, project as Record<string, unknown> | undefined), tmpl.name);
   };
 
   const handlePrintAll = () => {
@@ -1139,7 +1179,7 @@ export default function ProjectForms() {
     const pages = list.map(s => {
       const tmpl = getTemplateForSubmission(s.templateId);
       if (!tmpl) return "";
-      return buildSubmissionPageHtml(s, tmpl, project?.name);
+      return buildSubmissionPageHtml(s, tmpl, project?.name, project as Record<string, unknown> | undefined);
     }).filter(Boolean).join("\n");
     openPrintWindow(pages, `النماذج - ${project?.name || ""}`);
   };
