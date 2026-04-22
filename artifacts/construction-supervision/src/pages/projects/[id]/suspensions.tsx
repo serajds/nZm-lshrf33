@@ -408,15 +408,13 @@ export default function ProjectSuspensions() {
                 <TableHead className="text-right">إلى</TableHead>
                 <TableHead className="text-center">الأيام</TableHead>
                 <TableHead className="text-center">الترحيل</TableHead>
-                <TableHead className="text-right">الوثيقة</TableHead>
-                <TableHead className="text-right">الجهة الموثِّقة</TableHead>
                 <TableHead className="text-left"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
                       <span className="text-sm">جاري تحميل التوقفات...</span>
@@ -425,7 +423,7 @@ export default function ProjectSuspensions() {
                 </TableRow>
               ) : suspensions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                     <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
                     لا توجد توقفات مسجّلة — كل التأخير يُحسب على المقاول
                   </TableCell>
@@ -451,12 +449,6 @@ export default function ProjectSuspensions() {
                       ) : (
                         <span className="text-xs text-muted-foreground">لا</span>
                       )}
-                    </TableCell>
-                    <TableCell className="text-sm font-mono">
-                      {s.documentRef ?? <span className="text-muted-foreground">—</span>}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {s.approvedBy ?? <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell>
                       {!isViewer && (
