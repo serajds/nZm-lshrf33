@@ -166,14 +166,21 @@ export function calcForecastCompletionDate(
     const spi = actualProgress / plannedProgress;
     if (spi > 0) {
       const forecastDays = plannedDurationDays / spi;
-      return new Date(startDate.getTime() + forecastDays * 86400000);
+      const forecast = new Date(startDate.getTime() + forecastDays * 86400000);
+      // Never forecast earlier than the contractual end date — being "ahead"
+      // is already conveyed via SPI/expectedProgressAtEnd, and clamping here
+      // ensures schedule shifts (e.g. holidays) push the forecast outward
+      // rather than inward.
+      return forecast.getTime() < endDate.getTime() ? endDate : forecast;
     }
   }
 
   if (actualProgress > 0) {
     const daysElapsed = Math.max(1, Math.ceil((today.getTime() - startDate.getTime()) / 86400000));
     const totalEstimatedDays = (daysElapsed / actualProgress) * 100;
-    return new Date(startDate.getTime() + totalEstimatedDays * 86400000);
+    const forecast = new Date(startDate.getTime() + totalEstimatedDays * 86400000);
+    if (endDate && forecast.getTime() < endDate.getTime()) return endDate;
+    return forecast;
   }
   return null;
 }
