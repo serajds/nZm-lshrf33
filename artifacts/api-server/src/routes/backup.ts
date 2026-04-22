@@ -8,55 +8,22 @@ import {
   formTemplatesTable, formSubmissionsTable, skippedDaysTable,
 } from "@workspace/db";
 import { requireAdmin } from "../middlewares/auth";
-import fs from "fs";
-import path from "path";
+import { objectStorageClient } from "../lib/objectStorage";
 
 const router: IRouter = Router();
 
-const BACKUP_DIR = path.join(process.cwd(), "backups");
-const RETENTION_DAYS = 7;
+const BUCKET_ID = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID || "";
+const BACKUP_PREFIX = "backups/";
 
-function ensureBackupDir() {
-  if (!fs.existsSync(BACKUP_DIR)) {
-    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+function getBucket() {
+  if (!BUCKET_ID) {
+    throw new Error("Object Storage غير مهيأ. يرجى إعداد DEFAULT_OBJECT_STORAGE_BUCKET_ID");
   }
-}
-
-function cleanupOldBackups() {
-  try {
-    const files = fs.readdirSync(BACKUP_DIR)
-      .filter(f => f.endsWith(".json") && f.startsWith("backup-"));
-
-    if (files.length === 0) return;
-
-    const fileInfos = files.map(f => {
-      const stat = fs.statSync(path.join(BACKUP_DIR, f));
-      return { filename: f, mtime: stat.mtime.getTime() };
-    }).sort((a, b) => b.mtime - a.mtime);
-
-    const latestTime = fileInfos[0].mtime;
-    const cutoff = latestTime - RETENTION_DAYS * 24 * 60 * 60 * 1000;
-
-    let deleted = 0;
-    for (const file of fileInfos) {
-      if (file.mtime < cutoff) {
-        fs.unlinkSync(path.join(BACKUP_DIR, file.filename));
-        deleted++;
-      }
-    }
-
-    if (deleted > 0) {
-      console.log(`Backup cleanup: deleted ${deleted} backup(s) older than ${RETENTION_DAYS} days from latest backup`);
-    }
-  } catch (err) {
-    console.error("Backup cleanup error:", err);
-  }
+  return objectStorageClient.bucket(BUCKET_ID);
 }
 
 router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => {
   try {
-    ensureBackupDir();
-
     const [
       users, projects, activities, activityGroups,
       reports, projectFiles, projectExtensions,
@@ -127,18 +94,18 @@ router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => 
     const now = new Date();
     const dateStr = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const filename = `backup-${dateStr}.json`;
-    const filepath = path.join(BACKUP_DIR, filename);
+    const buffer = Buffer.from(JSON.stringify(backupData, null, 2), "utf-8");
 
-    fs.writeFileSync(filepath, JSON.stringify(backupData, null, 2), "utf-8");
-
-    cleanupOldBackups();
-
-    const fileStat = fs.statSync(filepath);
+    await getBucket().file(BACKUP_PREFIX + filename).save(buffer, {
+      contentType: "application/json",
+      resumable: false,
+      metadata: { contentType: "application/json" },
+    });
 
     res.json({
       success: true,
       filename,
-      size: fileStat.size,
+      size: buffer.length,
       createdAt: backupData.createdAt,
       stats: backupData.stats,
     });
@@ -150,77 +117,77 @@ router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => 
 
 router.get("/backup/list", requireAdmin, async (_req, res): Promise<void> => {
   try {
-    ensureBackupDir();
-    const files = fs.readdirSync(BACKUP_DIR)
-      .filter(f => f.endsWith(".json") && f.startsWith("backup-"))
-      .map(f => {
-        const stat = fs.statSync(path.join(BACKUP_DIR, f));
-        return {
-          filename: f,
-          size: stat.size,
-          createdAt: stat.mtime.toISOString(),
-        };
-      })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    res.json({ backups: files });
+    const [files] = await getBucket().getFiles({ prefix: BACKUP_PREFIX });
+    const list = await Promise.all(
+      files
+        .filter(f => f.name.endsWith(".json") && f.name.startsWith(BACKUP_PREFIX + "backup-"))
+        .map(async f => {
+          const [meta] = await f.getMetadata();
+          const filename = f.name.slice(BACKUP_PREFIX.length);
+          return {
+            filename,
+            size: typeof meta.size === "string" ? parseInt(meta.size, 10) : (meta.size as number) || 0,
+            createdAt: (meta.timeCreated as string) || (meta.updated as string) || new Date().toISOString(),
+          };
+        })
+    );
+    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    res.json({ backups: list });
   } catch (err: any) {
+    console.error("Backup list failed:", err);
     res.status(500).json({ error: "فشل جلب النسخ الاحتياطية", details: err.message });
   }
 });
 
+function validateFilename(filename: unknown): string | null {
+  const f = Array.isArray(filename) ? filename[0] : filename;
+  if (typeof f !== "string") return null;
+  if (!f.startsWith("backup-") || !f.endsWith(".json")) return null;
+  if (f.includes("..") || f.includes("/") || f.includes("\\")) return null;
+  return f;
+}
+
 router.get("/backup/download/:filename", requireAdmin, async (req, res): Promise<void> => {
   try {
-    const filename = Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename;
-
-    if (!filename || !filename.startsWith("backup-") || !filename.endsWith(".json")) {
+    const filename = validateFilename(req.params.filename);
+    if (!filename) {
       res.status(400).json({ error: "اسم ملف غير صالح" });
       return;
     }
 
-    if (filename.includes("..") || filename.includes("/") || filename.includes("\\")) {
-      res.status(400).json({ error: "اسم ملف غير صالح" });
-      return;
-    }
-
-    const filepath = path.join(BACKUP_DIR, filename);
-    if (!fs.existsSync(filepath)) {
+    const file = getBucket().file(BACKUP_PREFIX + filename);
+    const [exists] = await file.exists();
+    if (!exists) {
       res.status(404).json({ error: "الملف غير موجود" });
       return;
     }
 
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Type", "application/json");
-    const stream = fs.createReadStream(filepath);
-    stream.pipe(res);
+    file.createReadStream()
+      .on("error", (err) => {
+        console.error("Backup download stream error:", err);
+        if (!res.headersSent) res.status(500).end();
+      })
+      .pipe(res);
   } catch (err: any) {
+    console.error("Backup download failed:", err);
     res.status(500).json({ error: "فشل تحميل النسخة الاحتياطية", details: err.message });
   }
 });
 
 router.delete("/backup/:filename", requireAdmin, async (req, res): Promise<void> => {
   try {
-    const filename = Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename;
-
-    if (!filename || !filename.startsWith("backup-") || !filename.endsWith(".json")) {
+    const filename = validateFilename(req.params.filename);
+    if (!filename) {
       res.status(400).json({ error: "اسم ملف غير صالح" });
       return;
     }
 
-    if (filename.includes("..") || filename.includes("/") || filename.includes("\\")) {
-      res.status(400).json({ error: "اسم ملف غير صالح" });
-      return;
-    }
-
-    const filepath = path.join(BACKUP_DIR, filename);
-    if (!fs.existsSync(filepath)) {
-      res.status(404).json({ error: "الملف غير موجود" });
-      return;
-    }
-
-    fs.unlinkSync(filepath);
+    await getBucket().file(BACKUP_PREFIX + filename).delete({ ignoreNotFound: true });
     res.json({ success: true });
   } catch (err: any) {
+    console.error("Backup delete failed:", err);
     res.status(500).json({ error: "فشل حذف النسخة الاحتياطية", details: err.message });
   }
 });
