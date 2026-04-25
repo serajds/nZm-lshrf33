@@ -748,3 +748,316 @@ export function previewExecutiveSummary(data: ExecutiveSummaryData): void {
   win.document.write(html);
   win.document.close();
 }
+
+/* ────────────────── Attendance employee report ────────────────── */
+
+export interface AttendanceReportDay {
+  date: string;
+  checkIn: string | null;
+  checkOut: string | null;
+}
+
+export interface AttendanceReportData {
+  projectName: string;
+  ownerEntity?: string | null;
+  contractor?: string | null;
+  supervisorEntity?: string | null;
+  location?: string | null;
+  employeeName: string;
+  employeeRole?: string | null;
+  employeePhone?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  days: AttendanceReportDay[];
+  companyLogos?: {
+    owner?: CompanyLogo;
+    contractor?: CompanyLogo;
+    supervisor?: CompanyLogo;
+  };
+  apiBase?: string;
+}
+
+const ATTENDANCE_ROLE_LABEL: Record<string, string> = {
+  admin: "مدير النظام",
+  project_manager: "مدير المشروع",
+  engineer: "مهندس",
+  contractor: "مقاول",
+  owner: "صاحب المشروع",
+};
+
+function fmtLibyaTimeForReport(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Tripoli",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+}
+
+function diffMinutes(checkIn: string | null, checkOut: string | null): number | null {
+  if (!checkIn || !checkOut) return null;
+  const a = new Date(checkIn).getTime();
+  const b = new Date(checkOut).getTime();
+  if (!isFinite(a) || !isFinite(b) || b <= a) return null;
+  return Math.round((b - a) / 60000);
+}
+
+function fmtDuration(mins: number | null): string {
+  if (mins == null) return "—";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m} د`;
+  if (m === 0) return `${h} س`;
+  return `${h} س ${m} د`;
+}
+
+function buildAttendanceReportHTML(data: AttendanceReportData): string {
+  const roleLbl = data.employeeRole ? (ATTENDANCE_ROLE_LABEL[data.employeeRole] ?? data.employeeRole) : "";
+
+  const totalMins = data.days.reduce((s, d) => s + (diffMinutes(d.checkIn, d.checkOut) ?? 0), 0);
+  const presentDays = data.days.filter(d => d.checkIn).length;
+  const completeDays = data.days.filter(d => d.checkIn && d.checkOut).length;
+  const incompleteDays = data.days.filter(d => d.checkIn && !d.checkOut).length;
+
+  const metaRows = [
+    data.ownerEntity ? ["جهة المالك", data.ownerEntity] : null,
+    data.contractor ? ["المقاول", data.contractor] : null,
+    data.supervisorEntity ? ["جهة الإشراف", data.supervisorEntity] : null,
+    data.location ? ["الموقع", data.location] : null,
+  ].filter(Boolean) as string[][];
+
+  const logosHTML = (() => {
+    const logos = data.companyLogos;
+    const base = data.apiBase || "";
+    if (!logos || (!logos.owner?.logoUrl && !logos.contractor?.logoUrl && !logos.supervisor?.logoUrl)) return "";
+    const entries: Array<{ role: string; name: string; src: string }> = [];
+    if (logos.supervisor) entries.push({ role: "جهة الإشراف", name: logos.supervisor.name, src: logos.supervisor.logoUrl ? escAttr(base + logos.supervisor.logoUrl) : "" });
+    if (logos.owner) entries.push({ role: "الجهة المالكة", name: logos.owner.name, src: logos.owner.logoUrl ? escAttr(base + logos.owner.logoUrl) : "" });
+    if (logos.contractor) entries.push({ role: "المقاول", name: logos.contractor.name, src: logos.contractor.logoUrl ? escAttr(base + logos.contractor.logoUrl) : "" });
+    const html = entries.map(e => `<div class="logo-item">
+      <div class="logo-role">${e.role}</div>
+      <div class="logo-img-box">${e.src ? `<img src="${e.src}" onerror="this.style.display='none'" />` : ""}</div>
+      <div class="logo-name">${esc(e.name)}</div>
+    </div>`).join("");
+    return `<div class="logos-strip avoid-break">${html}</div>`;
+  })();
+
+  const rowsHTML = data.days.length === 0
+    ? `<tr><td class="td tc" colspan="4" style="color:#94a3b8;padding:24px 10px">لا توجد سجلات لهذه الفترة.</td></tr>`
+    : data.days.map((d, i) => {
+        const mins = diffMinutes(d.checkIn, d.checkOut);
+        const incomplete = d.checkIn && !d.checkOut;
+        return `<tr style="background:${i % 2 === 0 ? "#fff" : "#f8fafc"}">
+          <td class="td tc" style="font-weight:600">${esc(d.date)}</td>
+          <td class="td tc">${esc(fmtLibyaTimeForReport(d.checkIn))}</td>
+          <td class="td tc">${esc(fmtLibyaTimeForReport(d.checkOut))}</td>
+          <td class="td tc" style="font-weight:600;color:${incomplete ? "#dc2626" : "#1e293b"}">${incomplete ? "بدون انصراف" : esc(fmtDuration(mins))}</td>
+        </tr>`;
+      }).join("");
+
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>تقرير حضور — ${esc(data.employeeName)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  @page { size: A4 portrait; margin: 12mm 14mm 14mm 14mm; }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Noto Kufi Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #1e293b;
+    direction: rtl;
+    text-align: right;
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .avoid-break { break-inside: avoid; page-break-inside: avoid; }
+
+  .logos-strip {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 18px 24px;
+    margin-bottom: 12px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+  }
+  .logo-item { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+  .logo-img-box {
+    width: 80px; height: 80px;
+    border-radius: 12px;
+    border: 1.5px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden; padding: 4px;
+  }
+  .logo-img-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .logo-role { font-size: 10px; font-weight: 700; color: #64748b; }
+  .logo-name { font-size: 12px; font-weight: 700; color: #1e293b; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .header {
+    background: linear-gradient(135deg, #1e293b, #334155, #475569);
+    color: #fff;
+    padding: 24px 28px 20px;
+    border-radius: 10px;
+    margin-bottom: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::before {
+    content: ''; position: absolute;
+    top: -50px; left: -50px;
+    width: 150px; height: 150px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 50%;
+  }
+  .header-row { display: flex; justify-content: space-between; align-items: flex-start; position: relative; z-index: 1; }
+  .header-info { flex: 1; }
+  .header-sys { font-size: 10px; text-transform: uppercase; letter-spacing: 3px; color: rgba(255,255,255,0.45); margin-bottom: 6px; }
+  .header-name { font-size: 22px; font-weight: 800; line-height: 1.3; margin-bottom: 12px; }
+  .header-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill { display: inline-block; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 3px 12px; font-size: 11px; color: rgba(255,255,255,0.8); }
+  .header-badge { background: rgba(255,255,255,0.12); border: 1.5px solid rgba(255,255,255,0.25); border-radius: 12px; padding: 12px 20px; text-align: center; min-width: 90px; }
+  .badge-lbl { font-size: 9px; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+  .badge-val { font-size: 16px; font-weight: 800; }
+
+  .info-strip { display: flex; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+  .info-cell { flex: 1; text-align: center; padding: 12px 8px; border-left: 1px solid #e2e8f0; }
+  .info-cell:first-child { border-left: none; }
+  .info-lbl { font-size: 10px; color: #64748b; font-weight: 600; margin-bottom: 3px; }
+  .info-val { font-size: 14px; font-weight: 800; color: #1e293b; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .stat { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
+  .stat-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .stat-lbl { font-size: 11px; color: #64748b; font-weight: 600; }
+  .stat-val { font-size: 16px; font-weight: 800; color: #1e293b; }
+  .stat-unit { font-size: 11px; font-weight: 600; color: #94a3b8; }
+
+  .section { border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; background: #fafbfc; }
+  .section-title { font-size: 15px; font-weight: 700; color: #334155; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+  .blue-title { color: #1e40af; border-bottom-color: #bfdbfe; }
+
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .th { background: #f1f5f9; padding: 10px 12px; font-size: 12px; font-weight: 700; color: #475569; border-bottom: 2px solid #cbd5e1; text-align: center; }
+  .tc { text-align: center !important; }
+  .td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; }
+
+  .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; }
+
+  .toolbar { position: sticky; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e293b, #334155); padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+  .btn-print { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .btn-print:hover { background: #1d4ed8; }
+  .btn-close { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .btn-close:hover { background: rgba(255,255,255,0.25); }
+
+  @media print { .toolbar { display: none !important; } }
+  @media screen { body { max-width: 210mm; margin: 0 auto; padding-left: 16px; padding-right: 16px; } }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button class="btn-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+  <button class="btn-close" onclick="window.close()">✕ إغلاق</button>
+</div>
+
+${logosHTML}
+
+<!-- HEADER -->
+<div class="header avoid-break">
+  <div class="header-row">
+    <div class="header-info">
+      <div class="header-sys">إدارة الإشراف والمتابعة</div>
+      <div class="header-name">${esc(data.projectName)}</div>
+      <div class="header-pills">
+        ${metaRows.map(([l, v]) => `<span class="pill">${l}: ${esc(v)}</span>`).join("")}
+      </div>
+    </div>
+    <div class="header-badge">
+      <div class="badge-lbl">نوع التقرير</div>
+      <div class="badge-val">حضور موظف</div>
+    </div>
+  </div>
+</div>
+
+<!-- INFO STRIP -->
+<div class="info-strip avoid-break">
+  <div class="info-cell"><div class="info-lbl">الموظف</div><div class="info-val">${esc(data.employeeName)}</div></div>
+  ${roleLbl ? `<div class="info-cell"><div class="info-lbl">الدور</div><div class="info-val">${esc(roleLbl)}</div></div>` : ""}
+  <div class="info-cell"><div class="info-lbl">من تاريخ</div><div class="info-val">${esc(data.dateFrom || "—")}</div></div>
+  <div class="info-cell"><div class="info-lbl">إلى تاريخ</div><div class="info-val">${esc(data.dateTo || "—")}</div></div>
+</div>
+
+<!-- STATS -->
+<div class="stats-row avoid-break">
+  <div class="stat">
+    <div class="stat-icon" style="background:#eff6ff;color:#2563eb">📅</div>
+    <div><div class="stat-lbl">أيام الحضور</div><div class="stat-val">${presentDays} <span class="stat-unit">يوم</span></div></div>
+  </div>
+  <div class="stat">
+    <div class="stat-icon" style="background:#f0fdf4;color:#16a34a">✓</div>
+    <div><div class="stat-lbl">أيام مكتملة</div><div class="stat-val">${completeDays} <span class="stat-unit">يوم</span></div></div>
+  </div>
+  <div class="stat">
+    <div class="stat-icon" style="background:${incompleteDays > 0 ? "#fef2f2" : "#f8fafc"};color:${incompleteDays > 0 ? "#dc2626" : "#94a3b8"}">⚠️</div>
+    <div><div class="stat-lbl">أيام بدون انصراف</div><div class="stat-val">${incompleteDays} <span class="stat-unit">يوم</span></div></div>
+  </div>
+  <div class="stat">
+    <div class="stat-icon" style="background:#fefce8;color:#ca8a04">⏱️</div>
+    <div><div class="stat-lbl">إجمالي الساعات</div><div class="stat-val">${esc(fmtDuration(totalMins))}</div></div>
+  </div>
+</div>
+
+<!-- DETAILS TABLE -->
+<div class="section avoid-break">
+  <div class="section-title blue-title">📋 سجل الحضور والانصراف اليومي</div>
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th class="th" style="width:30%">التاريخ</th>
+        <th class="th" style="width:22%">وقت الحضور</th>
+        <th class="th" style="width:22%">وقت الانصراف</th>
+        <th class="th" style="width:26%">المدة</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHTML}
+    </tbody>
+  </table>
+</div>
+
+<!-- FOOTER -->
+<div class="footer avoid-break">
+  <span>تم إنشاؤه آلياً بواسطة إدارة الإشراف والمتابعة — ${fmtDate(new Date().toISOString())}</span>
+  <span style="font-weight:700;color:#64748b">توقيت ليبيا (GMT+2)</span>
+</div>
+
+</body>
+</html>`;
+}
+
+export function previewAttendanceReport(data: AttendanceReportData): void {
+  const html = buildAttendanceReportHTML(data);
+  const win = window.open("", "_blank", "width=900,height=780,scrollbars=yes");
+  if (!win) {
+    alert("يرجى السماح بالنوافذ المنبثقة لاستخدام خاصية المعاينة");
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
