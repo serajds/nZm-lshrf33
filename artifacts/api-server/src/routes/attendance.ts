@@ -237,6 +237,15 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
     res.status(403).json({ error: "صاحب المشروع لا يسجّل حضور" });
     return;
   }
+  // Contractor staff (whether the global "contractor" role or any user
+  // belonging to the project's contractor company) do not register
+  // attendance in this system — attendance tracks the supervising side
+  // (owner-side engineers / project managers) on-site.
+  if (req.user?.role === "contractor" || req.projectRole === "contractor") {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    res.status(403).json({ error: "موظفو المقاول لا يسجّلون الحضور في هذا النظام" });
+    return;
+  }
 
   const userId = req.user!.userId;
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
