@@ -9,7 +9,7 @@ const allNavItems = [
   { label: "التوقفات", path: "/suspensions", roles: ["admin", "project_manager", "engineer"] },
   { label: "التقارير", path: "/reports", roles: ["admin", "project_manager", "engineer"] },
   { label: "النماذج", path: "/forms", roles: null },
-  { label: "الحضور", path: "/attendance", roles: ["admin", "project_manager", "engineer", "owner", "contractor"] },
+  { label: "الحضور", path: "/attendance", roles: ["admin", "project_manager", "engineer", "owner"] },
   { label: "الملفات", path: "/files", roles: ["admin", "project_manager", "engineer"] },
   { label: "تحليل الانحراف", path: "/deviation", roles: ["admin", "project_manager", "engineer"] },
 ];
