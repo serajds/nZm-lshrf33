@@ -1128,7 +1128,7 @@ paths:
     post:
       operationId: attendanceCheckIn
       tags: [attendance]
-      summary: Check in to a project (selfie + GPS required)
+      summary: Check in to a project (site photo + GPS required)
       parameters:
         - name: projectId
           in: path
@@ -1165,7 +1165,7 @@ paths:
     post:
       operationId: attendanceCheckOut
       tags: [attendance]
-      summary: Check out of a project (selfie + GPS required)
+      summary: Check out of a project (site photo + GPS required)
       parameters:
         - name: projectId
           in: path
