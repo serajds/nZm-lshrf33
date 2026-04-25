@@ -47,8 +47,11 @@ const upload = multer({
 
 async function compressSelfie(filePath: string): Promise<{ size: number; filename: string }> {
   const baseName = path.basename(filePath, path.extname(filePath));
-  const compressedName = baseName + ".jpg";
-  const compressedPath = path.join(path.dirname(filePath), compressedName);
+  const dir = path.dirname(filePath);
+  const finalName = baseName + ".jpg";
+  const finalPath = path.join(dir, finalName);
+  // Always write to a distinct temp path so sharp never reads/writes the same file.
+  const tempPath = path.join(dir, baseName + ".compressing.jpg");
 
   // Verify content is actually a decodable image (defense-in-depth: MIME header
   // can be spoofed). Sharp will throw on non-image input.
@@ -59,11 +62,15 @@ async function compressSelfie(filePath: string): Promise<{ size: number; filenam
     .rotate()
     .resize({ width: 800, withoutEnlargement: true })
     .jpeg({ quality: 78, mozjpeg: true })
-    .toFile(compressedPath);
+    .toFile(tempPath);
 
-  if (compressedPath !== filePath) fs.unlinkSync(filePath);
-  const stats = fs.statSync(compressedPath);
-  return { size: stats.size, filename: compressedName };
+  // Replace original (or sibling) with the compressed version.
+  if (fs.existsSync(finalPath) && finalPath !== filePath) fs.unlinkSync(finalPath);
+  if (filePath !== finalPath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  fs.renameSync(tempPath, finalPath);
+
+  const stats = fs.statSync(finalPath);
+  return { size: stats.size, filename: finalName };
 }
 
 const router: IRouter = Router();

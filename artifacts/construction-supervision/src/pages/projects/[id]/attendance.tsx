@@ -224,13 +224,15 @@ export default function ProjectAttendance() {
         )}
 
         <Tabs defaultValue={canSelfCheck ? "my-history" : "active"} className="w-full">
-          <TabsList className="flex flex-wrap h-auto">
-            <TabsTrigger value="active">الحاضرون الآن</TabsTrigger>
-            {canSelfCheck && <TabsTrigger value="my-history">سجلّي</TabsTrigger>}
-            {isManager && <TabsTrigger value="history">سجل المشروع</TabsTrigger>}
-            {isManager && <TabsTrigger value="report">تقرير موظف</TabsTrigger>}
-            {isManager && <TabsTrigger value="settings">إعدادات الموقع</TabsTrigger>}
-          </TabsList>
+          <div className="-mx-4 sm:mx-0 overflow-x-auto">
+            <TabsList className="inline-flex w-max min-w-full sm:w-full sm:min-w-0 sm:flex-wrap h-auto px-4 sm:px-1 gap-1">
+              <TabsTrigger value="active" className="whitespace-nowrap">الحاضرون الآن</TabsTrigger>
+              {canSelfCheck && <TabsTrigger value="my-history" className="whitespace-nowrap">سجلّي</TabsTrigger>}
+              {isManager && <TabsTrigger value="history" className="whitespace-nowrap">سجل المشروع</TabsTrigger>}
+              {isManager && <TabsTrigger value="report" className="whitespace-nowrap">تقرير موظف</TabsTrigger>}
+              {isManager && <TabsTrigger value="settings" className="whitespace-nowrap">إعدادات الموقع</TabsTrigger>}
+            </TabsList>
+          </div>
 
           <TabsContent value="active" className="mt-4">
             <ActiveTab
@@ -398,53 +400,94 @@ function ActiveTab({
         ) : (active?.members?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">لا يوجد أحد مسجّل حضور حالياً.</p>
         ) : (
-          <div className="overflow-x-auto -mx-4 sm:mx-0">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground bg-muted/50">
-                <tr>
-                  <th className="px-2 py-2 text-right">الاسم</th>
-                  <th className="px-2 py-2 text-right">الدور</th>
-                  <th className="px-2 py-2 text-right">وقت الحضور</th>
-                  <th className="px-2 py-2 text-right">الموقع</th>
-                  <th className="px-2 py-2 text-right">الحالة</th>
-                  <th className="px-2 py-2 text-right">الصورة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {active!.members.map(m => (
-                  <tr key={m.recordId} className="border-t">
-                    <td className="px-2 py-2">{m.fullName}<div className="text-xs text-muted-foreground">{m.phone}</div></td>
-                    <td className="px-2 py-2">{m.userRole ? (ROLE_LABEL[m.userRole] ?? m.userRole) : "—"}</td>
-                    <td className="px-2 py-2 whitespace-nowrap">{fmtLibyaDateTime(m.checkedInAt)}</td>
-                    <td className="px-2 py-2">
-                      {m.latitude != null && m.longitude != null ? (
-                        <a className="text-primary hover:underline inline-flex items-center gap-1" href={osmLink(m.latitude, m.longitude)} target="_blank" rel="noreferrer">
-                          <MapPin className="h-3.5 w-3.5" /> خريطة
-                        </a>
-                      ) : "—"}
-                      {m.distanceMeters != null ? (
-                        <div className="text-xs text-muted-foreground">{Math.round(m.distanceMeters)} م</div>
-                      ) : null}
-                    </td>
-                    <td className="px-2 py-2">
-                      {m.outOfRange ? (
-                        <Badge variant="destructive">خارج النطاق</Badge>
-                      ) : (
-                        <Badge className="bg-green-600 hover:bg-green-600">داخل النطاق</Badge>
-                      )}
-                    </td>
-                    <td className="px-2 py-2">
-                      {m.selfieUrl ? (
-                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => onShowPhoto(m.selfieUrl!)}>
-                          <ImageIcon className="h-3.5 w-3.5" />
-                        </Button>
-                      ) : "—"}
-                    </td>
+          <>
+            {/* Mobile: card list */}
+            <div className="sm:hidden space-y-2">
+              {active!.members.map(m => (
+                <div key={m.recordId} className="rounded-md border bg-card p-3 space-y-2 text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{m.fullName}</div>
+                      {m.phone && <div className="text-xs text-muted-foreground">{m.phone}</div>}
+                      {m.userRole && <div className="text-xs text-muted-foreground">{ROLE_LABEL[m.userRole] ?? m.userRole}</div>}
+                    </div>
+                    {m.outOfRange ? (
+                      <Badge variant="destructive" className="shrink-0">خارج النطاق</Badge>
+                    ) : (
+                      <Badge className="bg-green-600 hover:bg-green-600 shrink-0">داخل النطاق</Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    وقت الحضور: <span className="text-foreground">{fmtLibyaDateTime(m.checkedInAt)}</span>
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap text-xs">
+                    {m.latitude != null && m.longitude != null && (
+                      <a className="text-primary hover:underline inline-flex items-center gap-1" href={osmLink(m.latitude, m.longitude)} target="_blank" rel="noreferrer">
+                        <MapPin className="h-3.5 w-3.5" /> خريطة
+                      </a>
+                    )}
+                    {m.distanceMeters != null && (
+                      <span className="text-muted-foreground">{Math.round(m.distanceMeters)} م</span>
+                    )}
+                    {m.selfieUrl && (
+                      <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => onShowPhoto(m.selfieUrl!)}>
+                        <ImageIcon className="h-3.5 w-3.5 ml-1" /> عرض الصورة
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop: table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-muted-foreground bg-muted/50">
+                  <tr>
+                    <th className="px-2 py-2 text-right">الاسم</th>
+                    <th className="px-2 py-2 text-right">الدور</th>
+                    <th className="px-2 py-2 text-right">وقت الحضور</th>
+                    <th className="px-2 py-2 text-right">الموقع</th>
+                    <th className="px-2 py-2 text-right">الحالة</th>
+                    <th className="px-2 py-2 text-right">الصورة</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {active!.members.map(m => (
+                    <tr key={m.recordId} className="border-t">
+                      <td className="px-2 py-2">{m.fullName}<div className="text-xs text-muted-foreground">{m.phone}</div></td>
+                      <td className="px-2 py-2">{m.userRole ? (ROLE_LABEL[m.userRole] ?? m.userRole) : "—"}</td>
+                      <td className="px-2 py-2 whitespace-nowrap">{fmtLibyaDateTime(m.checkedInAt)}</td>
+                      <td className="px-2 py-2">
+                        {m.latitude != null && m.longitude != null ? (
+                          <a className="text-primary hover:underline inline-flex items-center gap-1" href={osmLink(m.latitude, m.longitude)} target="_blank" rel="noreferrer">
+                            <MapPin className="h-3.5 w-3.5" /> خريطة
+                          </a>
+                        ) : "—"}
+                        {m.distanceMeters != null ? (
+                          <div className="text-xs text-muted-foreground">{Math.round(m.distanceMeters)} م</div>
+                        ) : null}
+                      </td>
+                      <td className="px-2 py-2">
+                        {m.outOfRange ? (
+                          <Badge variant="destructive">خارج النطاق</Badge>
+                        ) : (
+                          <Badge className="bg-green-600 hover:bg-green-600">داخل النطاق</Badge>
+                        )}
+                      </td>
+                      <td className="px-2 py-2">
+                        {m.selfieUrl ? (
+                          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => onShowPhoto(m.selfieUrl!)}>
+                            <ImageIcon className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -552,54 +595,102 @@ function ProjectHistoryTab({ projectId, onShowPhoto }: { projectId: number; onSh
 
 function RecordsTable({ rows, showName, onShowPhoto }: { rows: AttendanceRecordWithUser[]; showName: boolean; onShowPhoto: (url: string) => void }) {
   return (
-    <div className="overflow-x-auto -mx-4 sm:mx-0">
-      <table className="w-full text-sm">
-        <thead className="text-xs text-muted-foreground bg-muted/50">
-          <tr>
-            {showName && <th className="px-2 py-2 text-right">الموظف</th>}
-            <th className="px-2 py-2 text-right">النوع</th>
-            <th className="px-2 py-2 text-right">الوقت</th>
-            <th className="px-2 py-2 text-right">الموقع</th>
-            <th className="px-2 py-2 text-right">المسافة</th>
-            <th className="px-2 py-2 text-right">الحالة</th>
-            <th className="px-2 py-2 text-right">الصورة</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(r => (
-            <tr key={r.id} className="border-t">
-              {showName && <td className="px-2 py-2">{r.fullName ?? "—"}<div className="text-xs text-muted-foreground">{r.phone ?? ""}</div></td>}
-              <td className="px-2 py-2">
-                {r.type === "check_in" ? (
-                  <Badge className="bg-green-600 hover:bg-green-600">حضور</Badge>
-                ) : (
-                  <Badge variant="secondary">انصراف</Badge>
+    <>
+      {/* Mobile: card list */}
+      <div className="sm:hidden space-y-2">
+        {rows.map(r => (
+          <div key={r.id} className="rounded-md border bg-card p-3 space-y-2 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                {showName && (
+                  <div className="font-medium truncate">{r.fullName ?? "—"}</div>
                 )}
-              </td>
-              <td className="px-2 py-2 whitespace-nowrap">{fmtLibyaDateTime(r.recordedAt)}</td>
-              <td className="px-2 py-2">
-                {r.latitude != null && r.longitude != null ? (
-                  <a className="text-primary hover:underline inline-flex items-center gap-1" href={osmLink(r.latitude, r.longitude)} target="_blank" rel="noreferrer">
-                    <MapPin className="h-3.5 w-3.5" /> خريطة
-                  </a>
-                ) : "—"}
-              </td>
-              <td className="px-2 py-2 text-xs">{r.distanceMeters != null ? `${Math.round(r.distanceMeters)} م` : "—"}</td>
-              <td className="px-2 py-2">
-                {r.outOfRange ? <Badge variant="destructive">خارج النطاق</Badge> : <Badge className="bg-green-600 hover:bg-green-600">داخل النطاق</Badge>}
-              </td>
-              <td className="px-2 py-2">
-                {r.selfieUrl ? (
-                  <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => onShowPhoto(r.selfieUrl!)}>
-                    <ImageIcon className="h-3.5 w-3.5" />
-                  </Button>
-                ) : "—"}
-              </td>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  {r.type === "check_in" ? (
+                    <Badge className="bg-green-600 hover:bg-green-600">حضور</Badge>
+                  ) : (
+                    <Badge variant="secondary">انصراف</Badge>
+                  )}
+                  {r.outOfRange ? (
+                    <Badge variant="destructive">خارج النطاق</Badge>
+                  ) : (
+                    <Badge className="bg-green-600 hover:bg-green-600">داخل النطاق</Badge>
+                  )}
+                </div>
+              </div>
+              {r.selfieUrl && (
+                <Button size="sm" variant="ghost" className="h-8 px-2 shrink-0" onClick={() => onShowPhoto(r.selfieUrl!)}>
+                  <ImageIcon className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              الوقت: <span className="text-foreground">{fmtLibyaDateTime(r.recordedAt)}</span>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap text-xs">
+              {r.latitude != null && r.longitude != null && (
+                <a className="text-primary hover:underline inline-flex items-center gap-1" href={osmLink(r.latitude, r.longitude)} target="_blank" rel="noreferrer">
+                  <MapPin className="h-3.5 w-3.5" /> خريطة
+                </a>
+              )}
+              {r.distanceMeters != null && (
+                <span className="text-muted-foreground">المسافة: {Math.round(r.distanceMeters)} م</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop: table */}
+      <div className="hidden sm:block overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-muted-foreground bg-muted/50">
+            <tr>
+              {showName && <th className="px-2 py-2 text-right">الموظف</th>}
+              <th className="px-2 py-2 text-right">النوع</th>
+              <th className="px-2 py-2 text-right">الوقت</th>
+              <th className="px-2 py-2 text-right">الموقع</th>
+              <th className="px-2 py-2 text-right">المسافة</th>
+              <th className="px-2 py-2 text-right">الحالة</th>
+              <th className="px-2 py-2 text-right">الصورة</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.id} className="border-t">
+                {showName && <td className="px-2 py-2">{r.fullName ?? "—"}<div className="text-xs text-muted-foreground">{r.phone ?? ""}</div></td>}
+                <td className="px-2 py-2">
+                  {r.type === "check_in" ? (
+                    <Badge className="bg-green-600 hover:bg-green-600">حضور</Badge>
+                  ) : (
+                    <Badge variant="secondary">انصراف</Badge>
+                  )}
+                </td>
+                <td className="px-2 py-2 whitespace-nowrap">{fmtLibyaDateTime(r.recordedAt)}</td>
+                <td className="px-2 py-2">
+                  {r.latitude != null && r.longitude != null ? (
+                    <a className="text-primary hover:underline inline-flex items-center gap-1" href={osmLink(r.latitude, r.longitude)} target="_blank" rel="noreferrer">
+                      <MapPin className="h-3.5 w-3.5" /> خريطة
+                    </a>
+                  ) : "—"}
+                </td>
+                <td className="px-2 py-2 text-xs">{r.distanceMeters != null ? `${Math.round(r.distanceMeters)} م` : "—"}</td>
+                <td className="px-2 py-2">
+                  {r.outOfRange ? <Badge variant="destructive">خارج النطاق</Badge> : <Badge className="bg-green-600 hover:bg-green-600">داخل النطاق</Badge>}
+                </td>
+                <td className="px-2 py-2">
+                  {r.selfieUrl ? (
+                    <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => onShowPhoto(r.selfieUrl!)}>
+                      <ImageIcon className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -634,6 +725,13 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
     },
   });
 
+  // Clear stale selection if previously chosen employee is no longer a member.
+  useEffect(() => {
+    if (employeeId && members.length > 0 && !members.some(m => String(m.id) === employeeId)) {
+      setEmployeeId("");
+    }
+  }, [employeeId, members]);
+
   const params = useMemo(() => {
     const p = new URLSearchParams();
     if (from) p.set("dateFrom", from);
@@ -641,14 +739,21 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
     return p.toString();
   }, [from, to]);
 
-  const { data: report, refetch, isFetching } = useQuery<EmployeeReport>({
+  const { data: report, refetch, isFetching, error: reportError } = useQuery<EmployeeReport>({
     queryKey: [`/api/attendance/projects/${projectId}/users/${employeeId}/report`, params],
     queryFn: async () => {
       const r = await authFetch(`${API_BASE}/attendance/projects/${projectId}/users/${employeeId}/report?${params}`);
-      if (!r.ok) throw new Error("فشل تحميل التقرير");
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        const msg = (err && typeof err === "object" && "error" in err && typeof err.error === "string")
+          ? err.error
+          : (r.status === 404 ? "الموظف غير موجود في هذا المشروع" : "فشل تحميل التقرير");
+        throw new Error(msg);
+      }
       return r.json();
     },
     enabled: !!employeeId,
+    retry: false,
   });
 
   async function downloadPdf() {
@@ -698,21 +803,55 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button onClick={() => refetch()} disabled={!employeeId || isFetching}>
+          <Button onClick={() => refetch()} disabled={!employeeId || isFetching} className="flex-1 sm:flex-none">
             {isFetching ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : null}
             عرض التقرير
           </Button>
-          <Button variant="outline" onClick={downloadPdf} disabled={!employeeId}>
+          <Button variant="outline" onClick={downloadPdf} disabled={!employeeId} className="flex-1 sm:flex-none">
             <FileDown className="h-4 w-4 ml-2" /> تنزيل PDF
           </Button>
         </div>
 
-        {report && (
+        {!employeeId && (
+          <p className="text-sm text-muted-foreground">اختر موظفاً لعرض تقرير الحضور.</p>
+        )}
+
+        {employeeId && reportError && (
+          <div className="rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-sm p-3">
+            {reportError instanceof Error ? reportError.message : "تعذّر تحميل التقرير"}
+          </div>
+        )}
+
+        {report?.employee && (
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{report.employee.fullName}</span> — {ROLE_LABEL[report.employee.role ?? ""] ?? report.employee.role ?? ""}
+              <span className="font-medium text-foreground">{report.employee.fullName}</span>
+              {report.employee.role ? <> — {ROLE_LABEL[report.employee.role] ?? report.employee.role}</> : null}
             </div>
-            <div className="overflow-x-auto -mx-4 sm:mx-0">
+
+            {/* Mobile: card list */}
+            <div className="sm:hidden space-y-2">
+              {report.days.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">لا توجد سجلات.</p>
+              ) : report.days.map(d => (
+                <div key={d.date} className="rounded-md border bg-card p-3 text-sm">
+                  <div className="font-medium mb-1">{d.date}</div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <div className="text-muted-foreground">حضور</div>
+                      <div className="font-medium">{d.checkIn ? fmtLibyaTime(d.checkIn) : "—"}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">انصراف</div>
+                      <div className="font-medium">{d.checkOut ? fmtLibyaTime(d.checkOut) : "—"}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop: table */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-xs text-muted-foreground bg-muted/50">
                   <tr>
