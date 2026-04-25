@@ -31,12 +31,29 @@ const storage = multer.diskStorage({
     cb(null, "att-" + uniqueSuffix + path.extname(file.originalname || ".jpg"));
   },
 });
-const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
+const ALLOWED_SELFIE_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"]);
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_SELFIE_MIME.has(file.mimetype.toLowerCase())) {
+      cb(new Error("INVALID_MIME"));
+      return;
+    }
+    cb(null, true);
+  },
+});
 
 async function compressSelfie(filePath: string): Promise<{ size: number; filename: string }> {
   const baseName = path.basename(filePath, path.extname(filePath));
   const compressedName = baseName + ".jpg";
   const compressedPath = path.join(path.dirname(filePath), compressedName);
+
+  // Verify content is actually a decodable image (defense-in-depth: MIME header
+  // can be spoofed). Sharp will throw on non-image input.
+  const meta = await sharp(filePath).metadata();
+  if (!meta.format) throw new Error("INVALID_IMAGE_CONTENT");
 
   await sharp(filePath)
     .rotate()
