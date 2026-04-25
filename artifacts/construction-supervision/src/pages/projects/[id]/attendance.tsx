@@ -1045,7 +1045,7 @@ function SiteSettingsTab({ projectId, onUpdated }: { projectId: number; onUpdate
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          حدّد إحداثيات الموقع ونصف القطر المسموح به (افتراضي 200 متر). سيتم تنبيه المدير إذا سجّل أحد الموظفين حضوره خارج هذا النطاق، لكن لن يُمنع التسجيل.
+          حدّد إحداثيات الموقع ونصف القطر المسموح به (افتراضي 200 متر). سيتم رفض تسجيل الحضور أو الانصراف من خارج هذا النطاق.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
