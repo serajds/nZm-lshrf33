@@ -150,7 +150,7 @@ router.post(
   "/attendance/projects/:projectId/check-in",
   requireProjectAccess("projectId"),
   upload.single("selfie"),
-  async (req, res): Promise<void> => {
+  async (req: Request, res: Response): Promise<void> => {
     await recordAttendance(req, res, "check_in");
   },
 );
@@ -160,12 +160,12 @@ router.post(
   "/attendance/projects/:projectId/check-out",
   requireProjectAccess("projectId"),
   upload.single("selfie"),
-  async (req, res): Promise<void> => {
+  async (req: Request, res: Response): Promise<void> => {
     await recordAttendance(req, res, "check_out");
   },
 );
 
-async function recordAttendance(req: any, res: any, type: "check_in" | "check_out") {
+async function recordAttendance(req: Request, res: Response, type: "check_in" | "check_out"): Promise<void> {
   const userId = req.user!.userId;
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
@@ -279,21 +279,41 @@ router.get(
     const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
     const projectId = parseInt(raw, 10);
 
-    if (req.user?.role === "owner") {
-      const [{ count }] = await db.select({ count: sql<number>`COUNT(DISTINCT user_id)::int` })
-        .from(sql`(
+    const isManager = req.user?.role === "admin" || req.projectRole === "project_manager";
+
+    // Non-managers (owner, engineer, contractor, regular member) only get the count
+    if (!isManager) {
+      const countRows = await db.execute(sql<{ count: number }>`
+        SELECT COUNT(*)::int AS count FROM (
           SELECT DISTINCT ON (user_id) user_id, type
           FROM attendance_records
           WHERE project_id = ${projectId}
           ORDER BY user_id, recorded_at DESC
-        ) latest`)
-        .where(sql`latest.type = 'check_in'`);
-      res.json({ activeCount: count ?? 0, members: [] });
+        ) latest
+        WHERE latest.type = 'check_in'
+      `);
+      const count = (countRows.rows[0] as { count: number } | undefined)?.count ?? 0;
+      res.json({ activeCount: count, members: [] });
       return;
     }
 
-    // Latest record per user for this project; keep ones whose latest = check_in
-    const rows = await db.execute(sql`
+    // Manager view: latest record per user for this project; keep ones whose latest = check_in
+    type ActiveRow = {
+      id: number;
+      user_id: number;
+      recorded_at: Date;
+      latitude: number;
+      longitude: number;
+      accuracy_meters: number | null;
+      distance_meters: number | null;
+      out_of_range: boolean;
+      selfie_url: string | null;
+      notes: string | null;
+      full_name: string;
+      phone: string | null;
+      user_role: string;
+    };
+    const rows = await db.execute(sql<ActiveRow>`
       SELECT
         ar.id, ar.user_id, ar.recorded_at, ar.latitude, ar.longitude,
         ar.accuracy_meters, ar.distance_meters, ar.out_of_range, ar.selfie_url, ar.notes,
@@ -311,7 +331,7 @@ router.get(
       ORDER BY ar.recorded_at DESC
     `);
 
-    const members = (rows.rows as any[]).map(r => ({
+    const members = (rows.rows as ActiveRow[]).map((r) => ({
       recordId: r.id,
       userId: r.user_id,
       fullName: r.full_name,
@@ -339,7 +359,9 @@ router.get(
     const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
     const projectId = parseInt(raw, 10);
 
-    if (req.user?.role === "owner") {
+    // Manager-only endpoint (admin or project_manager). Other roles must use /my-history.
+    const isManager = req.user?.role === "admin" || req.projectRole === "project_manager";
+    if (!isManager) {
       res.status(403).json({ error: "غير مصرح" });
       return;
     }
