@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetProject, useGetMyProjectPermissions } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { AppLayout } from "@/components/layout";
 import { ProjectNav } from "@/components/project-nav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { SelfieCameraDialog } from "@/components/selfie-camera-dialog";
 import { fmtLibyaDateTime, fmtLibyaTime, fmtLibyaDate, getCurrentPosition, withAuthToken } from "@/lib/attendance-utils";
-import { Loader2, MapPin, LogIn, LogOut, Camera, FileDown, AlertTriangle, CheckCircle2, Crosshair, Image as ImageIcon } from "lucide-react";
+import { Loader2, MapPin, LogIn, LogOut, Camera, FileDown, AlertTriangle, CheckCircle2, Crosshair, Image as ImageIcon, ArrowRight } from "lucide-react";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -113,6 +112,7 @@ export default function ProjectAttendance() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   usePageTitle("حضور وانصراف الطاقم");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
@@ -204,76 +204,80 @@ export default function ProjectAttendance() {
   }
 
   return (
-    <AppLayout>
-      <div dir="rtl" className="container mx-auto px-4 md:px-6 py-4 md:py-6 space-y-4 md:space-y-6">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-xl md:text-2xl font-bold">{project?.name ?? "المشروع"}</h1>
-          <p className="text-sm text-muted-foreground">حضور وانصراف الطاقم</p>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
+          <ArrowRight className="h-5 w-5" />
+        </Button>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name ?? "المشروع"}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">حضور وانصراف الطاقم</p>
         </div>
-        <ProjectNav projectId={projectId} />
+      </div>
 
-        {/* Self check-in/out card (visible to anyone except owner) */}
-        {canSelfCheck && (
-          <SelfCheckCard
-            myStatus={myStatusForProject}
-            project={project}
-            submitting={submitting}
-            onStart={startCheck}
+      <ProjectNav projectId={projectId} />
+
+      {/* Self check-in/out card (visible to anyone except owner) */}
+      {canSelfCheck && (
+        <SelfCheckCard
+          myStatus={myStatusForProject}
+          project={project}
+          submitting={submitting}
+          onStart={startCheck}
+          onShowPhoto={setPhotoModalUrl}
+        />
+      )}
+
+      <Tabs defaultValue={canSelfCheck ? "my-history" : "active"} className="w-full">
+        <div className="-mx-4 sm:mx-0 overflow-x-auto">
+          <TabsList className="inline-flex w-max min-w-full sm:w-full sm:min-w-0 sm:flex-wrap h-auto px-4 sm:px-1 gap-1">
+            <TabsTrigger value="active" className="whitespace-nowrap">الحاضرون الآن</TabsTrigger>
+            {canSelfCheck && <TabsTrigger value="my-history" className="whitespace-nowrap">سجلّي</TabsTrigger>}
+            {isManager && <TabsTrigger value="history" className="whitespace-nowrap">سجل المشروع</TabsTrigger>}
+            {isManager && <TabsTrigger value="report" className="whitespace-nowrap">تقرير موظف</TabsTrigger>}
+            {isManager && <TabsTrigger value="settings" className="whitespace-nowrap">إعدادات الموقع</TabsTrigger>}
+          </TabsList>
+        </div>
+
+        <TabsContent value="active" className="mt-4">
+          <ActiveTab
+            active={active}
+            loading={activeLoading}
+            showDetails={isManager}
             onShowPhoto={setPhotoModalUrl}
           />
+        </TabsContent>
+
+        {canSelfCheck && (
+          <TabsContent value="my-history" className="mt-4">
+            <MyHistoryTab projectId={projectId} onShowPhoto={setPhotoModalUrl} />
+          </TabsContent>
         )}
 
-        <Tabs defaultValue={canSelfCheck ? "my-history" : "active"} className="w-full">
-          <div className="-mx-4 sm:mx-0 overflow-x-auto">
-            <TabsList className="inline-flex w-max min-w-full sm:w-full sm:min-w-0 sm:flex-wrap h-auto px-4 sm:px-1 gap-1">
-              <TabsTrigger value="active" className="whitespace-nowrap">الحاضرون الآن</TabsTrigger>
-              {canSelfCheck && <TabsTrigger value="my-history" className="whitespace-nowrap">سجلّي</TabsTrigger>}
-              {isManager && <TabsTrigger value="history" className="whitespace-nowrap">سجل المشروع</TabsTrigger>}
-              {isManager && <TabsTrigger value="report" className="whitespace-nowrap">تقرير موظف</TabsTrigger>}
-              {isManager && <TabsTrigger value="settings" className="whitespace-nowrap">إعدادات الموقع</TabsTrigger>}
-            </TabsList>
-          </div>
+        {isManager && (
+          <TabsContent value="history" className="mt-4">
+            <ProjectHistoryTab projectId={projectId} onShowPhoto={setPhotoModalUrl} />
+          </TabsContent>
+        )}
 
-          <TabsContent value="active" className="mt-4">
-            <ActiveTab
-              active={active}
-              loading={activeLoading}
-              showDetails={isManager}
-              onShowPhoto={setPhotoModalUrl}
+        {isManager && (
+          <TabsContent value="report" className="mt-4">
+            <EmployeeReportTab projectId={projectId} />
+          </TabsContent>
+        )}
+
+        {isManager && (
+          <TabsContent value="settings" className="mt-4">
+            <SiteSettingsTab
+              projectId={projectId}
+              onUpdated={() => {
+                queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
+                refetchMyStatus();
+              }}
             />
           </TabsContent>
-
-          {canSelfCheck && (
-            <TabsContent value="my-history" className="mt-4">
-              <MyHistoryTab projectId={projectId} onShowPhoto={setPhotoModalUrl} />
-            </TabsContent>
-          )}
-
-          {isManager && (
-            <TabsContent value="history" className="mt-4">
-              <ProjectHistoryTab projectId={projectId} onShowPhoto={setPhotoModalUrl} />
-            </TabsContent>
-          )}
-
-          {isManager && (
-            <TabsContent value="report" className="mt-4">
-              <EmployeeReportTab projectId={projectId} />
-            </TabsContent>
-          )}
-
-          {isManager && (
-            <TabsContent value="settings" className="mt-4">
-              <SiteSettingsTab
-                projectId={projectId}
-                onUpdated={() => {
-                  queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
-                  refetchMyStatus();
-                }}
-              />
-            </TabsContent>
-          )}
-        </Tabs>
-      </div>
+        )}
+      </Tabs>
 
       <SelfieCameraDialog
         open={selfieOpen}
@@ -292,7 +296,7 @@ export default function ProjectAttendance() {
           ) : null}
         </DialogContent>
       </Dialog>
-    </AppLayout>
+    </div>
   );
 }
 
@@ -571,9 +575,9 @@ function ProjectHistoryTab({ projectId, onShowPhoto }: { projectId: number; onSh
           </div>
           <div>
             <Label className="text-xs">الموظف</Label>
-            <Select value={userId || "all"} onValueChange={(v) => setUserId(v === "all" ? "" : v)}>
-              <SelectTrigger><SelectValue placeholder="الكل" /></SelectTrigger>
-              <SelectContent>
+            <Select value={userId || "all"} onValueChange={(v) => setUserId(v === "all" ? "" : v)} dir="rtl">
+              <SelectTrigger dir="rtl"><SelectValue placeholder="الكل" /></SelectTrigger>
+              <SelectContent dir="rtl">
                 <SelectItem value="all">الكل</SelectItem>
                 {uniqueUsers.map(u => (
                   <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
@@ -782,9 +786,9 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div className="sm:col-span-2">
             <Label className="text-xs">الموظف</Label>
-            <Select value={employeeId} onValueChange={setEmployeeId}>
-              <SelectTrigger><SelectValue placeholder="اختر موظفاً" /></SelectTrigger>
-              <SelectContent>
+            <Select value={employeeId} onValueChange={setEmployeeId} dir="rtl">
+              <SelectTrigger dir="rtl"><SelectValue placeholder="اختر موظفاً" /></SelectTrigger>
+              <SelectContent dir="rtl">
                 {members.map(m => (
                   <SelectItem key={m.id} value={String(m.id)}>
                     {m.fullName} — {ROLE_LABEL[m.role] ?? m.role}
