@@ -205,7 +205,7 @@ export default function ProjectAttendance() {
 
   return (
     <AppLayout>
-      <div className="container mx-auto px-4 md:px-6 py-4 md:py-6 space-y-4 md:space-y-6">
+      <div dir="rtl" className="container mx-auto px-4 md:px-6 py-4 md:py-6 space-y-4 md:space-y-6">
         <div className="flex flex-col gap-2">
           <h1 className="text-xl md:text-2xl font-bold">{project?.name ?? "المشروع"}</h1>
           <p className="text-sm text-muted-foreground">حضور وانصراف الطاقم</p>
