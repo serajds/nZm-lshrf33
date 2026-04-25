@@ -362,19 +362,9 @@ router.get(
 
     const isManager = req.user?.role === "admin" || req.projectRole === "project_manager";
 
-    // Non-managers (owner, engineer, contractor, regular member) only get the count
+    // Only system admins and project managers may view the active attendees list
     if (!isManager) {
-      const countRows = await db.execute(sql<{ count: number }>`
-        SELECT COUNT(*)::int AS count FROM (
-          SELECT DISTINCT ON (user_id) user_id, type
-          FROM attendance_records
-          WHERE project_id = ${projectId}
-          ORDER BY user_id, recorded_at DESC
-        ) latest
-        WHERE latest.type = 'check_in'
-      `);
-      const count = (countRows.rows[0] as { count: number } | undefined)?.count ?? 0;
-      res.json({ activeCount: count, members: [] });
+      res.status(403).json({ message: "غير مسموح بعرض قائمة الحاضرين" });
       return;
     }
 
