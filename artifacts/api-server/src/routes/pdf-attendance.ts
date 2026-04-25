@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { attendanceRecordsTable, projectsTable, usersTable } from "@workspace/db";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { userBelongsToProject } from "./attendance";
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
@@ -55,6 +56,13 @@ router.get("/pdf/attendance-report", requireAuth, async (req, res): Promise<void
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   const [employee] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
   if (!project || !employee) { res.status(404).json({ error: "غير موجود" }); return; }
+
+  // Target user must actually belong to this project (prevents PMs from
+  // enumerating arbitrary users' personal info via PDF endpoint).
+  if (reqUser.userId !== userId) {
+    const belongs = await userBelongsToProject(userId, projectId);
+    if (!belongs) { res.status(404).json({ error: "الموظف غير موجود في هذا المشروع" }); return; }
+  }
 
   const conditions = [eq(attendanceRecordsTable.projectId, projectId), eq(attendanceRecordsTable.userId, userId)];
   // Africa/Tripoli day boundaries (GMT+2, no DST)
