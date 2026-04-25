@@ -20,6 +20,7 @@ import { SelfieCameraDialog } from "@/components/selfie-camera-dialog";
 import { fmtLibyaDateTime, fmtLibyaTime, fmtLibyaDate, getCurrentPosition, withAuthToken } from "@/lib/attendance-utils";
 import { Loader2, MapPin, LogIn, LogOut, Camera, Printer, AlertTriangle, CheckCircle2, Crosshair, Image as ImageIcon, ArrowRight } from "lucide-react";
 import { previewAttendanceReport, type CompanyLogo, type AttendanceReportData } from "@/lib/report-pdf";
+import { AttendanceLocationMapDialog, type AttendanceMapPoint } from "@/components/attendance-location-map-dialog";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -161,6 +162,16 @@ export default function ProjectAttendance() {
   const [pendingType, setPendingType] = useState<"check_in" | "check_out" | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
+  const [mapPoint, setMapPoint] = useState<AttendanceMapPoint | null>(null);
+
+  const showMap = (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => {
+    setMapPoint({
+      ...p,
+      siteLat: project?.siteLatitude ?? null,
+      siteLng: project?.siteLongitude ?? null,
+      siteRadius: project?.siteRadiusMeters ?? null,
+    });
+  };
 
   function startCheck(type: "check_in" | "check_out") {
     setPendingType(type);
@@ -246,18 +257,19 @@ export default function ProjectAttendance() {
             loading={activeLoading}
             showDetails={isManager}
             onShowPhoto={setPhotoModalUrl}
+            onShowMap={showMap}
           />
         </TabsContent>
 
         {canSelfCheck && (
           <TabsContent value="my-history" className="mt-4">
-            <MyHistoryTab projectId={projectId} onShowPhoto={setPhotoModalUrl} />
+            <MyHistoryTab projectId={projectId} onShowPhoto={setPhotoModalUrl} onShowMap={showMap} />
           </TabsContent>
         )}
 
         {isManager && (
           <TabsContent value="history" className="mt-4">
-            <ProjectHistoryTab projectId={projectId} onShowPhoto={setPhotoModalUrl} />
+            <ProjectHistoryTab projectId={projectId} onShowPhoto={setPhotoModalUrl} onShowMap={showMap} />
           </TabsContent>
         )}
 
@@ -297,6 +309,8 @@ export default function ProjectAttendance() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AttendanceLocationMapDialog point={mapPoint} onClose={() => setMapPoint(null)} />
     </div>
   );
 }
@@ -382,12 +396,13 @@ function SelfCheckCard({
 /* ============== Active tab ============== */
 
 function ActiveTab({
-  active, loading, showDetails, onShowPhoto,
+  active, loading, showDetails, onShowPhoto, onShowMap,
 }: {
   active: ActiveResponse | undefined;
   loading: boolean;
   showDetails: boolean;
   onShowPhoto: (url: string) => void;
+  onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
 }) {
   if (loading) return <Card><CardContent className="py-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin inline-block" /></CardContent></Card>;
 
@@ -427,16 +442,23 @@ function ActiveTab({
                   </div>
                   <div className="flex items-center gap-3 flex-wrap text-xs">
                     {m.latitude != null && m.longitude != null && (
-                      <a className="text-primary hover:underline inline-flex items-center gap-1" href={osmLink(m.latitude, m.longitude)} target="_blank" rel="noreferrer">
-                        <MapPin className="h-3.5 w-3.5" /> خريطة
-                      </a>
+                      <Button
+                        size="sm" variant="ghost" className="h-7 px-2 text-primary"
+                        onClick={() => onShowMap({
+                          lat: m.latitude!, lng: m.longitude!,
+                          accuracy: m.accuracyMeters, distance: m.distanceMeters, outOfRange: m.outOfRange,
+                          fullName: m.fullName, type: "check_in", recordedAt: m.checkedInAt,
+                        })}
+                      >
+                        <MapPin className="h-3.5 w-3.5 ml-1" /> الخريطة
+                      </Button>
                     )}
                     {m.distanceMeters != null && (
                       <span className="text-muted-foreground">{Math.round(m.distanceMeters)} م</span>
                     )}
                     {m.selfieUrl && (
                       <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => onShowPhoto(m.selfieUrl!)}>
-                        <ImageIcon className="h-3.5 w-3.5 ml-1" /> عرض الصورة
+                        <ImageIcon className="h-3.5 w-3.5 ml-1" /> الصورة
                       </Button>
                     )}
                   </div>
@@ -465,9 +487,16 @@ function ActiveTab({
                       <td className="px-2 py-2 whitespace-nowrap">{fmtLibyaDateTime(m.checkedInAt)}</td>
                       <td className="px-2 py-2">
                         {m.latitude != null && m.longitude != null ? (
-                          <a className="text-primary hover:underline inline-flex items-center gap-1" href={osmLink(m.latitude, m.longitude)} target="_blank" rel="noreferrer">
-                            <MapPin className="h-3.5 w-3.5" /> خريطة
-                          </a>
+                          <Button
+                            size="sm" variant="ghost" className="h-7 px-2 text-primary"
+                            onClick={() => onShowMap({
+                              lat: m.latitude!, lng: m.longitude!,
+                              accuracy: m.accuracyMeters, distance: m.distanceMeters, outOfRange: m.outOfRange,
+                              fullName: m.fullName, type: "check_in", recordedAt: m.checkedInAt,
+                            })}
+                          >
+                            <MapPin className="h-3.5 w-3.5 ml-1" /> الخريطة
+                          </Button>
                         ) : "—"}
                         {m.distanceMeters != null ? (
                           <div className="text-xs text-muted-foreground">{Math.round(m.distanceMeters)} م</div>
@@ -501,7 +530,11 @@ function ActiveTab({
 
 /* ============== My history tab ============== */
 
-function MyHistoryTab({ projectId, onShowPhoto }: { projectId: number; onShowPhoto: (url: string) => void }) {
+function MyHistoryTab({ projectId, onShowPhoto, onShowMap }: {
+  projectId: number;
+  onShowPhoto: (url: string) => void;
+  onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
+}) {
   const { data: rows = [], isLoading } = useQuery<(AttendanceRecordWithUser & { projectId: number; projectName: string | null })[]>({
     queryKey: ["/api/attendance/my-history"],
     queryFn: async () => {
@@ -521,7 +554,7 @@ function MyHistoryTab({ projectId, onShowPhoto }: { projectId: number; onShowPho
         {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : filtered.length === 0 ? (
           <p className="text-sm text-muted-foreground">لا توجد سجلات بعد.</p>
         ) : (
-          <RecordsTable rows={filtered} showName={false} onShowPhoto={onShowPhoto} />
+          <RecordsTable rows={filtered} showName={false} onShowPhoto={onShowPhoto} onShowMap={onShowMap} />
         )}
       </CardContent>
     </Card>
@@ -530,7 +563,11 @@ function MyHistoryTab({ projectId, onShowPhoto }: { projectId: number; onShowPho
 
 /* ============== Project history tab ============== */
 
-function ProjectHistoryTab({ projectId, onShowPhoto }: { projectId: number; onShowPhoto: (url: string) => void }) {
+function ProjectHistoryTab({ projectId, onShowPhoto, onShowMap }: {
+  projectId: number;
+  onShowPhoto: (url: string) => void;
+  onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
+}) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [userId, setUserId] = useState<string>("");
@@ -591,14 +628,19 @@ function ProjectHistoryTab({ projectId, onShowPhoto }: { projectId: number; onSh
         {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">لا توجد سجلات تطابق الفلترة.</p>
         ) : (
-          <RecordsTable rows={rows} showName onShowPhoto={onShowPhoto} />
+          <RecordsTable rows={rows} showName onShowPhoto={onShowPhoto} onShowMap={onShowMap} />
         )}
       </CardContent>
     </Card>
   );
 }
 
-function RecordsTable({ rows, showName, onShowPhoto }: { rows: AttendanceRecordWithUser[]; showName: boolean; onShowPhoto: (url: string) => void }) {
+function RecordsTable({ rows, showName, onShowPhoto, onShowMap }: {
+  rows: AttendanceRecordWithUser[];
+  showName: boolean;
+  onShowPhoto: (url: string) => void;
+  onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
+}) {
   return (
     <>
       {/* Mobile: card list */}
@@ -634,9 +676,16 @@ function RecordsTable({ rows, showName, onShowPhoto }: { rows: AttendanceRecordW
             </div>
             <div className="flex items-center gap-3 flex-wrap text-xs">
               {r.latitude != null && r.longitude != null && (
-                <a className="text-primary hover:underline inline-flex items-center gap-1" href={osmLink(r.latitude, r.longitude)} target="_blank" rel="noreferrer">
-                  <MapPin className="h-3.5 w-3.5" /> خريطة
-                </a>
+                <Button
+                  size="sm" variant="ghost" className="h-7 px-2 text-primary"
+                  onClick={() => onShowMap({
+                    lat: r.latitude!, lng: r.longitude!,
+                    accuracy: r.accuracyMeters, distance: r.distanceMeters, outOfRange: r.outOfRange,
+                    fullName: r.fullName, type: r.type, recordedAt: r.recordedAt,
+                  })}
+                >
+                  <MapPin className="h-3.5 w-3.5 ml-1" /> الخريطة
+                </Button>
               )}
               {r.distanceMeters != null && (
                 <span className="text-muted-foreground">المسافة: {Math.round(r.distanceMeters)} م</span>
@@ -674,9 +723,16 @@ function RecordsTable({ rows, showName, onShowPhoto }: { rows: AttendanceRecordW
                 <td className="px-2 py-2 whitespace-nowrap">{fmtLibyaDateTime(r.recordedAt)}</td>
                 <td className="px-2 py-2">
                   {r.latitude != null && r.longitude != null ? (
-                    <a className="text-primary hover:underline inline-flex items-center gap-1" href={osmLink(r.latitude, r.longitude)} target="_blank" rel="noreferrer">
-                      <MapPin className="h-3.5 w-3.5" /> خريطة
-                    </a>
+                    <Button
+                      size="sm" variant="ghost" className="h-7 px-2 text-primary"
+                      onClick={() => onShowMap({
+                        lat: r.latitude!, lng: r.longitude!,
+                        accuracy: r.accuracyMeters, distance: r.distanceMeters, outOfRange: r.outOfRange,
+                        fullName: r.fullName, type: r.type, recordedAt: r.recordedAt,
+                      })}
+                    >
+                      <MapPin className="h-3.5 w-3.5 ml-1" /> الخريطة
+                    </Button>
                   ) : "—"}
                 </td>
                 <td className="px-2 py-2 text-xs">{r.distanceMeters != null ? `${Math.round(r.distanceMeters)} م` : "—"}</td>
