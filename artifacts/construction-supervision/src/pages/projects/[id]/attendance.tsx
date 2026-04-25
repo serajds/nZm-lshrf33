@@ -236,7 +236,7 @@ export default function ProjectAttendance() {
             <ActiveTab
               active={active}
               loading={activeLoading}
-              isOwner={isOwner}
+              showDetails={isManager}
               onShowPhoto={setPhotoModalUrl}
             />
           </TabsContent>
@@ -375,11 +375,11 @@ function SelfCheckCard({
 /* ============== Active tab ============== */
 
 function ActiveTab({
-  active, loading, isOwner, onShowPhoto,
+  active, loading, showDetails, onShowPhoto,
 }: {
   active: ActiveResponse | undefined;
   loading: boolean;
-  isOwner: boolean;
+  showDetails: boolean;
   onShowPhoto: (url: string) => void;
 }) {
   if (loading) return <Card><CardContent className="py-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin inline-block" /></CardContent></Card>;
@@ -393,8 +393,8 @@ function ActiveTab({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {isOwner ? (
-          <p className="text-sm text-muted-foreground">يظهر فقط العدد الإجمالي.</p>
+        {!showDetails ? (
+          <p className="text-sm text-muted-foreground">يظهر فقط العدد الإجمالي. التفاصيل متاحة لمدير المشروع فقط.</p>
         ) : (active?.members?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">لا يوجد أحد مسجّل حضور حالياً.</p>
         ) : (
