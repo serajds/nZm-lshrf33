@@ -11,6 +11,10 @@ out-tsc
 # dependencies
 node_modules
 
+# user-uploaded files (PII: selfies, photos, attachments)
+artifacts/*/uploads/
+uploads/
+
 # IDEs and editors
 /.idea
 .project
