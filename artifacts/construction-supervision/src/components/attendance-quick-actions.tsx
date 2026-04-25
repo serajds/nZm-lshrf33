@@ -40,6 +40,11 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
   const { toast } = useToast();
   const qc = useQueryClient();
   const isOwner = user?.role === "owner";
+  // Contractor staff (the global "contractor" role or any user belonging
+  // to a project's contractor company) do not register attendance —
+  // attendance tracks the supervising side, not the contractor side.
+  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
+  const hideSelfCheck = isOwner || isContractor;
 
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<"check_in" | "check_out" | null>(null);
@@ -52,13 +57,13 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
       if (!r.ok) return [];
       return r.json();
     },
-    enabled: !!user && !isOwner,
+    enabled: !!user && !hideSelfCheck,
     refetchInterval: 30000,
   });
 
   const status = useMemo(() => list.find(s => s.projectId === projectId), [list, projectId]);
 
-  if (isOwner) return null;
+  if (hideSelfCheck) return null;
 
   const isCheckedIn = !!status?.currentlyCheckedIn;
   const last = status?.lastRecord;

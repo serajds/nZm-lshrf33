@@ -126,7 +126,9 @@ export default function ProjectAttendance() {
   const isManager = isAdmin || isPM;
   const isOwner = role === "owner";
   const isContractor = role === "contractor" || user?.isContractorCompanyUser === true;
-  const canSelfCheck = !isOwner; // owners can't check in
+  // Owners are stakeholders and contractor staff are out of scope for
+  // attendance — neither registers check-in/out in this system.
+  const canSelfCheck = !isOwner && !isContractor;
 
   // My status for this project
   const { data: myStatusList = [], refetch: refetchMyStatus } = useQuery<MyStatusItem[]>({
