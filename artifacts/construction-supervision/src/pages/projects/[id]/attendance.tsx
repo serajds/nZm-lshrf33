@@ -386,7 +386,7 @@ function SelfCheckCard({
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          سيتم طلب صورة من الموقع + إحداثيات GPS. يتم تسجيل وقت الخادم تلقائياً (توقيت ليبيا).
+          سيتم طلب صورة من الموقع + إحداثيات GPS.
         </p>
       </CardContent>
     </Card>
