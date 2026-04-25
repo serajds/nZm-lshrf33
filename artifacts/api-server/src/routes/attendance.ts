@@ -235,7 +235,7 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
-  if (!req.file) { res.status(400).json({ error: "صورة السيلفي مطلوبة" }); return; }
+  if (!req.file) { res.status(400).json({ error: "صورة من الموقع مطلوبة" }); return; }
 
   const lat = req.body.latitude !== undefined ? parseFloat(String(req.body.latitude)) : NaN;
   const lng = req.body.longitude !== undefined ? parseFloat(String(req.body.longitude)) : NaN;

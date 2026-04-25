@@ -10,7 +10,7 @@ interface SelfieCameraDialogProps {
   title?: string;
 }
 
-export function SelfieCameraDialog({ open, onClose, onCapture, title = "التقاط صورة سيلفي" }: SelfieCameraDialogProps) {
+export function SelfieCameraDialog({ open, onClose, onCapture, title = "التقاط صورة من الموقع" }: SelfieCameraDialogProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -36,12 +36,13 @@ export function SelfieCameraDialog({ open, onClose, onCapture, title = "التق
       }
       let stream: MediaStream;
       try {
+        // Prefer rear camera so the photo captures the actual site, not the user's face.
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "user" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
       } catch {
-        // fallback to any camera
+        // fallback to any available camera
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
       streamRef.current = stream;
@@ -82,12 +83,7 @@ export function SelfieCameraDialog({ open, onClose, onCapture, title = "التق
     c.height = h;
     const ctx = c.getContext("2d");
     if (!ctx) return;
-    // mirror to match preview
-    ctx.save();
-    ctx.translate(w, 0);
-    ctx.scale(-1, 1);
     ctx.drawImage(v, 0, 0, w, h);
-    ctx.restore();
     c.toBlob(
       (blob) => {
         if (!blob) return;
@@ -111,7 +107,7 @@ export function SelfieCameraDialog({ open, onClose, onCapture, title = "التق
 
   function confirm() {
     if (!previewBlob) return;
-    const file = new File([previewBlob], `selfie-${Date.now()}.jpg`, { type: "image/jpeg" });
+    const file = new File([previewBlob], `site-photo-${Date.now()}.jpg`, { type: "image/jpeg" });
     onCapture(file);
   }
 
@@ -137,7 +133,6 @@ export function SelfieCameraDialog({ open, onClose, onCapture, title = "التق
                   playsInline
                   muted
                   className="w-full h-full object-cover"
-                  style={{ transform: "scaleX(-1)" }}
                 />
                 {starting ? (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/40">
