@@ -25,6 +25,7 @@ import {
 import { ProjectNav } from "@/components/project-nav";
 import { ProjectMembers } from "@/components/project-members";
 import { ProjectQuickViewDialog } from "@/components/project-quick-view-dialog";
+import { AttendanceQuickActions } from "@/components/attendance-quick-actions";
 import { previewExecutiveSummary, type ActivityForReport } from "@/lib/report-pdf";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -367,6 +368,12 @@ export default function ProjectDetails() {
 
       {/* ── Project Navigation ── */}
       <ProjectNav projectId={project.id} />
+
+      {/* ── Quick attendance check-in/out (visible to non-owner staff) ── */}
+      <AttendanceQuickActions
+        projectId={project.id}
+        project={{ siteLatitude: project.siteLatitude, siteLongitude: project.siteLongitude }}
+      />
 
       {/* ── Summary Content ── */}
       <div className="space-y-5">
