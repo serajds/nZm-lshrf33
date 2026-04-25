@@ -223,6 +223,18 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
   if (body.contractorCompanyId !== undefined) updateData.contractorCompanyId = parseCompanyId(body.contractorCompanyId);
   if (body.supervisorCompanyId !== undefined) updateData.supervisorCompanyId = parseCompanyId(body.supervisorCompanyId);
   if (body.onedriveTestResultsFolderId !== undefined) updateData.onedriveTestResultsFolderId = body.onedriveTestResultsFolderId || null;
+  if (body.siteLatitude !== undefined) {
+    const v = body.siteLatitude;
+    updateData.siteLatitude = v === null || v === "" ? null : Number(v);
+  }
+  if (body.siteLongitude !== undefined) {
+    const v = body.siteLongitude;
+    updateData.siteLongitude = v === null || v === "" ? null : Number(v);
+  }
+  if (body.siteRadiusMeters !== undefined) {
+    const v = body.siteRadiusMeters;
+    updateData.siteRadiusMeters = v === null || v === "" ? null : parseInt(String(v), 10);
+  }
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });

@@ -30,4 +30,10 @@ export interface UpdateProjectBody {
   status?: UpdateProjectBodyStatus;
   /** @nullable */
   overallProgress?: number | null;
+  /** @nullable */
+  siteLatitude?: number | null;
+  /** @nullable */
+  siteLongitude?: number | null;
+  /** @nullable */
+  siteRadiusMeters?: number | null;
 }

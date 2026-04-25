@@ -14,3 +14,4 @@ export * from "./user_companies";
 export * from "./form_templates";
 export * from "./form_submissions";
 export * from "./skipped_days";
+export * from "./attendance_records";

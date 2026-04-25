@@ -20,6 +20,8 @@ import testResultsRouter from "./test-results";
 import formsRouter from "./forms";
 import publicFormsRouter from "./public-forms";
 import backupRouter from "./backup";
+import attendanceRouter from "./attendance";
+import pdfAttendanceRouter from "./pdf-attendance";
 
 const router: IRouter = Router();
 
@@ -44,5 +46,7 @@ router.use(testResultsRouter);
 router.use(formsRouter);
 router.use(publicFormsRouter);
 router.use(backupRouter);
+router.use(attendanceRouter);
+router.use(pdfAttendanceRouter);
 
 export default router;

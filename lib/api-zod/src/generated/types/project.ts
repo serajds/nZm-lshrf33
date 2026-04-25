@@ -25,6 +25,12 @@ export interface Project {
   noSchedule: boolean;
   /** @nullable */
   ownerAccessToken?: string | null;
+  /** @nullable */
+  siteLatitude?: number | null;
+  /** @nullable */
+  siteLongitude?: number | null;
+  /** @nullable */
+  siteRadiusMeters?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }

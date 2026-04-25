@@ -28,6 +28,8 @@ tags:
     description: Project member management
   - name: dashboard
     description: Dashboard analytics
+  - name: attendance
+    description: Staff attendance check-in/check-out
 
 paths:
   /healthz:
@@ -1086,6 +1088,208 @@ paths:
               schema:
                 $ref: "#/components/schemas/OwnerLinkResponse"
 
+  # Attendance
+  /attendance/my-status:
+    get:
+      operationId: getMyAttendanceStatus
+      tags: [attendance]
+      summary: Get my current check-in status across my projects
+      responses:
+        "200":
+          description: Status per project
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MyAttendanceProjectStatus"
+
+  /attendance/my-history:
+    get:
+      operationId: getMyAttendanceHistory
+      tags: [attendance]
+      summary: Get my attendance history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: My attendance history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MyAttendanceHistoryItem"
+
+  /attendance/projects/{projectId}/check-in:
+    post:
+      operationId: attendanceCheckIn
+      tags: [attendance]
+      summary: Check in to a project (selfie + GPS required)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/AttendanceCheckBody"
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceRecord"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflicting state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /attendance/projects/{projectId}/check-out:
+    post:
+      operationId: attendanceCheckOut
+      tags: [attendance]
+      summary: Check out of a project (selfie + GPS required)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/AttendanceCheckBody"
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceRecord"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflicting state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /attendance/projects/{projectId}/active:
+    get:
+      operationId: getActiveAttendance
+      tags: [attendance]
+      summary: List members currently checked in
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Currently checked-in members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveAttendanceResponse"
+
+  /attendance/projects/{projectId}/records:
+    get:
+      operationId: listAttendanceRecords
+      tags: [attendance]
+      summary: List attendance records (with filters)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: ["string", "null"]
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: ["string", "null"]
+            format: date
+        - name: userId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Attendance records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceRecordWithUser"
+
+  /attendance/projects/{projectId}/users/{userId}/report:
+    get:
+      operationId: getEmployeeAttendanceReport
+      tags: [attendance]
+      summary: Per-employee daily attendance report
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: ["string", "null"]
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: ["string", "null"]
+            format: date
+      responses:
+        "200":
+          description: Report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeAttendanceReport"
+
 components:
   schemas:
     HealthStatus:
@@ -1347,6 +1551,12 @@ components:
           type: boolean
         ownerAccessToken:
           type: ["string", "null"]
+        siteLatitude:
+          type: ["number", "null"]
+        siteLongitude:
+          type: ["number", "null"]
+        siteRadiusMeters:
+          type: ["integer", "null"]
         createdAt:
           type: string
           format: date-time
@@ -1428,6 +1638,12 @@ components:
           enum: [active, completed, delayed, suspended, null]
         overallProgress:
           type: ["number", "null"]
+        siteLatitude:
+          type: ["number", "null"]
+        siteLongitude:
+          type: ["number", "null"]
+        siteRadiusMeters:
+          type: ["integer", "null"]
 
     # Activities
     Activity:
@@ -2117,3 +2333,268 @@ components:
         - projectId
         - points
         - suspensionsBreakdown
+
+    AttendanceCheckBody:
+      type: object
+      required:
+        - selfie
+        - latitude
+        - longitude
+      properties:
+        selfie:
+          type: string
+          format: binary
+        latitude:
+          type: number
+        longitude:
+          type: number
+        accuracy:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+
+    AttendanceRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        userId:
+          type: integer
+        type:
+          type: string
+          enum: [check_in, check_out]
+        recordedAt:
+          type: string
+          format: date-time
+        latitude:
+          type: ["number", "null"]
+        longitude:
+          type: ["number", "null"]
+        accuracyMeters:
+          type: ["number", "null"]
+        distanceMeters:
+          type: ["number", "null"]
+        outOfRange:
+          type: boolean
+        selfieFilename:
+          type: ["string", "null"]
+        selfieUrl:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - id
+        - projectId
+        - userId
+        - type
+        - recordedAt
+        - outOfRange
+
+    AttendanceRecordWithUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        fullName:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [check_in, check_out]
+        recordedAt:
+          type: string
+          format: date-time
+        latitude:
+          type: ["number", "null"]
+        longitude:
+          type: ["number", "null"]
+        accuracyMeters:
+          type: ["number", "null"]
+        distanceMeters:
+          type: ["number", "null"]
+        outOfRange:
+          type: boolean
+        selfieUrl:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - id
+        - userId
+        - type
+        - recordedAt
+        - outOfRange
+
+    MyAttendanceProjectStatus:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        projectName:
+          type: string
+        hasSiteLocation:
+          type: boolean
+        siteLatitude:
+          type: ["number", "null"]
+        siteLongitude:
+          type: ["number", "null"]
+        siteRadiusMeters:
+          type: ["integer", "null"]
+        currentlyCheckedIn:
+          type: boolean
+        lastRecord:
+          oneOf:
+            - $ref: "#/components/schemas/AttendanceRecord"
+            - type: "null"
+      required:
+        - projectId
+        - projectName
+        - hasSiteLocation
+        - currentlyCheckedIn
+
+    MyAttendanceHistoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        projectName:
+          type: ["string", "null"]
+        userId:
+          type: integer
+        type:
+          type: string
+          enum: [check_in, check_out]
+        recordedAt:
+          type: string
+          format: date-time
+        latitude:
+          type: ["number", "null"]
+        longitude:
+          type: ["number", "null"]
+        accuracyMeters:
+          type: ["number", "null"]
+        distanceMeters:
+          type: ["number", "null"]
+        outOfRange:
+          type: boolean
+        selfieUrl:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - id
+        - projectId
+        - userId
+        - type
+        - recordedAt
+        - outOfRange
+
+    ActiveAttendanceMember:
+      type: object
+      properties:
+        recordId:
+          type: integer
+        userId:
+          type: integer
+        fullName:
+          type: string
+        phone:
+          type: ["string", "null"]
+        userRole:
+          type: ["string", "null"]
+        checkedInAt:
+          type: string
+          format: date-time
+        latitude:
+          type: ["number", "null"]
+        longitude:
+          type: ["number", "null"]
+        accuracyMeters:
+          type: ["number", "null"]
+        distanceMeters:
+          type: ["number", "null"]
+        outOfRange:
+          type: boolean
+        selfieUrl:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - recordId
+        - userId
+        - fullName
+        - checkedInAt
+        - outOfRange
+
+    ActiveAttendanceResponse:
+      type: object
+      properties:
+        activeCount:
+          type: integer
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActiveAttendanceMember"
+      required:
+        - activeCount
+        - members
+
+    EmployeeAttendanceDay:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        checkIn:
+          type: ["string", "null"]
+          format: date-time
+        checkOut:
+          type: ["string", "null"]
+          format: date-time
+      required:
+        - date
+
+    EmployeeAttendanceReport:
+      type: object
+      properties:
+        project:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+          required: [id, name]
+        employee:
+          type: object
+          properties:
+            id:
+              type: integer
+            fullName:
+              type: string
+            phone:
+              type: ["string", "null"]
+            role:
+              type: ["string", "null"]
+          required: [id, fullName]
+        dateFrom:
+          type: ["string", "null"]
+          format: date
+        dateTo:
+          type: ["string", "null"]
+          format: date
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeeAttendanceDay"
+      required:
+        - project
+        - employee
+        - days
