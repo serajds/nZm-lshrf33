@@ -27,7 +27,7 @@ export function ProjectNav({ projectId }: ProjectNavProps) {
   const isContractorCompanyUser = user?.isContractorCompanyUser === true;
   const navItems = allNavItems.filter(item => {
     if (!item.roles) return true;
-    if (isContractorCompanyUser) return item.roles.includes("contractor");
+    if (isContractorCompanyUser) return false;
     return userRole && item.roles.includes(userRole);
   });
 
