@@ -80,6 +80,12 @@ router.get("/attendance/my-status", requireAuth, async (req, res): Promise<void>
   const userId = req.user!.userId;
   const role = req.user!.role;
 
+  // Owners do not check in; they only see aggregate counts elsewhere.
+  if (role === "owner") {
+    res.json([]);
+    return;
+  }
+
   const projectIds = await getProjectIdsForUser(userId, role);
   if (projectIds.length === 0) { res.json([]); return; }
 
@@ -118,6 +124,11 @@ router.get("/attendance/my-status", requireAuth, async (req, res): Promise<void>
 
 // Get my own attendance history
 router.get("/attendance/my-history", requireAuth, async (req, res): Promise<void> => {
+  // Owners do not check in; they only see aggregate counts elsewhere.
+  if (req.user?.role === "owner") {
+    res.status(403).json({ error: "غير متاح لصاحب المشروع" });
+    return;
+  }
   const userId = req.user!.userId;
   const limit = Math.min(parseInt(String(req.query.limit ?? "100"), 10) || 100, 500);
 
