@@ -155,7 +155,7 @@ export default function ProjectAttendance() {
       if (!r.ok) return { activeCount: 0, members: [] };
       return r.json();
     },
-    enabled: !!projectId,
+    enabled: !!projectId && isManager,
     refetchInterval: 30000,
   });
 
@@ -242,10 +242,15 @@ export default function ProjectAttendance() {
         />
       )}
 
-      <Tabs defaultValue={canSelfCheck ? "my-history" : "active"} className="w-full">
+      {!isManager && !canSelfCheck ? (
+        <div className="mt-6 rounded-lg border border-dashed bg-muted/30 p-8 text-center text-muted-foreground">
+          لا توجد بيانات حضور متاحة لعرضها بصلاحياتك الحالية.
+        </div>
+      ) : (
+      <Tabs defaultValue={isManager ? "active" : "my-history"} className="w-full">
         <div className="-mx-4 sm:mx-0 overflow-x-auto">
           <TabsList className="inline-flex w-max min-w-full sm:w-full sm:min-w-0 sm:flex-wrap h-auto px-4 sm:px-1 gap-1">
-            <TabsTrigger value="active" className="whitespace-nowrap">الحاضرون الآن</TabsTrigger>
+            {isManager && <TabsTrigger value="active" className="whitespace-nowrap">الحاضرون الآن</TabsTrigger>}
             {canSelfCheck && <TabsTrigger value="my-history" className="whitespace-nowrap">سجلّي</TabsTrigger>}
             {isManager && <TabsTrigger value="history" className="whitespace-nowrap">سجل المشروع</TabsTrigger>}
             {isManager && <TabsTrigger value="report" className="whitespace-nowrap">تقرير موظف</TabsTrigger>}
@@ -253,15 +258,17 @@ export default function ProjectAttendance() {
           </TabsList>
         </div>
 
-        <TabsContent value="active" className="mt-4">
-          <ActiveTab
-            active={active}
-            loading={activeLoading}
-            showDetails={isManager}
-            onShowPhoto={setPhotoModalUrl}
-            onShowMap={showMap}
-          />
-        </TabsContent>
+        {isManager && (
+          <TabsContent value="active" className="mt-4">
+            <ActiveTab
+              active={active}
+              loading={activeLoading}
+              showDetails={isManager}
+              onShowPhoto={setPhotoModalUrl}
+              onShowMap={showMap}
+            />
+          </TabsContent>
+        )}
 
         {canSelfCheck && (
           <TabsContent value="my-history" className="mt-4">
@@ -293,6 +300,7 @@ export default function ProjectAttendance() {
           </TabsContent>
         )}
       </Tabs>
+      )}
 
       <SelfieCameraDialog
         open={selfieOpen}
