@@ -888,6 +888,9 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
     direction: rtl;
     text-align: right;
     background: #fff;
+    overflow-x: hidden;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -896,15 +899,17 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
 
   .logos-strip {
     display: flex;
-    justify-content: space-around;
-    align-items: center;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 32px;
+    flex-wrap: wrap;
     padding: 18px 24px;
     margin-bottom: 12px;
     border: 1.5px solid #e2e8f0;
     border-radius: 10px;
     background: #fff;
   }
-  .logo-item { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+  .logo-item { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; min-width: 0; max-width: 200px; }
   .logo-img-box {
     width: 80px; height: 80px;
     border-radius: 12px;
@@ -912,10 +917,11 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
     background: #f8fafc;
     display: flex; align-items: center; justify-content: center;
     overflow: hidden; padding: 4px;
+    flex-shrink: 0;
   }
   .logo-img-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
   .logo-role { font-size: 10px; font-weight: 700; color: #64748b; }
-  .logo-name { font-size: 12px; font-weight: 700; color: #1e293b; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .logo-name { font-size: 12px; font-weight: 700; color: #1e293b; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .header {
     background: linear-gradient(135deg, #1e293b, #334155, #475569);
@@ -933,39 +939,41 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
     background: rgba(255,255,255,0.04);
     border-radius: 50%;
   }
-  .header-row { display: flex; justify-content: space-between; align-items: flex-start; position: relative; z-index: 1; }
-  .header-info { flex: 1; }
+  .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; position: relative; z-index: 1; }
+  .header-info { flex: 1; min-width: 0; }
   .header-sys { font-size: 10px; text-transform: uppercase; letter-spacing: 3px; color: rgba(255,255,255,0.45); margin-bottom: 6px; }
-  .header-name { font-size: 22px; font-weight: 800; line-height: 1.3; margin-bottom: 12px; }
+  .header-name { font-size: 22px; font-weight: 800; line-height: 1.3; margin-bottom: 12px; overflow-wrap: anywhere; }
   .header-pills { display: flex; flex-wrap: wrap; gap: 6px; }
-  .pill { display: inline-block; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 3px 12px; font-size: 11px; color: rgba(255,255,255,0.8); }
-  .header-badge { background: rgba(255,255,255,0.12); border: 1.5px solid rgba(255,255,255,0.25); border-radius: 12px; padding: 12px 20px; text-align: center; min-width: 90px; }
+  .pill { display: inline-block; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 3px 12px; font-size: 11px; color: rgba(255,255,255,0.8); max-width: 100%; overflow-wrap: anywhere; }
+  .header-badge { background: rgba(255,255,255,0.12); border: 1.5px solid rgba(255,255,255,0.25); border-radius: 12px; padding: 12px 20px; text-align: center; min-width: 90px; flex-shrink: 0; }
   .badge-lbl { font-size: 9px; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
-  .badge-val { font-size: 16px; font-weight: 800; }
+  .badge-val { font-size: 16px; font-weight: 800; white-space: nowrap; }
 
-  .info-strip { display: flex; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
-  .info-cell { flex: 1; text-align: center; padding: 12px 8px; border-left: 1px solid #e2e8f0; }
+  .info-strip { display: flex; flex-wrap: wrap; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+  .info-cell { flex: 1 1 25%; min-width: 0; text-align: center; padding: 12px 8px; border-left: 1px solid #e2e8f0; }
   .info-cell:first-child { border-left: none; }
   .info-lbl { font-size: 10px; color: #64748b; font-weight: 600; margin-bottom: 3px; }
-  .info-val { font-size: 14px; font-weight: 800; color: #1e293b; }
+  .info-val { font-size: 14px; font-weight: 800; color: #1e293b; overflow-wrap: anywhere; }
 
-  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
-  .stat { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
+  .stats-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .stat { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; min-width: 0; }
   .stat-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .stat > div:not(.stat-icon) { min-width: 0; flex: 1; }
   .stat-lbl { font-size: 11px; color: #64748b; font-weight: 600; }
-  .stat-val { font-size: 16px; font-weight: 800; color: #1e293b; }
+  .stat-val { font-size: 16px; font-weight: 800; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stat-unit { font-size: 11px; font-weight: 600; color: #94a3b8; }
 
   .section { border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; background: #fafbfc; }
   .section-title { font-size: 15px; font-weight: 700; color: #334155; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
   .blue-title { color: #1e40af; border-bottom-color: #bfdbfe; }
 
+  .tbl-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .th { background: #f1f5f9; padding: 10px 12px; font-size: 12px; font-weight: 700; color: #475569; border-bottom: 2px solid #cbd5e1; text-align: center; }
   .tc { text-align: center !important; }
   .td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; }
 
-  .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; }
+  .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: 11px; color: #94a3b8; }
 
   .toolbar { position: sticky; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e293b, #334155); padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
   .btn-print { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -975,6 +983,43 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
 
   @media print { .toolbar { display: none !important; } }
   @media screen { body { max-width: 210mm; margin: 0 auto; padding-left: 16px; padding-right: 16px; } }
+
+  /* Mobile / narrow screens — keep layout readable on phones without affecting print or desktop preview. */
+  @media screen and (max-width: 640px) {
+    body { padding-left: 10px; padding-right: 10px; font-size: 13px; }
+    .toolbar { padding: 8px 10px; gap: 8px; }
+    .btn-print { padding: 9px 14px; font-size: 13px; }
+    .btn-close { padding: 9px 12px; font-size: 13px; }
+
+    .logos-strip { gap: 18px; padding: 14px 12px; }
+    .logo-item { max-width: 130px; }
+    .logo-img-box { width: 64px; height: 64px; }
+    .logo-name { font-size: 11px; white-space: normal; line-height: 1.3; }
+
+    .header { padding: 16px 16px 14px; }
+    .header-row { flex-direction: column; align-items: stretch; gap: 12px; }
+    .header-name { font-size: 18px; margin-bottom: 10px; }
+    .header-badge { align-self: flex-start; padding: 8px 14px; min-width: 0; }
+    .badge-lbl { font-size: 9px; }
+    .badge-val { font-size: 14px; }
+    .pill { font-size: 10px; padding: 3px 10px; }
+
+    .info-cell { flex: 1 1 50%; border-left: none; border-bottom: 1px solid #e2e8f0; }
+    .info-cell:nth-child(2n) { border-left: 1px solid #e2e8f0; }
+    .info-cell:nth-last-child(-n+2) { border-bottom: none; }
+    .info-val { font-size: 13px; }
+
+    .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .stat { padding: 12px 12px; gap: 10px; }
+    .stat-icon { width: 36px; height: 36px; }
+    .stat-icon svg { width: 18px; height: 18px; }
+    .stat-val { font-size: 15px; }
+
+    .section { padding: 14px 12px; }
+    .th, .td { padding: 8px 6px; font-size: 12px; }
+
+    .footer { font-size: 10px; }
+  }
 </style>
 </head>
 <body>
@@ -1042,19 +1087,21 @@ ${logosHTML}
 <!-- DETAILS TABLE -->
 <div class="section avoid-break">
   <div class="section-title blue-title">سجل الحضور والانصراف اليومي</div>
-  <table class="tbl">
-    <thead>
-      <tr>
-        <th class="th" style="width:30%">التاريخ</th>
-        <th class="th" style="width:22%">وقت الحضور</th>
-        <th class="th" style="width:22%">وقت الانصراف</th>
-        <th class="th" style="width:26%">المدة</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rowsHTML}
-    </tbody>
-  </table>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th class="th" style="width:30%">التاريخ</th>
+          <th class="th" style="width:22%">وقت الحضور</th>
+          <th class="th" style="width:22%">وقت الانصراف</th>
+          <th class="th" style="width:26%">المدة</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHTML}
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <!-- FOOTER -->
