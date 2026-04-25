@@ -213,7 +213,7 @@ export default function ProjectAttendance() {
         <ProjectNav projectId={projectId} />
 
         {/* Self check-in/out card (visible to anyone except owner) */}
-        {canSelfCheck && !isContractor && (
+        {canSelfCheck && (
           <SelfCheckCard
             myStatus={myStatusForProject}
             project={project}
@@ -223,10 +223,10 @@ export default function ProjectAttendance() {
           />
         )}
 
-        <Tabs defaultValue={isManager ? "active" : "my-history"} className="w-full">
+        <Tabs defaultValue={canSelfCheck ? "my-history" : "active"} className="w-full">
           <TabsList className="flex flex-wrap h-auto">
             <TabsTrigger value="active">الحاضرون الآن</TabsTrigger>
-            {!isContractor && <TabsTrigger value="my-history">سجلّي</TabsTrigger>}
+            {canSelfCheck && <TabsTrigger value="my-history">سجلّي</TabsTrigger>}
             {isManager && <TabsTrigger value="history">سجل المشروع</TabsTrigger>}
             {isManager && <TabsTrigger value="report">تقرير موظف</TabsTrigger>}
             {isManager && <TabsTrigger value="settings">إعدادات الموقع</TabsTrigger>}
@@ -241,7 +241,7 @@ export default function ProjectAttendance() {
             />
           </TabsContent>
 
-          {!isContractor && (
+          {canSelfCheck && (
             <TabsContent value="my-history" className="mt-4">
               <MyHistoryTab projectId={projectId} onShowPhoto={setPhotoModalUrl} />
             </TabsContent>
