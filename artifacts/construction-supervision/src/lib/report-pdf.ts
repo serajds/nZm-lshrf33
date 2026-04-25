@@ -814,6 +814,15 @@ function fmtDuration(mins: number | null): string {
   return `${h} س ${m} د`;
 }
 
+function fmtDurationHTML(mins: number | null): string {
+  if (mins == null) return "—";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m} <span class="stat-unit">د</span>`;
+  if (m === 0) return `${h} <span class="stat-unit">س</span>`;
+  return `${h} <span class="stat-unit">س</span> ${m} <span class="stat-unit">د</span>`;
+}
+
 function buildAttendanceReportHTML(data: AttendanceReportData): string {
   const roleLbl = data.employeeRole ? (ATTENDANCE_ROLE_LABEL[data.employeeRole] ?? data.employeeRole) : "";
 
@@ -834,9 +843,9 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
     const base = data.apiBase || "";
     if (!logos || (!logos.owner?.logoUrl && !logos.contractor?.logoUrl && !logos.supervisor?.logoUrl)) return "";
     const entries: Array<{ role: string; name: string; src: string }> = [];
-    if (logos.supervisor) entries.push({ role: "جهة الإشراف", name: logos.supervisor.name, src: logos.supervisor.logoUrl ? escAttr(base + logos.supervisor.logoUrl) : "" });
-    if (logos.owner) entries.push({ role: "الجهة المالكة", name: logos.owner.name, src: logos.owner.logoUrl ? escAttr(base + logos.owner.logoUrl) : "" });
+    if (logos.owner) entries.push({ role: "جهة المالك", name: logos.owner.name, src: logos.owner.logoUrl ? escAttr(base + logos.owner.logoUrl) : "" });
     if (logos.contractor) entries.push({ role: "المقاول", name: logos.contractor.name, src: logos.contractor.logoUrl ? escAttr(base + logos.contractor.logoUrl) : "" });
+    if (logos.supervisor) entries.push({ role: "جهة الإشراف", name: logos.supervisor.name, src: logos.supervisor.logoUrl ? escAttr(base + logos.supervisor.logoUrl) : "" });
     const html = entries.map(e => `<div class="logo-item">
       <div class="logo-role">${e.role}</div>
       <div class="logo-img-box">${e.src ? `<img src="${e.src}" onerror="this.style.display='none'" />` : ""}</div>
@@ -851,7 +860,7 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
         const mins = diffMinutes(d.checkIn, d.checkOut);
         const incomplete = d.checkIn && !d.checkOut;
         return `<tr style="background:${i % 2 === 0 ? "#fff" : "#f8fafc"}">
-          <td class="td tc" style="font-weight:600">${esc(d.date)}</td>
+          <td class="td tc" style="font-weight:600">${esc(fmtDate(d.date))}</td>
           <td class="td tc">${esc(fmtLibyaTimeForReport(d.checkIn))}</td>
           <td class="td tc">${esc(fmtLibyaTimeForReport(d.checkOut))}</td>
           <td class="td tc" style="font-weight:600;color:${incomplete ? "#dc2626" : "#1e293b"}">${incomplete ? "بدون انصراف" : esc(fmtDuration(mins))}</td>
@@ -971,8 +980,14 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
 <body>
 
 <div class="toolbar">
-  <button class="btn-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
-  <button class="btn-close" onclick="window.close()">✕ إغلاق</button>
+  <button class="btn-print" onclick="window.print()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    طباعة / حفظ PDF
+  </button>
+  <button class="btn-close" onclick="window.close()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    إغلاق
+  </button>
 </div>
 
 ${logosHTML}
@@ -998,8 +1013,8 @@ ${logosHTML}
 <div class="info-strip avoid-break">
   <div class="info-cell"><div class="info-lbl">الموظف</div><div class="info-val">${esc(data.employeeName)}</div></div>
   ${roleLbl ? `<div class="info-cell"><div class="info-lbl">الدور</div><div class="info-val">${esc(roleLbl)}</div></div>` : ""}
-  <div class="info-cell"><div class="info-lbl">من تاريخ</div><div class="info-val">${esc(data.dateFrom || "—")}</div></div>
-  <div class="info-cell"><div class="info-lbl">إلى تاريخ</div><div class="info-val">${esc(data.dateTo || "—")}</div></div>
+  <div class="info-cell"><div class="info-lbl">من تاريخ</div><div class="info-val">${esc(fmtDate(data.dateFrom))}</div></div>
+  <div class="info-cell"><div class="info-lbl">إلى تاريخ</div><div class="info-val">${esc(fmtDate(data.dateTo))}</div></div>
 </div>
 
 <!-- STATS -->
@@ -1026,7 +1041,7 @@ ${logosHTML}
     <div class="stat-icon" style="background:#fefce8;color:#ca8a04">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
     </div>
-    <div><div class="stat-lbl">إجمالي الساعات</div><div class="stat-val">${esc(fmtDuration(totalMins))}</div></div>
+    <div><div class="stat-lbl">إجمالي الساعات</div><div class="stat-val">${fmtDurationHTML(totalMins)}</div></div>
   </div>
 </div>
 
