@@ -298,6 +298,23 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
     distance = haversineDistanceMeters(lat, lng, project.siteLatitude, project.siteLongitude);
     const radius = project.siteRadiusMeters ?? 200;
     outOfRange = distance > radius;
+
+    // Reject any attempt to register attendance from outside the configured
+    // project geofence — site supervisors must be physically on-site.
+    if (outOfRange) {
+      fs.unlink(req.file.path, () => {});
+      const distanceText = distance >= 1000
+        ? `${(distance / 1000).toFixed(2)} كم`
+        : `${Math.round(distance)} م`;
+      const action = type === "check_in" ? "تسجيل الحضور" : "تسجيل الانصراف";
+      res.status(403).json({
+        error: `لا يمكن ${action} من خارج موقع المشروع. أنت تبعد ${distanceText} عن الموقع، والمسموح به ${radius} م.`,
+        outOfRange: true,
+        distanceMeters: distance,
+        allowedRadiusMeters: radius,
+      });
+      return;
+    }
   }
 
   let selfieFilename: string;
