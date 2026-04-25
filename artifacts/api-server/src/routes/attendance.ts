@@ -51,6 +51,36 @@ async function compressSelfie(filePath: string): Promise<{ size: number; filenam
 
 const router: IRouter = Router();
 
+export async function userBelongsToProject(userId: number, projectId: number): Promise<boolean> {
+  // Direct project membership
+  const [direct] = await db.select({ id: projectMembersTable.id })
+    .from(projectMembersTable)
+    .where(and(eq(projectMembersTable.userId, userId), eq(projectMembersTable.projectId, projectId)))
+    .limit(1);
+  if (direct) return true;
+
+  // Via company membership (user is employee of project's owner / contractor / supervisor company)
+  const [project] = await db.select({
+    ownerCompanyId: projectsTable.ownerCompanyId,
+    contractorCompanyId: projectsTable.contractorCompanyId,
+    supervisorCompanyId: projectsTable.supervisorCompanyId,
+  }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!project) return false;
+
+  const projectCompanyIds = [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId]
+    .filter((id): id is number => typeof id === "number");
+  if (projectCompanyIds.length === 0) return false;
+
+  const [viaCompany] = await db.select({ id: userCompaniesTable.id })
+    .from(userCompaniesTable)
+    .where(and(
+      eq(userCompaniesTable.userId, userId),
+      inArray(userCompaniesTable.companyId, projectCompanyIds),
+    ))
+    .limit(1);
+  return !!viaCompany;
+}
+
 async function getProjectIdsForUser(userId: number, role: string): Promise<number[]> {
   if (role === "admin") {
     const all = await db.select({ id: projectsTable.id }).from(projectsTable);
@@ -433,6 +463,13 @@ router.get(
     if (req.user!.userId !== targetUserId && req.user?.role !== "admin" && req.projectRole !== "project_manager") {
       res.status(403).json({ error: "ليس لديك صلاحية لعرض تقرير هذا الموظف" });
       return;
+    }
+
+    // Target user must actually belong to this project (prevents PMs from
+    // enumerating arbitrary users' personal info via report endpoint).
+    if (req.user!.userId !== targetUserId) {
+      const belongs = await userBelongsToProject(targetUserId, projectId);
+      if (!belongs) { res.status(404).json({ error: "الموظف غير موجود في هذا المشروع" }); return; }
     }
 
     const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom : null;
