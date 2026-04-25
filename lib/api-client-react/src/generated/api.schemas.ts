@@ -210,6 +210,12 @@ export interface Project {
   noSchedule: boolean;
   /** @nullable */
   ownerAccessToken?: string | null;
+  /** @nullable */
+  siteLatitude?: number | null;
+  /** @nullable */
+  siteLongitude?: number | null;
+  /** @nullable */
+  siteRadiusMeters?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -275,6 +281,12 @@ export interface UpdateProjectBody {
   status?: UpdateProjectBodyStatus;
   /** @nullable */
   overallProgress?: number | null;
+  /** @nullable */
+  siteLatitude?: number | null;
+  /** @nullable */
+  siteLongitude?: number | null;
+  /** @nullable */
+  siteRadiusMeters?: number | null;
 }
 
 export type CreateActivityBodyStatus =
@@ -710,6 +722,185 @@ export interface DeviationTimeline {
   suspensionsBreakdown: DeviationTimelineSuspensionsBreakdownItem[];
 }
 
+export interface AttendanceCheckBody {
+  selfie: Blob;
+  latitude: number;
+  longitude: number;
+  /** @nullable */
+  accuracy?: number | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type AttendanceRecordType =
+  (typeof AttendanceRecordType)[keyof typeof AttendanceRecordType];
+
+export const AttendanceRecordType = {
+  check_in: "check_in",
+  check_out: "check_out",
+} as const;
+
+export interface AttendanceRecord {
+  id: number;
+  projectId: number;
+  userId: number;
+  type: AttendanceRecordType;
+  recordedAt: string;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+  /** @nullable */
+  accuracyMeters?: number | null;
+  /** @nullable */
+  distanceMeters?: number | null;
+  outOfRange: boolean;
+  /** @nullable */
+  selfieFilename?: string | null;
+  /** @nullable */
+  selfieUrl?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type AttendanceRecordWithUserType =
+  (typeof AttendanceRecordWithUserType)[keyof typeof AttendanceRecordWithUserType];
+
+export const AttendanceRecordWithUserType = {
+  check_in: "check_in",
+  check_out: "check_out",
+} as const;
+
+export interface AttendanceRecordWithUser {
+  id: number;
+  userId: number;
+  /** @nullable */
+  fullName?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  type: AttendanceRecordWithUserType;
+  recordedAt: string;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+  /** @nullable */
+  accuracyMeters?: number | null;
+  /** @nullable */
+  distanceMeters?: number | null;
+  outOfRange: boolean;
+  /** @nullable */
+  selfieUrl?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface MyAttendanceProjectStatus {
+  projectId: number;
+  projectName: string;
+  hasSiteLocation: boolean;
+  /** @nullable */
+  siteLatitude?: number | null;
+  /** @nullable */
+  siteLongitude?: number | null;
+  /** @nullable */
+  siteRadiusMeters?: number | null;
+  currentlyCheckedIn: boolean;
+  lastRecord?: AttendanceRecord | null;
+}
+
+export type MyAttendanceHistoryItemType =
+  (typeof MyAttendanceHistoryItemType)[keyof typeof MyAttendanceHistoryItemType];
+
+export const MyAttendanceHistoryItemType = {
+  check_in: "check_in",
+  check_out: "check_out",
+} as const;
+
+export interface MyAttendanceHistoryItem {
+  id: number;
+  projectId: number;
+  /** @nullable */
+  projectName?: string | null;
+  userId: number;
+  type: MyAttendanceHistoryItemType;
+  recordedAt: string;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+  /** @nullable */
+  accuracyMeters?: number | null;
+  /** @nullable */
+  distanceMeters?: number | null;
+  outOfRange: boolean;
+  /** @nullable */
+  selfieUrl?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface ActiveAttendanceMember {
+  recordId: number;
+  userId: number;
+  fullName: string;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  userRole?: string | null;
+  checkedInAt: string;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+  /** @nullable */
+  accuracyMeters?: number | null;
+  /** @nullable */
+  distanceMeters?: number | null;
+  outOfRange: boolean;
+  /** @nullable */
+  selfieUrl?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface ActiveAttendanceResponse {
+  activeCount: number;
+  members: ActiveAttendanceMember[];
+}
+
+export interface EmployeeAttendanceDay {
+  date: string;
+  /** @nullable */
+  checkIn?: string | null;
+  /** @nullable */
+  checkOut?: string | null;
+}
+
+export type EmployeeAttendanceReportProject = {
+  id: number;
+  name: string;
+};
+
+export type EmployeeAttendanceReportEmployee = {
+  id: number;
+  fullName: string;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  role?: string | null;
+};
+
+export interface EmployeeAttendanceReport {
+  project: EmployeeAttendanceReportProject;
+  employee: EmployeeAttendanceReportEmployee;
+  /** @nullable */
+  dateFrom?: string | null;
+  /** @nullable */
+  dateTo?: string | null;
+  days: EmployeeAttendanceDay[];
+}
+
 export type ListProjectsParams = {
   /**
    * @nullable
@@ -825,3 +1016,40 @@ export const GetProjectDeviationTimelineCurve = {
   linear: "linear",
   scurve: "scurve",
 } as const;
+
+export type GetMyAttendanceHistoryParams = {
+  /**
+   * @nullable
+   */
+  limit?: number | null;
+};
+
+export type ListAttendanceRecordsParams = {
+  /**
+   * @nullable
+   */
+  dateFrom?: string | null;
+  /**
+   * @nullable
+   */
+  dateTo?: string | null;
+  /**
+   * @nullable
+   */
+  userId?: number | null;
+  /**
+   * @nullable
+   */
+  limit?: number | null;
+};
+
+export type GetEmployeeAttendanceReportParams = {
+  /**
+   * @nullable
+   */
+  dateFrom?: string | null;
+  /**
+   * @nullable
+   */
+  dateTo?: string | null;
+};

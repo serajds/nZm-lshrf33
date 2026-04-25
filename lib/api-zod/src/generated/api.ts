@@ -101,6 +101,9 @@ export const ListProjectsResponseItem = zod.object({
   overallProgress: zod.number(),
   noSchedule: zod.boolean(),
   ownerAccessToken: zod.string().nullish(),
+  siteLatitude: zod.number().nullish(),
+  siteLongitude: zod.number().nullish(),
+  siteRadiusMeters: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -147,6 +150,9 @@ export const GetProjectResponse = zod.object({
   overallProgress: zod.number(),
   noSchedule: zod.boolean(),
   ownerAccessToken: zod.string().nullish(),
+  siteLatitude: zod.number().nullish(),
+  siteLongitude: zod.number().nullish(),
+  siteRadiusMeters: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -178,6 +184,9 @@ export const UpdateProjectBody = zod.object({
     ])
     .nullish(),
   overallProgress: zod.number().nullish(),
+  siteLatitude: zod.number().nullish(),
+  siteLongitude: zod.number().nullish(),
+  siteRadiusMeters: zod.number().nullish(),
 });
 
 export const UpdateProjectResponse = zod.object({
@@ -194,6 +203,9 @@ export const UpdateProjectResponse = zod.object({
   overallProgress: zod.number(),
   noSchedule: zod.boolean(),
   ownerAccessToken: zod.string().nullish(),
+  siteLatitude: zod.number().nullish(),
+  siteLongitude: zod.number().nullish(),
+  siteRadiusMeters: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -820,6 +832,9 @@ export const VerifyOwnerAccessResponse = zod.object({
     overallProgress: zod.number(),
     noSchedule: zod.boolean(),
     ownerAccessToken: zod.string().nullish(),
+    siteLatitude: zod.number().nullish(),
+    siteLongitude: zod.number().nullish(),
+    siteRadiusMeters: zod.number().nullish(),
     createdAt: zod.coerce.date(),
     updatedAt: zod.coerce.date(),
   }),
@@ -976,6 +991,9 @@ export const GetDashboardSummaryResponse = zod.object({
       overallProgress: zod.number(),
       noSchedule: zod.boolean(),
       ownerAccessToken: zod.string().nullish(),
+      siteLatitude: zod.number().nullish(),
+      siteLongitude: zod.number().nullish(),
+      siteRadiusMeters: zod.number().nullish(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
     }),
@@ -1234,4 +1252,192 @@ export const GenerateOwnerLinkBody = zod.object({
 export const GenerateOwnerLinkResponse = zod.object({
   token: zod.string(),
   url: zod.string(),
+});
+
+/**
+ * @summary Get my current check-in status across my projects
+ */
+export const GetMyAttendanceStatusResponseItem = zod.object({
+  projectId: zod.number(),
+  projectName: zod.string(),
+  hasSiteLocation: zod.boolean(),
+  siteLatitude: zod.number().nullish(),
+  siteLongitude: zod.number().nullish(),
+  siteRadiusMeters: zod.number().nullish(),
+  currentlyCheckedIn: zod.boolean(),
+  lastRecord: zod
+    .union([
+      zod.object({
+        id: zod.number(),
+        projectId: zod.number(),
+        userId: zod.number(),
+        type: zod.enum(["check_in", "check_out"]),
+        recordedAt: zod.coerce.date(),
+        latitude: zod.number().nullish(),
+        longitude: zod.number().nullish(),
+        accuracyMeters: zod.number().nullish(),
+        distanceMeters: zod.number().nullish(),
+        outOfRange: zod.boolean(),
+        selfieFilename: zod.string().nullish(),
+        selfieUrl: zod.string().nullish(),
+        notes: zod.string().nullish(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+});
+export const GetMyAttendanceStatusResponse = zod.array(
+  GetMyAttendanceStatusResponseItem,
+);
+
+/**
+ * @summary Get my attendance history
+ */
+export const GetMyAttendanceHistoryQueryParams = zod.object({
+  limit: zod.coerce.number().nullish(),
+});
+
+export const GetMyAttendanceHistoryResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  projectName: zod.string().nullish(),
+  userId: zod.number(),
+  type: zod.enum(["check_in", "check_out"]),
+  recordedAt: zod.coerce.date(),
+  latitude: zod.number().nullish(),
+  longitude: zod.number().nullish(),
+  accuracyMeters: zod.number().nullish(),
+  distanceMeters: zod.number().nullish(),
+  outOfRange: zod.boolean(),
+  selfieUrl: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+export const GetMyAttendanceHistoryResponse = zod.array(
+  GetMyAttendanceHistoryResponseItem,
+);
+
+/**
+ * @summary Check in to a project (selfie + GPS required)
+ */
+export const AttendanceCheckInParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const AttendanceCheckInBody = zod.object({
+  selfie: zod.instanceof(File),
+  latitude: zod.number(),
+  longitude: zod.number(),
+  accuracy: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Check out of a project (selfie + GPS required)
+ */
+export const AttendanceCheckOutParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const AttendanceCheckOutBody = zod.object({
+  selfie: zod.instanceof(File),
+  latitude: zod.number(),
+  longitude: zod.number(),
+  accuracy: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary List members currently checked in
+ */
+export const GetActiveAttendanceParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const GetActiveAttendanceResponse = zod.object({
+  activeCount: zod.number(),
+  members: zod.array(
+    zod.object({
+      recordId: zod.number(),
+      userId: zod.number(),
+      fullName: zod.string(),
+      phone: zod.string().nullish(),
+      userRole: zod.string().nullish(),
+      checkedInAt: zod.coerce.date(),
+      latitude: zod.number().nullish(),
+      longitude: zod.number().nullish(),
+      accuracyMeters: zod.number().nullish(),
+      distanceMeters: zod.number().nullish(),
+      outOfRange: zod.boolean(),
+      selfieUrl: zod.string().nullish(),
+      notes: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary List attendance records (with filters)
+ */
+export const ListAttendanceRecordsParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const ListAttendanceRecordsQueryParams = zod.object({
+  dateFrom: zod.date().nullish(),
+  dateTo: zod.date().nullish(),
+  userId: zod.coerce.number().nullish(),
+  limit: zod.coerce.number().nullish(),
+});
+
+export const ListAttendanceRecordsResponseItem = zod.object({
+  id: zod.number(),
+  userId: zod.number(),
+  fullName: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  type: zod.enum(["check_in", "check_out"]),
+  recordedAt: zod.coerce.date(),
+  latitude: zod.number().nullish(),
+  longitude: zod.number().nullish(),
+  accuracyMeters: zod.number().nullish(),
+  distanceMeters: zod.number().nullish(),
+  outOfRange: zod.boolean(),
+  selfieUrl: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+export const ListAttendanceRecordsResponse = zod.array(
+  ListAttendanceRecordsResponseItem,
+);
+
+/**
+ * @summary Per-employee daily attendance report
+ */
+export const GetEmployeeAttendanceReportParams = zod.object({
+  projectId: zod.coerce.number(),
+  userId: zod.coerce.number(),
+});
+
+export const GetEmployeeAttendanceReportQueryParams = zod.object({
+  dateFrom: zod.date().nullish(),
+  dateTo: zod.date().nullish(),
+});
+
+export const GetEmployeeAttendanceReportResponse = zod.object({
+  project: zod.object({
+    id: zod.number(),
+    name: zod.string(),
+  }),
+  employee: zod.object({
+    id: zod.number(),
+    fullName: zod.string(),
+    phone: zod.string().nullish(),
+    role: zod.string().nullish(),
+  }),
+  dateFrom: zod.coerce.date().nullish(),
+  dateTo: zod.coerce.date().nullish(),
+  days: zod.array(
+    zod.object({
+      date: zod.coerce.date(),
+      checkIn: zod.coerce.date().nullish(),
+      checkOut: zod.coerce.date().nullish(),
+    }),
+  ),
 });

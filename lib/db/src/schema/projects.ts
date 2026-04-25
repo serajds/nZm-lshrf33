@@ -22,6 +22,9 @@ export const projectsTable = pgTable("projects", {
   supervisorCompanyId: integer("supervisor_company_id"),
   summaryWidgets: jsonb("summary_widgets").default([]),
   onedriveTestResultsFolderId: text("onedrive_test_results_folder_id"),
+  siteLatitude: real("site_latitude"),
+  siteLongitude: real("site_longitude"),
+  siteRadiusMeters: integer("site_radius_meters").default(200),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
