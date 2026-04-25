@@ -308,7 +308,7 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
         : `${Math.round(distance)} م`;
       const action = type === "check_in" ? "تسجيل الحضور" : "تسجيل الانصراف";
       res.status(403).json({
-        error: `لا يمكن ${action} من خارج موقع المشروع. أنت تبعد ${distanceText} عن الموقع، والمسموح به ${radius} م.`,
+        error: `لا يمكن ${action} من خارج موقع المشروع. أنت تبعد ${distanceText} عن الموقع.`,
         outOfRange: true,
         distanceMeters: distance,
         allowedRadiusMeters: radius,
