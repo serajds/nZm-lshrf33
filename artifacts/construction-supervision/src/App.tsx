@@ -130,7 +130,7 @@ function Router() {
         <ProtectedRoute component={ProjectForms} />
       </Route>
       <Route path="/projects/:id/attendance">
-        <ProtectedRoute component={ProjectAttendance} allowedRoles={["admin", "project_manager", "engineer", "owner"]} />
+        <ProtectedRoute component={ProjectAttendance} allowedRoles={["admin", "project_manager", "engineer", "owner", "contractor"]} />
       </Route>
       <Route path="/projects/:id">
         <ProtectedRoute component={ProjectDetails} />

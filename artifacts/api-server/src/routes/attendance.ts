@@ -177,6 +177,13 @@ router.post(
 );
 
 async function recordAttendance(req: Request, res: Response, type: "check_in" | "check_out"): Promise<void> {
+  // Owner is a stakeholder, not on-site staff. They cannot check in/out.
+  if (req.user?.role === "owner") {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    res.status(403).json({ error: "صاحب المشروع لا يسجّل حضور" });
+    return;
+  }
+
   const userId = req.user!.userId;
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
