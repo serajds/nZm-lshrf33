@@ -1005,26 +1005,34 @@ ${logosHTML}
 <!-- STATS -->
 <div class="stats-row avoid-break">
   <div class="stat">
-    <div class="stat-icon" style="background:#eff6ff;color:#2563eb">📅</div>
+    <div class="stat-icon" style="background:#eff6ff;color:#2563eb">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg>
+    </div>
     <div><div class="stat-lbl">أيام الحضور</div><div class="stat-val">${presentDays} <span class="stat-unit">يوم</span></div></div>
   </div>
   <div class="stat">
-    <div class="stat-icon" style="background:#f0fdf4;color:#16a34a">✓</div>
+    <div class="stat-icon" style="background:#f0fdf4;color:#16a34a">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12 10 17 19 8"/></svg>
+    </div>
     <div><div class="stat-lbl">أيام مكتملة</div><div class="stat-val">${completeDays} <span class="stat-unit">يوم</span></div></div>
   </div>
   <div class="stat">
-    <div class="stat-icon" style="background:${incompleteDays > 0 ? "#fef2f2" : "#f8fafc"};color:${incompleteDays > 0 ? "#dc2626" : "#94a3b8"}">⚠️</div>
+    <div class="stat-icon" style="background:${incompleteDays > 0 ? "#fef2f2" : "#f8fafc"};color:${incompleteDays > 0 ? "#dc2626" : "#94a3b8"}">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </div>
     <div><div class="stat-lbl">أيام بدون انصراف</div><div class="stat-val">${incompleteDays} <span class="stat-unit">يوم</span></div></div>
   </div>
   <div class="stat">
-    <div class="stat-icon" style="background:#fefce8;color:#ca8a04">⏱️</div>
+    <div class="stat-icon" style="background:#fefce8;color:#ca8a04">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+    </div>
     <div><div class="stat-lbl">إجمالي الساعات</div><div class="stat-val">${esc(fmtDuration(totalMins))}</div></div>
   </div>
 </div>
 
 <!-- DETAILS TABLE -->
 <div class="section avoid-break">
-  <div class="section-title blue-title">📋 سجل الحضور والانصراف اليومي</div>
+  <div class="section-title blue-title">سجل الحضور والانصراف اليومي</div>
   <table class="tbl">
     <thead>
       <tr>
