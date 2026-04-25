@@ -156,7 +156,7 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            سيتم طلب صورة من الموقع + إحداثيات GPS. وقت الخادم تلقائي (توقيت ليبيا).
+            سيتم طلب صورة من الموقع + إحداثيات GPS.
           </p>
         </CardContent>
       </Card>
