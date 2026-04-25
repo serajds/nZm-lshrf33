@@ -40,8 +40,18 @@ router.get("/pdf/attendance-report", requireAuth, async (req, res): Promise<void
 
   if (!projectId || !userId) { res.status(400).json({ error: "projectId و userId مطلوبان" }); return; }
 
-  // Permission: self OR admin OR project_manager of that project
   const reqUser = req.user!;
+
+  // Owner is a stakeholder, not staff: cannot pull employee report PDFs.
+  if (reqUser.role === "owner") { res.status(403).json({ error: "غير مصرح" }); return; }
+
+  // Requesting user must belong to the project (admin bypasses).
+  if (reqUser.role !== "admin") {
+    const reqBelongs = await userBelongsToProject(reqUser.userId, projectId);
+    if (!reqBelongs) { res.status(403).json({ error: "ليس لديك صلاحية على هذا المشروع" }); return; }
+  }
+
+  // Role: self OR admin OR project_manager of that project
   if (reqUser.userId !== userId && reqUser.role !== "admin") {
     const { projectMembersTable } = await import("@workspace/db");
     const [pm] = await db.select()
