@@ -18,7 +18,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { SelfieCameraDialog } from "@/components/selfie-camera-dialog";
 import { fmtLibyaDateTime, fmtLibyaTime, fmtLibyaDate, getCurrentPosition, withAuthToken } from "@/lib/attendance-utils";
-import { Loader2, MapPin, LogIn, LogOut, Camera, FileDown, AlertTriangle, CheckCircle2, Crosshair, Image as ImageIcon, ArrowRight } from "lucide-react";
+import { Loader2, MapPin, LogIn, LogOut, Camera, Printer, AlertTriangle, CheckCircle2, Crosshair, Image as ImageIcon, ArrowRight } from "lucide-react";
+import { previewAttendanceReport, type CompanyLogo, type AttendanceReportData } from "@/lib/report-pdf";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -713,19 +714,30 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
   const [to, setTo] = useState("");
   const [employeeId, setEmployeeId] = useState<string>("");
 
+  const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
+
+  const { data: companyLogos } = useQuery<Record<string, CompanyLogo>>({
+    queryKey: ["project-company-logos", projectId],
+    queryFn: async () => {
+      const r = await authFetch(`${API_BASE}/projects/${projectId}/company-logos`);
+      return r.ok ? r.json() : {};
+    },
+    enabled: !!projectId,
+  });
+
   const { data: members = [] } = useQuery<ProjectMember[]>({
     queryKey: [`/api/projects/${projectId}/members`],
     queryFn: async () => {
       const r = await authFetch(`${API_BASE}/projects/${projectId}/members`);
       if (!r.ok) return [];
       const data = await r.json();
-      // shape: members → [{ user: {...}, role }]
-      return (data?.members ?? data ?? []).map((m: { user?: { id: number; fullName: string; phone?: string | null }; id?: number; fullName?: string; phone?: string | null; role: string }) => ({
-        id: m.user?.id ?? m.id,
-        fullName: m.user?.fullName ?? m.fullName,
+      // shape from /projects/:id/members: [{ id (member row id), userId, fullName, phone, role, userRole, ... }]
+      return (data?.members ?? data ?? []).map((m: { user?: { id: number; fullName: string; phone?: string | null }; userId?: number; id?: number; fullName?: string; phone?: string | null; role: string }) => ({
+        id: m.user?.id ?? m.userId ?? m.id ?? 0,
+        fullName: m.user?.fullName ?? m.fullName ?? "",
         phone: m.user?.phone ?? m.phone ?? null,
         role: m.role,
-      })).filter((m: { id: number }) => !!m.id);
+      })).filter((m: { id: number; role: string }) => !!m.id && m.role !== "owner");
     },
   });
 
@@ -760,21 +772,27 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
     retry: false,
   });
 
-  async function downloadPdf() {
-    if (!employeeId) return;
-    try {
-      const url = `${API_BASE}/pdf/attendance-report?projectId=${projectId}&userId=${employeeId}${from ? `&dateFrom=${from}` : ""}${to ? `&dateTo=${to}` : ""}`;
-      const r = await authFetch(url);
-      if (!r.ok) throw new Error("فشل توليد التقرير");
-      const blob = await r.blob();
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `attendance-${employeeId}-${from || "all"}-${to || "now"}.pdf`;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(link.href), 5000);
-    } catch (e: unknown) {
-      toast({ variant: "destructive", title: "تعذّر التحميل", description: e instanceof Error ? e.message : "" });
+  function openPreview() {
+    if (!report || !report.employee || !project) {
+      toast({ variant: "destructive", title: "اعرض التقرير أولاً قبل المعاينة" });
+      return;
     }
+    const apiBase = API_BASE.replace("/api", "");
+    previewAttendanceReport({
+      projectName: project.name,
+      ownerEntity: project.ownerEntity,
+      contractor: project.contractor,
+      supervisorEntity: project.supervisorEntity,
+      location: project.location,
+      employeeName: report.employee.fullName,
+      employeeRole: report.employee.role,
+      employeePhone: report.employee.phone,
+      dateFrom: report.dateFrom ?? from ?? null,
+      dateTo: report.dateTo ?? to ?? null,
+      days: report.days,
+      companyLogos: companyLogos as AttendanceReportData["companyLogos"],
+      apiBase,
+    });
   }
 
   return (
@@ -811,8 +829,8 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
             {isFetching ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : null}
             عرض التقرير
           </Button>
-          <Button variant="outline" onClick={downloadPdf} disabled={!employeeId} className="flex-1 sm:flex-none">
-            <FileDown className="h-4 w-4 ml-2" /> تنزيل PDF
+          <Button variant="outline" onClick={openPreview} disabled={!employeeId || !report} className="flex-1 sm:flex-none">
+            <Printer className="h-4 w-4 ml-2" /> معاينة وطباعة
           </Button>
         </div>
 
