@@ -36,9 +36,9 @@ export function SelfieCameraDialog({ open, onClose, onCapture, title = "التق
       }
       let stream: MediaStream;
       try {
-        // Prefer rear camera so the photo captures the actual site, not the user's face.
+        // Prefer front (selfie) camera to capture the employee's face.
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { facingMode: { ideal: "user" }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
       } catch {
