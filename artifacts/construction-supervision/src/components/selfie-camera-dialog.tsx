@@ -10,7 +10,7 @@ interface SelfieCameraDialogProps {
   title?: string;
 }
 
-export function SelfieCameraDialog({ open, onClose, onCapture, title = "التقاط صورة من الموقع" }: SelfieCameraDialogProps) {
+export function SelfieCameraDialog({ open, onClose, onCapture, title = "التقاط صورة سيلفي" }: SelfieCameraDialogProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
