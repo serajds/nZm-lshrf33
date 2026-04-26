@@ -306,7 +306,7 @@ export default function ProjectAttendance() {
         open={selfieOpen}
         onClose={() => { setSelfieOpen(false); setPendingType(null); }}
         onCapture={handleCapture}
-        title={pendingType === "check_in" ? "صورة من الموقع للحضور" : "صورة من الموقع للانصراف"}
+        title={pendingType === "check_in" ? "صورة سيلفي للحضور" : "صورة سيلفي للانصراف"}
       />
 
       <Dialog open={!!photoModalUrl} onOpenChange={(v) => { if (!v) setPhotoModalUrl(null); }}>
@@ -315,7 +315,7 @@ export default function ProjectAttendance() {
             <DialogTitle>صورة الحضور</DialogTitle>
           </DialogHeader>
           {photoModalUrl ? (
-            <img src={withAuthToken(photoModalUrl)} alt="صورة من الموقع" className="w-full h-auto rounded-md" />
+            <img src={withAuthToken(photoModalUrl)} alt="صورة سيلفي" className="w-full h-auto rounded-md" />
           ) : null}
         </DialogContent>
       </Dialog>
@@ -396,7 +396,7 @@ function SelfCheckCard({
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          سيتم طلب صورة من الموقع + إحداثيات GPS.
+          سيتم طلب صورة سيلفي + إحداثيات GPS.
         </p>
       </CardContent>
     </Card>

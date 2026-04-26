@@ -161,7 +161,7 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            سيتم طلب صورة من الموقع + إحداثيات GPS.
+            سيتم طلب صورة سيلفي + إحداثيات GPS.
           </p>
         </CardContent>
       </Card>
@@ -170,7 +170,7 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
         open={open}
         onClose={() => { setOpen(false); setPending(null); }}
         onCapture={handleCapture}
-        title={pending === "check_in" ? "صورة من الموقع للحضور" : "صورة من الموقع للانصراف"}
+        title={pending === "check_in" ? "صورة سيلفي للحضور" : "صورة سيلفي للانصراف"}
       />
     </>
   );
