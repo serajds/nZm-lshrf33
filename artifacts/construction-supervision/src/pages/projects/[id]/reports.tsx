@@ -11,7 +11,7 @@ import {
   useGetMyProjectPermissions,
   getListReportsQueryKey 
 } from "@workspace/api-client-react";
-import type { Report, Activity } from "@workspace/api-client-react";
+import type { Report, Activity, CreateReportBody, UpdateReportBody } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -39,8 +39,9 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus } from "lucide-react";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
 
@@ -156,6 +157,7 @@ export default function ProjectReports() {
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [uploadingGroupIdx, setUploadingGroupIdx] = useState<number | null>(null);
+  const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
@@ -241,6 +243,7 @@ export default function ProjectReports() {
       recommendations: r.recommendations ?? "",
       imageGroups: initialGroups,
     });
+    setOpenGroupIdx(0);
     setIsDialogOpen(true);
   };
 
@@ -347,16 +350,23 @@ export default function ProjectReports() {
         .map(g => ({ category: g.category.trim(), urls: g.urls ?? [] }))
         .filter(g => g.category.length > 0 && g.urls.length > 0);
       const flatImageUrls = Array.from(new Set(cleanedGroups.flatMap(g => g.urls)));
-      const payload = {
-        ...values,
-        imageGroups: cleanedGroups.length > 0 ? cleanedGroups : null,
-        imageUrls: flatImageUrls,
-      };
+      const { imageGroups: _omit, ...rest } = values;
+      const groupsForApi = cleanedGroups.length > 0 ? cleanedGroups : null;
       if (editingId) {
-        await updateReport.mutateAsync({ projectId, id: editingId, data: payload as any });
+        const updateBody: UpdateReportBody = {
+          ...rest,
+          imageUrls: flatImageUrls,
+          imageGroups: groupsForApi,
+        };
+        await updateReport.mutateAsync({ projectId, id: editingId, data: updateBody });
         toast({ title: "تم التحديث" });
       } else {
-        await createReport.mutateAsync({ projectId, data: payload as any });
+        const createBody: CreateReportBody = {
+          ...rest,
+          imageUrls: flatImageUrls,
+          imageGroups: groupsForApi,
+        };
+        await createReport.mutateAsync({ projectId, data: createBody });
         toast({ title: "تمت الإضافة" });
       }
       queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
@@ -437,6 +447,7 @@ export default function ProjectReports() {
         {!isViewer && (
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           setIsDialogOpen(open);
+          setOpenGroupIdx(0);
           if (!open) { form.reset(); setEditingId(null); }
         }}>
           <DialogTrigger asChild>
@@ -631,13 +642,24 @@ export default function ProjectReports() {
                         <div className="space-y-3">
                           {groups.map((group, gIdx) => {
                             const isThisUploading = uploadingGroupIdx === gIdx;
+                            const isOpen = openGroupIdx === gIdx;
+                            const isEmpty = group.urls.length === 0;
+                            const canDelete = isEmpty && groups.length > 1;
                             return (
-                              <div key={gIdx} className="border rounded-lg p-3 bg-muted/30 space-y-3">
-                                <div className="flex items-center justify-between gap-2 flex-wrap">
-                                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                                    <span className="text-sm font-semibold text-foreground truncate">{group.category}</span>
-                                    <span className="text-xs text-muted-foreground shrink-0">({group.urls.length} صورة)</span>
-                                  </div>
+                              <Collapsible
+                                key={gIdx}
+                                open={isOpen}
+                                onOpenChange={(o) => setOpenGroupIdx(o ? gIdx : null)}
+                                className="border rounded-lg bg-muted/30 overflow-hidden"
+                              >
+                                <div className="flex items-center justify-between gap-2 flex-wrap p-3">
+                                  <CollapsibleTrigger asChild>
+                                    <button type="button" className="flex items-center gap-2 flex-1 min-w-0 text-right hover:opacity-80 transition-opacity">
+                                      <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                                      <span className="text-sm font-semibold text-foreground truncate">{group.category}</span>
+                                      <span className="text-xs text-muted-foreground shrink-0">({group.urls.length} صورة)</span>
+                                    </button>
+                                  </CollapsibleTrigger>
                                   <div className="flex items-center gap-2 shrink-0">
                                     <label className="cursor-pointer">
                                       <input
@@ -645,7 +667,7 @@ export default function ProjectReports() {
                                         accept="image/*"
                                         multiple
                                         className="hidden"
-                                        onChange={(e) => handleImageUpload(e, gIdx)}
+                                        onChange={(e) => { setOpenGroupIdx(gIdx); handleImageUpload(e, gIdx); }}
                                         disabled={isThisUploading}
                                       />
                                       <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border bg-background hover:bg-accent transition-colors ${isThisUploading ? "opacity-60 pointer-events-none" : ""}`}>
@@ -656,48 +678,69 @@ export default function ProjectReports() {
                                         )}
                                       </span>
                                     </label>
-                                    {groups.length > 1 && (
+                                    {canDelete && (
                                       <Button
                                         type="button"
                                         variant="ghost"
                                         size="icon"
                                         className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                        title="حذف هذا القسم"
+                                        title="حذف هذا القسم الفارغ"
                                         onClick={() => removeImageGroup(gIdx)}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
+                                    {!isEmpty && groups.length > 1 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-muted-foreground/40 cursor-not-allowed"
+                                        title="احذف الصور أولاً ثم يمكنك حذف القسم"
+                                        disabled
                                       >
                                         <Trash2 className="h-3.5 w-3.5" />
                                       </Button>
                                     )}
                                   </div>
                                 </div>
-                                {group.urls.length > 0 && (
-                                  <div className="flex flex-wrap gap-2">
-                                    {group.urls.map((url, idx) => (
-                                      <div key={idx} className="relative group w-20 h-20 rounded-md overflow-hidden border">
-                                        <img
-                                          src={url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`}
-                                          alt={`صورة ${idx + 1}`}
-                                          className="w-full h-full object-cover"
-                                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() => removeImageFromGroup(gIdx, idx)}
-                                          className="absolute top-0.5 right-0.5 bg-destructive text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                          <X className="h-3 w-3" />
-                                        </button>
+                                <CollapsibleContent>
+                                  <div className="px-3 pb-3">
+                                    {isEmpty ? (
+                                      <p className="text-xs text-muted-foreground italic">لم تتم إضافة أي صور لهذا القسم بعد</p>
+                                    ) : (
+                                      <div className="flex flex-wrap gap-2">
+                                        {group.urls.map((url, idx) => (
+                                          <div key={idx} className="relative group w-20 h-20 rounded-md overflow-hidden border">
+                                            <img
+                                              src={url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`}
+                                              alt={`صورة ${idx + 1}`}
+                                              className="w-full h-full object-cover"
+                                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => removeImageFromGroup(gIdx, idx)}
+                                              className="absolute top-0.5 right-0.5 bg-destructive text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                              <X className="h-3 w-3" />
+                                            </button>
+                                          </div>
+                                        ))}
                                       </div>
-                                    ))}
+                                    )}
                                   </div>
-                                )}
-                              </div>
+                                </CollapsibleContent>
+                              </Collapsible>
                             );
                           })}
 
                           <AddImageGroupButton
                             availablePresets={availablePresets}
-                            onAdd={addImageGroup}
+                            onAdd={(cat) => {
+                              addImageGroup(cat);
+                              setOpenGroupIdx((form.getValues("imageGroups") ?? []).length - 1);
+                            }}
                           />
                         </div>
                       </FormItem>
