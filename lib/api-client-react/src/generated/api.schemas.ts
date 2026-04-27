@@ -364,6 +364,11 @@ export const ReportType = {
   monthly: "monthly",
 } as const;
 
+export type ReportImageGroupsItem = {
+  category: string;
+  urls: string[];
+};
+
 export type ReportActivitiesSnapshotItem = {
   id?: number;
   name?: string;
@@ -395,6 +400,8 @@ export interface Report {
   recommendations?: string | null;
   imageUrls: string[];
   /** @nullable */
+  imageGroups?: ReportImageGroupsItem[] | null;
+  /** @nullable */
   activitiesSnapshot?: ReportActivitiesSnapshotItem[] | null;
   /** @nullable */
   createdById?: number | null;
@@ -410,6 +417,11 @@ export const CreateReportBodyType = {
   monthly: "monthly",
 } as const;
 
+export type CreateReportBodyImageGroupsItem = {
+  category: string;
+  urls: string[];
+};
+
 export interface CreateReportBody {
   type: CreateReportBodyType;
   reportDate: string;
@@ -422,6 +434,8 @@ export interface CreateReportBody {
   /** @nullable */
   recommendations?: string | null;
   imageUrls?: string[];
+  /** @nullable */
+  imageGroups?: CreateReportBodyImageGroupsItem[] | null;
 }
 
 /**
@@ -435,6 +449,11 @@ export const UpdateReportBodyType = {
   weekly: "weekly",
   monthly: "monthly",
 } as const;
+
+export type UpdateReportBodyImageGroupsItem = {
+  category: string;
+  urls: string[];
+};
 
 export interface UpdateReportBody {
   /** @nullable */
@@ -454,6 +473,8 @@ export interface UpdateReportBody {
   /** @nullable */
   recommendations?: string | null;
   imageUrls?: string[];
+  /** @nullable */
+  imageGroups?: UpdateReportBodyImageGroupsItem[] | null;
 }
 
 export type ProjectFileCategory =

@@ -375,6 +375,14 @@ export const ListReportsResponseItem = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
   activitiesSnapshot: zod
     .array(
       zod.object({
@@ -414,6 +422,14 @@ export const CreateReportBody = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()).optional(),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
 });
 
 /**
@@ -437,6 +453,14 @@ export const GetReportResponse = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
   activitiesSnapshot: zod
     .array(
       zod.object({
@@ -478,6 +502,14 @@ export const UpdateReportBody = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()).optional(),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
 });
 
 export const UpdateReportResponse = zod.object({
@@ -493,6 +525,14 @@ export const UpdateReportResponse = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
   activitiesSnapshot: zod
     .array(
       zod.object({
@@ -873,6 +913,14 @@ export const VerifyOwnerAccessResponse = zod.object({
       technicalNotes: zod.string().nullish(),
       recommendations: zod.string().nullish(),
       imageUrls: zod.array(zod.string()),
+      imageGroups: zod
+        .array(
+          zod.object({
+            category: zod.string(),
+            urls: zod.array(zod.string()),
+          }),
+        )
+        .nullish(),
       activitiesSnapshot: zod
         .array(
           zod.object({
@@ -1317,7 +1365,7 @@ export const GetMyAttendanceHistoryResponse = zod.array(
 );
 
 /**
- * @summary Check in to a project (selfie + GPS required)
+ * @summary Check in to a project (site photo + GPS required)
  */
 export const AttendanceCheckInParams = zod.object({
   projectId: zod.coerce.number(),
@@ -1332,7 +1380,7 @@ export const AttendanceCheckInBody = zod.object({
 });
 
 /**
- * @summary Check out of a project (selfie + GPS required)
+ * @summary Check out of a project (site photo + GPS required)
  */
 export const AttendanceCheckOutParams = zod.object({
   projectId: zod.coerce.number(),

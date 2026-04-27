@@ -1799,6 +1799,20 @@ components:
           type: array
           items:
             type: string
+        imageGroups:
+          type: ["array", "null"]
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              urls:
+                type: array
+                items:
+                  type: string
+            required:
+              - category
+              - urls
         activitiesSnapshot:
           type: ["array", "null"]
           items:
@@ -1872,6 +1886,20 @@ components:
           type: array
           items:
             type: string
+        imageGroups:
+          type: ["array", "null"]
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              urls:
+                type: array
+                items:
+                  type: string
+            required:
+              - category
+              - urls
       required:
         - type
         - reportDate
@@ -1907,6 +1935,20 @@ components:
           type: array
           items:
             type: string
+        imageGroups:
+          type: ["array", "null"]
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              urls:
+                type: array
+                items:
+                  type: string
+            required:
+              - category
+              - urls
 
     # Files
     ProjectFile:

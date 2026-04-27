@@ -5,6 +5,7 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdateReportBodyImageGroupsItem } from "./updateReportBodyImageGroupsItem";
 import type { UpdateReportBodyType } from "./updateReportBodyType";
 
 export interface UpdateReportBody {
@@ -25,4 +26,6 @@ export interface UpdateReportBody {
   /** @nullable */
   recommendations?: string | null;
   imageUrls?: string[];
+  /** @nullable */
+  imageGroups?: UpdateReportBodyImageGroupsItem[] | null;
 }

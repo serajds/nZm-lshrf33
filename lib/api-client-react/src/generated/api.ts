@@ -4236,7 +4236,7 @@ export function useGetMyAttendanceHistory<
 }
 
 /**
- * @summary Check in to a project (selfie + GPS required)
+ * @summary Check in to a project (site photo + GPS required)
  */
 export const getAttendanceCheckInUrl = (projectId: number) => {
   return `/api/attendance/projects/${projectId}/check-in`;
@@ -4316,7 +4316,7 @@ export type AttendanceCheckInMutationBody = BodyType<AttendanceCheckBody>;
 export type AttendanceCheckInMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Check in to a project (selfie + GPS required)
+ * @summary Check in to a project (site photo + GPS required)
  */
 export const useAttendanceCheckIn = <
   TError = ErrorType<ErrorResponse>,
@@ -4339,7 +4339,7 @@ export const useAttendanceCheckIn = <
 };
 
 /**
- * @summary Check out of a project (selfie + GPS required)
+ * @summary Check out of a project (site photo + GPS required)
  */
 export const getAttendanceCheckOutUrl = (projectId: number) => {
   return `/api/attendance/projects/${projectId}/check-out`;
@@ -4419,7 +4419,7 @@ export type AttendanceCheckOutMutationBody = BodyType<AttendanceCheckBody>;
 export type AttendanceCheckOutMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Check out of a project (selfie + GPS required)
+ * @summary Check out of a project (site photo + GPS required)
  */
 export const useAttendanceCheckOut = <
   TError = ErrorType<ErrorResponse>,

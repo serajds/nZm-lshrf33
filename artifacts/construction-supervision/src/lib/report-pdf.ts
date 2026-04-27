@@ -10,6 +10,11 @@ export interface CompanyLogo {
   logoUrl: string | null;
 }
 
+export interface ReportImageGroupForPdf {
+  category: string;
+  urls: string[];
+}
+
 export interface ReportPdfData {
   projectName: string;
   ownerEntity?: string | null;
@@ -25,6 +30,7 @@ export interface ReportPdfData {
   technicalNotes?: string | null;
   recommendations?: string | null;
   imageUrls?: string[];
+  imageGroups?: ReportImageGroupForPdf[] | null;
   reportId: number;
   reportNumber?: number;
   activities?: ActivityForReport[];
@@ -153,18 +159,40 @@ function buildPrintHTML(data: ReportPdfData): string {
       <p class="body-text">${esc(data.recommendations)}</p>
     </div>` : "";
 
-  const images = data.imageUrls ?? [];
-  const imagesHTML = images.length > 0 ? `
-    <div style="break-before:page;page-break-before:always">
-      <div class="section-title blue-title avoid-break" style="border:none;padding:0 0 10px 0;margin-bottom:16px;border-bottom:2px solid #bfdbfe">📷 صور الموقع (${images.length} صورة)</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        ${images.map((url, i) => { const safe = escAttr(url); return safe ? `
-          <div class="avoid-break" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#f8fafc">
-            <img src="${safe}" style="width:100%;height:200px;object-fit:cover;display:block" onerror="this.parentNode.style.display='none'" />
-            <div style="font-size:11px;color:#64748b;text-align:center;padding:6px;background:#f1f5f9">صورة ${i + 1} من ${images.length}</div>
-          </div>` : ""; }).join("")}
-      </div>
-    </div>` : "";
+  const renderImageGrid = (urls: string[], total: number, startIdx: number): string => `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      ${urls.map((url, i) => { const safe = escAttr(url); return safe ? `
+        <div class="avoid-break" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#f8fafc">
+          <img src="${safe}" style="width:100%;height:200px;object-fit:cover;display:block" onerror="this.parentNode.style.display='none'" />
+          <div style="font-size:11px;color:#64748b;text-align:center;padding:6px;background:#f1f5f9">صورة ${startIdx + i + 1} من ${total}</div>
+        </div>` : ""; }).join("")}
+    </div>`;
+
+  const groups = (data.imageGroups ?? []).filter(g => g && Array.isArray(g.urls) && g.urls.length > 0);
+  let imagesHTML = "";
+  if (groups.length > 0) {
+    let runningIdx = 0;
+    const totalImages = groups.reduce((s, g) => s + g.urls.length, 0);
+    const sectionsHTML = groups.map((g, gi) => {
+      const html = `
+        <div class="avoid-break" style="${gi > 0 ? "margin-top:18px;" : ""}">
+          <div class="section-title blue-title" style="border:none;padding:0 0 10px 0;margin-bottom:14px;border-bottom:2px solid #bfdbfe">📷 ${esc(g.category)} (${g.urls.length} صورة)</div>
+        </div>
+        ${renderImageGrid(g.urls, totalImages, runningIdx)}`;
+      runningIdx += g.urls.length;
+      return html;
+    }).join("");
+    imagesHTML = `<div style="break-before:page;page-break-before:always">${sectionsHTML}</div>`;
+  } else {
+    const images = data.imageUrls ?? [];
+    if (images.length > 0) {
+      imagesHTML = `
+        <div style="break-before:page;page-break-before:always">
+          <div class="section-title blue-title avoid-break" style="border:none;padding:0 0 10px 0;margin-bottom:16px;border-bottom:2px solid #bfdbfe">📷 صور الموقع (${images.length} صورة)</div>
+          ${renderImageGrid(images, images.length, 0)}
+        </div>`;
+    }
+  }
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">

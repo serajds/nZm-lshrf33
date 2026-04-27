@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ReportActivitiesSnapshotItem } from "./reportActivitiesSnapshotItem";
+import type { ReportImageGroupsItem } from "./reportImageGroupsItem";
 import type { ReportType } from "./reportType";
 
 export interface Report {
@@ -23,6 +24,8 @@ export interface Report {
   /** @nullable */
   recommendations?: string | null;
   imageUrls: string[];
+  /** @nullable */
+  imageGroups?: ReportImageGroupsItem[] | null;
   /** @nullable */
   activitiesSnapshot?: ReportActivitiesSnapshotItem[] | null;
   /** @nullable */
