@@ -175,7 +175,7 @@ function buildPrintHTML(data: ReportPdfData): string {
     const totalImages = groups.reduce((s, g) => s + g.urls.length, 0);
     const sectionsHTML = groups.map((g, gi) => {
       const html = `
-        <div class="avoid-break" style="${gi > 0 ? "margin-top:18px;" : ""}">
+        <div class="avoid-break" style="${gi > 0 ? "margin-top:18px;" : ""}break-after:avoid;page-break-after:avoid">
           <div class="section-title blue-title" style="border:none;padding:0 0 10px 0;margin-bottom:14px;border-bottom:2px solid #bfdbfe">📷 ${esc(g.category)} (${g.urls.length} صورة)</div>
         </div>
         ${renderImageGrid(g.urls, totalImages, runningIdx)}`;
