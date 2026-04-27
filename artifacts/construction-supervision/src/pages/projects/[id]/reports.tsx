@@ -73,24 +73,9 @@ type ReportFormValues = z.infer<typeof reportSchema>;
 type ImageGroup = z.infer<typeof imageGroupSchema>;
 
 const DEFAULT_CATEGORY = "صور عامة";
-const PRESET_CATEGORIES = [
-  "صور عامة",
-  "الأعمال الإنشائية",
-  "الأعمال الكهربائية",
-  "الأعمال الميكانيكية والصحية",
-  "التشطيبات",
-  "الموقع العام والأعمال الخارجية",
-  "السلامة والمخاطر",
-];
-
-function AddImageGroupButton({ availablePresets, onAdd }: { availablePresets: string[]; onAdd: (cat: string) => void }) {
+function AddImageGroupButton({ onAdd }: { onAdd: (cat: string) => void }) {
   const [open, setOpen] = useState(false);
   const [customName, setCustomName] = useState("");
-  const handlePick = (cat: string) => {
-    onAdd(cat);
-    setOpen(false);
-    setCustomName("");
-  };
   const handleCustom = () => {
     const v = customName.trim();
     if (!v) return;
@@ -107,30 +92,15 @@ function AddImageGroupButton({ availablePresets, onAdd }: { availablePresets: st
       </PopoverTrigger>
       <PopoverContent className="w-72 p-2" align="end" dir="rtl">
         <div className="space-y-1.5">
-          {availablePresets.length > 0 && (
-            <>
-              <div className="text-xs text-muted-foreground px-2 py-1">اختَر تصنيفاً جاهزاً:</div>
-              {availablePresets.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => handlePick(cat)}
-                  className="w-full text-right text-sm px-2 py-1.5 rounded hover:bg-accent transition-colors"
-                >
-                  {cat}
-                </button>
-              ))}
-              <div className="border-t my-2" />
-            </>
-          )}
-          <div className="text-xs text-muted-foreground px-2 py-1">أو اسم تصنيف مخصّص:</div>
+          <div className="text-xs text-muted-foreground px-2 py-1">اسم القسم:</div>
           <div className="flex items-center gap-2 px-1">
             <Input
-              placeholder="مثال: أعمال الواجهات"
+              placeholder="مثال: الأعمال الكهربائية"
               value={customName}
               onChange={(e) => setCustomName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCustom(); } }}
               className="h-8 text-sm"
+              autoFocus
             />
             <Button type="button" size="sm" className="shrink-0 h-8" onClick={handleCustom} disabled={!customName.trim()}>
               إضافة
@@ -629,8 +599,6 @@ export default function ProjectReports() {
                   render={({ field }) => {
                     const groups = field.value ?? [];
                     const totalImages = groups.reduce((s, g) => s + (g.urls?.length ?? 0), 0);
-                    const usedCategories = new Set(groups.map(g => g.category));
-                    const availablePresets = PRESET_CATEGORIES.filter(c => !usedCategories.has(c));
                     return (
                       <FormItem>
                         <FormLabel className="flex items-center gap-2">
@@ -736,7 +704,6 @@ export default function ProjectReports() {
                           })}
 
                           <AddImageGroupButton
-                            availablePresets={availablePresets}
                             onAdd={(cat) => {
                               addImageGroup(cat);
                               setOpenGroupIdx((form.getValues("imageGroups") ?? []).length - 1);
