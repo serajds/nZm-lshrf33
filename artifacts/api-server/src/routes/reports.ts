@@ -5,6 +5,30 @@ import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
 
+type ImageGroup = { category: string; urls: string[] };
+
+const normalizeImageGroups = (groups: unknown): ImageGroup[] | null => {
+  if (!Array.isArray(groups)) return null;
+  const cleaned: ImageGroup[] = [];
+  for (const g of groups) {
+    if (!g || typeof g !== "object") continue;
+    const obj = g as Record<string, unknown>;
+    const category = typeof obj.category === "string" ? obj.category.trim() : "";
+    const rawUrls = obj.urls;
+    if (!category || !Array.isArray(rawUrls)) continue;
+    const urls = rawUrls.filter((u: unknown): u is string => typeof u === "string" && u.length > 0);
+    cleaned.push({ category, urls });
+  }
+  return cleaned;
+};
+
+const flattenImageGroups = (groups: ImageGroup[]): string[] => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const g of groups) for (const u of g.urls) if (!seen.has(u)) { seen.add(u); out.push(u); }
+  return out;
+};
+
 const router: IRouter = Router();
 
 router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
@@ -46,30 +70,9 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
     progressPercentage, technicalNotes, recommendations, imageUrls, imageGroups
   } = req.body;
 
-  type ImageGroup = { category: string; urls: string[] };
-  const normalizeGroups = (groups: unknown): ImageGroup[] | null => {
-    if (!Array.isArray(groups)) return null;
-    const cleaned: ImageGroup[] = [];
-    for (const g of groups) {
-      if (!g || typeof g !== "object") continue;
-      const category = typeof (g as any).category === "string" ? (g as any).category.trim() : "";
-      const rawUrls = (g as any).urls;
-      if (!category || !Array.isArray(rawUrls)) continue;
-      const urls = rawUrls.filter((u: unknown): u is string => typeof u === "string" && u.length > 0);
-      cleaned.push({ category, urls });
-    }
-    return cleaned;
-  };
-  const flattenGroups = (groups: ImageGroup[]): string[] => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const g of groups) for (const u of g.urls) if (!seen.has(u)) { seen.add(u); out.push(u); }
-    return out;
-  };
-
-  const groups = normalizeGroups(imageGroups);
+  const groups = normalizeImageGroups(imageGroups);
   const finalImageUrls: string[] = groups && groups.length > 0
-    ? flattenGroups(groups)
+    ? flattenImageGroups(groups)
     : (Array.isArray(imageUrls) ? imageUrls.filter((u: unknown): u is string => typeof u === "string") : []);
 
   if (!type || !reportDate || !periodStart || !periodEnd || !workDescription) {
@@ -159,32 +162,11 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
   if (body.progressPercentage !== undefined) updateData.progressPercentage = body.progressPercentage;
   if (body.technicalNotes !== undefined) updateData.technicalNotes = body.technicalNotes;
   if (body.recommendations !== undefined) updateData.recommendations = body.recommendations;
-  type ImageGroup = { category: string; urls: string[] };
-  const normalizeGroups = (groups: unknown): ImageGroup[] | null => {
-    if (!Array.isArray(groups)) return null;
-    const cleaned: ImageGroup[] = [];
-    for (const g of groups) {
-      if (!g || typeof g !== "object") continue;
-      const category = typeof (g as any).category === "string" ? (g as any).category.trim() : "";
-      const rawUrls = (g as any).urls;
-      if (!category || !Array.isArray(rawUrls)) continue;
-      const urls = rawUrls.filter((u: unknown): u is string => typeof u === "string" && u.length > 0);
-      cleaned.push({ category, urls });
-    }
-    return cleaned;
-  };
-  const flattenGroups = (groups: ImageGroup[]): string[] => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const g of groups) for (const u of g.urls) if (!seen.has(u)) { seen.add(u); out.push(u); }
-    return out;
-  };
-
   if (body.imageGroups !== undefined) {
-    const groups = body.imageGroups === null ? null : normalizeGroups(body.imageGroups);
+    const groups = body.imageGroups === null ? null : normalizeImageGroups(body.imageGroups);
     if (groups && groups.length > 0) {
       updateData.imageGroups = groups;
-      updateData.imageUrls = flattenGroups(groups);
+      updateData.imageUrls = flattenImageGroups(groups);
     } else {
       updateData.imageGroups = null;
       updateData.imageUrls = body.imageUrls !== undefined && Array.isArray(body.imageUrls)
