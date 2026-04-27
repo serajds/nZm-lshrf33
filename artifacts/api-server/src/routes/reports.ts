@@ -174,7 +174,10 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
         : [];
     }
   } else if (body.imageUrls !== undefined) {
-    updateData.imageUrls = body.imageUrls;
+    updateData.imageUrls = Array.isArray(body.imageUrls)
+      ? body.imageUrls.filter((u: unknown): u is string => typeof u === "string")
+      : [];
+    updateData.imageGroups = null;
   }
 
   if (Object.keys(updateData).length === 0) {
