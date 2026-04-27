@@ -2,6 +2,8 @@ import { pgTable, text, serial, timestamp, real, integer, date, jsonb } from "dr
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+export type ReportImageGroup = { category: string; urls: string[] };
+
 export const reportsTable = pgTable("reports", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
@@ -15,6 +17,7 @@ export const reportsTable = pgTable("reports", {
   technicalNotes: text("technical_notes"),
   recommendations: text("recommendations"),
   imageUrls: text("image_urls").array().notNull().default([]),
+  imageGroups: jsonb("image_groups").$type<ReportImageGroup[]>(),
   activitiesSnapshot: jsonb("activities_snapshot"),
   createdById: integer("created_by_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { 
@@ -39,7 +39,8 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer } from "lucide-react";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
 
@@ -50,6 +51,11 @@ function authFetchJson(url: string) {
   return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.ok ? r.json() : {});
 }
 
+const imageGroupSchema = z.object({
+  category: z.string().min(1),
+  urls: z.array(z.string()).default([]),
+});
+
 const reportSchema = z.object({
   type: z.enum(["weekly", "monthly"]),
   reportDate: z.string().min(1, "تاريخ التقرير مطلوب"),
@@ -59,10 +65,81 @@ const reportSchema = z.object({
   progressPercentage: z.coerce.number().min(0).max(100),
   technicalNotes: z.string().optional().nullable(),
   recommendations: z.string().optional().nullable(),
-  imageUrls: z.array(z.string()).default([]),
+  imageGroups: z.array(imageGroupSchema).default([]),
 });
 
 type ReportFormValues = z.infer<typeof reportSchema>;
+type ImageGroup = z.infer<typeof imageGroupSchema>;
+
+const DEFAULT_CATEGORY = "صور عامة";
+const PRESET_CATEGORIES = [
+  "صور عامة",
+  "الأعمال الإنشائية",
+  "الأعمال الكهربائية",
+  "الأعمال الميكانيكية والصحية",
+  "التشطيبات",
+  "الموقع العام والأعمال الخارجية",
+  "السلامة والمخاطر",
+];
+
+function AddImageGroupButton({ availablePresets, onAdd }: { availablePresets: string[]; onAdd: (cat: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const handlePick = (cat: string) => {
+    onAdd(cat);
+    setOpen(false);
+    setCustomName("");
+  };
+  const handleCustom = () => {
+    const v = customName.trim();
+    if (!v) return;
+    onAdd(v);
+    setOpen(false);
+    setCustomName("");
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="gap-2">
+          <FolderPlus className="h-4 w-4" /> إضافة قسم جديد
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-2" align="end" dir="rtl">
+        <div className="space-y-1.5">
+          {availablePresets.length > 0 && (
+            <>
+              <div className="text-xs text-muted-foreground px-2 py-1">اختَر تصنيفاً جاهزاً:</div>
+              {availablePresets.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => handlePick(cat)}
+                  className="w-full text-right text-sm px-2 py-1.5 rounded hover:bg-accent transition-colors"
+                >
+                  {cat}
+                </button>
+              ))}
+              <div className="border-t my-2" />
+            </>
+          )}
+          <div className="text-xs text-muted-foreground px-2 py-1">أو اسم تصنيف مخصّص:</div>
+          <div className="flex items-center gap-2 px-1">
+            <Input
+              placeholder="مثال: أعمال الواجهات"
+              value={customName}
+              onChange={(e) => setCustomName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCustom(); } }}
+              className="h-8 text-sm"
+            />
+            <Button type="button" size="sm" className="shrink-0 h-8" onClick={handleCustom} disabled={!customName.trim()}>
+              إضافة
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function ProjectReports() {
   const params = useParams();
@@ -78,8 +155,7 @@ export default function ProjectReports() {
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
-  const [isUploading, setIsUploading] = useState(false);
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingGroupIdx, setUploadingGroupIdx] = useState<number | null>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
@@ -127,7 +203,7 @@ export default function ProjectReports() {
       progressPercentage: 0,
       technicalNotes: "",
       recommendations: "",
-      imageUrls: [],
+      imageGroups: [{ category: DEFAULT_CATEGORY, urls: [] }],
     }
   });
 
@@ -150,6 +226,10 @@ export default function ProjectReports() {
 
   const handleEdit = (r: Report) => {
     setEditingId(r.id);
+    const existingGroups = (r.imageGroups as ImageGroup[] | null | undefined) ?? null;
+    const initialGroups: ImageGroup[] = existingGroups && existingGroups.length > 0
+      ? existingGroups.map(g => ({ category: g.category, urls: g.urls ?? [] }))
+      : [{ category: DEFAULT_CATEGORY, urls: r.imageUrls ?? [] }];
     form.reset({
       type: r.type as ReportFormValues["type"],
       reportDate: new Date(r.reportDate).toISOString().split('T')[0],
@@ -159,7 +239,7 @@ export default function ProjectReports() {
       progressPercentage: r.progressPercentage,
       technicalNotes: r.technicalNotes ?? "",
       recommendations: r.recommendations ?? "",
-      imageUrls: r.imageUrls ?? [],
+      imageGroups: initialGroups,
     });
     setIsDialogOpen(true);
   };
@@ -180,9 +260,12 @@ export default function ProjectReports() {
   const handlePreview = (report: Report) => {
     if (!project) return;
     const token = localStorage.getItem("auth_token");
-    const imageUrls = (report.imageUrls ?? []).map((url) =>
-      url.includes("?") ? url : `${url}?token=${token}`
-    );
+    const withToken = (url: string) => (url.includes("?") ? url : `${url}?token=${token}`);
+    const imageUrls = (report.imageUrls ?? []).map(withToken);
+    const rawGroups = (report.imageGroups as ImageGroup[] | null | undefined) ?? null;
+    const imageGroups = rawGroups && rawGroups.length > 0
+      ? rawGroups.map(g => ({ category: g.category, urls: (g.urls ?? []).map(withToken) }))
+      : null;
     const snapshotActivities = (report as any).activitiesSnapshot as any[] | null;
     const sourceActivities = snapshotActivities ?? ((activities ?? []) as Activity[]);
     const activityList: ActivityForReport[] = sourceActivities.map((a: any) => ({
@@ -207,6 +290,7 @@ export default function ProjectReports() {
       technicalNotes: report.technicalNotes,
       recommendations: report.recommendations,
       imageUrls,
+      imageGroups,
       reportId: report.id,
       reportNumber: report.reportNumber,
       activities: activityList,
@@ -219,10 +303,10 @@ export default function ProjectReports() {
     });
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, groupIndex: number) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    setIsUploading(true);
+    setUploadingGroupIdx(groupIndex);
     const token = localStorage.getItem("auth_token");
     const newUrls: string[] = [];
     for (const file of Array.from(files)) {
@@ -248,19 +332,31 @@ export default function ProjectReports() {
         toast({ variant: "destructive", title: `خطأ في رفع ${file.name}` });
       }
     }
-    const current = form.getValues("imageUrls") ?? [];
-    form.setValue("imageUrls", [...current, ...newUrls]);
-    setIsUploading(false);
-    if (imageInputRef.current) imageInputRef.current.value = "";
+    const groups = [...(form.getValues("imageGroups") ?? [])];
+    if (groups[groupIndex]) {
+      groups[groupIndex] = { ...groups[groupIndex], urls: [...(groups[groupIndex].urls ?? []), ...newUrls] };
+      form.setValue("imageGroups", groups, { shouldDirty: true });
+    }
+    setUploadingGroupIdx(null);
+    e.target.value = "";
   };
 
   const onSubmit = async (values: ReportFormValues) => {
     try {
+      const cleanedGroups = (values.imageGroups ?? [])
+        .map(g => ({ category: g.category.trim(), urls: g.urls ?? [] }))
+        .filter(g => g.category.length > 0 && g.urls.length > 0);
+      const flatImageUrls = Array.from(new Set(cleanedGroups.flatMap(g => g.urls)));
+      const payload = {
+        ...values,
+        imageGroups: cleanedGroups.length > 0 ? cleanedGroups : null,
+        imageUrls: flatImageUrls,
+      };
       if (editingId) {
-        await updateReport.mutateAsync({ projectId, id: editingId, data: values });
+        await updateReport.mutateAsync({ projectId, id: editingId, data: payload as any });
         toast({ title: "تم التحديث" });
       } else {
-        await createReport.mutateAsync({ projectId, data: values });
+        await createReport.mutateAsync({ projectId, data: payload as any });
         toast({ title: "تمت الإضافة" });
       }
       queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
@@ -270,6 +366,33 @@ export default function ProjectReports() {
     } catch {
       toast({ variant: "destructive", title: "فشل الحفظ" });
     }
+  };
+
+  const addImageGroup = (category: string) => {
+    const cat = category.trim();
+    if (!cat) return;
+    const current = form.getValues("imageGroups") ?? [];
+    if (current.some(g => g.category === cat)) {
+      toast({ variant: "destructive", title: "هذا القسم موجود مسبقاً" });
+      return;
+    }
+    form.setValue("imageGroups", [...current, { category: cat, urls: [] }], { shouldDirty: true });
+  };
+
+  const removeImageGroup = (groupIndex: number) => {
+    const current = form.getValues("imageGroups") ?? [];
+    const updated = current.filter((_, i) => i !== groupIndex);
+    form.setValue("imageGroups", updated.length > 0 ? updated : [{ category: DEFAULT_CATEGORY, urls: [] }], { shouldDirty: true });
+  };
+
+  const removeImageFromGroup = (groupIndex: number, imageIndex: number) => {
+    const current = [...(form.getValues("imageGroups") ?? [])];
+    if (!current[groupIndex]) return;
+    current[groupIndex] = {
+      ...current[groupIndex],
+      urls: current[groupIndex].urls.filter((_, i) => i !== imageIndex),
+    };
+    form.setValue("imageGroups", current, { shouldDirty: true });
   };
 
   return (
@@ -488,70 +611,98 @@ export default function ProjectReports() {
                   />
                 </div>
 
-                {/* Image Upload Section */}
+                {/* Image Groups Section */}
                 <FormField
                   control={form.control}
-                  name="imageUrls"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2">
-                        <ImagePlus className="h-4 w-4" /> صور الموقع (اختياري)
-                      </FormLabel>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                          <input
-                            ref={imageInputRef}
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            className="hidden"
-                            onChange={handleImageUpload}
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={isUploading}
-                            onClick={() => imageInputRef.current?.click()}
-                            className="gap-2"
-                          >
-                            {isUploading ? (
-                              <><Loader2 className="h-4 w-4 animate-spin" /> جاري الرفع...</>
-                            ) : (
-                              <><ImagePlus className="h-4 w-4" /> إضافة صور</>
-                            )}
-                          </Button>
-                          {(field.value ?? []).length > 0 && (
-                            <span className="text-xs text-muted-foreground">{(field.value ?? []).length} صورة مرفقة</span>
+                  name="imageGroups"
+                  render={({ field }) => {
+                    const groups = field.value ?? [];
+                    const totalImages = groups.reduce((s, g) => s + (g.urls?.length ?? 0), 0);
+                    const usedCategories = new Set(groups.map(g => g.category));
+                    const availablePresets = PRESET_CATEGORIES.filter(c => !usedCategories.has(c));
+                    return (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2">
+                          <ImagePlus className="h-4 w-4" /> صور الموقع (اختياري)
+                          {totalImages > 0 && (
+                            <span className="text-xs text-muted-foreground font-normal">— {totalImages} صورة في {groups.filter(g => g.urls.length > 0).length} قسم</span>
                           )}
-                        </div>
-                        {(field.value ?? []).length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            {(field.value ?? []).map((url, idx) => (
-                              <div key={idx} className="relative group w-20 h-20 rounded-md overflow-hidden border">
-                                <img
-                                  src={url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`}
-                                  alt={`صورة ${idx + 1}`}
-                                  className="w-full h-full object-cover"
-                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const updated = (field.value ?? []).filter((_, i) => i !== idx);
-                                    form.setValue("imageUrls", updated);
-                                  }}
-                                  className="absolute top-0.5 right-0.5 bg-destructive text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
+                        </FormLabel>
+                        <div className="space-y-3">
+                          {groups.map((group, gIdx) => {
+                            const isThisUploading = uploadingGroupIdx === gIdx;
+                            return (
+                              <div key={gIdx} className="border rounded-lg p-3 bg-muted/30 space-y-3">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <span className="text-sm font-semibold text-foreground truncate">{group.category}</span>
+                                    <span className="text-xs text-muted-foreground shrink-0">({group.urls.length} صورة)</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <label className="cursor-pointer">
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        className="hidden"
+                                        onChange={(e) => handleImageUpload(e, gIdx)}
+                                        disabled={isThisUploading}
+                                      />
+                                      <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border bg-background hover:bg-accent transition-colors ${isThisUploading ? "opacity-60 pointer-events-none" : ""}`}>
+                                        {isThisUploading ? (
+                                          <><Loader2 className="h-3.5 w-3.5 animate-spin" /> جاري الرفع...</>
+                                        ) : (
+                                          <><ImagePlus className="h-3.5 w-3.5" /> إضافة صور</>
+                                        )}
+                                      </span>
+                                    </label>
+                                    {groups.length > 1 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        title="حذف هذا القسم"
+                                        onClick={() => removeImageGroup(gIdx)}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                                {group.urls.length > 0 && (
+                                  <div className="flex flex-wrap gap-2">
+                                    {group.urls.map((url, idx) => (
+                                      <div key={idx} className="relative group w-20 h-20 rounded-md overflow-hidden border">
+                                        <img
+                                          src={url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`}
+                                          alt={`صورة ${idx + 1}`}
+                                          className="w-full h-full object-cover"
+                                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => removeImageFromGroup(gIdx, idx)}
+                                          className="absolute top-0.5 right-0.5 bg-destructive text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </FormItem>
-                  )}
+                            );
+                          })}
+
+                          <AddImageGroupButton
+                            availablePresets={availablePresets}
+                            onAdd={addImageGroup}
+                          />
+                        </div>
+                      </FormItem>
+                    );
+                  }}
                 />
 
                 <div className="flex justify-end gap-2 pt-4 sticky bottom-0 bg-background pb-2 mt-4">
@@ -646,42 +797,61 @@ export default function ProjectReports() {
                         </div>
                       )}
                     </div>
-                    {report.imageUrls && report.imageUrls.length > 0 && (
-                      <div className="pt-3 border-t">
-                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
-                          <ImagePlus className="h-4 w-4 text-muted-foreground" />
-                          صور الموقع
-                          <span className="text-xs text-muted-foreground font-normal">({report.imageUrls.length} صورة)</span>
-                        </h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                          {report.imageUrls.map((url, idx) => {
-                            const authUrl = url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`;
-                            return (
-                              <a
-                                key={idx}
-                                href={authUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="group relative aspect-video rounded-lg overflow-hidden border-2 border-muted hover:border-primary/40 transition-all shadow-sm hover:shadow-md block"
-                              >
-                                <img
-                                  src={authUrl}
-                                  alt={`صورة ${idx + 1}`}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                />
-                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                  <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                                </div>
-                                <div className="absolute bottom-1.5 right-1.5 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">
-                                  {idx + 1}/{report.imageUrls!.length}
-                                </div>
-                              </a>
-                            );
-                          })}
+                    {(() => {
+                      const reportGroups = (report.imageGroups as ImageGroup[] | null | undefined) ?? null;
+                      const hasGroups = reportGroups && reportGroups.length > 0 && reportGroups.some(g => (g.urls?.length ?? 0) > 0);
+                      const hasImages = (report.imageUrls && report.imageUrls.length > 0) || hasGroups;
+                      if (!hasImages) return null;
+                      const totalImages = hasGroups
+                        ? reportGroups!.reduce((s, g) => s + (g.urls?.length ?? 0), 0)
+                        : (report.imageUrls?.length ?? 0);
+                      const displayGroups: ImageGroup[] = hasGroups
+                        ? reportGroups!.filter(g => (g.urls?.length ?? 0) > 0)
+                        : [{ category: "صور الموقع", urls: report.imageUrls ?? [] }];
+                      let runningCounter = 0;
+                      return (
+                        <div className="pt-3 border-t space-y-4">
+                          {displayGroups.map((group, gi) => (
+                            <div key={gi}>
+                              <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                                <ImagePlus className="h-4 w-4 text-muted-foreground" />
+                                {group.category}
+                                <span className="text-xs text-muted-foreground font-normal">({group.urls.length} صورة)</span>
+                              </h4>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                {group.urls.map((url, idx) => {
+                                  const authUrl = url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`;
+                                  runningCounter += 1;
+                                  const positionLabel = `${runningCounter}/${totalImages}`;
+                                  return (
+                                    <a
+                                      key={idx}
+                                      href={authUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="group relative aspect-video rounded-lg overflow-hidden border-2 border-muted hover:border-primary/40 transition-all shadow-sm hover:shadow-md block"
+                                    >
+                                      <img
+                                        src={authUrl}
+                                        alt={`صورة ${idx + 1}`}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                      />
+                                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                        <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      </div>
+                                      <div className="absolute bottom-1.5 right-1.5 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">
+                                        {positionLabel}
+                                      </div>
+                                    </a>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
