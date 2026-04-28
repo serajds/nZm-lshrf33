@@ -1300,27 +1300,23 @@ export default function OwnerPortal() {
               </CardHeader>
               <CardContent>
                 {(() => {
-                  const activitiesWithDates = activities.filter(
-                    (a: Activity) => a.plannedStartDate && a.plannedEndDate
-                  );
-                  if (activitiesWithDates.length === 0) {
+                  const activitiesAll = activities as Activity[];
+                  if (activitiesAll.length === 0) {
                     return (
                       <div className="py-16 text-center">
                         <GanttChart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                         <h3 className="text-lg font-semibold mb-1">لا توجد بيانات للجدول الزمني</h3>
-                        <p className="text-sm text-muted-foreground">لا توجد بنود أعمال بتواريخ مخططة لعرض الجدول الزمني</p>
+                        <p className="text-sm text-muted-foreground">لا توجد بنود أعمال لعرض الجدول الزمني</p>
                       </div>
                     );
                   }
 
-                  const allDates = activitiesWithDates.flatMap((a: Activity) => {
+                  const allDates = activitiesAll.flatMap((a: Activity) => {
                     const dates: number[] = [];
-                    const ps = new Date(a.plannedStartDate!).getTime();
-                    const pe = new Date(a.plannedEndDate!).getTime();
-                    if (Number.isFinite(ps)) dates.push(ps);
-                    if (Number.isFinite(pe)) dates.push(pe);
-                    if (a.actualStartDate) { const t = new Date(a.actualStartDate).getTime(); if (Number.isFinite(t)) dates.push(t); }
-                    if (a.actualEndDate) { const t = new Date(a.actualEndDate).getTime(); if (Number.isFinite(t)) dates.push(t); }
+                    if (a.plannedStartDate) { const t = new Date(a.plannedStartDate).getTime(); if (Number.isFinite(t)) dates.push(t); }
+                    if (a.plannedEndDate)   { const t = new Date(a.plannedEndDate).getTime();   if (Number.isFinite(t)) dates.push(t); }
+                    if (a.actualStartDate)  { const t = new Date(a.actualStartDate).getTime();  if (Number.isFinite(t)) dates.push(t); }
+                    if (a.actualEndDate)    { const t = new Date(a.actualEndDate).getTime();    if (Number.isFinite(t)) dates.push(t); }
                     return dates;
                   }).filter(Number.isFinite);
 
@@ -1381,6 +1377,12 @@ export default function OwnerPortal() {
                             <span className="w-0.5 h-3 bg-red-500 inline-block" /> اليوم
                           </span>
                         )}
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-3 rounded-sm bg-emerald-500 inline-block" style={{ width: 3 }} /> بدأ بدون نسبة
+                        </span>
+                        <span className="flex items-center gap-1.5 text-amber-600">
+                          <AlertTriangle className="w-3 h-3" /> تواريخ ناقصة
+                        </span>
                       </div>
 
                       <div className="overflow-x-auto">
@@ -1398,17 +1400,150 @@ export default function OwnerPortal() {
                           </div>
 
                           <div className="space-y-0">
-                            {activitiesWithDates.map((a: Activity, i: number) => {
-                              const planned = getBarStyle(a.plannedStartDate!, a.plannedEndDate!);
-                              const hasActual = a.actualProgress > 0;
+                            {activitiesAll.map((a: Activity, i: number) => {
+                              const hasPlanned = !!(a.plannedStartDate && a.plannedEndDate);
+                              const hasAnyStart = !!(a.actualStartDate || a.plannedStartDate);
+                              const hasActualSignal = (a.actualProgress > 0 || !!a.actualStartDate) && hasAnyStart;
+                              const orphanProgress = a.actualProgress > 0 && !hasAnyStart;
                               const isDelayed = a.status === "delayed";
                               const isCompleted = a.status === "completed";
+                              const ongoing = !a.actualEndDate && a.status !== "completed";
+                              const showTwoBars = hasPlanned && hasActualSignal;
+
+                              // pct helper
+                              const toPctMs = (d: string) => {
+                                const t = new Date(d).getTime();
+                                if (!Number.isFinite(t)) return null;
+                                return ((t - minMs) / rangeMs) * 100;
+                              };
+
+                              const renderBars = () => {
+                                // Case 1: لا توجد أي بيانات قابلة للرسم
+                                if (!hasPlanned && !hasActualSignal && !orphanProgress) {
+                                  return (
+                                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center" title="ينقص هذا البند تواريخ مخططة">
+                                      <div className="w-full h-0" style={{ borderTop: "1.5px dashed rgba(148,163,184,0.6)" }} />
+                                      <span className="absolute right-2 text-amber-500 bg-background rounded-full p-0.5">
+                                        <AlertTriangle className="w-3 h-3" />
+                                      </span>
+                                    </div>
+                                  );
+                                }
+
+                                // Case 2: نسبة بدون أي تواريخ
+                                if (orphanProgress) {
+                                  return (
+                                    <div
+                                      className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-end pr-2 gap-1.5"
+                                      title={`نسبة إنجاز ${a.actualProgress}% بدون تواريخ مسجلة`}
+                                    >
+                                      <div className="absolute inset-x-0 h-0" style={{ borderTop: "1.5px dashed rgba(148,163,184,0.6)" }} />
+                                      <span className="relative z-10 text-[10px] font-bold text-foreground bg-background px-1.5 rounded border border-amber-300">
+                                        {a.actualProgress}%
+                                      </span>
+                                      <span className="relative z-10 text-amber-500 bg-background rounded-full p-0.5">
+                                        <AlertTriangle className="w-3 h-3" />
+                                      </span>
+                                    </div>
+                                  );
+                                }
+
+                                const plannedTop = showTwoBars ? "6px" : "12px";
+                                const actualTop = showTwoBars ? "28px" : "12px";
+                                const barH = showTwoBars ? "14px" : "16px";
+
+                                return (
+                                  <>
+                                    {/* Planned bar */}
+                                    {hasPlanned ? (
+                                      <div
+                                        className="absolute rounded-sm bg-blue-400/80 shadow-sm"
+                                        style={{ ...getBarStyle(a.plannedStartDate!, a.plannedEndDate!), top: plannedTop, height: barH }}
+                                        title={`المخطط: ${fmtDate(a.plannedStartDate!)} → ${fmtDate(a.plannedEndDate!)}`}
+                                      />
+                                    ) : (
+                                      <div
+                                        className="absolute inset-x-0 h-0"
+                                        style={{ top: `calc(${plannedTop} + ${parseInt(barH)/2}px)`, borderTop: "1.5px dashed rgba(148,163,184,0.5)" }}
+                                        title="لا يوجد جدول مخطط لهذا البند"
+                                      />
+                                    )}
+
+                                    {/* Actual bar */}
+                                    {hasActualSignal && (() => {
+                                      const startIso = a.actualStartDate ?? a.plannedStartDate!;
+                                      const startPct = toPctMs(startIso);
+                                      if (startPct == null) return null;
+
+                                      // Marker: بدأ بدون نسبة
+                                      if (a.actualProgress === 0 && a.actualStartDate) {
+                                        return (
+                                          <div
+                                            className={`absolute rounded-sm shadow-sm ${isDelayed ? "bg-red-500/80" : "bg-emerald-500/80"}`}
+                                            style={{
+                                              right: `calc(${Math.max(0, startPct)}% - 1.5px)`,
+                                              width: 3,
+                                              top: actualTop,
+                                              height: barH,
+                                            }}
+                                            title={`بدأ في ${fmtDate(a.actualStartDate)} — بدون إنجاز مسجَّل بعد`}
+                                          />
+                                        );
+                                      }
+
+                                      // حساب نقطة النهاية
+                                      let endPct: number;
+                                      let endLabel: string;
+                                      if (a.actualEndDate) {
+                                        const ep = toPctMs(a.actualEndDate);
+                                        endPct = ep ?? startPct;
+                                        endLabel = fmtDate(a.actualEndDate);
+                                      } else if (ongoing) {
+                                        endPct = todayPos;
+                                        endLabel = "جارٍ حتى اليوم";
+                                      } else if (hasPlanned) {
+                                        const ps = toPctMs(a.plannedStartDate!);
+                                        const pe = toPctMs(a.plannedEndDate!);
+                                        if (ps == null || pe == null) return null;
+                                        const plannedW = Math.max(0.5, pe - ps);
+                                        endPct = startPct + plannedW * a.actualProgress / 100;
+                                        endLabel = "—";
+                                      } else {
+                                        endPct = startPct;
+                                        endLabel = "—";
+                                      }
+
+                                      const w = Math.max(0.5, endPct - startPct);
+                                      const startLabel = a.actualStartDate
+                                        ? fmtDate(a.actualStartDate)
+                                        : `(مخطط) ${fmtDate(a.plannedStartDate!)}`;
+
+                                      return (
+                                        <div
+                                          className={`absolute rounded-sm shadow-sm ${isDelayed ? "bg-red-500/80" : "bg-emerald-500/80"}`}
+                                          style={{
+                                            right: `${Math.max(0, startPct)}%`,
+                                            width: `${w}%`,
+                                            top: actualTop,
+                                            height: barH,
+                                          }}
+                                          title={`الفعلي: ${startLabel} → ${endLabel} (${a.actualProgress}%)`}
+                                        >
+                                          {ongoing && (
+                                            <div className="absolute inset-y-0 start-0 w-2 bg-gradient-to-r from-white/60 to-transparent rounded-s-sm" />
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
+                                  </>
+                                );
+                              };
 
                               return (
                                 <div
                                   key={a.id}
                                   className={`group relative flex items-center border-b border-border/30 ${i % 2 === 0 ? "bg-muted/20" : ""} hover:bg-muted/40 transition-colors`}
-                                  style={{ height: hasActual ? "52px" : "40px" }}
+                                  style={{ height: showTwoBars ? "52px" : "40px" }}
                                 >
                                   <div
                                     className="flex-shrink-0 flex items-center gap-1.5 border-e border-border/50 h-full px-2"
@@ -1428,37 +1563,7 @@ export default function OwnerPortal() {
                                       />
                                     )}
 
-                                    <div
-                                      className="absolute rounded-sm bg-blue-400/80 shadow-sm"
-                                      style={{ ...planned, top: hasActual ? "6px" : "12px", height: hasActual ? "14px" : "16px" }}
-                                      title={`المخطط: ${fmtDate(a.plannedStartDate!)} → ${fmtDate(a.plannedEndDate!)}`}
-                                    />
-
-                                    {a.actualProgress > 0 && (() => {
-                                      const s = new Date(a.plannedStartDate!).getTime();
-                                      const e = new Date(a.plannedEndDate!).getTime();
-                                      if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
-                                      const plannedRight = ((s - minMs) / rangeMs) * 100;
-                                      const plannedWidth = ((e - s) / rangeMs) * 100;
-                                      const actualWidth = Math.max(0.5, plannedWidth * a.actualProgress / 100);
-                                      const ongoing = !a.actualEndDate && a.status !== "completed";
-                                      return (
-                                        <div
-                                          className={`absolute rounded-sm shadow-sm ${isDelayed ? "bg-red-500/80" : "bg-emerald-500/80"}`}
-                                          style={{
-                                            right: `${Math.max(0, plannedRight)}%`,
-                                            width: `${actualWidth}%`,
-                                            top: "28px",
-                                            height: "14px",
-                                          }}
-                                          title={`الفعلي: ${a.actualStartDate ? fmtDate(a.actualStartDate) : "—"} → ${a.actualEndDate ? fmtDate(a.actualEndDate) : "مستمر"} (${a.actualProgress}%)`}
-                                        >
-                                          {ongoing && (
-                                            <div className="absolute inset-y-0 start-0 w-2 bg-gradient-to-r from-white/60 to-transparent rounded-s-sm" />
-                                          )}
-                                        </div>
-                                      );
-                                    })()}
+                                    {renderBars()}
                                   </div>
                                 </div>
                               );
@@ -1475,24 +1580,24 @@ export default function OwnerPortal() {
                       <div className="mt-4 pt-4 border-t">
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                           <div className="p-3 rounded-lg bg-muted/50">
-                            <div className="text-2xl font-bold text-teal-600">{activitiesWithDates.length}</div>
+                            <div className="text-2xl font-bold text-teal-600">{activitiesAll.length}</div>
                             <div className="text-xs text-muted-foreground mt-0.5">إجمالي البنود</div>
                           </div>
                           <div className="p-3 rounded-lg bg-muted/50">
                             <div className="text-2xl font-bold text-emerald-600">
-                              {activitiesWithDates.filter((a: Activity) => a.status === "completed").length}
+                              {activitiesAll.filter((a: Activity) => a.status === "completed").length}
                             </div>
                             <div className="text-xs text-muted-foreground mt-0.5">مكتملة</div>
                           </div>
                           <div className="p-3 rounded-lg bg-muted/50">
                             <div className="text-2xl font-bold text-blue-600">
-                              {activitiesWithDates.filter((a: Activity) => a.status === "in_progress").length}
+                              {activitiesAll.filter((a: Activity) => a.status === "in_progress").length}
                             </div>
                             <div className="text-xs text-muted-foreground mt-0.5">قيد التنفيذ</div>
                           </div>
                           <div className="p-3 rounded-lg bg-muted/50">
                             <div className="text-2xl font-bold text-red-600">
-                              {activitiesWithDates.filter((a: Activity) => a.status === "delayed").length}
+                              {activitiesAll.filter((a: Activity) => a.status === "delayed").length}
                             </div>
                             <div className="text-xs text-muted-foreground mt-0.5">متأخرة</div>
                           </div>
@@ -1513,7 +1618,7 @@ export default function OwnerPortal() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {activitiesWithDates.map((a: Activity, i: number) => {
+                            {activitiesAll.map((a: Activity, i: number) => {
                               const dur = Math.ceil((new Date(a.plannedEndDate!).getTime() - new Date(a.plannedStartDate!).getTime()) / (1000 * 60 * 60 * 24));
                               return (
                                 <TableRow key={a.id} className="hover:bg-muted/50">
