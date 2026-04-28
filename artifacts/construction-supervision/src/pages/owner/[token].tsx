@@ -1377,12 +1377,6 @@ export default function OwnerPortal() {
                             <span className="w-0.5 h-3 bg-red-500 inline-block" /> اليوم
                           </span>
                         )}
-                        <span className="flex items-center gap-1.5">
-                          <span className="h-3 rounded-sm bg-emerald-500 inline-block" style={{ width: 3 }} /> بدأ بدون نسبة
-                        </span>
-                        <span className="flex items-center gap-1.5 text-amber-600">
-                          <AlertTriangle className="w-3 h-3" /> تواريخ ناقصة
-                        </span>
                       </div>
 
                       <div className="overflow-x-auto">
