@@ -236,10 +236,10 @@ router.patch("/projects/:projectId/reports/:id/status", requireProjectManager("p
   logAuditStatus({
     userId: req.user?.userId,
     userName: req.user?.phone,
-    action: status === "approved" ? "approve" : "revert",
+    action: "update",
     entityType: "report",
     entityId: report.id,
-    entityName: `تقرير #${report.reportNumber}`,
+    entityName: `تقرير #${report.reportNumber} (${status === "approved" ? "اعتماد" : "إرجاع لمسودة"})`,
     projectId,
   });
 
