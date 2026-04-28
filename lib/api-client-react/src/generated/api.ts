@@ -69,6 +69,7 @@ import type {
   UpdateProjectBody,
   UpdateProjectMemberBody,
   UpdateReportBody,
+  UpdateReportStatusBody,
   UpdateUserBody,
   UploadFileBody,
   User,
@@ -1725,6 +1726,94 @@ export const useDeleteReport = <
   TContext
 > => {
   return useMutation(getDeleteReportMutationOptions(options));
+};
+
+/**
+ * @summary Approve or revert a report (project_manager / admin)
+ */
+export const getUpdateReportStatusUrl = (projectId: number, id: number) => {
+  return `/api/projects/${projectId}/reports/${id}/status`;
+};
+
+export const updateReportStatus = async (
+  projectId: number,
+  id: number,
+  updateReportStatusBody: UpdateReportStatusBody,
+  options?: RequestInit,
+): Promise<Report> => {
+  return customFetch<Report>(getUpdateReportStatusUrl(projectId, id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateReportStatusBody),
+  });
+};
+
+export const getUpdateReportStatusMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateReportStatus>>,
+    TError,
+    { projectId: number; id: number; data: BodyType<UpdateReportStatusBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateReportStatus>>,
+  TError,
+  { projectId: number; id: number; data: BodyType<UpdateReportStatusBody> },
+  TContext
+> => {
+  const mutationKey = ["updateReportStatus"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateReportStatus>>,
+    { projectId: number; id: number; data: BodyType<UpdateReportStatusBody> }
+  > = (props) => {
+    const { projectId, id, data } = props ?? {};
+
+    return updateReportStatus(projectId, id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateReportStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateReportStatus>>
+>;
+export type UpdateReportStatusMutationBody = BodyType<UpdateReportStatusBody>;
+export type UpdateReportStatusMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Approve or revert a report (project_manager / admin)
+ */
+export const useUpdateReportStatus = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateReportStatus>>,
+    TError,
+    { projectId: number; id: number; data: BodyType<UpdateReportStatusBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateReportStatus>>,
+  TError,
+  { projectId: number; id: number; data: BodyType<UpdateReportStatusBody> },
+  TContext
+> => {
+  return useMutation(getUpdateReportStatusMutationOptions(options));
 };
 
 /**

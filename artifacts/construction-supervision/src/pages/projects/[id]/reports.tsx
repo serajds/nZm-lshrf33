@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { 
   useListReports, 
   useCreateReport, 
   useUpdateReport, 
+  useUpdateReportStatus,
   useDeleteReport,
   useGetProject,
   useListActivities,
@@ -39,7 +40,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown } from "lucide-react";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
@@ -73,13 +74,34 @@ type ReportFormValues = z.infer<typeof reportSchema>;
 type ImageGroup = z.infer<typeof imageGroupSchema>;
 
 const DEFAULT_CATEGORY = "صور عامة";
-function AddImageGroupButton({ onAdd }: { onAdd: (cat: string) => void }) {
+const PRESET_CATEGORIES: string[] = [
+  "صور عامة",
+  "الأعمال الإنشائية",
+  "الأعمال الكهربائية",
+  "الأعمال الميكانيكية",
+  "أعمال السباكة",
+  "أعمال الواجهات",
+  "التشطيبات",
+];
+
+function AddImageGroupButton({
+  onAdd,
+  suggestions = [],
+}: {
+  onAdd: (cat: string) => void;
+  suggestions?: string[];
+}) {
   const [open, setOpen] = useState(false);
   const [customName, setCustomName] = useState("");
   const handleCustom = () => {
     const v = customName.trim();
     if (!v) return;
     onAdd(v);
+    setOpen(false);
+    setCustomName("");
+  };
+  const handlePick = (cat: string) => {
+    onAdd(cat);
     setOpen(false);
     setCustomName("");
   };
@@ -91,20 +113,40 @@ function AddImageGroupButton({ onAdd }: { onAdd: (cat: string) => void }) {
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-2" align="end" dir="rtl">
-        <div className="space-y-1.5">
-          <div className="text-xs text-muted-foreground px-2 py-1">اسم القسم:</div>
-          <div className="flex items-center gap-2 px-1">
-            <Input
-              placeholder="مثال: الأعمال الكهربائية"
-              value={customName}
-              onChange={(e) => setCustomName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCustom(); } }}
-              className="h-8 text-sm"
-              autoFocus
-            />
-            <Button type="button" size="sm" className="shrink-0 h-8" onClick={handleCustom} disabled={!customName.trim()}>
-              إضافة
-            </Button>
+        <div className="space-y-2">
+          {suggestions.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-xs text-muted-foreground px-2">اقتراحات:</div>
+              <div className="flex flex-wrap gap-1.5 px-1 max-h-40 overflow-y-auto">
+                {suggestions.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => handlePick(s)}
+                    className="text-xs px-2.5 py-1 rounded-md border bg-background hover:bg-accent hover:border-primary/40 transition-colors"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <div className="border-t my-1" />
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <div className="text-xs text-muted-foreground px-2">اسم القسم:</div>
+            <div className="flex items-center gap-2 px-1">
+              <Input
+                placeholder="مثال: الأعمال الكهربائية"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCustom(); } }}
+                className="h-8 text-sm"
+                autoFocus
+              />
+              <Button type="button" size="sm" className="shrink-0 h-8" onClick={handleCustom} disabled={!customName.trim()}>
+                إضافة
+              </Button>
+            </div>
           </div>
         </div>
       </PopoverContent>
@@ -132,6 +174,7 @@ export default function ProjectReports() {
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
   const isViewer = myPermissions?.isViewer === true;
+  const canApprove = myPermissions?.projectRole === "admin" || myPermissions?.projectRole === "project_manager";
 
   const { data: companyLogos } = useQuery<Record<string, CompanyLogo>>({
     queryKey: ["project-company-logos", projectId],
@@ -145,11 +188,28 @@ export default function ProjectReports() {
     dateTo: dateTo || undefined,
   }, { query: { enabled: !!projectId } });
 
+  const { data: allReportsForCategories } = useListReports(projectId, {}, { query: { enabled: !!projectId } });
+
   const { data: activities } = useListActivities(projectId, { query: { enabled: !!projectId } });
   
   const createReport = useCreateReport();
   const updateReport = useUpdateReport();
+  const updateReportStatus = useUpdateReportStatus();
   const deleteReport = useDeleteReport();
+
+  const handleApprove = (reportId: number, nextStatus: "draft" | "approved") => {
+    updateReportStatus.mutate(
+      { projectId, id: reportId, data: { status: nextStatus } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId, { type: typeFilter && typeFilter !== "all" ? typeFilter : undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }) });
+          queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
+          toast({ title: nextStatus === "approved" ? "تم اعتماد التقرير" : "أُعيد التقرير إلى المسودة" });
+        },
+        onError: () => toast({ title: "تعذّر تغيير الحالة", variant: "destructive" }),
+      }
+    );
+  };
 
   const calcAutoProgress = () => {
     const acts = (activities ?? []) as Activity[];
@@ -181,6 +241,42 @@ export default function ProjectReports() {
 
   const watchedType = form.watch("type");
   const watchedPeriodStart = form.watch("periodStart");
+  const watchedImageGroups = form.watch("imageGroups");
+
+  const projectCategoryHistory = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const r of allReportsForCategories ?? []) {
+      const groups = (r.imageGroups as ImageGroup[] | null | undefined) ?? null;
+      if (!groups) continue;
+      for (const g of groups) {
+        const cat = (g?.category ?? "").trim();
+        if (!cat) continue;
+        const key = cat.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        ordered.push(cat);
+      }
+    }
+    return ordered;
+  }, [allReportsForCategories]);
+
+  const categorySuggestions = useMemo(() => {
+    const usedKeys = new Set(
+      (watchedImageGroups ?? [])
+        .map(g => (g.category ?? "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const cat of [...PRESET_CATEGORIES, ...projectCategoryHistory]) {
+      const key = cat.trim().toLowerCase();
+      if (!key || seen.has(key) || usedKeys.has(key)) continue;
+      seen.add(key);
+      out.push(cat);
+    }
+    return out;
+  }, [projectCategoryHistory, watchedImageGroups]);
 
   useEffect(() => {
     if (editingId || !watchedPeriodStart) return;
@@ -704,6 +800,7 @@ export default function ProjectReports() {
                           })}
 
                           <AddImageGroupButton
+                            suggestions={categorySuggestions}
                             onAdd={(cat) => {
                               addImageGroup(cat);
                               setOpenGroupIdx((form.getValues("imageGroups") ?? []).length - 1);
@@ -747,6 +844,11 @@ export default function ProjectReports() {
                   <Badge variant="outline" className="mb-2 bg-background">
                     {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
                   </Badge>
+                  {report.status === "draft" ? (
+                    <Badge className="mb-2 bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">مسودة</Badge>
+                  ) : (
+                    <Badge className="mb-2 bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100">معتمد</Badge>
+                  )}
                   <div className="text-sm font-semibold font-mono">{fmtDate(report.reportDate)}</div>
                 </div>
                 <div className="flex-1 p-4 sm:p-6">
@@ -770,6 +872,29 @@ export default function ProjectReports() {
                       >
                         <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">معاينة و</span>طباعة
                       </Button>
+                      {canApprove && (
+                        report.status === "draft" ? (
+                          <Button
+                            variant="outline" size="sm"
+                            className="gap-1 h-8 text-xs sm:text-sm sm:gap-1.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+                            onClick={() => handleApprove(report.id, "approved")}
+                            disabled={updateReportStatus.isPending}
+                            title="اعتماد التقرير وإظهاره في تقارير المالك"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> اعتماد
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline" size="sm"
+                            className="gap-1 h-8 text-xs sm:text-sm sm:gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+                            onClick={() => handleApprove(report.id, "draft")}
+                            disabled={updateReportStatus.isPending}
+                            title="إرجاع التقرير إلى المسودة (يُخفى من تقارير المالك)"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> إرجاع لمسودة
+                          </Button>
+                        )
+                      )}
                       {!isViewer && (
                       <>
                       <Button variant="outline" size="sm" className="gap-1 h-8 text-xs sm:text-sm sm:gap-1.5" onClick={() => handleEdit(report)}>

@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { reportsTable, activitiesTable } from "@workspace/db";
 import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
-import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
+import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectManager } from "../middlewares/auth";
 import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
 
 type ImageGroup = { category: string; urls: string[] };
@@ -197,6 +197,51 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
 
   const { logAudit: logAudit2 } = await import("../lib/audit");
   logAudit2({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "update", entityType: "report", entityId: report.id, entityName: `تقرير #${report.reportNumber}`, projectId });
+
+  res.json(report);
+});
+
+router.patch("/projects/:projectId/reports/:id/status", requireProjectManager("projectId"), async (req, res): Promise<void> => {
+  const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const projectId = parseInt(rawProjectId, 10);
+  const id = parseInt(rawId, 10);
+
+  const status = req.body?.status;
+  if (status !== "draft" && status !== "approved") {
+    res.status(400).json({ error: "حالة غير صالحة" });
+    return;
+  }
+
+  const updateData: Record<string, unknown> = { status };
+  if (status === "approved") {
+    updateData.approvedAt = new Date();
+    updateData.approvedById = req.user?.userId ?? null;
+  } else {
+    updateData.approvedAt = null;
+    updateData.approvedById = null;
+  }
+
+  const [report] = await db.update(reportsTable)
+    .set(updateData)
+    .where(and(eq(reportsTable.id, id), eq(reportsTable.projectId, projectId)))
+    .returning();
+
+  if (!report) {
+    res.status(404).json({ error: "التقرير غير موجود" });
+    return;
+  }
+
+  const { logAudit: logAuditStatus } = await import("../lib/audit");
+  logAuditStatus({
+    userId: req.user?.userId,
+    userName: req.user?.phone,
+    action: status === "approved" ? "approve" : "revert",
+    entityType: "report",
+    entityId: report.id,
+    entityName: `تقرير #${report.reportNumber}`,
+    projectId,
+  });
 
   res.json(report);
 });
