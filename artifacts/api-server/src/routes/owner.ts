@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectExtensionsTable, projectSuspensionsTable, companiesTable } from "@workspace/db";
-import { eq, count, desc } from "drizzle-orm";
+import { eq, and, count, desc } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
 import jwt from "jsonwebtoken";
 import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcOverrunDays, roundPercent } from "../lib/progress";
@@ -15,7 +15,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     .orderBy(activitiesTable.sortOrder);
 
   const reports = await db.select().from(reportsTable)
-    .where(eq(reportsTable.projectId, project.id))
+    .where(and(eq(reportsTable.projectId, project.id), eq(reportsTable.status, "approved")))
     .orderBy(desc(reportsTable.reportDate));
 
   const extensions = await db.select().from(projectExtensionsTable)

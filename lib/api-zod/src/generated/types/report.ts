@@ -7,6 +7,7 @@
  */
 import type { ReportActivitiesSnapshotItem } from "./reportActivitiesSnapshotItem";
 import type { ReportImageGroupsItem } from "./reportImageGroupsItem";
+import type { ReportStatus } from "./reportStatus";
 import type { ReportType } from "./reportType";
 
 export interface Report {
@@ -28,6 +29,11 @@ export interface Report {
   imageGroups?: ReportImageGroupsItem[] | null;
   /** @nullable */
   activitiesSnapshot?: ReportActivitiesSnapshotItem[] | null;
+  status: ReportStatus;
+  /** @nullable */
+  approvedAt?: Date | null;
+  /** @nullable */
+  approvedById?: number | null;
   /** @nullable */
   createdById?: number | null;
   createdAt: Date;

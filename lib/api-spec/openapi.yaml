@@ -476,6 +476,42 @@ paths:
         "204":
           description: Deleted
 
+  /projects/{projectId}/reports/{id}/status:
+    patch:
+      operationId: updateReportStatus
+      tags: [reports]
+      summary: Approve or revert a report (project_manager / admin)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReportStatusBody"
+      responses:
+        "200":
+          description: Updated report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /projects/{projectId}/reports/export-pdf:
     get:
       operationId: exportReportsPdf
@@ -1838,6 +1874,14 @@ components:
                 type: string
               sortOrder:
                 type: integer
+        status:
+          type: string
+          enum: [draft, approved]
+        approvedAt:
+          type: ["string", "null"]
+          format: date-time
+        approvedById:
+          type: ["integer", "null"]
         createdById:
           type: ["integer", "null"]
         createdAt:
@@ -1856,6 +1900,7 @@ components:
         - workDescription
         - progressPercentage
         - imageUrls
+        - status
         - createdAt
         - updatedAt
 
@@ -1907,6 +1952,15 @@ components:
         - periodEnd
         - workDescription
         - progressPercentage
+
+    UpdateReportStatusBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [draft, approved]
+      required:
+        - status
 
     UpdateReportBody:
       type: object

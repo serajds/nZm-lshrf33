@@ -399,6 +399,9 @@ export const ListReportsResponseItem = zod.object({
       }),
     )
     .nullish(),
+  status: zod.enum(["draft", "approved"]),
+  approvedAt: zod.coerce.date().nullish(),
+  approvedById: zod.number().nullish(),
   createdById: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -477,6 +480,9 @@ export const GetReportResponse = zod.object({
       }),
     )
     .nullish(),
+  status: zod.enum(["draft", "approved"]),
+  approvedAt: zod.coerce.date().nullish(),
+  approvedById: zod.number().nullish(),
   createdById: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -549,6 +555,9 @@ export const UpdateReportResponse = zod.object({
       }),
     )
     .nullish(),
+  status: zod.enum(["draft", "approved"]),
+  approvedAt: zod.coerce.date().nullish(),
+  approvedById: zod.number().nullish(),
   createdById: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -560,6 +569,63 @@ export const UpdateReportResponse = zod.object({
 export const DeleteReportParams = zod.object({
   projectId: zod.coerce.number(),
   id: zod.coerce.number(),
+});
+
+/**
+ * @summary Approve or revert a report (project_manager / admin)
+ */
+export const UpdateReportStatusParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+export const UpdateReportStatusBody = zod.object({
+  status: zod.enum(["draft", "approved"]),
+});
+
+export const UpdateReportStatusResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  reportNumber: zod.number().optional(),
+  type: zod.enum(["weekly", "monthly"]),
+  reportDate: zod.coerce.date(),
+  periodStart: zod.coerce.date(),
+  periodEnd: zod.coerce.date(),
+  workDescription: zod.string(),
+  progressPercentage: zod.number(),
+  technicalNotes: zod.string().nullish(),
+  recommendations: zod.string().nullish(),
+  imageUrls: zod.array(zod.string()),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
+  activitiesSnapshot: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        name: zod.string().optional(),
+        plannedStartDate: zod.string().optional(),
+        plannedEndDate: zod.string().optional(),
+        actualStartDate: zod.string().nullish(),
+        actualEndDate: zod.string().nullish(),
+        plannedProgress: zod.number().optional(),
+        actualProgress: zod.number().optional(),
+        status: zod.string().optional(),
+        sortOrder: zod.number().optional(),
+      }),
+    )
+    .nullish(),
+  status: zod.enum(["draft", "approved"]),
+  approvedAt: zod.coerce.date().nullish(),
+  approvedById: zod.number().nullish(),
+  createdById: zod.number().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
 });
 
 /**
@@ -937,6 +1003,9 @@ export const VerifyOwnerAccessResponse = zod.object({
           }),
         )
         .nullish(),
+      status: zod.enum(["draft", "approved"]),
+      approvedAt: zod.coerce.date().nullish(),
+      approvedById: zod.number().nullish(),
       createdById: zod.number().nullish(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),

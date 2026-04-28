@@ -384,6 +384,13 @@ export type ReportActivitiesSnapshotItem = {
   sortOrder?: number;
 };
 
+export type ReportStatus = (typeof ReportStatus)[keyof typeof ReportStatus];
+
+export const ReportStatus = {
+  draft: "draft",
+  approved: "approved",
+} as const;
+
 export interface Report {
   id: number;
   projectId: number;
@@ -403,6 +410,11 @@ export interface Report {
   imageGroups?: ReportImageGroupsItem[] | null;
   /** @nullable */
   activitiesSnapshot?: ReportActivitiesSnapshotItem[] | null;
+  status: ReportStatus;
+  /** @nullable */
+  approvedAt?: string | null;
+  /** @nullable */
+  approvedById?: number | null;
   /** @nullable */
   createdById?: number | null;
   createdAt: string;
@@ -436,6 +448,18 @@ export interface CreateReportBody {
   imageUrls?: string[];
   /** @nullable */
   imageGroups?: CreateReportBodyImageGroupsItem[] | null;
+}
+
+export type UpdateReportStatusBodyStatus =
+  (typeof UpdateReportStatusBodyStatus)[keyof typeof UpdateReportStatusBodyStatus];
+
+export const UpdateReportStatusBodyStatus = {
+  draft: "draft",
+  approved: "approved",
+} as const;
+
+export interface UpdateReportStatusBody {
+  status: UpdateReportStatusBodyStatus;
 }
 
 /**
