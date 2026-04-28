@@ -1240,11 +1240,11 @@ export default function ProjectActivities() {
                       <div className="flex items-center justify-center gap-1">
                         {editable ? (
                           <>
-                            <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 10%" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
-                              <span className="text-xs font-bold text-muted-foreground">-10</span>
+                            <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 5%" onClick={() => quickIncrement(a, -5)} disabled={a.actualProgress === 0}>
+                              <span className="text-xs font-bold text-muted-foreground">-5</span>
                             </Button>
-                            <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 10%" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
-                              <span className="text-xs font-bold text-primary">+10</span>
+                            <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 5%" onClick={() => quickIncrement(a, 5)} disabled={a.actualProgress === 100}>
+                              <span className="text-xs font-bold text-primary">+5</span>
                             </Button>
                             {groups.length > 0 && (
                               <DropdownMenu>
@@ -1445,11 +1445,11 @@ export default function ProjectActivities() {
                     {editable ? (
                       <div className="flex items-center gap-1 pt-1 border-t">
                         <div className="flex items-center gap-1 mr-auto">
-                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
-                            <span className="text-xs font-bold text-muted-foreground">-10</span>
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, -5)} disabled={a.actualProgress === 0}>
+                            <span className="text-xs font-bold text-muted-foreground">-5</span>
                           </Button>
-                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
-                            <span className="text-xs font-bold text-primary">+10</span>
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, 5)} disabled={a.actualProgress === 100}>
+                            <span className="text-xs font-bold text-primary">+5</span>
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
                             <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
