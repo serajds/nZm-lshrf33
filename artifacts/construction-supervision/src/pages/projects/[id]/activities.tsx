@@ -754,6 +754,12 @@ export default function ProjectActivities() {
                     <span className="flex items-center gap-1.5">
                       <span className="inline-block w-px h-3 bg-red-500" style={{ borderLeft: "2px dashed #ef4444" }} /> اليوم
                     </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-3 rounded-sm bg-emerald-500" style={{ width: 3 }} /> بدأ بدون نسبة
+                    </span>
+                    <span className="flex items-center gap-1.5 text-amber-600">
+                      <AlertTriangle className="w-3 h-3" /> تواريخ ناقصة
+                    </span>
                   </div>
                 </div>
               </CardHeader>
@@ -852,52 +858,144 @@ export default function ProjectActivities() {
 
                             {/* Bars */}
                             <div className="absolute inset-0 z-10 flex flex-col justify-center gap-1.5 px-0">
-                              {/* Planned bar */}
-                              <div className="relative h-4">
-                                {a.plannedStartDate && a.plannedEndDate && (() => {
-                                  const sl = toPct(new Date(a.plannedStartDate));
-                                  const el = toPct(new Date(a.plannedEndDate));
-                                  const w = Math.max(0.5, el - sl);
+                              {(() => {
+                                const hasPlanned = !!(a.plannedStartDate && a.plannedEndDate);
+                                const hasAnyStart = !!(a.actualStartDate || a.plannedStartDate);
+                                const hasActualSignal = (a.actualProgress > 0 || !!a.actualStartDate) && hasAnyStart;
+                                const orphanProgress = a.actualProgress > 0 && !hasAnyStart;
+
+                                // ── Case 1: لا توجد أي تواريخ ولا أي إشارة قابلة للرسم ──
+                                if (!hasPlanned && !hasActualSignal && !orphanProgress) {
+                                  return (
+                                    <div className="relative h-4 flex items-center" title="ينقص هذا البند تواريخ مخططة">
+                                      <div
+                                        className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0"
+                                        style={{ borderTop: "1.5px dashed rgba(148,163,184,0.6)" }}
+                                      />
+                                      <span className="absolute right-1 top-1/2 -translate-y-1/2 text-amber-500 bg-background rounded-full p-0.5">
+                                        <AlertTriangle className="w-3 h-3" />
+                                      </span>
+                                    </div>
+                                  );
+                                }
+
+                                // ── Case 2: نسبة إنجاز بدون أي تواريخ — تنبيه + النسبة ──
+                                if (orphanProgress) {
                                   return (
                                     <div
-                                      className="absolute h-full rounded-full bg-blue-400/70"
-                                      style={{ right: `${sl}%`, width: `${w}%` }}
-                                      title={`مخطط: ${fmtDate(a.plannedStartDate)} → ${fmtDate(a.plannedEndDate)}`}
-                                    />
-                                  );
-                                })()}
-                              </div>
-
-                              {/* Actual bar */}
-                              {a.actualProgress > 0 && a.plannedStartDate && a.plannedEndDate && (
-                                <div className="relative h-4">
-                                  {(() => {
-                                    const plannedSl = toPct(new Date(a.plannedStartDate));
-                                    const plannedEl = toPct(new Date(a.plannedEndDate));
-                                    const plannedW = Math.max(0.5, plannedEl - plannedSl);
-                                    const w = Math.max(0.5, plannedW * a.actualProgress / 100);
-                                    const ongoing = !a.actualEndDate && a.status !== "completed";
-                                    return (
+                                      className="relative h-4 flex items-center justify-end pr-2 gap-1.5"
+                                      title={`نسبة إنجاز ${a.actualProgress}% بدون تواريخ مسجلة`}
+                                    >
                                       <div
-                                        className="absolute h-full rounded-full flex items-center overflow-hidden"
-                                        style={{
-                                          right: `${plannedSl}%`,
-                                          width: `${w}%`,
-                                          backgroundColor: barColor,
-                                          ...(ongoing ? { borderLeft: "3px solid white" } : {}),
-                                        }}
-                                        title={`فعلي: ${a.actualStartDate ? fmtDate(a.actualStartDate) : "—"} → ${a.actualEndDate ? fmtDate(a.actualEndDate) : "جارٍ"} (${a.actualProgress}%)`}
-                                      >
-                                        {w > 8 && (
-                                          <span className="text-[9px] font-bold text-white px-1.5 truncate">
-                                            {a.actualProgress}%
-                                          </span>
-                                        )}
+                                        className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0"
+                                        style={{ borderTop: "1.5px dashed rgba(148,163,184,0.6)" }}
+                                      />
+                                      <span className="relative z-10 text-[10px] font-bold text-foreground bg-background px-1.5 rounded border border-amber-300">
+                                        {a.actualProgress}%
+                                      </span>
+                                      <span className="relative z-10 text-amber-500 bg-background rounded-full p-0.5">
+                                        <AlertTriangle className="w-3 h-3" />
+                                      </span>
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <>
+                                    {/* Planned bar */}
+                                    <div className="relative h-4">
+                                      {hasPlanned ? (() => {
+                                        const sl = toPct(new Date(a.plannedStartDate!));
+                                        const el = toPct(new Date(a.plannedEndDate!));
+                                        const w = Math.max(0.5, el - sl);
+                                        return (
+                                          <div
+                                            className="absolute h-full rounded-full bg-blue-400/70"
+                                            style={{ right: `${sl}%`, width: `${w}%` }}
+                                            title={`مخطط: ${fmtDate(a.plannedStartDate!)} → ${fmtDate(a.plannedEndDate!)}`}
+                                          />
+                                        );
+                                      })() : (
+                                        <div
+                                          className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0"
+                                          style={{ borderTop: "1.5px dashed rgba(148,163,184,0.5)" }}
+                                          title="لا يوجد جدول مخطط لهذا البند"
+                                        />
+                                      )}
+                                    </div>
+
+                                    {/* Actual bar */}
+                                    {hasActualSignal && (
+                                      <div className="relative h-4">
+                                        {(() => {
+                                          const ongoing = !a.actualEndDate && a.status !== "completed";
+                                          const startIso = a.actualStartDate ?? a.plannedStartDate!;
+                                          const startPct = toPct(new Date(startIso));
+                                          const startLabel = a.actualStartDate
+                                            ? fmtDate(a.actualStartDate)
+                                            : `(مخطط) ${fmtDate(a.plannedStartDate!)}`;
+
+                                          // Marker: بدأ النشاط بدون نسبة مسجلة
+                                          if (a.actualProgress === 0 && a.actualStartDate) {
+                                            return (
+                                              <div
+                                                className="absolute h-full"
+                                                style={{ right: `calc(${startPct}% - 1.5px)`, width: 3 }}
+                                                title={`بدأ في ${fmtDate(a.actualStartDate)} — بدون إنجاز مسجَّل بعد`}
+                                              >
+                                                <div
+                                                  className="h-full w-full rounded-sm"
+                                                  style={{ backgroundColor: barColor, opacity: 0.85 }}
+                                                />
+                                              </div>
+                                            );
+                                          }
+
+                                          // حساب نقطة النهاية
+                                          let endPct: number;
+                                          let endLabel: string;
+                                          if (a.actualEndDate) {
+                                            endPct = toPct(new Date(a.actualEndDate));
+                                            endLabel = fmtDate(a.actualEndDate);
+                                          } else if (ongoing) {
+                                            endPct = todayPct;
+                                            endLabel = "جارٍ حتى اليوم";
+                                          } else if (hasPlanned) {
+                                            const ps = toPct(new Date(a.plannedStartDate!));
+                                            const pe = toPct(new Date(a.plannedEndDate!));
+                                            const plannedW = Math.max(0.5, pe - ps);
+                                            endPct = startPct + plannedW * a.actualProgress / 100;
+                                            endLabel = "—";
+                                          } else {
+                                            endPct = startPct;
+                                            endLabel = "—";
+                                          }
+
+                                          const w = Math.max(0.5, endPct - startPct);
+                                          return (
+                                            <div
+                                              className="absolute h-full rounded-full flex items-center overflow-hidden"
+                                              style={{
+                                                right: `${startPct}%`,
+                                                width: `${w}%`,
+                                                backgroundColor: barColor,
+                                                ...(ongoing ? { borderLeft: "3px solid white" } : {}),
+                                              }}
+                                              title={`فعلي: ${startLabel} → ${endLabel} (${a.actualProgress}%)`}
+                                            >
+                                              {w > 8 && (
+                                                <span className="text-[9px] font-bold text-white px-1.5 truncate">
+                                                  {a.actualProgress}%
+                                                </span>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
                                       </div>
-                                    );
-                                  })()}
-                                </div>
-                              )}
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>
