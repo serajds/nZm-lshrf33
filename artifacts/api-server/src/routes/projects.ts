@@ -235,6 +235,22 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
     const v = body.siteRadiusMeters;
     updateData.siteRadiusMeters = v === null || v === "" ? null : parseInt(String(v), 10);
   }
+  if (body.attendanceAutoCloseHours !== undefined) {
+    const n = parseInt(String(body.attendanceAutoCloseHours), 10);
+    if (Number.isNaN(n) || n < 1 || n > 48) {
+      res.status(400).json({ error: "ساعات الإغلاق التلقائي يجب أن تكون بين 1 و 48" });
+      return;
+    }
+    updateData.attendanceAutoCloseHours = n;
+  }
+  if (body.attendanceLongDayHours !== undefined) {
+    const n = parseInt(String(body.attendanceLongDayHours), 10);
+    if (Number.isNaN(n) || n < 1 || n > 24) {
+      res.status(400).json({ error: "ساعات اليوم الطويل يجب أن تكون بين 1 و 24" });
+      return;
+    }
+    updateData.attendanceLongDayHours = n;
+  }
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });

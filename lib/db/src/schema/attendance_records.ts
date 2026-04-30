@@ -18,6 +18,9 @@ export const attendanceRecordsTable = pgTable("attendance_records", {
   selfieFilename: text("selfie_filename"),
   selfieUrl: text("selfie_url"),
   notes: text("notes"),
+  editedAt: timestamp("edited_at", { withTimezone: true }),
+  editedByUserId: integer("edited_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  editReason: text("edit_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index("attendance_project_user_idx").on(table.projectId, table.userId, table.recordedAt),

@@ -216,6 +216,8 @@ export interface Project {
   siteLongitude?: number | null;
   /** @nullable */
   siteRadiusMeters?: number | null;
+  attendanceAutoCloseHours: number;
+  attendanceLongDayHours: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -777,6 +779,32 @@ export interface AttendanceCheckBody {
   notes?: string | null;
 }
 
+/**
+ * @nullable
+ */
+export type UpdateAttendanceRecordBodyType =
+  | (typeof UpdateAttendanceRecordBodyType)[keyof typeof UpdateAttendanceRecordBodyType]
+  | null;
+
+export const UpdateAttendanceRecordBodyType = {
+  check_in: "check_in",
+  check_out: "check_out",
+} as const;
+
+export interface UpdateAttendanceRecordBody {
+  reason: string;
+  /** @nullable */
+  type?: UpdateAttendanceRecordBodyType;
+  /** @nullable */
+  recordedAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface DeleteAttendanceRecordBody {
+  reason: string;
+}
+
 export type AttendanceRecordType =
   (typeof AttendanceRecordType)[keyof typeof AttendanceRecordType];
 
@@ -838,6 +866,12 @@ export interface AttendanceRecordWithUser {
   selfieUrl?: string | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  editedAt?: string | null;
+  /** @nullable */
+  editedByUserId?: number | null;
+  /** @nullable */
+  editReason?: string | null;
 }
 
 export interface MyAttendanceProjectStatus {
@@ -914,17 +948,44 @@ export interface ActiveAttendanceResponse {
   members: ActiveAttendanceMember[];
 }
 
+export type AttendanceReportSessionStatus =
+  (typeof AttendanceReportSessionStatus)[keyof typeof AttendanceReportSessionStatus];
+
+export const AttendanceReportSessionStatus = {
+  closed: "closed",
+  open: "open",
+  auto_closed: "auto_closed",
+} as const;
+
+export interface AttendanceReportSession {
+  checkInRecordId: number;
+  /** @nullable */
+  checkOutRecordId?: number | null;
+  checkInAt: string;
+  /** @nullable */
+  checkOutAt?: string | null;
+  /** @nullable */
+  durationMinutes?: number | null;
+  status: AttendanceReportSessionStatus;
+}
+
+export type EmployeeAttendanceDayFlags = {
+  incomplete: boolean;
+  longDay: boolean;
+};
+
 export interface EmployeeAttendanceDay {
   date: string;
-  /** @nullable */
-  checkIn?: string | null;
-  /** @nullable */
-  checkOut?: string | null;
+  sessions: AttendanceReportSession[];
+  totalMinutes: number;
+  flags: EmployeeAttendanceDayFlags;
 }
 
 export type EmployeeAttendanceReportProject = {
   id: number;
   name: string;
+  attendanceAutoCloseHours?: number;
+  attendanceLongDayHours?: number;
 };
 
 export type EmployeeAttendanceReportEmployee = {
@@ -936,6 +997,14 @@ export type EmployeeAttendanceReportEmployee = {
   role?: string | null;
 };
 
+export type EmployeeAttendanceReportSummary = {
+  totalMinutes: number;
+  workDays: number;
+  averageDailyMinutes: number;
+  incompleteDays: number;
+  longDays: number;
+};
+
 export interface EmployeeAttendanceReport {
   project: EmployeeAttendanceReportProject;
   employee: EmployeeAttendanceReportEmployee;
@@ -943,7 +1012,10 @@ export interface EmployeeAttendanceReport {
   dateFrom?: string | null;
   /** @nullable */
   dateTo?: string | null;
+  autoCloseHours: number;
+  longDayHours: number;
   days: EmployeeAttendanceDay[];
+  summary: EmployeeAttendanceReportSummary;
 }
 
 export type ListProjectsParams = {
@@ -1067,6 +1139,10 @@ export type GetMyAttendanceHistoryParams = {
    * @nullable
    */
   limit?: number | null;
+  /**
+   * @nullable
+   */
+  projectId?: number | null;
 };
 
 export type ListAttendanceRecordsParams = {

@@ -29,4 +29,10 @@ export interface AttendanceRecordWithUser {
   selfieUrl?: string | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  editedAt?: Date | null;
+  /** @nullable */
+  editedByUserId?: number | null;
+  /** @nullable */
+  editReason?: string | null;
 }

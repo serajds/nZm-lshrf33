@@ -9,4 +9,6 @@
 export type EmployeeAttendanceReportProject = {
   id: number;
   name: string;
+  attendanceAutoCloseHours?: number;
+  attendanceLongDayHours?: number;
 };

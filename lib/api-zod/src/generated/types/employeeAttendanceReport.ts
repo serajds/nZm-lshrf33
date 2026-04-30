@@ -8,6 +8,7 @@
 import type { EmployeeAttendanceDay } from "./employeeAttendanceDay";
 import type { EmployeeAttendanceReportEmployee } from "./employeeAttendanceReportEmployee";
 import type { EmployeeAttendanceReportProject } from "./employeeAttendanceReportProject";
+import type { EmployeeAttendanceReportSummary } from "./employeeAttendanceReportSummary";
 
 export interface EmployeeAttendanceReport {
   project: EmployeeAttendanceReportProject;
@@ -16,5 +17,8 @@ export interface EmployeeAttendanceReport {
   dateFrom?: Date | null;
   /** @nullable */
   dateTo?: Date | null;
+  autoCloseHours: number;
+  longDayHours: number;
   days: EmployeeAttendanceDay[];
+  summary: EmployeeAttendanceReportSummary;
 }

@@ -48,6 +48,9 @@ interface AttendanceRecordWithUser {
   outOfRange: boolean;
   selfieUrl: string | null;
   notes: string | null;
+  editedAt?: string | null;
+  editedByUserId?: number | null;
+  editReason?: string | null;
 }
 
 interface ActiveMember {
@@ -82,18 +85,58 @@ interface MyStatusItem {
   lastRecord: AttendanceRecordWithUser | null;
 }
 
-interface ReportDay {
+export type SessionStatus = "closed" | "open" | "auto_closed";
+
+export interface ReportSession {
+  checkInRecordId: number;
+  checkOutRecordId: number | null;
+  checkInAt: string;
+  checkOutAt: string | null;
+  durationMinutes: number | null;
+  status: SessionStatus;
+}
+
+export interface ReportDay {
   date: string;
-  checkIn: string | null;
-  checkOut: string | null;
+  sessions: ReportSession[];
+  totalMinutes: number;
+  flags: { incomplete: boolean; longDay: boolean };
+}
+
+export interface ReportSummary {
+  totalMinutes: number;
+  workDays: number;
+  averageDailyMinutes: number;
+  incompleteDays: number;
+  longDays: number;
 }
 
 interface EmployeeReport {
-  project: { id: number; name: string };
+  project: { id: number; name: string; attendanceAutoCloseHours?: number; attendanceLongDayHours?: number };
   employee: { id: number; fullName: string; phone: string | null; role: string | null };
   dateFrom: string | null;
   dateTo: string | null;
+  autoCloseHours: number;
+  longDayHours: number;
   days: ReportDay[];
+  summary: ReportSummary;
+}
+
+function SummaryCard({ label, value, tone }: { label: string; value: string; tone?: "warn" }) {
+  return (
+    <div className={`rounded-md border p-2 ${tone === "warn" ? "border-amber-300 bg-amber-50" : "bg-card"}`}>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-base font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function fmtDurationHHMM(minutes: number | null | undefined): string {
+  if (minutes == null || !Number.isFinite(minutes)) return "—";
+  const m = Math.max(0, Math.round(minutes));
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -546,14 +589,14 @@ function MyHistoryTab({ projectId, onShowPhoto, onShowMap }: {
   onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
 }) {
   const { data: rows = [], isLoading } = useQuery<(AttendanceRecordWithUser & { projectId: number; projectName: string | null })[]>({
-    queryKey: ["/api/attendance/my-history"],
+    queryKey: ["/api/attendance/my-history", projectId],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/attendance/my-history`);
+      const r = await authFetch(`${API_BASE}/attendance/my-history?projectId=${projectId}`);
       if (!r.ok) return [];
       return r.json();
     },
+    enabled: !!projectId,
   });
-  const filtered = rows.filter(r => r.projectId === projectId);
 
   return (
     <Card>
@@ -561,10 +604,10 @@ function MyHistoryTab({ projectId, onShowPhoto, onShowMap }: {
         <CardTitle className="text-base">سجلّي في هذا المشروع</CardTitle>
       </CardHeader>
       <CardContent>
-        {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : filtered.length === 0 ? (
+        {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">لا توجد سجلات بعد.</p>
         ) : (
-          <RecordsTable rows={filtered} showName={false} onShowPhoto={onShowPhoto} onShowMap={onShowMap} />
+          <RecordsTable rows={rows} showName={false} canManage={false} onShowPhoto={onShowPhoto} onShowMap={onShowMap} />
         )}
       </CardContent>
     </Card>
@@ -578,9 +621,13 @@ function ProjectHistoryTab({ projectId, onShowPhoto, onShowMap }: {
   onShowPhoto: (url: string) => void;
   onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
 }) {
+  const { user } = useAuth();
+  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
+  const isManager = user?.role === "admin" || myPermissions?.role === "project_manager";
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [userId, setUserId] = useState<string>("");
+  const queryClient = useQueryClient();
 
   const params = useMemo(() => {
     const p = new URLSearchParams();
@@ -591,14 +638,25 @@ function ProjectHistoryTab({ projectId, onShowPhoto, onShowMap }: {
     return p.toString();
   }, [from, to, userId]);
 
+  const queryKey = useMemo(
+    () => [`/api/attendance/projects/${projectId}/records`, params] as const,
+    [projectId, params],
+  );
+
   const { data: rows = [], isLoading } = useQuery<AttendanceRecordWithUser[]>({
-    queryKey: [`/api/attendance/projects/${projectId}/records`, params],
+    queryKey,
     queryFn: async () => {
       const r = await authFetch(`${API_BASE}/attendance/projects/${projectId}/records?${params}`);
       if (!r.ok) return [];
       return r.json();
     },
   });
+
+  function onMutated() {
+    queryClient.invalidateQueries({ queryKey: [`/api/attendance/projects/${projectId}/records`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/attendance/projects/${projectId}/active`] });
+    queryClient.invalidateQueries({ queryKey: ["/api/attendance/my-history"] });
+  }
 
   const uniqueUsers = useMemo(() => {
     const m = new Map<number, string>();
@@ -638,19 +696,24 @@ function ProjectHistoryTab({ projectId, onShowPhoto, onShowMap }: {
         {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">لا توجد سجلات تطابق الفلترة.</p>
         ) : (
-          <RecordsTable rows={rows} showName onShowPhoto={onShowPhoto} onShowMap={onShowMap} />
+          <RecordsTable rows={rows} showName canManage={isManager} onMutated={onMutated} onShowPhoto={onShowPhoto} onShowMap={onShowMap} />
         )}
       </CardContent>
     </Card>
   );
 }
 
-function RecordsTable({ rows, showName, onShowPhoto, onShowMap }: {
+function RecordsTable({ rows, showName, canManage = false, onMutated, onShowPhoto, onShowMap }: {
   rows: AttendanceRecordWithUser[];
   showName: boolean;
+  canManage?: boolean;
+  onMutated?: () => void;
   onShowPhoto: (url: string) => void;
   onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
 }) {
+  const [editing, setEditing] = useState<AttendanceRecordWithUser | null>(null);
+  const [deleting, setDeleting] = useState<AttendanceRecordWithUser | null>(null);
+
   return (
     <>
       {/* Mobile: card list */}
@@ -673,6 +736,15 @@ function RecordsTable({ rows, showName, onShowPhoto, onShowMap }: {
                   ) : (
                     <Badge className="bg-green-600 hover:bg-green-600">داخل النطاق</Badge>
                   )}
+                  {r.editedAt && (
+                    <Badge
+                      variant="outline"
+                      className="border-amber-500 text-amber-700"
+                      title={r.editReason ? `سبب التعديل: ${r.editReason}` : "تم تعديل هذا السجل"}
+                    >
+                      مُعدَّل
+                    </Badge>
+                  )}
                 </div>
               </div>
               {r.selfieUrl && (
@@ -684,7 +756,7 @@ function RecordsTable({ rows, showName, onShowPhoto, onShowMap }: {
             <div className="text-xs text-muted-foreground">
               الوقت: <span className="text-foreground">{fmtLibyaDateTime(r.recordedAt)}</span>
             </div>
-            <div className="flex items-center gap-3 flex-wrap text-xs">
+            <div className="flex items-center gap-2 flex-wrap text-xs">
               {r.latitude != null && r.longitude != null && (
                 <Button
                   size="sm" variant="ghost" className="h-7 px-2 text-primary"
@@ -699,6 +771,12 @@ function RecordsTable({ rows, showName, onShowPhoto, onShowMap }: {
               )}
               {r.distanceMeters != null && (
                 <span className="text-muted-foreground">المسافة: {Math.round(r.distanceMeters)} م</span>
+              )}
+              {canManage && (
+                <>
+                  <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => setEditing(r)}>تعديل</Button>
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-destructive" onClick={() => setDeleting(r)}>حذف</Button>
+                </>
               )}
             </div>
           </div>
@@ -717,6 +795,7 @@ function RecordsTable({ rows, showName, onShowPhoto, onShowMap }: {
               <th className="px-2 py-2 text-right">المسافة</th>
               <th className="px-2 py-2 text-right">الحالة</th>
               <th className="px-2 py-2 text-right">الصورة</th>
+              {canManage && <th className="px-2 py-2 text-right">إجراءات</th>}
             </tr>
           </thead>
           <tbody>
@@ -724,11 +803,22 @@ function RecordsTable({ rows, showName, onShowPhoto, onShowMap }: {
               <tr key={r.id} className="border-t">
                 {showName && <td className="px-2 py-2">{r.fullName ?? "—"}<div className="text-xs text-muted-foreground">{r.phone ?? ""}</div></td>}
                 <td className="px-2 py-2">
-                  {r.type === "check_in" ? (
-                    <Badge className="bg-green-600 hover:bg-green-600">حضور</Badge>
-                  ) : (
-                    <Badge variant="secondary">انصراف</Badge>
-                  )}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {r.type === "check_in" ? (
+                      <Badge className="bg-green-600 hover:bg-green-600">حضور</Badge>
+                    ) : (
+                      <Badge variant="secondary">انصراف</Badge>
+                    )}
+                    {r.editedAt && (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500 text-amber-700"
+                        title={r.editReason ? `سبب التعديل: ${r.editReason}` : "تم تعديل هذا السجل"}
+                      >
+                        مُعدَّل
+                      </Badge>
+                    )}
+                  </div>
                 </td>
                 <td className="px-2 py-2 whitespace-nowrap">{fmtLibyaDateTime(r.recordedAt)}</td>
                 <td className="px-2 py-2">
@@ -756,12 +846,197 @@ function RecordsTable({ rows, showName, onShowPhoto, onShowMap }: {
                     </Button>
                   ) : "—"}
                 </td>
+                {canManage && (
+                  <td className="px-2 py-2 whitespace-nowrap">
+                    <Button size="sm" variant="outline" className="h-7 px-2 ml-1" onClick={() => setEditing(r)}>تعديل</Button>
+                    <Button size="sm" variant="outline" className="h-7 px-2 text-destructive" onClick={() => setDeleting(r)}>حذف</Button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {editing && (
+        <EditRecordDialog
+          record={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); onMutated?.(); }}
+        />
+      )}
+      {deleting && (
+        <DeleteRecordDialog
+          record={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => { setDeleting(null); onMutated?.(); }}
+        />
+      )}
     </>
+  );
+}
+
+function localInputFromIso(iso: string): string {
+  const d = new Date(iso);
+  // datetime-local expects "YYYY-MM-DDTHH:mm" in user's local time. To keep the
+  // wall time consistent for managers in Libya, we render in Africa/Tripoli.
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Tripoli",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const parts = fmt.formatToParts(d).reduce<Record<string, string>>((acc, p) => {
+    if (p.type !== "literal") acc[p.type] = p.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour === "24" ? "00" : parts.hour}:${parts.minute}`;
+}
+
+function isoFromLocalInput(local: string): string {
+  // Interpret the picked wall time as Africa/Tripoli (GMT+2, no DST).
+  return new Date(`${local}:00+02:00`).toISOString();
+}
+
+function EditRecordDialog({ record, onClose, onSaved }: {
+  record: AttendanceRecordWithUser;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [type, setType] = useState<"check_in" | "check_out">(record.type);
+  const [recordedAt, setRecordedAt] = useState<string>(localInputFromIso(record.recordedAt));
+  const [notes, setNotes] = useState<string>(record.notes ?? "");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!reason.trim()) {
+      toast({ variant: "destructive", title: "سبب التعديل مطلوب" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const r = await authFetch(`${API_BASE}/attendance/records/${record.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          type,
+          recordedAt: isoFromLocalInput(recordedAt),
+          notes: notes,
+          reason: reason.trim(),
+        }),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e?.error || "فشل التعديل");
+      }
+      toast({ title: "تم تحديث السجل" });
+      onSaved();
+    } catch (e: unknown) {
+      toast({ variant: "destructive", title: "تعذّر التعديل", description: e instanceof Error ? e.message : "" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent dir="rtl" className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>تعديل سجل الحضور</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">النوع</Label>
+            <Select value={type} onValueChange={(v) => setType(v as "check_in" | "check_out")} dir="rtl">
+              <SelectTrigger dir="rtl"><SelectValue /></SelectTrigger>
+              <SelectContent dir="rtl">
+                <SelectItem value="check_in">حضور</SelectItem>
+                <SelectItem value="check_out">انصراف</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">الوقت</Label>
+            <Input type="datetime-local" value={recordedAt} onChange={(e) => setRecordedAt(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">ملاحظات</Label>
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="اختياري" />
+          </div>
+          <div>
+            <Label className="text-xs">سبب التعديل (إلزامي)</Label>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="اشرح سبب التعديل" />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={onClose} disabled={saving}>إلغاء</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : null}
+              حفظ
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteRecordDialog({ record, onClose, onDeleted }: {
+  record: AttendanceRecordWithUser;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const { toast } = useToast();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function go() {
+    if (!reason.trim()) {
+      toast({ variant: "destructive", title: "سبب الحذف مطلوب" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await authFetch(`${API_BASE}/attendance/records/${record.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      if (!r.ok && r.status !== 204) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e?.error || "فشل الحذف");
+      }
+      toast({ title: "تم حذف السجل" });
+      onDeleted();
+    } catch (e: unknown) {
+      toast({ variant: "destructive", title: "تعذّر الحذف", description: e instanceof Error ? e.message : "" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent dir="rtl" className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>حذف سجل الحضور</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="text-sm text-muted-foreground">
+            سيتم حذف سجل {record.type === "check_in" ? "الحضور" : "الانصراف"} للموظف <span className="font-medium text-foreground">{record.fullName ?? ""}</span> بتاريخ <span className="font-medium text-foreground">{fmtLibyaDateTime(record.recordedAt)}</span>.
+          </div>
+          <div>
+            <Label className="text-xs">سبب الحذف (إلزامي)</Label>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="اشرح سبب الحذف" />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={onClose} disabled={busy}>إلغاء</Button>
+            <Button variant="destructive" onClick={go} disabled={busy}>
+              {busy ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : null}
+              حذف
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -844,6 +1119,8 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
       return;
     }
     const apiBase = API_BASE.replace("/api", "");
+    const safeSummary = report.summary ?? { totalMinutes: 0, workDays: 0, averageDailyMinutes: 0, incompleteDays: 0, longDays: 0 };
+    const safeDays = Array.isArray(report.days) ? report.days : [];
     previewAttendanceReport({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -855,7 +1132,10 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
       employeePhone: report.employee.phone,
       dateFrom: report.dateFrom ?? from ?? null,
       dateTo: report.dateTo ?? to ?? null,
-      days: report.days,
+      days: safeDays,
+      summary: safeSummary,
+      autoCloseHours: report.autoCloseHours,
+      longDayHours: report.longDayHours,
       companyLogos: companyLogos as AttendanceReportData["companyLogos"],
       apiBase,
     });
@@ -910,30 +1190,62 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
           </div>
         )}
 
-        {report?.employee && (
-          <div className="space-y-2">
+        {report?.employee && (() => {
+          const summary = report.summary ?? { totalMinutes: 0, workDays: 0, averageDailyMinutes: 0, incompleteDays: 0, longDays: 0 };
+          const days = Array.isArray(report.days) ? report.days : [];
+          return (
+          <div className="space-y-3">
             <div className="text-sm text-muted-foreground">
               <span className="font-medium text-foreground">{report.employee.fullName}</span>
               {report.employee.role ? <> — {ROLE_LABEL[report.employee.role] ?? report.employee.role}</> : null}
             </div>
 
+            {/* Summary block */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-sm">
+              <SummaryCard label="إجمالي الساعات" value={fmtDurationHHMM(summary.totalMinutes)} />
+              <SummaryCard label="عدد أيام العمل" value={String(summary.workDays)} />
+              <SummaryCard label="متوسط اليوم" value={fmtDurationHHMM(summary.averageDailyMinutes)} />
+              <SummaryCard label="أيام غير مكتملة" value={String(summary.incompleteDays)} tone={summary.incompleteDays > 0 ? "warn" : undefined} />
+              <SummaryCard label="أيام طويلة" value={String(summary.longDays)} tone={summary.longDays > 0 ? "warn" : undefined} />
+            </div>
+
             {/* Mobile: card list */}
             <div className="sm:hidden space-y-2">
-              {report.days.length === 0 ? (
+              {days.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">لا توجد سجلات.</p>
-              ) : report.days.map(d => (
-                <div key={d.date} className="rounded-md border bg-card p-3 text-sm">
-                  <div className="font-medium mb-1">{d.date}</div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <div className="text-muted-foreground">حضور</div>
-                      <div className="font-medium">{d.checkIn ? fmtLibyaTime(d.checkIn) : "—"}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">انصراف</div>
-                      <div className="font-medium">{d.checkOut ? fmtLibyaTime(d.checkOut) : "—"}</div>
+              ) : days.map(d => (
+                <div key={d.date} className="rounded-md border bg-card p-3 text-sm space-y-2">
+                  <div className="flex items-center justify-between flex-wrap gap-1">
+                    <div className="font-medium">{d.date}</div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {d.flags.incomplete && <Badge variant="destructive">غير مكتمل</Badge>}
+                      {d.flags.longDay && <Badge className="bg-amber-500 hover:bg-amber-500">يوم طويل</Badge>}
+                      <Badge variant="outline">{fmtDurationHHMM(d.totalMinutes)}</Badge>
                     </div>
                   </div>
+                  {d.sessions.map((s, i) => (
+                    <div key={s.checkInRecordId} className="rounded border bg-muted/30 p-2 text-xs">
+                      <div className="text-muted-foreground mb-1">جلسة {i + 1}</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <div className="text-muted-foreground">حضور</div>
+                          <div className="font-medium">{fmtLibyaTime(s.checkInAt)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">انصراف</div>
+                          <div className="font-medium">
+                            {s.checkOutAt ? fmtLibyaTime(s.checkOutAt) : "—"}
+                            {s.status === "auto_closed" && <span className="block text-[10px] text-amber-600">إغلاق تلقائي</span>}
+                            {s.status === "open" && <span className="block text-[10px] text-destructive">مفتوحة</span>}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">المدة</div>
+                          <div className="font-medium">{fmtDurationHHMM(s.durationMinutes)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -944,26 +1256,50 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
                 <thead className="text-xs text-muted-foreground bg-muted/50">
                   <tr>
                     <th className="px-2 py-2 text-right">التاريخ</th>
-                    <th className="px-2 py-2 text-right">وقت الحضور</th>
-                    <th className="px-2 py-2 text-right">وقت الانصراف</th>
+                    <th className="px-2 py-2 text-right">جلسة</th>
+                    <th className="px-2 py-2 text-right">حضور</th>
+                    <th className="px-2 py-2 text-right">انصراف</th>
+                    <th className="px-2 py-2 text-right">المدة</th>
+                    <th className="px-2 py-2 text-right">إجمالي اليوم</th>
+                    <th className="px-2 py-2 text-right">حالة</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {report.days.length === 0 && (
-                    <tr><td colSpan={3} className="px-2 py-4 text-center text-muted-foreground">لا توجد سجلات.</td></tr>
+                  {days.length === 0 && (
+                    <tr><td colSpan={7} className="px-2 py-4 text-center text-muted-foreground">لا توجد سجلات.</td></tr>
                   )}
-                  {report.days.map(d => (
-                    <tr key={d.date} className="border-t">
-                      <td className="px-2 py-2 whitespace-nowrap">{d.date}</td>
-                      <td className="px-2 py-2 whitespace-nowrap">{d.checkIn ? fmtLibyaTime(d.checkIn) : "—"}</td>
-                      <td className="px-2 py-2 whitespace-nowrap">{d.checkOut ? fmtLibyaTime(d.checkOut) : "—"}</td>
-                    </tr>
-                  ))}
+                  {days.map(d => {
+                    const sessions = d.sessions.length === 0 ? [null] : d.sessions;
+                    return sessions.map((s, idx) => (
+                      <tr key={`${d.date}-${idx}`} className="border-t align-top">
+                        {idx === 0 && (
+                          <td className="px-2 py-2 whitespace-nowrap font-medium" rowSpan={sessions.length}>{d.date}</td>
+                        )}
+                        <td className="px-2 py-2 whitespace-nowrap">{s ? `#${idx + 1}` : "—"}</td>
+                        <td className="px-2 py-2 whitespace-nowrap">{s ? fmtLibyaTime(s.checkInAt) : "—"}</td>
+                        <td className="px-2 py-2 whitespace-nowrap">{s?.checkOutAt ? fmtLibyaTime(s.checkOutAt) : "—"}</td>
+                        <td className="px-2 py-2 whitespace-nowrap">{s ? fmtDurationHHMM(s.durationMinutes) : "—"}</td>
+                        {idx === 0 && (
+                          <td className="px-2 py-2 whitespace-nowrap font-medium" rowSpan={sessions.length}>{fmtDurationHHMM(d.totalMinutes)}</td>
+                        )}
+                        {idx === 0 && (
+                          <td className="px-2 py-2 whitespace-nowrap" rowSpan={sessions.length}>
+                            <div className="flex flex-col gap-1">
+                              {d.flags.incomplete && <Badge variant="destructive">غير مكتمل</Badge>}
+                              {d.flags.longDay && <Badge className="bg-amber-500 hover:bg-amber-500">يوم طويل</Badge>}
+                              {d.sessions.some(x => x.status === "auto_closed") && <Badge variant="outline">إغلاق تلقائي</Badge>}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ));
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
-        )}
+          );
+        })()}
       </CardContent>
     </Card>
   );
@@ -977,6 +1313,8 @@ function SiteSettingsTab({ projectId, onUpdated }: { projectId: number; onUpdate
   const [lat, setLat] = useState<string>("");
   const [lng, setLng] = useState<string>("");
   const [radius, setRadius] = useState<string>("200");
+  const [autoCloseHours, setAutoCloseHours] = useState<string>("12");
+  const [longDayHours, setLongDayHours] = useState<string>("10");
   const [saving, setSaving] = useState(false);
   const [locating, setLocating] = useState(false);
 
@@ -985,6 +1323,9 @@ function SiteSettingsTab({ projectId, onUpdated }: { projectId: number; onUpdate
       setLat(project.siteLatitude != null ? String(project.siteLatitude) : "");
       setLng(project.siteLongitude != null ? String(project.siteLongitude) : "");
       setRadius(project.siteRadiusMeters != null ? String(project.siteRadiusMeters) : "200");
+      const proj = project as typeof project & { attendanceAutoCloseHours?: number | null; attendanceLongDayHours?: number | null };
+      setAutoCloseHours(proj.attendanceAutoCloseHours != null ? String(proj.attendanceAutoCloseHours) : "12");
+      setLongDayHours(proj.attendanceLongDayHours != null ? String(proj.attendanceLongDayHours) : "10");
     }
   }, [project]);
 
@@ -1007,9 +1348,19 @@ function SiteSettingsTab({ projectId, onUpdated }: { projectId: number; onUpdate
       const latNum = lat ? parseFloat(lat) : null;
       const lngNum = lng ? parseFloat(lng) : null;
       const rNum = radius ? parseInt(radius, 10) : 200;
+      const acH = autoCloseHours ? parseInt(autoCloseHours, 10) : 12;
+      const ldH = longDayHours ? parseInt(longDayHours, 10) : 10;
       if ((latNum != null && (Number.isNaN(latNum) || latNum < -90 || latNum > 90)) ||
           (lngNum != null && (Number.isNaN(lngNum) || lngNum < -180 || lngNum > 180))) {
         toast({ variant: "destructive", title: "إحداثيات غير صالحة" });
+        return;
+      }
+      if (Number.isNaN(acH) || acH < 1 || acH > 48) {
+        toast({ variant: "destructive", title: "ساعات الإغلاق التلقائي يجب أن تكون بين 1 و 48" });
+        return;
+      }
+      if (Number.isNaN(ldH) || ldH < 1 || ldH > 24) {
+        toast({ variant: "destructive", title: "حد اليوم الطويل يجب أن يكون بين 1 و 24" });
         return;
       }
       const r = await authFetch(`${API_BASE}/projects/${projectId}`, {
@@ -1018,6 +1369,8 @@ function SiteSettingsTab({ projectId, onUpdated }: { projectId: number; onUpdate
           siteLatitude: latNum,
           siteLongitude: lngNum,
           siteRadiusMeters: Number.isNaN(rNum) ? 200 : rNum,
+          attendanceAutoCloseHours: acH,
+          attendanceLongDayHours: ldH,
         }),
       });
       if (!r.ok) {
@@ -1059,6 +1412,25 @@ function SiteSettingsTab({ projectId, onUpdated }: { projectId: number; onUpdate
           <div>
             <Label className="text-xs">نصف القطر (متر)</Label>
             <Input type="number" min={20} max={5000} step={10} value={radius} onChange={e => setRadius(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="border-t pt-4 space-y-2">
+          <h4 className="text-sm font-semibold">إعدادات احتساب الساعات</h4>
+          <p className="text-xs text-muted-foreground">
+            تستخدم هذه القيم لإقفال الجلسات المنسية تلقائياً واحتساب الأيام الطويلة في تقارير الحضور.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">إقفال تلقائي للجلسة بعد (ساعات)</Label>
+              <Input type="number" min={1} max={48} step={1} value={autoCloseHours} onChange={e => setAutoCloseHours(e.target.value)} />
+              <div className="text-[11px] text-muted-foreground mt-1">الافتراضي 12 ساعة. الجلسة المفتوحة لأكثر من هذه المدة تعتبر "إغلاق تلقائي".</div>
+            </div>
+            <div>
+              <Label className="text-xs">حد اليوم الطويل (ساعات)</Label>
+              <Input type="number" min={1} max={24} step={1} value={longDayHours} onChange={e => setLongDayHours(e.target.value)} />
+              <div className="text-[11px] text-muted-foreground mt-1">الافتراضي 10 ساعات. الأيام التي يتجاوز إجماليها هذه المدة تُوسم بـ "يوم طويل".</div>
+            </div>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">

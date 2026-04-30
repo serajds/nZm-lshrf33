@@ -31,6 +31,8 @@ export interface Project {
   siteLongitude?: number | null;
   /** @nullable */
   siteRadiusMeters?: number | null;
+  attendanceAutoCloseHours: number;
+  attendanceLongDayHours: number;
   createdAt: Date;
   updatedAt: Date;
 }
