@@ -1119,6 +1119,8 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
       return;
     }
     const apiBase = API_BASE.replace("/api", "");
+    const safeSummary = report.summary ?? { totalMinutes: 0, workDays: 0, averageDailyMinutes: 0, incompleteDays: 0, longDays: 0 };
+    const safeDays = Array.isArray(report.days) ? report.days : [];
     previewAttendanceReport({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -1130,8 +1132,8 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
       employeePhone: report.employee.phone,
       dateFrom: report.dateFrom ?? from ?? null,
       dateTo: report.dateTo ?? to ?? null,
-      days: report.days,
-      summary: report.summary,
+      days: safeDays,
+      summary: safeSummary,
       autoCloseHours: report.autoCloseHours,
       longDayHours: report.longDayHours,
       companyLogos: companyLogos as AttendanceReportData["companyLogos"],
@@ -1188,7 +1190,10 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
           </div>
         )}
 
-        {report?.employee && (
+        {report?.employee && (() => {
+          const summary = report.summary ?? { totalMinutes: 0, workDays: 0, averageDailyMinutes: 0, incompleteDays: 0, longDays: 0 };
+          const days = Array.isArray(report.days) ? report.days : [];
+          return (
           <div className="space-y-3">
             <div className="text-sm text-muted-foreground">
               <span className="font-medium text-foreground">{report.employee.fullName}</span>
@@ -1197,18 +1202,18 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
 
             {/* Summary block */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-sm">
-              <SummaryCard label="إجمالي الساعات" value={fmtDurationHHMM(report.summary.totalMinutes)} />
-              <SummaryCard label="عدد أيام العمل" value={String(report.summary.workDays)} />
-              <SummaryCard label="متوسط اليوم" value={fmtDurationHHMM(report.summary.averageDailyMinutes)} />
-              <SummaryCard label="أيام غير مكتملة" value={String(report.summary.incompleteDays)} tone={report.summary.incompleteDays > 0 ? "warn" : undefined} />
-              <SummaryCard label="أيام طويلة" value={String(report.summary.longDays)} tone={report.summary.longDays > 0 ? "warn" : undefined} />
+              <SummaryCard label="إجمالي الساعات" value={fmtDurationHHMM(summary.totalMinutes)} />
+              <SummaryCard label="عدد أيام العمل" value={String(summary.workDays)} />
+              <SummaryCard label="متوسط اليوم" value={fmtDurationHHMM(summary.averageDailyMinutes)} />
+              <SummaryCard label="أيام غير مكتملة" value={String(summary.incompleteDays)} tone={summary.incompleteDays > 0 ? "warn" : undefined} />
+              <SummaryCard label="أيام طويلة" value={String(summary.longDays)} tone={summary.longDays > 0 ? "warn" : undefined} />
             </div>
 
             {/* Mobile: card list */}
             <div className="sm:hidden space-y-2">
-              {report.days.length === 0 ? (
+              {days.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">لا توجد سجلات.</p>
-              ) : report.days.map(d => (
+              ) : days.map(d => (
                 <div key={d.date} className="rounded-md border bg-card p-3 text-sm space-y-2">
                   <div className="flex items-center justify-between flex-wrap gap-1">
                     <div className="font-medium">{d.date}</div>
@@ -1260,10 +1265,10 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {report.days.length === 0 && (
+                  {days.length === 0 && (
                     <tr><td colSpan={7} className="px-2 py-4 text-center text-muted-foreground">لا توجد سجلات.</td></tr>
                   )}
-                  {report.days.map(d => {
+                  {days.map(d => {
                     const sessions = d.sessions.length === 0 ? [null] : d.sessions;
                     return sessions.map((s, idx) => (
                       <tr key={`${d.date}-${idx}`} className="border-t align-top">
@@ -1293,7 +1298,8 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
               </table>
             </div>
           </div>
-        )}
+          );
+        })()}
       </CardContent>
     </Card>
   );
