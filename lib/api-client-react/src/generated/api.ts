@@ -29,6 +29,7 @@ import type {
   CreateReportBody,
   CreateUserBody,
   DashboardSummary,
+  DeleteAttendanceRecordBody,
   DeleteBackup200,
   DeviationAnalysis,
   DeviationTimeline,
@@ -64,6 +65,7 @@ import type {
   ProjectSummary,
   Report,
   UpdateActivityBody,
+  UpdateAttendanceRecordBody,
   UpdateMemberGroups200,
   UpdateMemberGroupsBody,
   UpdateProjectBody,
@@ -4323,6 +4325,182 @@ export function useGetMyAttendanceHistory<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Edit an attendance record (admin or PM)
+ */
+export const getUpdateAttendanceRecordUrl = (recordId: number) => {
+  return `/api/attendance/records/${recordId}`;
+};
+
+export const updateAttendanceRecord = async (
+  recordId: number,
+  updateAttendanceRecordBody: UpdateAttendanceRecordBody,
+  options?: RequestInit,
+): Promise<AttendanceRecord> => {
+  return customFetch<AttendanceRecord>(getUpdateAttendanceRecordUrl(recordId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateAttendanceRecordBody),
+  });
+};
+
+export const getUpdateAttendanceRecordMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAttendanceRecord>>,
+    TError,
+    { recordId: number; data: BodyType<UpdateAttendanceRecordBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAttendanceRecord>>,
+  TError,
+  { recordId: number; data: BodyType<UpdateAttendanceRecordBody> },
+  TContext
+> => {
+  const mutationKey = ["updateAttendanceRecord"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAttendanceRecord>>,
+    { recordId: number; data: BodyType<UpdateAttendanceRecordBody> }
+  > = (props) => {
+    const { recordId, data } = props ?? {};
+
+    return updateAttendanceRecord(recordId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAttendanceRecordMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAttendanceRecord>>
+>;
+export type UpdateAttendanceRecordMutationBody =
+  BodyType<UpdateAttendanceRecordBody>;
+export type UpdateAttendanceRecordMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Edit an attendance record (admin or PM)
+ */
+export const useUpdateAttendanceRecord = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAttendanceRecord>>,
+    TError,
+    { recordId: number; data: BodyType<UpdateAttendanceRecordBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAttendanceRecord>>,
+  TError,
+  { recordId: number; data: BodyType<UpdateAttendanceRecordBody> },
+  TContext
+> => {
+  return useMutation(getUpdateAttendanceRecordMutationOptions(options));
+};
+
+/**
+ * @summary Delete an attendance record (admin or PM)
+ */
+export const getDeleteAttendanceRecordUrl = (recordId: number) => {
+  return `/api/attendance/records/${recordId}`;
+};
+
+export const deleteAttendanceRecord = async (
+  recordId: number,
+  deleteAttendanceRecordBody: DeleteAttendanceRecordBody,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteAttendanceRecordUrl(recordId), {
+    ...options,
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(deleteAttendanceRecordBody),
+  });
+};
+
+export const getDeleteAttendanceRecordMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAttendanceRecord>>,
+    TError,
+    { recordId: number; data: BodyType<DeleteAttendanceRecordBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAttendanceRecord>>,
+  TError,
+  { recordId: number; data: BodyType<DeleteAttendanceRecordBody> },
+  TContext
+> => {
+  const mutationKey = ["deleteAttendanceRecord"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAttendanceRecord>>,
+    { recordId: number; data: BodyType<DeleteAttendanceRecordBody> }
+  > = (props) => {
+    const { recordId, data } = props ?? {};
+
+    return deleteAttendanceRecord(recordId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAttendanceRecordMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAttendanceRecord>>
+>;
+export type DeleteAttendanceRecordMutationBody =
+  BodyType<DeleteAttendanceRecordBody>;
+export type DeleteAttendanceRecordMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete an attendance record (admin or PM)
+ */
+export const useDeleteAttendanceRecord = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAttendanceRecord>>,
+    TError,
+    { recordId: number; data: BodyType<DeleteAttendanceRecordBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteAttendanceRecord>>,
+  TError,
+  { recordId: number; data: BodyType<DeleteAttendanceRecordBody> },
+  TContext
+> => {
+  return useMutation(getDeleteAttendanceRecordMutationOptions(options));
+};
 
 /**
  * @summary Check in to a project (site photo + GPS required)

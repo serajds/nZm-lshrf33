@@ -104,6 +104,8 @@ export const ListProjectsResponseItem = zod.object({
   siteLatitude: zod.number().nullish(),
   siteLongitude: zod.number().nullish(),
   siteRadiusMeters: zod.number().nullish(),
+  attendanceAutoCloseHours: zod.number(),
+  attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -153,6 +155,8 @@ export const GetProjectResponse = zod.object({
   siteLatitude: zod.number().nullish(),
   siteLongitude: zod.number().nullish(),
   siteRadiusMeters: zod.number().nullish(),
+  attendanceAutoCloseHours: zod.number(),
+  attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -206,6 +210,8 @@ export const UpdateProjectResponse = zod.object({
   siteLatitude: zod.number().nullish(),
   siteLongitude: zod.number().nullish(),
   siteRadiusMeters: zod.number().nullish(),
+  attendanceAutoCloseHours: zod.number(),
+  attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -941,6 +947,8 @@ export const VerifyOwnerAccessResponse = zod.object({
     siteLatitude: zod.number().nullish(),
     siteLongitude: zod.number().nullish(),
     siteRadiusMeters: zod.number().nullish(),
+    attendanceAutoCloseHours: zod.number(),
+    attendanceLongDayHours: zod.number(),
     createdAt: zod.coerce.date(),
     updatedAt: zod.coerce.date(),
   }),
@@ -1111,6 +1119,8 @@ export const GetDashboardSummaryResponse = zod.object({
       siteLatitude: zod.number().nullish(),
       siteLongitude: zod.number().nullish(),
       siteRadiusMeters: zod.number().nullish(),
+      attendanceAutoCloseHours: zod.number(),
+      attendanceLongDayHours: zod.number(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
     }),
@@ -1412,6 +1422,7 @@ export const GetMyAttendanceStatusResponse = zod.array(
  */
 export const GetMyAttendanceHistoryQueryParams = zod.object({
   limit: zod.coerce.number().nullish(),
+  projectId: zod.coerce.number().nullish(),
 });
 
 export const GetMyAttendanceHistoryResponseItem = zod.object({
@@ -1432,6 +1443,53 @@ export const GetMyAttendanceHistoryResponseItem = zod.object({
 export const GetMyAttendanceHistoryResponse = zod.array(
   GetMyAttendanceHistoryResponseItem,
 );
+
+/**
+ * @summary Edit an attendance record (admin or PM)
+ */
+export const UpdateAttendanceRecordParams = zod.object({
+  recordId: zod.coerce.number(),
+});
+
+export const UpdateAttendanceRecordBody = zod.object({
+  reason: zod.string(),
+  type: zod
+    .union([
+      zod.literal("check_in"),
+      zod.literal("check_out"),
+      zod.literal(null),
+    ])
+    .nullish(),
+  recordedAt: zod.coerce.date().nullish(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateAttendanceRecordResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  userId: zod.number(),
+  type: zod.enum(["check_in", "check_out"]),
+  recordedAt: zod.coerce.date(),
+  latitude: zod.number().nullish(),
+  longitude: zod.number().nullish(),
+  accuracyMeters: zod.number().nullish(),
+  distanceMeters: zod.number().nullish(),
+  outOfRange: zod.boolean(),
+  selfieFilename: zod.string().nullish(),
+  selfieUrl: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Delete an attendance record (admin or PM)
+ */
+export const DeleteAttendanceRecordParams = zod.object({
+  recordId: zod.coerce.number(),
+});
+
+export const DeleteAttendanceRecordBody = zod.object({
+  reason: zod.string(),
+});
 
 /**
  * @summary Check in to a project (site photo + GPS required)
@@ -1519,6 +1577,9 @@ export const ListAttendanceRecordsResponseItem = zod.object({
   outOfRange: zod.boolean(),
   selfieUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
+  editedAt: zod.coerce.date().nullish(),
+  editedByUserId: zod.number().nullish(),
+  editReason: zod.string().nullish(),
 });
 export const ListAttendanceRecordsResponse = zod.array(
   ListAttendanceRecordsResponseItem,
@@ -1541,6 +1602,8 @@ export const GetEmployeeAttendanceReportResponse = zod.object({
   project: zod.object({
     id: zod.number(),
     name: zod.string(),
+    attendanceAutoCloseHours: zod.number().optional(),
+    attendanceLongDayHours: zod.number().optional(),
   }),
   employee: zod.object({
     id: zod.number(),
@@ -1550,11 +1613,33 @@ export const GetEmployeeAttendanceReportResponse = zod.object({
   }),
   dateFrom: zod.coerce.date().nullish(),
   dateTo: zod.coerce.date().nullish(),
+  autoCloseHours: zod.number(),
+  longDayHours: zod.number(),
   days: zod.array(
     zod.object({
       date: zod.coerce.date(),
-      checkIn: zod.coerce.date().nullish(),
-      checkOut: zod.coerce.date().nullish(),
+      sessions: zod.array(
+        zod.object({
+          checkInRecordId: zod.number(),
+          checkOutRecordId: zod.number().nullish(),
+          checkInAt: zod.coerce.date(),
+          checkOutAt: zod.coerce.date().nullish(),
+          durationMinutes: zod.number().nullish(),
+          status: zod.enum(["closed", "open", "auto_closed"]),
+        }),
+      ),
+      totalMinutes: zod.number(),
+      flags: zod.object({
+        incomplete: zod.boolean(),
+        longDay: zod.boolean(),
+      }),
     }),
   ),
+  summary: zod.object({
+    totalMinutes: zod.number(),
+    workDays: zod.number(),
+    averageDailyMinutes: zod.number(),
+    incompleteDays: zod.number(),
+    longDays: zod.number(),
+  }),
 });

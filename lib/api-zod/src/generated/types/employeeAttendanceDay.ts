@@ -5,11 +5,12 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { AttendanceReportSession } from "./attendanceReportSession";
+import type { EmployeeAttendanceDayFlags } from "./employeeAttendanceDayFlags";
 
 export interface EmployeeAttendanceDay {
   date: Date;
-  /** @nullable */
-  checkIn?: Date | null;
-  /** @nullable */
-  checkOut?: Date | null;
+  sessions: AttendanceReportSession[];
+  totalMinutes: number;
+  flags: EmployeeAttendanceDayFlags;
 }

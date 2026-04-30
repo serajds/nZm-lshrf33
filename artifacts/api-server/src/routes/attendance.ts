@@ -5,6 +5,7 @@ import { eq, and, desc, gte, lte, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireProjectAccess } from "../middlewares/auth";
 import { haversineDistanceMeters } from "../lib/geo";
 import { logAudit } from "../lib/audit";
+import { pairAttendanceSessions, type AttendanceSession } from "../lib/attendance-sessions";
 import { uploadToCloud, streamFromCloud } from "../lib/fileStorage";
 import { verifyToken } from "../lib/auth";
 import multer from "multer";
@@ -143,24 +144,34 @@ router.get("/attendance/my-status", requireAuth, async (req, res): Promise<void>
   const projectIds = await getProjectIdsForUser(userId, role);
   if (projectIds.length === 0) { res.json([]); return; }
 
-  // Latest record per project for this user
+  // All records for this user across their projects, oldest first so the
+  // session pairing logic can scan in chronological order.
   const records = await db.select()
     .from(attendanceRecordsTable)
     .where(and(
       eq(attendanceRecordsTable.userId, userId),
       inArray(attendanceRecordsTable.projectId, projectIds),
     ))
-    .orderBy(desc(attendanceRecordsTable.recordedAt));
-
-  const latestPerProject = new Map<number, typeof records[number]>();
-  for (const r of records) {
-    if (!latestPerProject.has(r.projectId)) latestPerProject.set(r.projectId, r);
-  }
+    .orderBy(attendanceRecordsTable.recordedAt);
 
   const projects = await db.select().from(projectsTable).where(inArray(projectsTable.id, projectIds));
 
-  const out = projects.map(p => {
-    const last = latestPerProject.get(p.id) || null;
+  // Bucket records by project, then run session pairing per project so a
+  // forgotten old check-in (older than the project's auto-close window) is
+  // treated as auto-closed and does NOT keep the user blocked from a fresh
+  // check-in.
+  const recordsByProject = new Map<number, typeof records>();
+  for (const r of records) {
+    const arr = recordsByProject.get(r.projectId) ?? [];
+    arr.push(r);
+    recordsByProject.set(r.projectId, arr);
+  }
+
+  const out = projects.map((p) => {
+    const projRecords = recordsByProject.get(p.id) ?? [];
+    const sessions = pairAttendanceSessions(projRecords, p.attendanceAutoCloseHours ?? 12);
+    const openSession = sessions.find((s) => s.status === "open") ?? null;
+    const last = projRecords.length > 0 ? projRecords[projRecords.length - 1] : null;
     return {
       projectId: p.id,
       projectName: p.name,
@@ -168,7 +179,11 @@ router.get("/attendance/my-status", requireAuth, async (req, res): Promise<void>
       siteLatitude: p.siteLatitude,
       siteLongitude: p.siteLongitude,
       siteRadiusMeters: p.siteRadiusMeters,
-      currentlyCheckedIn: last?.type === "check_in",
+      // "Currently checked in" = there is a still-open session per the
+      // session model, NOT just "the latest record happened to be a check_in".
+      // This ensures a forgotten 3-day-old check-in (auto-closed) does not
+      // keep the user stuck on the disabled state.
+      currentlyCheckedIn: openSession !== null,
       lastRecord: last,
     };
   });
@@ -185,6 +200,12 @@ router.get("/attendance/my-history", requireAuth, async (req, res): Promise<void
   }
   const userId = req.user!.userId;
   const limit = Math.min(parseInt(String(req.query.limit ?? "100"), 10) || 100, 500);
+  const projectIdQ = req.query.projectId !== undefined ? parseInt(String(req.query.projectId), 10) : NaN;
+
+  const conds = [eq(attendanceRecordsTable.userId, userId)];
+  if (!Number.isNaN(projectIdQ)) {
+    conds.push(eq(attendanceRecordsTable.projectId, projectIdQ));
+  }
 
   const records = await db.select({
     id: attendanceRecordsTable.id,
@@ -203,7 +224,7 @@ router.get("/attendance/my-history", requireAuth, async (req, res): Promise<void
   })
     .from(attendanceRecordsTable)
     .leftJoin(projectsTable, eq(attendanceRecordsTable.projectId, projectsTable.id))
-    .where(eq(attendanceRecordsTable.userId, userId))
+    .where(and(...conds))
     .orderBy(desc(attendanceRecordsTable.recordedAt))
     .limit(limit);
 
@@ -264,24 +285,10 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
     return;
   }
 
-  // Last record check (server-side state validation)
-  const [last] = await db.select()
-    .from(attendanceRecordsTable)
-    .where(and(
-      eq(attendanceRecordsTable.userId, userId),
-      eq(attendanceRecordsTable.projectId, projectId),
-    ))
-    .orderBy(desc(attendanceRecordsTable.recordedAt))
-    .limit(1);
-
-  if (type === "check_in" && last?.type === "check_in") {
+  // Validate coordinate ranges. Common bug: swapped lat/lng or "0,0" sentinel values.
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     fs.unlink(req.file.path, () => {});
-    res.status(409).json({ error: "أنت مسجل حضور بالفعل في هذا المشروع. سجّل انصراف أولاً." });
-    return;
-  }
-  if (type === "check_out" && last?.type !== "check_in") {
-    fs.unlink(req.file.path, () => {});
-    res.status(409).json({ error: "لا يمكن تسجيل انصراف بدون حضور سابق." });
+    res.status(400).json({ error: "إحداثيات الموقع غير صالحة" });
     return;
   }
 
@@ -289,6 +296,36 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
   if (!project) {
     fs.unlink(req.file.path, () => {});
     res.status(404).json({ error: "المشروع غير موجود" });
+    return;
+  }
+
+  // Server-side state validation using session pairing logic, so we don't
+  // get permanently stuck because of a forgotten check_out from days ago.
+  const autoCloseHours = project.attendanceAutoCloseHours ?? 12;
+  const recentRecords = await db.select({
+    id: attendanceRecordsTable.id,
+    type: attendanceRecordsTable.type,
+    recordedAt: attendanceRecordsTable.recordedAt,
+  })
+    .from(attendanceRecordsTable)
+    .where(and(
+      eq(attendanceRecordsTable.userId, userId),
+      eq(attendanceRecordsTable.projectId, projectId),
+    ))
+    .orderBy(attendanceRecordsTable.recordedAt);
+
+  const sessions = pairAttendanceSessions(recentRecords, autoCloseHours);
+  const lastSession = sessions[sessions.length - 1] ?? null;
+  const hasOpenSession = lastSession?.status === "open";
+
+  if (type === "check_in" && hasOpenSession) {
+    fs.unlink(req.file.path, () => {});
+    res.status(409).json({ error: "أنت مسجل حضور بالفعل في هذا المشروع. سجّل انصراف أولاً." });
+    return;
+  }
+  if (type === "check_out" && !hasOpenSession) {
+    fs.unlink(req.file.path, () => {});
+    res.status(409).json({ error: "لا يمكن تسجيل انصراف بدون حضور سابق." });
     return;
   }
 
@@ -385,56 +422,90 @@ router.get(
       return;
     }
 
-    // Manager view: latest record per user for this project; keep ones whose latest = check_in
-    type ActiveRow = {
-      id: number;
-      user_id: number;
-      recorded_at: Date;
-      latitude: number;
-      longitude: number;
-      accuracy_meters: number | null;
-      distance_meters: number | null;
-      out_of_range: boolean;
-      selfie_url: string | null;
-      notes: string | null;
-      full_name: string;
+    // Determine the active window by the project's auto-close hours.
+    const [project] = await db.select({
+      attendanceAutoCloseHours: projectsTable.attendanceAutoCloseHours,
+    }).from(projectsTable).where(eq(projectsTable.id, projectId));
+    const autoCloseHours = project?.attendanceAutoCloseHours ?? 12;
+
+    // Pull all records within the auto-close window (with margin), then pair
+    // them per-user using session logic so we never report a user as "active"
+    // when their session is past auto-close.
+    const sinceMs = Date.now() - autoCloseHours * 60 * 60 * 1000 * 2;
+    const since = new Date(sinceMs);
+
+    const records = await db.select({
+      id: attendanceRecordsTable.id,
+      userId: attendanceRecordsTable.userId,
+      type: attendanceRecordsTable.type,
+      recordedAt: attendanceRecordsTable.recordedAt,
+      latitude: attendanceRecordsTable.latitude,
+      longitude: attendanceRecordsTable.longitude,
+      accuracyMeters: attendanceRecordsTable.accuracyMeters,
+      distanceMeters: attendanceRecordsTable.distanceMeters,
+      outOfRange: attendanceRecordsTable.outOfRange,
+      selfieUrl: attendanceRecordsTable.selfieUrl,
+      notes: attendanceRecordsTable.notes,
+      fullName: usersTable.fullName,
+      phone: usersTable.phone,
+      userRole: usersTable.role,
+    })
+      .from(attendanceRecordsTable)
+      .innerJoin(usersTable, eq(attendanceRecordsTable.userId, usersTable.id))
+      .where(and(
+        eq(attendanceRecordsTable.projectId, projectId),
+        gte(attendanceRecordsTable.recordedAt, since),
+      ))
+      .orderBy(attendanceRecordsTable.recordedAt);
+
+    type Row = typeof records[number];
+    const byUser = new Map<number, Row[]>();
+    for (const r of records) {
+      const list = byUser.get(r.userId) ?? [];
+      list.push(r);
+      byUser.set(r.userId, list);
+    }
+
+    const members: Array<{
+      recordId: number;
+      userId: number;
+      fullName: string;
       phone: string | null;
-      user_role: string;
-    };
-    const rows = await db.execute(sql<ActiveRow>`
-      SELECT
-        ar.id, ar.user_id, ar.recorded_at, ar.latitude, ar.longitude,
-        ar.accuracy_meters, ar.distance_meters, ar.out_of_range, ar.selfie_url, ar.notes,
-        u.full_name, u.phone, u.role AS user_role
-      FROM (
-        SELECT DISTINCT ON (user_id)
-          id, user_id, recorded_at, latitude, longitude, accuracy_meters,
-          distance_meters, out_of_range, selfie_url, notes, type
-        FROM attendance_records
-        WHERE project_id = ${projectId}
-        ORDER BY user_id, recorded_at DESC
-      ) ar
-      JOIN users u ON u.id = ar.user_id
-      WHERE ar.type = 'check_in'
-      ORDER BY ar.recorded_at DESC
-    `);
+      userRole: string;
+      checkedInAt: Date;
+      latitude: number | null;
+      longitude: number | null;
+      accuracyMeters: number | null;
+      distanceMeters: number | null;
+      outOfRange: boolean;
+      selfieUrl: string | null;
+      notes: string | null;
+    }> = [];
 
-    const members = (rows.rows as ActiveRow[]).map((r) => ({
-      recordId: r.id,
-      userId: r.user_id,
-      fullName: r.full_name,
-      phone: r.phone,
-      userRole: r.user_role,
-      checkedInAt: r.recorded_at,
-      latitude: r.latitude,
-      longitude: r.longitude,
-      accuracyMeters: r.accuracy_meters,
-      distanceMeters: r.distance_meters,
-      outOfRange: r.out_of_range,
-      selfieUrl: r.selfie_url,
-      notes: r.notes,
-    }));
+    for (const [, userRecords] of byUser) {
+      const userSessions = pairAttendanceSessions(userRecords, autoCloseHours);
+      const last = userSessions[userSessions.length - 1];
+      if (!last || last.status !== "open") continue;
+      const ci = userRecords.find((r) => r.id === last.checkInRecord.id);
+      if (!ci) continue;
+      members.push({
+        recordId: ci.id,
+        userId: ci.userId,
+        fullName: ci.fullName,
+        phone: ci.phone,
+        userRole: ci.userRole,
+        checkedInAt: ci.recordedAt,
+        latitude: ci.latitude,
+        longitude: ci.longitude,
+        accuracyMeters: ci.accuracyMeters,
+        distanceMeters: ci.distanceMeters,
+        outOfRange: ci.outOfRange,
+        selfieUrl: ci.selfieUrl,
+        notes: ci.notes,
+      });
+    }
 
+    members.sort((a, b) => b.checkedInAt.getTime() - a.checkedInAt.getTime());
     res.json({ activeCount: members.length, members });
   },
 );
@@ -478,6 +549,9 @@ router.get(
       outOfRange: attendanceRecordsTable.outOfRange,
       selfieUrl: attendanceRecordsTable.selfieUrl,
       notes: attendanceRecordsTable.notes,
+      editedAt: attendanceRecordsTable.editedAt,
+      editedByUserId: attendanceRecordsTable.editedByUserId,
+      editReason: attendanceRecordsTable.editReason,
     })
       .from(attendanceRecordsTable)
       .innerJoin(usersTable, eq(attendanceRecordsTable.userId, usersTable.id))
@@ -522,48 +596,341 @@ router.get(
     if (dateFrom) conditions.push(gte(attendanceRecordsTable.recordedAt, libyaDayStartUtc(dateFrom)));
     if (dateTo) conditions.push(lte(attendanceRecordsTable.recordedAt, libyaDayEndUtc(dateTo)));
 
-    const records = await db.select()
+    const records = await db.select({
+      id: attendanceRecordsTable.id,
+      type: attendanceRecordsTable.type,
+      recordedAt: attendanceRecordsTable.recordedAt,
+      outOfRange: attendanceRecordsTable.outOfRange,
+      editedAt: attendanceRecordsTable.editedAt,
+      editReason: attendanceRecordsTable.editReason,
+    })
       .from(attendanceRecordsTable)
       .where(and(...conditions))
       .orderBy(attendanceRecordsTable.recordedAt);
-
-    // Group by Libya local date (GMT+2)
-    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit" });
-    const byDay = new Map<string, { checkIn: Date | null; checkOut: Date | null }>();
-
-    for (const r of records) {
-      const day = fmt.format(new Date(r.recordedAt));
-      let entry = byDay.get(day);
-      if (!entry) { entry = { checkIn: null, checkOut: null }; byDay.set(day, entry); }
-      if (r.type === "check_in" && !entry.checkIn) entry.checkIn = new Date(r.recordedAt);
-      if (r.type === "check_out") entry.checkOut = new Date(r.recordedAt);
-    }
-
-    const days = Array.from(byDay.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, v]) => ({
-        date,
-        checkIn: v.checkIn ? v.checkIn.toISOString() : null,
-        checkOut: v.checkOut ? v.checkOut.toISOString() : null,
-      }));
 
     const [employee] = await db.select({ id: usersTable.id, fullName: usersTable.fullName, phone: usersTable.phone, role: usersTable.role })
       .from(usersTable)
       .where(eq(usersTable.id, targetUserId));
 
-    const [project] = await db.select({ id: projectsTable.id, name: projectsTable.name })
+    const [project] = await db.select({
+      id: projectsTable.id,
+      name: projectsTable.name,
+      attendanceAutoCloseHours: projectsTable.attendanceAutoCloseHours,
+      attendanceLongDayHours: projectsTable.attendanceLongDayHours,
+    })
       .from(projectsTable)
       .where(eq(projectsTable.id, projectId));
+
+    const autoCloseHours = project?.attendanceAutoCloseHours ?? 12;
+    const longDayHours = project?.attendanceLongDayHours ?? 10;
+
+    const sessions = pairAttendanceSessions(records, autoCloseHours);
+
+    // Group sessions by the Libya-local date of their check-in. Night-shift
+    // sessions that cross midnight are counted entirely on their start date.
+    const fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Tripoli",
+      year: "numeric", month: "2-digit", day: "2-digit",
+    });
+
+    type ReportSession = {
+      checkInRecordId: number;
+      checkOutRecordId: number | null;
+      checkInAt: string;
+      checkOutAt: string | null;
+      durationMinutes: number | null;
+      status: AttendanceSession["status"];
+    };
+    type DayBucket = {
+      date: string;
+      sessions: ReportSession[];
+      totalMinutes: number;
+      flags: { incomplete: boolean; longDay: boolean };
+    };
+
+    const byDay = new Map<string, DayBucket>();
+    for (const s of sessions) {
+      const day = fmt.format(s.startAt);
+      let bucket = byDay.get(day);
+      if (!bucket) {
+        bucket = { date: day, sessions: [], totalMinutes: 0, flags: { incomplete: false, longDay: false } };
+        byDay.set(day, bucket);
+      }
+      const session: ReportSession = {
+        checkInRecordId: s.checkInRecord.id,
+        checkOutRecordId: s.checkOutRecord ? s.checkOutRecord.id : null,
+        checkInAt: s.startAt.toISOString(),
+        checkOutAt: s.endAt ? s.endAt.toISOString() : null,
+        durationMinutes: s.durationMinutes,
+        status: s.status,
+      };
+      bucket.sessions.push(session);
+      if (s.durationMinutes != null) bucket.totalMinutes += s.durationMinutes;
+      if (s.status === "auto_closed" || s.status === "open") bucket.flags.incomplete = true;
+    }
+
+    const longDayMinutes = longDayHours * 60;
+    for (const bucket of byDay.values()) {
+      if (bucket.totalMinutes > longDayMinutes) bucket.flags.longDay = true;
+    }
+
+    const days: DayBucket[] = Array.from(byDay.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+    let totalMinutes = 0;
+    let workDays = 0;
+    let incompleteDays = 0;
+    let longDays = 0;
+    for (const d of days) {
+      totalMinutes += d.totalMinutes;
+      if (d.totalMinutes > 0) workDays += 1;
+      if (d.flags.incomplete) incompleteDays += 1;
+      if (d.flags.longDay) longDays += 1;
+    }
+    const summary = {
+      totalMinutes,
+      workDays,
+      averageDailyMinutes: workDays > 0 ? Math.round(totalMinutes / workDays) : 0,
+      incompleteDays,
+      longDays,
+    };
 
     res.json({
       project,
       employee,
       dateFrom,
       dateTo,
+      autoCloseHours,
+      longDayHours,
       days,
+      summary,
     });
   },
 );
+
+// Manager edit / delete of an individual record.
+async function loadRecordWithProject(recordId: number) {
+  const [row] = await db.select({
+    id: attendanceRecordsTable.id,
+    projectId: attendanceRecordsTable.projectId,
+    userId: attendanceRecordsTable.userId,
+    type: attendanceRecordsTable.type,
+    recordedAt: attendanceRecordsTable.recordedAt,
+    selfieFilename: attendanceRecordsTable.selfieFilename,
+    notes: attendanceRecordsTable.notes,
+    projectName: projectsTable.name,
+  })
+    .from(attendanceRecordsTable)
+    .innerJoin(projectsTable, eq(attendanceRecordsTable.projectId, projectsTable.id))
+    .where(eq(attendanceRecordsTable.id, recordId));
+  return row || null;
+}
+
+// Validates that a proposed/projected sequence of attendance records is still
+// reconcilable under the session model. The session-pairing logic auto-closes
+// stale open check-ins, so two consecutive `check_in` records ARE legitimate
+// (the earlier one is treated as auto_closed). The only truly impossible
+// timeline is one that contains a `check_out` without any preceding
+// `check_in` to pair against (i.e. a leading or orphan check_out at the very
+// start of the user's history).
+//
+// Returns true if the sequence is invalid.
+function isInvalidSequence(records: Array<{ type: "check_in" | "check_out" }>) {
+  let seenCheckIn = false;
+  for (const r of records) {
+    if (r.type === "check_in") {
+      seenCheckIn = true;
+    } else if (!seenCheckIn) {
+      // A check_out before any check_in has ever occurred — impossible.
+      return true;
+    }
+  }
+  return false;
+}
+
+async function ensureManagerCanEdit(req: Request, res: Response, projectId: number): Promise<boolean> {
+  if (req.user?.role === "admin") return true;
+  if (req.user?.role !== "project_manager") {
+    res.status(403).json({ error: "غير مصرح بهذه العملية" });
+    return false;
+  }
+  const [member] = await db.select({ role: projectMembersTable.role })
+    .from(projectMembersTable)
+    .where(and(
+      eq(projectMembersTable.projectId, projectId),
+      eq(projectMembersTable.userId, req.user!.userId),
+    ));
+  if (member?.role !== "project_manager") {
+    res.status(403).json({ error: "غير مصرح بهذه العملية" });
+    return false;
+  }
+  return true;
+}
+
+router.patch("/attendance/records/:recordId", requireAuth, async (req, res): Promise<void> => {
+  const recordId = parseInt(Array.isArray(req.params.recordId) ? req.params.recordId[0] : req.params.recordId, 10);
+  if (Number.isNaN(recordId)) { res.status(400).json({ error: "معرّف السجل غير صالح" }); return; }
+
+  const existing = await loadRecordWithProject(recordId);
+  if (!existing) { res.status(404).json({ error: "السجل غير موجود" }); return; }
+  if (!(await ensureManagerCanEdit(req, res, existing.projectId))) return;
+
+  const body = req.body ?? {};
+  const reason = (body.reason ? String(body.reason) : "").trim();
+  if (!reason) { res.status(400).json({ error: "سبب التعديل مطلوب" }); return; }
+
+  const updates: Record<string, unknown> = {};
+  let newRecordedAt: Date | undefined;
+  if (body.recordedAt !== undefined) {
+    const dt = new Date(String(body.recordedAt));
+    if (Number.isNaN(dt.getTime())) { res.status(400).json({ error: "وقت غير صالح" }); return; }
+    newRecordedAt = dt;
+    updates.recordedAt = dt;
+  }
+  let newType: "check_in" | "check_out" | undefined;
+  if (body.type !== undefined) {
+    if (body.type !== "check_in" && body.type !== "check_out") {
+      res.status(400).json({ error: "نوع غير صالح" }); return;
+    }
+    newType = body.type;
+    updates.type = body.type;
+  }
+  if (body.notes !== undefined) {
+    const t = String(body.notes).trim();
+    updates.notes = t.length === 0 ? null : t;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "لا توجد تغييرات" });
+    return;
+  }
+
+  // Capture old values *before* mutating, so the audit trail records the full
+  // before/after diff (per task requirement to log old vs new values).
+  const oldValues: Record<string, unknown> = {};
+  const newValues: Record<string, unknown> = {};
+  if (newType !== undefined && newType !== existing.type) {
+    oldValues.type = existing.type;
+    newValues.type = newType;
+  }
+  if (newRecordedAt !== undefined && newRecordedAt.getTime() !== new Date(existing.recordedAt).getTime()) {
+    oldValues.recordedAt = existing.recordedAt;
+    newValues.recordedAt = newRecordedAt;
+  }
+  if ("notes" in updates && updates.notes !== existing.notes) {
+    oldValues.notes = existing.notes;
+    newValues.notes = updates.notes;
+  }
+
+  // Re-validate: the resulting timeline must still produce valid sessions
+  // (no two consecutive check_ins, no check_out before any check_in, etc).
+  // We re-run the pairing logic with the proposed change applied.
+  const allRecords = await db.select({
+    id: attendanceRecordsTable.id,
+    type: attendanceRecordsTable.type,
+    recordedAt: attendanceRecordsTable.recordedAt,
+  })
+    .from(attendanceRecordsTable)
+    .where(and(
+      eq(attendanceRecordsTable.userId, existing.userId),
+      eq(attendanceRecordsTable.projectId, existing.projectId),
+    ))
+    .orderBy(attendanceRecordsTable.recordedAt);
+
+  const projected = allRecords
+    .map((r) => r.id === recordId
+      ? { id: r.id, type: newType ?? r.type, recordedAt: newRecordedAt ?? r.recordedAt }
+      : r,
+    )
+    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
+
+  if (isInvalidSequence(projected)) {
+    res.status(409).json({ error: "التعديل سيُنتج تسلسل حضور/انصراف غير صالح" });
+    return;
+  }
+
+  updates.editedAt = new Date();
+  updates.editedByUserId = req.user!.userId;
+  updates.editReason = reason;
+
+  const [updated] = await db.update(attendanceRecordsTable)
+    .set(updates)
+    .where(eq(attendanceRecordsTable.id, recordId))
+    .returning();
+
+  logAudit({
+    userId: req.user!.userId,
+    userName: req.user?.phone,
+    action: "update",
+    entityType: "attendance",
+    entityId: recordId,
+    entityName: existing.type === "check_in" ? "حضور" : "انصراف",
+    projectId: existing.projectId,
+    projectName: existing.projectName,
+    details: { old: oldValues, new: newValues, reason },
+  });
+
+  res.json(updated);
+});
+
+router.delete("/attendance/records/:recordId", requireAuth, async (req, res): Promise<void> => {
+  const recordId = parseInt(Array.isArray(req.params.recordId) ? req.params.recordId[0] : req.params.recordId, 10);
+  if (Number.isNaN(recordId)) { res.status(400).json({ error: "معرّف السجل غير صالح" }); return; }
+
+  const existing = await loadRecordWithProject(recordId);
+  if (!existing) { res.status(404).json({ error: "السجل غير موجود" }); return; }
+  if (!(await ensureManagerCanEdit(req, res, existing.projectId))) return;
+
+  const reason = (req.body && req.body.reason ? String(req.body.reason) : "").trim()
+    || (typeof req.query.reason === "string" ? req.query.reason.trim() : "");
+  if (!reason) { res.status(400).json({ error: "سبب الحذف مطلوب" }); return; }
+
+  // Re-validate: removing this record must not produce an invalid timeline
+  // (e.g. deleting a check_in that has a matching check_out would leave an
+  // orphan check_out, breaking the sequence).
+  const allRecords = await db.select({
+    id: attendanceRecordsTable.id,
+    type: attendanceRecordsTable.type,
+    recordedAt: attendanceRecordsTable.recordedAt,
+  })
+    .from(attendanceRecordsTable)
+    .where(and(
+      eq(attendanceRecordsTable.userId, existing.userId),
+      eq(attendanceRecordsTable.projectId, existing.projectId),
+    ))
+    .orderBy(attendanceRecordsTable.recordedAt);
+
+  const projected = allRecords
+    .filter((r) => r.id !== recordId)
+    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
+
+  if (isInvalidSequence(projected)) {
+    res.status(409).json({ error: "الحذف سيُنتج تسلسل حضور/انصراف غير صالح" });
+    return;
+  }
+
+  await db.delete(attendanceRecordsTable).where(eq(attendanceRecordsTable.id, recordId));
+
+  // Best-effort cleanup of selfie file (cloud copy is not removed; orphan files
+  // are tolerated and can be cleaned by a separate maintenance task).
+  if (existing.selfieFilename) {
+    const localPath = path.join(uploadsDir, existing.selfieFilename);
+    fs.unlink(localPath, () => {});
+  }
+
+  logAudit({
+    userId: req.user!.userId,
+    userName: req.user?.phone,
+    action: "delete",
+    entityType: "attendance",
+    entityId: recordId,
+    entityName: existing.type === "check_in" ? "حضور" : "انصراف",
+    projectId: existing.projectId,
+    projectName: existing.projectName,
+    details: { reason, type: existing.type, recordedAt: existing.recordedAt },
+  });
+
+  res.status(204).end();
+});
 
 // Authenticated photo delivery with project-level ACL.
 // Accepts auth via Authorization: Bearer header OR ?token= query (so <img> can render).

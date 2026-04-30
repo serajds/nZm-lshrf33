@@ -779,10 +779,30 @@ export function previewExecutiveSummary(data: ExecutiveSummaryData): void {
 
 /* ────────────────── Attendance employee report ────────────────── */
 
+export type AttendanceSessionStatus = "closed" | "open" | "auto_closed";
+
+export interface AttendanceReportSession {
+  checkInRecordId: number;
+  checkOutRecordId: number | null;
+  checkInAt: string;
+  checkOutAt: string | null;
+  durationMinutes: number | null;
+  status: AttendanceSessionStatus;
+}
+
 export interface AttendanceReportDay {
   date: string;
-  checkIn: string | null;
-  checkOut: string | null;
+  sessions: AttendanceReportSession[];
+  totalMinutes: number;
+  flags: { incomplete: boolean; longDay: boolean };
+}
+
+export interface AttendanceReportSummary {
+  totalMinutes: number;
+  workDays: number;
+  averageDailyMinutes: number;
+  incompleteDays: number;
+  longDays: number;
 }
 
 export interface AttendanceReportData {
@@ -797,6 +817,9 @@ export interface AttendanceReportData {
   dateFrom?: string | null;
   dateTo?: string | null;
   days: AttendanceReportDay[];
+  summary: AttendanceReportSummary;
+  autoCloseHours: number;
+  longDayHours: number;
   companyLogos?: {
     owner?: CompanyLogo;
     contractor?: CompanyLogo;
@@ -825,39 +848,28 @@ function fmtLibyaTimeForReport(iso: string | null): string {
   }).format(d);
 }
 
-function diffMinutes(checkIn: string | null, checkOut: string | null): number | null {
-  if (!checkIn || !checkOut) return null;
-  const a = new Date(checkIn).getTime();
-  const b = new Date(checkOut).getTime();
-  if (!isFinite(a) || !isFinite(b) || b <= a) return null;
-  return Math.round((b - a) / 60000);
+function fmtDurationHHMM(mins: number | null | undefined): string {
+  if (mins == null || !isFinite(mins)) return "—";
+  const m = Math.max(0, Math.round(mins));
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
-function fmtDuration(mins: number | null): string {
-  if (mins == null) return "—";
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h === 0) return `${m} د`;
-  if (m === 0) return `${h} س`;
-  return `${h} س ${m} د`;
-}
-
-function fmtDurationHTML(mins: number | null): string {
-  if (mins == null) return "—";
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h === 0) return `${m} <span class="stat-unit">د</span>`;
-  if (m === 0) return `${h} <span class="stat-unit">س</span>`;
-  return `${h} <span class="stat-unit">س</span> ${m} <span class="stat-unit">د</span>`;
+function fmtDurationHTML(mins: number | null | undefined): string {
+  if (mins == null || !isFinite(mins)) return "—";
+  return `${fmtDurationHHMM(mins)} <span class="stat-unit">س:د</span>`;
 }
 
 function buildAttendanceReportHTML(data: AttendanceReportData): string {
   const roleLbl = data.employeeRole ? (ATTENDANCE_ROLE_LABEL[data.employeeRole] ?? data.employeeRole) : "";
 
-  const totalMins = data.days.reduce((s, d) => s + (diffMinutes(d.checkIn, d.checkOut) ?? 0), 0);
-  const presentDays = data.days.filter(d => d.checkIn).length;
-  const completeDays = data.days.filter(d => d.checkIn && d.checkOut).length;
-  const incompleteDays = data.days.filter(d => d.checkIn && !d.checkOut).length;
+  const summary = data.summary;
+  const totalMins = summary.totalMinutes;
+  const workDays = summary.workDays;
+  const incompleteDays = summary.incompleteDays;
+  const longDays = summary.longDays;
+  const avgMins = summary.averageDailyMinutes;
 
   const metaRows = [
     data.ownerEntity ? ["جهة المالك", data.ownerEntity] : null,
@@ -883,16 +895,31 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
   })();
 
   const rowsHTML = data.days.length === 0
-    ? `<tr><td class="td tc" colspan="4" style="color:#94a3b8;padding:24px 10px">لا توجد سجلات لهذه الفترة.</td></tr>`
-    : data.days.map((d, i) => {
-        const mins = diffMinutes(d.checkIn, d.checkOut);
-        const incomplete = d.checkIn && !d.checkOut;
-        return `<tr style="background:${i % 2 === 0 ? "#fff" : "#f8fafc"}">
-          <td class="td tc" style="font-weight:600">${esc(fmtDate(d.date))}</td>
-          <td class="td tc">${esc(fmtLibyaTimeForReport(d.checkIn))}</td>
-          <td class="td tc">${esc(fmtLibyaTimeForReport(d.checkOut))}</td>
-          <td class="td tc" style="font-weight:600;color:${incomplete ? "#dc2626" : "#1e293b"}">${incomplete ? "بدون انصراف" : esc(fmtDuration(mins))}</td>
-        </tr>`;
+    ? `<tr><td class="td tc" colspan="7" style="color:#94a3b8;padding:24px 10px">لا توجد سجلات لهذه الفترة.</td></tr>`
+    : data.days.flatMap((d, di) => {
+        const bg = di % 2 === 0 ? "#fff" : "#f8fafc";
+        const sessions = d.sessions.length === 0 ? [null] : d.sessions;
+        const flagsHTML = `
+          ${d.flags.incomplete ? `<span class="badge badge-red">غير مكتمل</span>` : ""}
+          ${d.flags.longDay ? `<span class="badge badge-amber">يوم طويل</span>` : ""}
+          ${d.sessions.some(s => s?.status === "auto_closed") ? `<span class="badge badge-slate">إغلاق تلقائي</span>` : ""}
+        `.trim();
+        return sessions.map((s, idx) => {
+          const isFirst = idx === 0;
+          const rowSpan = sessions.length;
+          let statusBadge = "";
+          if (s?.status === "auto_closed") statusBadge = `<span class="badge badge-amber">إغلاق تلقائي</span>`;
+          else if (s?.status === "open") statusBadge = `<span class="badge badge-red">مفتوحة</span>`;
+          return `<tr style="background:${bg}">
+            ${isFirst ? `<td class="td tc" rowspan="${rowSpan}" style="font-weight:700;vertical-align:middle">${esc(fmtDate(d.date))}</td>` : ""}
+            <td class="td tc">${s ? `#${idx + 1}` : "—"}</td>
+            <td class="td tc">${esc(fmtLibyaTimeForReport(s?.checkInAt ?? null))}</td>
+            <td class="td tc">${esc(fmtLibyaTimeForReport(s?.checkOutAt ?? null))} ${statusBadge}</td>
+            <td class="td tc">${s ? esc(fmtDurationHHMM(s.durationMinutes)) : "—"}</td>
+            ${isFirst ? `<td class="td tc" rowspan="${rowSpan}" style="font-weight:700;vertical-align:middle">${esc(fmtDurationHHMM(d.totalMinutes))}</td>` : ""}
+            ${isFirst ? `<td class="td tc" rowspan="${rowSpan}" style="vertical-align:middle">${flagsHTML || "—"}</td>` : ""}
+          </tr>`;
+        });
       }).join("");
 
   return `<!DOCTYPE html>
@@ -1001,6 +1028,11 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
   .tc { text-align: center !important; }
   .td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; }
 
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; line-height: 1.4; }
+  .badge-red { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+  .badge-amber { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+  .badge-slate { background: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; }
+
   .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: 11px; color: #94a3b8; }
 
   .toolbar { position: sticky; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e293b, #334155); padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
@@ -1087,28 +1119,34 @@ ${logosHTML}
 <!-- STATS -->
 <div class="stats-row avoid-break">
   <div class="stat">
+    <div class="stat-icon" style="background:#fefce8;color:#ca8a04">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+    </div>
+    <div><div class="stat-lbl">إجمالي الساعات</div><div class="stat-val">${fmtDurationHTML(totalMins)}</div></div>
+  </div>
+  <div class="stat">
     <div class="stat-icon" style="background:#eff6ff;color:#2563eb">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg>
     </div>
-    <div><div class="stat-lbl">أيام الحضور</div><div class="stat-val">${presentDays} <span class="stat-unit">يوم</span></div></div>
+    <div><div class="stat-lbl">عدد أيام العمل</div><div class="stat-val">${workDays} <span class="stat-unit">يوم</span></div></div>
   </div>
   <div class="stat">
     <div class="stat-icon" style="background:#f0fdf4;color:#16a34a">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12 10 17 19 8"/></svg>
     </div>
-    <div><div class="stat-lbl">أيام مكتملة</div><div class="stat-val">${completeDays} <span class="stat-unit">يوم</span></div></div>
+    <div><div class="stat-lbl">متوسط اليوم</div><div class="stat-val">${fmtDurationHTML(avgMins)}</div></div>
   </div>
   <div class="stat">
     <div class="stat-icon" style="background:${incompleteDays > 0 ? "#fef2f2" : "#f8fafc"};color:${incompleteDays > 0 ? "#dc2626" : "#94a3b8"}">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
     </div>
-    <div><div class="stat-lbl">أيام بدون انصراف</div><div class="stat-val">${incompleteDays} <span class="stat-unit">يوم</span></div></div>
+    <div><div class="stat-lbl">أيام غير مكتملة</div><div class="stat-val">${incompleteDays} <span class="stat-unit">يوم</span></div></div>
   </div>
   <div class="stat">
-    <div class="stat-icon" style="background:#fefce8;color:#ca8a04">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+    <div class="stat-icon" style="background:${longDays > 0 ? "#fffbeb" : "#f8fafc"};color:${longDays > 0 ? "#b45309" : "#94a3b8"}">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>
     </div>
-    <div><div class="stat-lbl">إجمالي الساعات</div><div class="stat-val">${fmtDurationHTML(totalMins)}</div></div>
+    <div><div class="stat-lbl">أيام طويلة (≥ ${data.longDayHours} س)</div><div class="stat-val">${longDays} <span class="stat-unit">يوم</span></div></div>
   </div>
 </div>
 
@@ -1119,10 +1157,13 @@ ${logosHTML}
     <table class="tbl">
       <thead>
         <tr>
-          <th class="th" style="width:30%">التاريخ</th>
-          <th class="th" style="width:22%">وقت الحضور</th>
-          <th class="th" style="width:22%">وقت الانصراف</th>
-          <th class="th" style="width:26%">المدة</th>
+          <th class="th" style="width:18%">التاريخ</th>
+          <th class="th" style="width:8%">جلسة</th>
+          <th class="th" style="width:14%">حضور</th>
+          <th class="th" style="width:18%">انصراف</th>
+          <th class="th" style="width:12%">المدة</th>
+          <th class="th" style="width:12%">إجمالي اليوم</th>
+          <th class="th" style="width:18%">حالة</th>
         </tr>
       </thead>
       <tbody>

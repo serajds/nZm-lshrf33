@@ -6,13 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetMyAttendanceHistoryParams = {
-  /**
-   * @nullable
-   */
-  limit?: number | null;
-  /**
-   * @nullable
-   */
-  projectId?: number | null;
+export type EmployeeAttendanceDayFlags = {
+  incomplete: boolean;
+  longDay: boolean;
 };

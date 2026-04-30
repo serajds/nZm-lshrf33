@@ -1150,6 +1150,10 @@ paths:
           in: query
           schema:
             type: ["integer", "null"]
+        - name: projectId
+          in: query
+          schema:
+            type: ["integer", "null"]
       responses:
         "200":
           description: My attendance history
@@ -1159,6 +1163,50 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/MyAttendanceHistoryItem"
+
+  /attendance/records/{recordId}:
+    patch:
+      operationId: updateAttendanceRecord
+      tags: [attendance]
+      summary: Edit an attendance record (admin or PM)
+      parameters:
+        - name: recordId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAttendanceRecordBody"
+      responses:
+        "200":
+          description: Updated record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceRecord"
+    delete:
+      operationId: deleteAttendanceRecord
+      tags: [attendance]
+      summary: Delete an attendance record (admin or PM)
+      parameters:
+        - name: recordId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteAttendanceRecordBody"
+      responses:
+        "204":
+          description: Deleted
 
   /attendance/projects/{projectId}/check-in:
     post:
@@ -1593,6 +1641,10 @@ components:
           type: ["number", "null"]
         siteRadiusMeters:
           type: ["integer", "null"]
+        attendanceAutoCloseHours:
+          type: integer
+        attendanceLongDayHours:
+          type: integer
         createdAt:
           type: string
           format: date-time
@@ -1609,6 +1661,8 @@ components:
         - status
         - overallProgress
         - noSchedule
+        - attendanceAutoCloseHours
+        - attendanceLongDayHours
         - createdAt
         - updatedAt
 
@@ -2449,6 +2503,30 @@ components:
         notes:
           type: ["string", "null"]
 
+    UpdateAttendanceRecordBody:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+        type:
+          type: ["string", "null"]
+          enum: [check_in, check_out, null]
+        recordedAt:
+          type: ["string", "null"]
+          format: date-time
+        notes:
+          type: ["string", "null"]
+
+    DeleteAttendanceRecordBody:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+
     AttendanceRecord:
       type: object
       properties:
@@ -2518,6 +2596,13 @@ components:
         selfieUrl:
           type: ["string", "null"]
         notes:
+          type: ["string", "null"]
+        editedAt:
+          type: ["string", "null"]
+          format: date-time
+        editedByUserId:
+          type: ["integer", "null"]
+        editReason:
           type: ["string", "null"]
       required:
         - id
@@ -2642,20 +2727,56 @@ components:
         - activeCount
         - members
 
+    AttendanceReportSession:
+      type: object
+      properties:
+        checkInRecordId:
+          type: integer
+        checkOutRecordId:
+          type: ["integer", "null"]
+        checkInAt:
+          type: string
+          format: date-time
+        checkOutAt:
+          type: ["string", "null"]
+          format: date-time
+        durationMinutes:
+          type: ["integer", "null"]
+        status:
+          type: string
+          enum: [closed, open, auto_closed]
+      required:
+        - checkInRecordId
+        - checkInAt
+        - status
+
     EmployeeAttendanceDay:
       type: object
       properties:
         date:
           type: string
           format: date
-        checkIn:
-          type: ["string", "null"]
-          format: date-time
-        checkOut:
-          type: ["string", "null"]
-          format: date-time
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttendanceReportSession"
+        totalMinutes:
+          type: integer
+        flags:
+          type: object
+          properties:
+            incomplete:
+              type: boolean
+            longDay:
+              type: boolean
+          required:
+            - incomplete
+            - longDay
       required:
         - date
+        - sessions
+        - totalMinutes
+        - flags
 
     EmployeeAttendanceReport:
       type: object
@@ -2667,6 +2788,10 @@ components:
               type: integer
             name:
               type: string
+            attendanceAutoCloseHours:
+              type: integer
+            attendanceLongDayHours:
+              type: integer
           required: [id, name]
         employee:
           type: object
@@ -2686,11 +2811,37 @@ components:
         dateTo:
           type: ["string", "null"]
           format: date
+        autoCloseHours:
+          type: integer
+        longDayHours:
+          type: integer
         days:
           type: array
           items:
             $ref: "#/components/schemas/EmployeeAttendanceDay"
+        summary:
+          type: object
+          properties:
+            totalMinutes:
+              type: integer
+            workDays:
+              type: integer
+            averageDailyMinutes:
+              type: integer
+            incompleteDays:
+              type: integer
+            longDays:
+              type: integer
+          required:
+            - totalMinutes
+            - workDays
+            - averageDailyMinutes
+            - incompleteDays
+            - longDays
       required:
         - project
         - employee
         - days
+        - summary
+        - autoCloseHours
+        - longDayHours
