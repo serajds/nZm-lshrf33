@@ -7,7 +7,10 @@ import {
   useGetProjectSummary,
   useGenerateOwnerLink,
   useListActivities,
+  useListProjectMembers,
+  useGetEligibleUsers,
 } from "@workspace/api-client-react";
+import { useMyProjectPermissions } from "@/hooks/use-tab-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -86,6 +89,44 @@ export default function ProjectDetails() {
     query: { enabled: !!projectId }
   });
   const { data: activities = [] } = useListActivities(projectId, { query: { enabled: !!projectId } });
+
+  // PERFORMANCE: prime the cache for child components (ProjectNav,
+  // ProjectMembers, AttendanceQuickActions) at the same instant the page
+  // mounts. Otherwise these queries fire one-by-one as each child component
+  // wakes up — on a slow Vite dev server we measured a 4 second waterfall
+  // (extensions → form-templates → members → my-permissions → my-status).
+  // Calling the hooks here triggers the requests immediately, in parallel,
+  // and React Query dedupes when the children mount and call them again.
+  useMyProjectPermissions(projectId);
+  useListProjectMembers(projectId, { query: { enabled: !!projectId && !isContractor } });
+  // Prefetch eligible-users ONLY for admins. Project-level PMs also need
+  // this list, but membership-derived PM status isn't known until /members
+  // resolves, so we let ProjectMembers fire its own request in that case
+  // (one short hop rather than the four-step waterfall this page used to
+  // have). A global "project_manager" role does NOT imply PM-of-this-project,
+  // so we deliberately don't prefetch on global role alone — that would
+  // waste a request for PMs not assigned to this project.
+  useGetEligibleUsers(projectId, { query: { enabled: !!projectId && user?.role === "admin" } });
+  useQuery<unknown[]>({
+    queryKey: [`/api/projects/${projectId}/activity-groups`],
+    queryFn: async () => {
+      const r = await authFetch(`/api/projects/${projectId}/activity-groups`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!projectId && !isContractor,
+    staleTime: 1000 * 60 * 5,
+  });
+  useQuery<unknown[]>({
+    queryKey: ["/api/attendance/my-status"],
+    queryFn: async () => {
+      const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
+      const r = await authFetch(`${API_BASE}/attendance/my-status`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!user && !isContractor && user.role !== "owner",
+  });
   // These three lists rarely change during a session; trust the cache for
   // 5 minutes so navigating between project tabs doesn't re-hit the API.
   const { data: extensions = [] } = useQuery<ProjectExtension[]>({
