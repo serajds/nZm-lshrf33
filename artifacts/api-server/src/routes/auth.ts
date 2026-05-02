@@ -29,6 +29,29 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
+  // Activation gate (server-enforced): a non-admin user is considered
+  // "active" only after the admin has linked them to at least one company
+  // AND added them to at least one project. Until then we refuse to issue
+  // a token at all — without this check, a hostile user could read the
+  // token straight out of devtools and bypass the client-side block.
+  const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
+    .from(userCompaniesTable)
+    .where(eq(userCompaniesTable.userId, user.id));
+  const [{ value: membershipsCount }] = await db.select({ value: count() })
+    .from(projectMembersTable)
+    .where(eq(projectMembersTable.userId, user.id));
+  const projectMembershipsCount = Number(membershipsCount) || 0;
+  const incompleteProfile =
+    user.role !== "admin" && (companyLinks.length === 0 || projectMembershipsCount === 0);
+
+  if (incompleteProfile) {
+    res.status(403).json({
+      code: "ACCOUNT_NOT_ACTIVATED",
+      error: "حسابك غير مفعّل بعد. يرجى التواصل مع مسؤول النظام لتفعيل حسابك وتعيينك إلى الشركة والمشاريع.",
+    });
+    return;
+  }
+
   const token = signToken({ userId: user.id, phone: user.phone, role: user.role });
 
   const { passwordHash: _, ...safeUser } = user;
@@ -91,9 +114,15 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     throw err;
   }
 
-  const token = signToken({ userId: inserted.id, phone: inserted.phone, role: inserted.role });
+  // Newly-registered users start inert: no company, no project, no token.
+  // The admin must link them before they can log in. Returning a token
+  // here would let a hostile user bypass the activation gate, so we
+  // deliberately omit it. The frontend shows a "بانتظار التفعيل" toast
+  // and keeps the user on the login screen.
   const { passwordHash: _, ...safeUser } = inserted;
-  res.status(201).json({ user: { ...safeUser, companies: [], incompleteProfile: true, projectMembershipsCount: 0 }, token });
+  res.status(201).json({
+    user: { ...safeUser, companies: [], incompleteProfile: true, projectMembershipsCount: 0 },
+  });
 });
 
 router.post("/auth/logout", async (_req, res): Promise<void> => {

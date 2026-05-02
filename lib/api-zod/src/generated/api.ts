@@ -71,7 +71,7 @@ export const LogoutResponse = zod.object({
 });
 
 /**
- * @summary Self-register a new user (name, phone, password)
+ * @summary Self-register a new user (name, phone, password). The new account starts inactive — no token is issued; the admin must link the user to a company and project before they can log in.
  */
 export const RegisterBody = zod.object({
   fullName: zod.string(),

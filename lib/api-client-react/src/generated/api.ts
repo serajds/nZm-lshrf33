@@ -66,6 +66,7 @@ import type {
   ProjectPermissions,
   ProjectSummary,
   RegisterBody,
+  RegisterResponse,
   Report,
   UpdateActivityBody,
   UpdateAttendanceRecordBody,
@@ -333,7 +334,7 @@ export const useLogout = <
 };
 
 /**
- * @summary Self-register a new user (name, phone, password)
+ * @summary Self-register a new user (name, phone, password). The new account starts inactive — no token is issued; the admin must link the user to a company and project before they can log in.
  */
 export const getRegisterUrl = () => {
   return `/api/auth/register`;
@@ -342,8 +343,8 @@ export const getRegisterUrl = () => {
 export const register = async (
   registerBody: RegisterBody,
   options?: RequestInit,
-): Promise<LoginResponse> => {
-  return customFetch<LoginResponse>(getRegisterUrl(), {
+): Promise<RegisterResponse> => {
+  return customFetch<RegisterResponse>(getRegisterUrl(), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -396,7 +397,7 @@ export type RegisterMutationBody = BodyType<RegisterBody>;
 export type RegisterMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Self-register a new user (name, phone, password)
+ * @summary Self-register a new user (name, phone, password). The new account starts inactive — no token is issued; the admin must link the user to a company and project before they can log in.
  */
 export const useRegister = <
   TError = ErrorType<ErrorResponse>,
