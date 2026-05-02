@@ -83,13 +83,13 @@ export default function Users() {
   const { data: users, isLoading } = useListUsers();
 
   const incompleteCount = useMemo(
-    () => (users || []).filter((u: any) => u.incompleteProfile).length,
+    () => (users || []).filter((u) => u.incompleteProfile).length,
     [users],
   );
 
-  const filteredUsers = useMemo(() => {
+  const filteredUsers = useMemo<User[]>(() => {
     if (!users) return [];
-    if (filter === "incomplete") return users.filter((u: any) => u.incompleteProfile);
+    if (filter === "incomplete") return users.filter((u) => u.incompleteProfile);
     return users;
   }, [users, filter]);
   const createUser = useCreateUser();
@@ -420,7 +420,7 @@ export default function Users() {
             </TableHeader>
             <TableBody>
               {
-                filteredUsers.map((u: any) => (
+                filteredUsers.map((u) => (
                   <TableRow
                     key={u.id}
                     className={u.incompleteProfile ? "bg-amber-50/40 hover:bg-amber-50/60" : undefined}
@@ -455,7 +455,7 @@ export default function Users() {
 
         {/* Mobile Card View */}
         <CardContent className="sm:hidden space-y-3 p-3">
-          {filteredUsers.map((u: any) => (
+          {filteredUsers.map((u) => (
               <div
                 key={u.id}
                 className={`rounded-lg border p-3 space-y-2 ${u.incompleteProfile ? "border-amber-300 bg-amber-50/40" : ""}`}

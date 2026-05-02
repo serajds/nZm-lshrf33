@@ -8,6 +8,9 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { verifyToken } from "./lib/auth";
 import { streamFromCloud, migrateExistingUploads } from "./lib/fileStorage";
+import { db } from "@workspace/db";
+import { usersTable, userCompaniesTable, projectMembersTable } from "@workspace/db";
+import { eq, count } from "drizzle-orm";
 
 const app: Express = express();
 
@@ -94,6 +97,86 @@ app.use("/api/uploads", (req: Request, res: Response, next: NextFunction) => {
       res.status(500).json({ error: "خطأ في قراءة الملف" });
     }
   });
+});
+
+// Block users with an incomplete profile (no company OR no project assignment)
+// from any privileged endpoint. They can still call auth endpoints (so the UI
+// can show a "pending assignment" screen and they can refresh / log out), and
+// truly public endpoints (health, owner-token portal, public form submissions).
+// Admins always bypass this gate.
+const PENDING_PROFILE_ALLOWLIST = new Set([
+  "/auth/me",
+  "/auth/login",
+  "/auth/register",
+  "/auth/logout",
+  "/healthz",
+]);
+
+app.use("/api", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const reqPath = req.path;
+
+  if (
+    PENDING_PROFILE_ALLOWLIST.has(reqPath) ||
+    reqPath.startsWith("/owner/") ||
+    reqPath.startsWith("/public-forms/") ||
+    reqPath.startsWith("/setup/") ||
+    reqPath === "/setup"
+  ) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return next();
+  }
+
+  const payload = verifyToken(authHeader.slice(7));
+  if (!payload) {
+    return next();
+  }
+
+  if (payload.role === "admin") {
+    return next();
+  }
+
+  try {
+    const [dbUser] = await db
+      .select({ role: usersTable.role })
+      .from(usersTable)
+      .where(eq(usersTable.id, payload.userId));
+
+    if (dbUser?.role === "admin") {
+      return next();
+    }
+
+    const [companyCount] = await db
+      .select({ value: count() })
+      .from(userCompaniesTable)
+      .where(eq(userCompaniesTable.userId, payload.userId));
+
+    const [membershipCount] = await db
+      .select({ value: count() })
+      .from(projectMembersTable)
+      .where(eq(projectMembersTable.userId, payload.userId));
+
+    const isIncomplete =
+      Number(companyCount?.value ?? 0) === 0 ||
+      Number(membershipCount?.value ?? 0) === 0;
+
+    if (isIncomplete) {
+      res.status(403).json({
+        error: "حسابك بانتظار التعيين من قبل المسؤول",
+        incompleteProfile: true,
+      });
+      return;
+    }
+
+    next();
+  } catch (err) {
+    logger.error({ err }, "Pending-profile gate failed");
+    res.status(500).json({ error: "خطأ في التحقق من حالة الحساب" });
+    return;
+  }
 });
 
 app.use("/api", router);

@@ -48,7 +48,7 @@ function ProtectedRoute({ component: Component, allowedRoles }: { component: Rea
     return <Redirect to="/login" />;
   }
 
-  if ((user as any)?.incompleteProfile) {
+  if (user?.incompleteProfile) {
     return <Redirect to="/" />;
   }
 
@@ -79,7 +79,7 @@ function HomeRoute() {
     return <Redirect to="/login" />;
   }
 
-  if ((user as any)?.incompleteProfile) {
+  if (user?.incompleteProfile) {
     return <PendingAssignment />;
   }
 

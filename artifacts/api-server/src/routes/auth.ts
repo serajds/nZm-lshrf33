@@ -61,12 +61,6 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     return;
   }
 
-  const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, trimmedPhone));
-  if (existing) {
-    res.status(409).json({ error: "رقم الهاتف مستخدم بالفعل" });
-    return;
-  }
-
   const passwordHash = await hashPassword(password);
 
   let inserted;
@@ -78,7 +72,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       role: "engineer",
     }).returning();
   } catch (err) {
-    if (typeof err === "object" && err !== null && "code" in err && (err as any).code === "23505") {
+    if (typeof err === "object" && err !== null && "code" in err && (err as { code?: string }).code === "23505") {
       res.status(409).json({ error: "رقم الهاتف مستخدم بالفعل" });
       return;
     }
