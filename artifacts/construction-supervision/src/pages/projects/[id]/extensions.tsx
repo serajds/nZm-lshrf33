@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useGetProject, useGetMyProjectPermissions } from "@workspace/api-client-react";
+import { useGetProject } from "@workspace/api-client-react";
+import { useTabAccess } from "@/hooks/use-tab-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,8 +78,8 @@ export default function ProjectExtensions() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
-  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
-  const isViewer = myPermissions?.isViewer === true;
+  const { canEdit, isHidden } = useTabAccess(projectId, "extensions", { redirectIfHidden: true });
+  const isViewer = !canEdit;
 
   const queryKey = [`/api/projects/${projectId}/extensions`];
 

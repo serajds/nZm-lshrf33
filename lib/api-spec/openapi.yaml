@@ -1742,8 +1742,6 @@ components:
 
     TabPermissionsMap:
       type: object
-      additionalProperties:
-        $ref: "#/components/schemas/TabAccess"
       properties:
         overview:
           $ref: "#/components/schemas/TabAccess"

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetProject, useGetMyProjectPermissions } from "@workspace/api-client-react";
+import { useTabAccess } from "@/hooks/use-tab-access";
 import { useAuth } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { ProjectNav } from "@/components/project-nav";
@@ -170,9 +171,10 @@ export default function ProjectAttendance() {
   const isManager = isAdmin || isPM;
   const isOwner = role === "owner";
   const isContractor = role === "contractor" || user?.isContractorCompanyUser === true;
+  const { canEdit: canEditAttendance, isHidden: isAttendanceHidden } = useTabAccess(projectId, "attendance", { redirectIfHidden: true });
   // Owners are stakeholders and contractor staff are out of scope for
   // attendance — neither registers check-in/out in this system.
-  const canSelfCheck = !isOwner && !isContractor;
+  const canSelfCheck = !isOwner && !isContractor && canEditAttendance;
 
   // My status for this project
   const { data: myStatusList = [], refetch: refetchMyStatus } = useQuery<MyStatusItem[]>({

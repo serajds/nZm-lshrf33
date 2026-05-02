@@ -6,6 +6,7 @@ import {
   useGetProjectDeviationTimeline,
   useGetProject,
 } from "@workspace/api-client-react";
+import { useTabAccess } from "@/hooks/use-tab-access";
 import type { ActivityDeviation } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,7 @@ export default function ProjectDeviation() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
+  const { isHidden } = useTabAccess(projectId, "deviation", { redirectIfHidden: true });
   const { data: deviationData, isLoading } = useGetProjectDeviation(
     projectId,
     { curve: "linear" },
