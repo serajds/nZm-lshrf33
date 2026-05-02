@@ -169,6 +169,14 @@ export default defineConfig({
   // when the user lands on the page that needs them. This eliminates the
   // multi-second pause the user sees the first time a page imports recharts,
   // leaflet, xlsx, framer-motion, etc.
+  //
+  // CRITICAL: by default Vite does NOT pre-bundle workspace packages — it
+  // serves them as raw TypeScript that the browser has to transform on every
+  // cold page load. `@workspace/api-client-react` is a 180 KB orval-generated
+  // file with 27 hooks, imported by 19 different pages/components. Without
+  // pre-bundling it, every fresh page load paid a 3-4 second penalty just to
+  // re-parse this single workspace package. Forcing it through optimizeDeps
+  // makes esbuild bundle + tree-shake it once at startup.
   optimizeDeps: {
     include: [
       "react",
@@ -190,6 +198,7 @@ export default defineConfig({
       "@dnd-kit/core",
       "@dnd-kit/sortable",
       "@dnd-kit/utilities",
+      "@workspace/api-client-react",
     ],
   },
   server: {
