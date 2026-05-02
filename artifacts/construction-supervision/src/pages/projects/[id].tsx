@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,8 +29,16 @@ import { ProjectNav } from "@/components/project-nav";
 import { ProjectMembers } from "@/components/project-members";
 import { ProjectQuickViewDialog } from "@/components/project-quick-view-dialog";
 import { AttendanceQuickActions } from "@/components/attendance-quick-actions";
-import { SiteGeofenceMap } from "@/components/site-geofence-map";
-import { previewExecutiveSummary, type ActivityForReport } from "@/lib/report-pdf";
+// PERFORMANCE (dev): leaflet + react-leaflet pull a large dependency tree
+// that Vite must transform on first navigation, blocking the project page
+// for several seconds. The map is rendered well below the fold and isn't
+// needed for the initial loading state, so load it lazily.
+const SiteGeofenceMap = lazy(() =>
+  import("@/components/site-geofence-map").then((m) => ({ default: m.SiteGeofenceMap }))
+);
+// PERFORMANCE: jspdf is only needed when the user clicks "تنزيل الملخص"
+// — defer loading until the click handler runs.
+import type { ActivityForReport } from "@/lib/report-pdf";
 import { useAuth } from "@/hooks/use-auth";
 
 interface ProjectExtension {
@@ -218,6 +226,7 @@ export default function ProjectDetails() {
       actualProgress: a.actualProgress ?? 0,
       status: a.status ?? "not_started",
     }));
+    const { previewExecutiveSummary } = await import("@/lib/report-pdf");
     previewExecutiveSummary({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -710,12 +719,14 @@ export default function ProjectDetails() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <SiteGeofenceMap
-                lat={project.siteLatitude}
-                lng={project.siteLongitude}
-                radius={project.siteRadiusMeters ?? 200}
-                className="h-64"
-              />
+              <Suspense fallback={<div className="h-64 flex items-center justify-center text-xs text-muted-foreground">جاري تحميل الخريطة...</div>}>
+                <SiteGeofenceMap
+                  lat={project.siteLatitude}
+                  lng={project.siteLongitude}
+                  radius={project.siteRadiusMeters ?? 200}
+                  className="h-64"
+                />
+              </Suspense>
             </CardContent>
           </Card>
         )}

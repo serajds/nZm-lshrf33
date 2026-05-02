@@ -49,7 +49,9 @@ The system is a pnpm monorepo with separate packages for the API server and the 
 - **Audit Log**: Tracks create/update/delete operations on key entities (projects, activities, reports) with detailed JSON logs, accessible via an admin-only API and frontend page with filtering.
 - **Companies**: Management of companies (owner, contractor, supervisor) with logo uploads. Projects can link to companies. Users can belong to multiple companies, enabling project member filtering based on linked company affiliations.
 - **Suspensions**: Tracks project stoppages, with optional date shifting for planned activity dates and project `expectedEndDate`.
-- **Executive Summary PDF**: Print-ready project overview generated from the project detail page.
+- **Executive Summary PDF**: Print-ready project overview generated from the project detail page. PDF library (`jspdf`) is dynamically imported on click to keep the project page lightweight in dev.
+- **Quick-Assign**: On the users page, incomplete users (no company or no project) show a lightning-bolt button that opens a small dialog to pick one company + one project. Selections are MERGED with existing memberships via `PATCH /api/users/:id` (additive, never replaces).
+- **Project page lazy-loading**: The site geofence map (leaflet + react-leaflet) is lazy-loaded with `React.lazy`/`Suspense` to avoid blocking the project page on first navigation in Vite dev.
 
 # External Dependencies
 
