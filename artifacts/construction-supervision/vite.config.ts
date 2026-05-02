@@ -134,13 +134,32 @@ export default defineConfig({
     // the app down with it.
     rollupOptions: {
       output: {
-        manualChunks: {
-          "vendor-react": ["react", "react-dom", "wouter", "@tanstack/react-query"],
-          "vendor-charts": ["recharts"],
-          "vendor-leaflet": ["leaflet", "react-leaflet"],
-          "vendor-xlsx": ["xlsx"],
-          "vendor-motion": ["framer-motion"],
-          "vendor-dnd": ["@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/utilities"],
+        // Split stable third-party libraries into dedicated chunks. They
+        // change rarely, so the browser caches them across deploys — only
+        // the small index.js (your own code) is re-downloaded on updates.
+        // Without this, every redeploy busted a 484 KB main bundle that
+        // contained ALL of @tanstack/react-query + the entire orval API
+        // surface + all Radix primitives + lucide icons + sonner.
+        manualChunks(id) {
+          if (!id.includes("node_modules") && !id.includes("/lib/api-client-react/")) {
+            return undefined;
+          }
+          if (id.includes("/lib/api-client-react/") || id.includes("@workspace/api-client-react")) {
+            return "vendor-api";
+          }
+          if (id.includes("@tanstack/react-query")) return "vendor-rq";
+          if (id.includes("@radix-ui/")) return "vendor-radix";
+          if (id.includes("lucide-react")) return "vendor-icons";
+          if (id.includes("sonner")) return "vendor-toast";
+          if (id.includes("recharts") || id.includes("d3-")) return "vendor-charts";
+          if (id.includes("leaflet")) return "vendor-leaflet";
+          if (id.includes("xlsx")) return "vendor-xlsx";
+          if (id.includes("framer-motion")) return "vendor-motion";
+          if (id.includes("@dnd-kit/")) return "vendor-dnd";
+          if (id.includes("/react-dom/") || id.includes("/react/") || id.includes("/wouter/") || id.includes("scheduler")) {
+            return "vendor-react";
+          }
+          return undefined;
         },
       },
     },
