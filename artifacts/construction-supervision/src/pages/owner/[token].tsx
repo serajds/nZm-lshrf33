@@ -23,6 +23,7 @@ import {
   Folder, FolderOpen, ArrowUp
 } from "lucide-react";
 import { previewReport, type ActivityForReport } from "@/lib/report-pdf";
+import { SiteGeofenceMap } from "@/components/site-geofence-map";
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
@@ -772,6 +773,23 @@ export default function OwnerPortal() {
             </CardContent>
           </Card>
         </div>
+
+        {project.siteLatitude != null && project.siteLongitude != null && (
+          <Card className="shadow-md border-0 bg-card/80 backdrop-blur-sm mb-6">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-2 text-muted-foreground mb-3">
+                <MapPin className="h-4 w-4" />
+                <span className="text-sm font-medium">موقع المشروع والنطاق المسموح</span>
+              </div>
+              <SiteGeofenceMap
+                lat={project.siteLatitude}
+                lng={project.siteLongitude}
+                radius={project.siteRadiusMeters ?? 200}
+                className="h-64"
+              />
+            </CardContent>
+          </Card>
+        )}
 
         <Tabs defaultValue="gantt" className="w-full mb-8" dir="rtl">
           <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-6 gap-2 bg-transparent p-0 mb-6">
