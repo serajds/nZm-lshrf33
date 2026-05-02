@@ -30,7 +30,9 @@ function dismissSplash() {
   const splash = document.getElementById("app-splash");
   if (!splash) return;
   splash.classList.add("splash-hide");
-  setTimeout(() => splash.remove(), 500);
+  // Match the CSS transition duration (200ms) so the node is gone right
+  // when the fade ends — no extra dead time on top of the visible fade.
+  setTimeout(() => splash.remove(), 220);
 }
 // Two rAFs guarantees we run after React has actually painted, not just
 // committed.
