@@ -1,175 +1,72 @@
-# Workspace
+# Overview
 
-## Overview
+This project is a full-stack Arabic RTL engineering supervision system for construction projects, built as a pnpm monorepo using TypeScript. Its primary purpose is to provide comprehensive management and oversight for construction activities, offering features from project planning and progress tracking to reporting, auditing, and team collaboration. The system aims to streamline project management, improve communication, and ensure timely and efficient project delivery in the construction sector.
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+# User Preferences
 
-## Stack
+I prefer concise and accurate responses. Focus on the core problem and provide direct solutions or explanations. When suggesting code, ensure it adheres to modern TypeScript practices and the existing architectural patterns. I appreciate an iterative development approach where major changes are discussed before implementation. Do not make changes to files outside the specified scope of a task without explicit approval.
 
-- **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
-- **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+# System Architecture
 
-## Key Commands
+The system is a pnpm monorepo with separate packages for the API server and the web application.
 
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/api-server run dev` — run API server locally
+## UI/UX Decisions
 
-See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+- **Language & Layout**: Full Arabic RTL layout with Noto Kufi Arabic font.
+- **PWA**: Installable PWA with offline capabilities, manifest, and animated splash screen.
+- **Responsiveness**: Mobile-responsive design using `grid-cols` and `hidden md:block` patterns for adaptive layouts.
+- **Consistency**: Shared `LoadingSpinner` and `EmptyState` components. Consistent page headers with colored icon containers.
+- **Error Handling**: Dedicated Arabic 404 "Not Found" page.
+- **Numerals**: All dates/times use `en-GB` locale or `ar-u-nu-latn` (Arabic text with Latin digits) for consistent numeral display.
 
-## Application: إدارة الإشراف والمتابعة
+## Technical Implementations
 
-A full-stack Arabic RTL engineering supervision system for construction projects.
+- **Monorepo**: pnpm workspaces for managing multiple packages.
+- **Backend**: Node.js 24, Express 5 REST API.
+- **Frontend**: React + Vite, built for RTL Arabic.
+- **Database**: PostgreSQL with Drizzle ORM.
+- **Type Safety & Validation**: TypeScript 5.9, Zod (`zod/v4`), `drizzle-zod`.
+- **API Codegen**: Orval generates API hooks and Zod schemas from OpenAPI specifications.
+- **Build Tool**: esbuild for CJS bundles.
+- **Authentication**: JWT stored in `localStorage` for session management. Owner portal uses a separate token + password verification.
+- **Authorization**: Role-based access control (Admin, Project Manager, Engineer, Contractor, Owner) with project-level permissions enforced via `project_members` table and middleware. Admin users bypass membership checks. Group-based permissions allow engineers restricted access to specific activity groups.
+- **File Management**: Uploads via `multer`, images compressed with `sharp`. Files are stored persistently in Google Cloud Storage via Replit Object Storage, with local filesystem caching.
+- **Offline Capabilities**: Offline-first attendance system using IndexedDB for queuing requests and auto-flushing when online. Implements idempotency on the backend for queued submissions.
+- **Notifications**: Web Push notifications for key events (attendance, project extensions/suspensions) using VAPID keys. Includes foreground geofence arrival reminders with `watchPosition` and audio/visual alerts.
+- **Backup System**: Admin-only database backup system creating JSON snapshots of all tables, stored locally on the server with download/delete functionality.
 
-### Artifacts
-- **API Server** (`artifacts/api-server`) — Express 5 REST API, port from `$PORT` env (prod: 8080)
-- **Web App** (`artifacts/construction-supervision`) — React + Vite, RTL Arabic frontend
+## Feature Specifications
 
-### Features
-- Full Arabic RTL layout with Noto Kufi Arabic font
-- Installable PWA (vite-plugin-pwa, autoUpdate) with manifest, offline service worker, and animated splash screen (in `index.html` + dismissed in `src/main.tsx`). Icons live in `public/` (`pwa-192x192.png`, `pwa-512x512.png`, `pwa-maskable-512x512.png`, `apple-touch-icon.png`). SW only registers in production.
-- JWT authentication (stored in `localStorage` as `auth_token`)
-- Dashboard with project statistics and charts (Recharts)
-- Delay calculation uses auto-calculated planned progress from activity dates (`lib/progress.ts`): each activity's planned progress = time elapsed since its `plannedStartDate` / total duration. Project planned progress = average of all activities. Falls back to linear time ratio when no activities exist.
-- **Auto-calculated `expectedEndDate`**: `recalcExpectedEndDate(projectId)` in `lib/recalc-end-date.ts` computes `expectedEndDate = max(activity.plannedEndDate) + sum(extension.daysAdded)`. Called after every activity create/update/delete/import, extension create/delete, and suspension create/delete with date shifting. If no activities exist, the manual value is preserved.
-- Projects management with CRUD operations
-- Project detail tabs: Summary, Activities (Gantt), Reports, Files, Deviation Analysis
-- **Activities Snapshot per Report**: When a report is created, a JSON snapshot of all project activities (name, progress, status, dates) is saved in `activitiesSnapshot` column. Report views use the snapshot instead of live activities, so editing activities later doesn't change older reports. Legacy reports without a snapshot fall back to live data.
-- Owner portal (`/owner/:token`) — public password-protected read-only view with JWT session persistence (avoids re-entering password on refresh)
-- Custom slug support for owner links (e.g., `/owner/project-name` instead of UUID); validated server-side (alphanumeric + hyphens/underscores, 2-60 chars, reserved words blocked)
-- Excel import for activities: upload an xlsx file with 3 columns (name, start date, end date) to bulk-create activities. Includes downloadable template. Uses `xlsx` library on both server (parsing) and client (template generation). Strict calendar date validation rejects impossible dates like Feb 31.
-- Excel export for activities: downloads all project activities as an xlsx file with name, dates, progress, and status columns (Arabic headers)
-- Dashboard delay notifications: shows top 10 delayed activities (past planned end date, not completed) with project name, delay days, and progress; clicking navigates to the project's activities page
-- **No Schedule mode** (`noSchedule`): Projects can be created as "بدون جدول زمني معتمد" (without approved timeline). Toggle at project creation/edit. When enabled: dates are optional (nullable in DB), delay/deviation calculations are skipped, dashboard shows "بدون جدول" instead of remaining days, deviation page shows informational message, project summary zeroes schedule metrics (daysElapsed, totalDays, delayDays), extensions route safely skips date chain recomputation. All other features (notes, photos, visits, reports) work normally. DB column: `projects.no_schedule` (boolean, default false). Activity `plannedStartDate`/`plannedEndDate` are nullable in DB and marked as optional in forms for noSchedule projects.
-- **Auto date tracking**: When updating activity progress: first progress > 0% auto-sets `actualStartDate` to today (and status to "in_progress"); reaching 100% auto-sets `actualEndDate` to today (and status to "completed"). Existing dates are never overwritten. Works for all projects regardless of schedule mode.
-- Reports date range filter: filter reports by `dateFrom`/`dateTo` query params (YYYY-MM-DD validated) in addition to existing type filter
-- Audit log system: tracks create/update/delete operations on projects, activities, and reports. DB table `audit_log` stores userId, userName, action, entityType, entityId, entityName, projectId, projectName, details (jsonb). Admin-only API endpoint `GET /audit-log` with filters (entityType, action, projectId, dateFrom, dateTo). Frontend page at `/audit-log` with filter controls. Project name is auto-fetched from DB when not provided directly.
-- **English numerals only**: All dates/times use `en-GB` locale or `ar-u-nu-latn` (Arabic text with Latin digits). Never use `ar-SA` or `ar` locale without `u-nu-latn` extension.
-- Owner portal charts: pie chart for activity status distribution (completed, in progress, delayed, not started), progress summary cards showing planned vs actual vs deviation
-- **Owner portal Gantt chart tab**: Visual timeline (Gantt chart) showing planned vs actual bars for each activity, month headers, today marker line, in-progress activity indicators, and summary stats table with activity dates/durations/progress. Safe division guards prevent NaN/Infinity on edge cases (zero-range dates, invalid dates).
-- Executive summary PDF: comprehensive print-ready project overview generated from project detail page ("ملخص تنفيذي" button). Includes project info, KPI metrics, activity status breakdown, activity table with per-item deviation. Uses browser print dialog for PDF export.
-- Mobile responsive design: all form dialogs use `grid-cols-1 sm:grid-cols-2` / `sm:col-span-2` pattern; tables use `hidden md:block` (desktop) / `md:hidden` (mobile card view) toggle; dashboard KPI cards scale text/padding on mobile
-- **Consistent page content patterns**: Shared `LoadingSpinner` and `EmptyState` components (`components/ui/loading-spinner.tsx`). All pages use animated spinner with contextual text for loading states, and icon+title+description for empty states. Table headers use `bg-muted/40` background. Page headers follow colored icon container pattern (`p-2.5 rounded-xl bg-*/10`).
-- **Not Found page**: Arabic 404 page with styled card, icon, and return-to-home button
-- Role-based access control with project-level permissions
-- User management with roles: admin, project_manager, engineer, owner, contractor
-- **Contractor role**: restricted access — sidebar shows only dashboard + projects; within projects, can only see timeline (read-only) and forms tab; cannot access extensions, suspensions, reports, files, or deviation analysis
-- Project team management (add/remove members, assign project roles)
-- **Form Builder System (النماذج)**: Custom form templates with field types: text, textarea, number, date, select (with options), table (dynamic rows), section (header/divider), checklist_qty (checkbox list with quantity). Admins/PMs create templates; all project members can fill and submit forms; admins/PMs can review submissions and mark as reviewed. Print-ready submission viewer with Arabic layout. **Customizable signatures**: templates can include signature blocks for الاستشاري (supervisor), المقاول (contractor), الجهة المالكة (owner) — choose any combination; stored as `signatures` jsonb array in DB. DB tables: `form_templates`, `form_submissions`. Routes: `GET/POST/PUT/DELETE /api/projects/:id/form-templates`, `GET/POST/PUT/DELETE /api/projects/:id/form-submissions`.
-- **Public Form Links**: Admins/PMs can generate a public link for any form template. The link allows anyone (without login) to fill and submit the form. DB column: `form_templates.public_token` (unique text, nullable). Public page at `/form/:token`. API: `POST/DELETE /api/projects/:id/form-templates/:templateId/public-link` (auth), `GET /api/public/form/:token` (no auth), `POST /api/public/form/:token/submit` (no auth). Submissions from public links have `submittedById=null` and `submittedByName` set to user-provided name or "مستخدم خارجي".
-- **Daily Template Tracking**: Templates can be flagged as "يومي" (daily) via `isDailyReport` toggle. System tracks missing days (gaps between template creation date and today where no submission exists). Alerts shown on submissions tab with skip button (for holidays). `skipped_days` table stores skipped dates with reason. Stats cards on submissions tab show: total, pending review, reviewed, overdue counts.
-- **Activity Groups & Drag-and-Drop**: Activities can be organized into colored groups with collapsible headers. Drag-and-drop reordering via `@dnd-kit` with handle-only drag activation. Groups show aggregate progress. Mobile view includes collapsible group sections. API: `GET/POST/PUT/DELETE /api/projects/:id/activity-groups`, `PUT /api/projects/:id/activity-groups/reorder`, `PUT /api/projects/:id/activities/reorder`. DB: `activity_groups` table with `groupId` FK on activities.
-- File uploads via multer (served at `/api/uploads/`). Report/project images auto-compressed via sharp (JPEG quality 80, mozjpeg, same dimensions preserved). Company logos are NOT compressed. Non-image files stored as-is.
-- **Persistent Cloud Storage**: All uploaded files (images, documents, logos) are stored in Google Cloud Storage via Replit Object Storage. Local filesystem used as cache; cloud used as durable fallback. On startup, existing local files are migrated to GCS. Files served from local first, then cloud. Key files: `artifacts/api-server/src/lib/fileStorage.ts` (upload/download/delete/migrate), `artifacts/api-server/src/lib/objectStorage.ts` (GCS client).
-- **Offline-first attendance**: Check-in/out works without network. The frontend assigns each request a UUID `clientId` and POSTs through `lib/offline-attendance.ts` (`sendOrQueue`). When offline (or fetch fails) the entry — including the selfie blob — is stored in IndexedDB and re-sent automatically on the next `online` event / page load (`installAutoFlush` in `main.tsx`). Backend deduplicates by `clientId`: a duplicate POST returns the original `201` row instead of inserting again. Pending count surfaced in `attendance-quick-actions.tsx` with a manual "مزامنة الآن" button. Schema: `attendance_records.client_id` (unique nullable text). Files: `artifacts/construction-supervision/src/lib/offline-attendance.ts`, `artifacts/api-server/src/routes/attendance.ts` (idempotency check).
-- **Web Push notifications**: VAPID-keyed Web Push delivers notifications to the user's browser/device when (a) someone records attendance, (b) a supervisor adds a project extension, or (c) a supervisor adds a project suspension. Recipients are project-managers of the project + global admins (excluding the actor). Dispatch is fire-and-forget so a slow/offline push provider never delays the user-facing request, and stale endpoints (HTTP 404/410) are pruned on first failure. Schema: `push_subscriptions` (userId, endpoint UNIQUE, p256dh, auth, userAgent). Backend: `artifacts/api-server/src/lib/push.ts` (`sendPushToUser`, `sendPushToUsers`, `getProjectSupervisorIds`), `routes/push.ts` (`GET /push/vapid-public-key`, `POST /push/subscribe` upsert by endpoint, `POST /push/unsubscribe`). Frontend: `lib/push-client.ts` (subscribe/unsubscribe via `customFetch`), `components/notification-toggle.tsx` (bell in header with three states: enable/enabled/denied), `public/push-handler.js` (custom SW handlers for `push` + `notificationclick`, loaded into the workbox SW via `workbox.importScripts: ['push-handler.js']` in `vite.config.ts`). Env: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`.
-- **Foreground geofence arrival reminder**: While a user is viewing a project page, has not yet checked in, and the project has site coordinates configured, `lib/geofence-watcher.ts` runs `navigator.geolocation.watchPosition` and the moment they cross into the site's `siteRadiusMeters` (default 200m) it (a) vibrates + plays a two-tone WebAudio chime, (b) shows a toast, and (c) raises a foreground `Notification` if push permission is granted. Hysteresis (1.25× radius) prevents GPS jitter from re-firing; the alert re-arms only after the user genuinely leaves the geofence. Wired into `components/attendance-quick-actions.tsx` and disposed automatically on unmount or once the user becomes checked-in.
+- **Projects**: CRUD operations, auto-calculated `expectedEndDate` based on activity dates and extensions/suspensions. "No Schedule" mode for projects without approved timelines, allowing optional dates and skipping date-related calculations.
+- **Activities**: CRUD, Excel import/export, drag-and-drop reordering with activity groups. Automatic `actualStartDate` and `actualEndDate` tracking based on progress updates.
+- **Reports**: Periodic reports with activity snapshots (JSON) to preserve historical data. Date range filtering for reports.
+- **Dashboard**: Project statistics, charts (Recharts), and delay notifications for top 10 delayed activities.
+- **Owner Portal**: Public, password-protected read-only view for project owners, including customizable slugs, activity status pie charts, progress summary cards, and a Gantt chart with planned vs. actual timelines.
+- **Form Builder**: Custom form templates with various field types (text, number, select, table, checklist_qty). Supports customizable signatures (supervisor, contractor, owner). Public links for forms allow unauthenticated submissions. Daily templates track missing submissions and allow skipping days.
+- **Audit Log**: Tracks create/update/delete operations on key entities (projects, activities, reports) with detailed JSON logs, accessible via an admin-only API and frontend page with filtering.
+- **Companies**: Management of companies (owner, contractor, supervisor) with logo uploads. Projects can link to companies. Users can belong to multiple companies, enabling project member filtering based on linked company affiliations.
+- **Suspensions**: Tracks project stoppages, with optional date shifting for planned activity dates and project `expectedEndDate`.
+- **Executive Summary PDF**: Print-ready project overview generated from the project detail page.
 
-### Default Credentials (Seed Data)
-- **Admin**: phone=`0500000001`, password=`admin123`
-- **Engineer**: phone=`0500000002`, password=`engineer123`
-- 3 Arabic sample projects seeded automatically
+# External Dependencies
 
-### Auth Flow & Access Control
-- Login → JWT token stored in `localStorage` as `auth_token`
-- `setAuthTokenGetter` configured in `main.tsx` to inject token as Bearer header
-- Protected routes redirect to `/login` when unauthenticated
-- Owner portal uses a separate token in the URL + password verification
-- **Role hierarchy**: admin (full system) > project_manager (full project control) > engineer (project read/limited access) > contractor (forms + timeline only) > owner (external portal)
-- **Project-level access**: non-admin users only see projects they are assigned to via `project_members` table
-- **Middleware**: `requireProjectAccess(paramName)` checks DB membership; `requireProjectManager(paramName)` restricts to admin or project manager role
-- Admin users bypass all project membership checks
-- **User management security**: role validation against allowed enum, duplicate phone checks (pre-check + DB constraint catch), self-deletion protection, self-role-demotion protection, NaN ID guard
-- **Search security**: LIKE metacharacters (`%`, `_`, `\`) escaped in project search to prevent pattern injection
-
-### DB Schema: project_members & member_group_assignments
-- Links users to projects with a role (`project_manager` or `engineer`)
-- Unique constraint on `(project_id, user_id)` prevents duplicate assignments
-- Cascading deletes on both project and user FKs
-- **Group-based permissions**: `member_group_assignments` table links engineers to specific activity groups. When assigned, engineers can only edit activities within those groups — other activities appear as read-only. If no groups assigned, the engineer has full access (backward compatible). Admins and project managers always have full access.
-- API: `PUT /api/projects/:id/members/:memberId/groups` — update assigned groups; `GET /api/projects/:id/my-permissions` — get current user's edit permissions (returns `canEditAll`, `assignedGroupIds`).
-- Backend enforcement: `PATCH` and `DELETE` activity routes check group permissions before allowing edits.
-- Frontend: members table shows "المجموعات" column with group badges; group assignment dialog for engineers; activities page conditionally shows/hides edit controls per activity.
-- Files: `lib/db/src/schema/project_members.ts`, `lib/db/src/schema/member_group_assignments.ts`
-
-### Companies & Logos
-- Companies management page at `/companies` with CRUD + logo upload
-- Company types: owner, contractor, supervisor
-- Projects can optionally link to companies via `ownerCompanyId`, `contractorCompanyId`, `supervisorCompanyId`
-- Company logos appear in report print preview header (logos strip above the main header)
-- Text fields (`ownerEntity`, `contractor`, `supervisorEntity`) remain for backward compatibility
-- DB table: `companies` (id, name, type, logo_url, phone, email, address)
-- DB columns added to `projects`: `owner_company_id`, `contractor_company_id`, `supervisor_company_id`
-- **User-Company linking (many-to-many)**: Users can belong to multiple companies via `user_companies` junction table. Shown as company badges in users table; multi-select checkboxes in user create/edit dialog.
-- **Eligible users per project**: `GET /api/projects/:id/eligible-users` returns users who belong to at least one of the project's linked companies (owner/contractor/supervisor). If no companies linked to the project, all users are returned.
-- **Project member add dialog**: Uses eligible users endpoint instead of all users — only users from project-linked companies appear in the dropdown.
-- **Company display**: Users table shows multiple company badges; project members table shows company names column (supports multiple).
-
-### Suspensions & Date Shifting
-- Suspensions tab on each project tracks stoppages (official holidays, force majeure, contractor delays)
-- `shiftDates` flag on create: optionally shifts activity planned dates and project `expectedEndDate` forward by suspension duration
-- Checkbox UI appears only for non-contractor-delay types (official_holiday, force_majeure)
-- `datesShifted` boolean column in DB tracks whether shifting was applied; used during delete to decide whether to reverse
-- Delete reversal: if `datesShifted=true`, shifts dates back by the same number of days
-- Table shows "الترحيل" (shift) column with yes/no indicator per suspension
-- Route: `GET/POST/DELETE /api/projects/:id/suspensions`
-
-### API Routes
-- `POST /api/auth/login` — login
-- `GET /api/auth/me` — current user (requires Bearer token)
-- `GET/POST /api/projects` — projects list/create
-- `GET/PUT/DELETE /api/projects/:id` — project detail
-- `GET /api/projects/:id/summary` — computed summary with activity-weighted planned progress
-- `GET /api/projects/:id/company-logos` — get linked company logos
-- `GET/POST /api/projects/:id/activities` — Gantt activities
-- `GET/POST /api/projects/:id/reports` — periodic reports
-- `GET/POST /api/projects/:id/files` — file upload/list
-- `POST /api/projects/:id/generate-owner-link` — create owner access token
-- `POST /api/owner/verify` — verify owner password (returns ownerJwt for session persistence)
-- `GET /api/owner/:token/data` — get owner project data (JWT authenticated, no password needed)
-- `GET /api/owner/:token/project` — get project for owner (legacy)
-- `GET /api/dashboard/summary` — overall stats (includes `delayedActivitiesList`)
-- `GET /api/dashboard/deviations` — deviation analysis
-- `GET /api/audit-log` — admin-only audit trail with filters (entityType, action, projectId, dateFrom, dateTo)
-- `GET/POST/PATCH/DELETE /api/projects/:id/members` — project team membership (admin/PM)
-- `GET/POST/PUT/DELETE /api/users` — user management (admin only, list accessible to all staff)
-- `GET/POST/PATCH/DELETE /api/companies` — companies management with logo upload
-- `GET/POST/PUT/DELETE /api/projects/:id/form-templates` — form template CRUD (create/edit admin/PM only), includes `isDailyReport` flag
-- `GET/POST/PUT/DELETE /api/projects/:id/form-submissions` — form submission CRUD
-- `GET /api/projects/:id/submission-stats` — returns `{ total, pending, reviewed, overdue }` counts
-- `GET /api/projects/:id/daily-gaps` — returns missing days for daily templates (non-contractor only)
-- `POST /api/projects/:id/skip-day` — skip a day for a daily template (non-contractor only, validates template ownership)
-- `GET /api/owner/:token/test-results` — list files from project's linked OneDrive folder (JWT authenticated)
-- `POST/DELETE /api/projects/:id/form-templates/:templateId/public-link` — generate/remove public token for form template (admin/PM)
-- `GET /api/public/form/:token` — get form template by public token (no auth)
-- `POST /api/public/form/:token/submit` — submit form via public link (no auth)
-- `POST /api/backup/create` — create full database backup (admin only), saves JSON to server `backups/` directory
-- `GET /api/backup/list` — list all backup files (admin only)
-- `GET /api/backup/download/:filename` — download a backup file (admin only)
-- `DELETE /api/backup/:filename` — delete a backup file (admin only)
-
-### Database Backup System
-- Admin-only backup button in dashboard header opens a modal panel
-- Creates a complete JSON snapshot of all 16 database tables with stats
-- Backups stored on the server in `backups/` directory with timestamped filenames
-- Modal shows list of all backups with date, size, download and delete actions
-- Path traversal protection on filename validation
-- Route: `artifacts/api-server/src/routes/backup.ts`
-
-### OneDrive Integration (Test Results)
-- Each project can have a `onedriveTestResultsFolderId` field linking to a OneDrive folder
-- Owner portal has a "نتائج الاختبارات" (Test Results) tab that lists files from the linked OneDrive folder
-- Files are fetched live from OneDrive via Microsoft Graph API using Replit's OneDrive connector
-- Direct download buttons for each file
-- OneDrive client: `artifacts/api-server/src/lib/onedrive.ts` (uses Replit connectors for OAuth token management)
-- Test results API route: `artifacts/api-server/src/routes/test-results.ts`
-- DB column: `projects.onedrive_test_results_folder_id` (text, nullable)
+- **pnpm**: Monorepo management.
+- **Node.js**: Runtime environment (version 24).
+- **TypeScript**: Language (version 5.9).
+- **Express**: API framework (version 5).
+- **PostgreSQL**: Database.
+- **Drizzle ORM**: Object Relational Mapper.
+- **Zod**: Schema validation.
+- **Orval**: OpenAPI spec code generation.
+- **esbuild**: JavaScript bundler.
+- **Recharts**: Charting library.
+- **`vite-plugin-pwa`**: PWA functionality.
+- **`localStorage`**: Client-side storage for JWT.
+- **`xlsx`**: Excel file parsing and generation.
+- **`multer`**: Node.js middleware for handling `multipart/form-data`.
+- **`sharp`**: Image processing (compression).
+- **Replit Object Storage (Google Cloud Storage)**: Persistent file storage.
+- **IndexedDB**: Browser-side storage for offline attendance.
+- **Web Push API**: Browser notifications.
+- **Microsoft Graph API (via Replit OneDrive connector)**: OneDrive integration for test results.
+- **`@dnd-kit`**: Drag-and-drop functionality.
