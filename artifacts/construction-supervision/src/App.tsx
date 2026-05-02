@@ -7,24 +7,24 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { RouteErrorBoundary } from "@/components/error-boundary";
 import { getDefaultProjectId } from "@/lib/user-prefs";
 
-// Eager: tiny + always-needed (login is the very first paint for unauth'd users).
+// Eager imports — these are needed for the very first authenticated paint,
+// so lazy-loading them only added round-trips. AppLayout in particular was
+// being lazy-rendered WITHOUT a surrounding Suspense, which made React 18
+// throw an empty error to the route boundary on every cold load (visible
+// in browser console as `[RouteErrorBoundary] {}`). The user perceived
+// this as "the page gets stuck and reloads" — actually the error boundary
+// caught the suspension and forced a tree rebuild from scratch.
 import Login from "@/pages/login";
 import PendingAssignment from "@/pages/pending-assignment";
 import NotFound from "@/pages/not-found";
+import { AppLayout } from "@/components/layout";
+import Dashboard from "@/pages/dashboard";
+import Projects from "@/pages/projects/index";
+import ProjectDetails from "@/pages/projects/[id]";
 
-// AppLayout pulls in the sidebar, install banner, notification toggle, and
-// a chunk of lucide icons — none of which the unauth'd login page needs.
-// Lazy-loading it knocks ~30 KB (gzipped) off the initial bundle.
-const AppLayout = lazy(() =>
-  import("@/components/layout").then((m) => ({ default: m.AppLayout })),
-);
-
-// Lazy: every other page is only loaded when its route is hit. Splits the
-// initial JS bundle into ~15 small per-route chunks instead of one huge file
-// containing recharts, leaflet, xlsx, framer-motion, and 20+ pages.
-const Dashboard = lazy(() => import("@/pages/dashboard"));
-const Projects = lazy(() => import("@/pages/projects/index"));
-const ProjectDetails = lazy(() => import("@/pages/projects/[id]"));
+// Genuinely heavy/rarely-visited pages stay lazy. These pull in xlsx,
+// recharts, leaflet, react-pdf, etc. — keeping them out of the initial
+// bundle is still worth a separate request.
 const ProjectActivities = lazy(() => import("@/pages/projects/[id]/activities"));
 const ProjectReports = lazy(() => import("@/pages/projects/[id]/reports"));
 const ProjectFiles = lazy(() => import("@/pages/projects/[id]/files"));
@@ -131,11 +131,17 @@ function HomeRoute() {
 }
 
 function Router() {
+  // Top-level Suspense closes the last lazy-without-boundary gap: the public
+  // routes /owner/:token and /form/:token render their lazy components
+  // directly (not via ProtectedRoute), so they had nowhere to surface the
+  // initial chunk-load suspension. Without this wrapper they would hit the
+  // same RouteErrorBoundary crash that the authenticated routes used to.
   return (
-    <Switch>
-      <Route path="/login" component={Login} />
-      <Route path="/owner/:token" component={OwnerPortal} />
-      <Route path="/form/:token" component={PublicForm} />
+    <Suspense fallback={<PageFallback />}>
+      <Switch>
+        <Route path="/login" component={Login} />
+        <Route path="/owner/:token" component={OwnerPortal} />
+        <Route path="/form/:token" component={PublicForm} />
       
       <Route path="/">
         <HomeRoute />
@@ -184,7 +190,8 @@ function Router() {
       </Route>
       
       <Route component={NotFound} />
-    </Switch>
+      </Switch>
+    </Suspense>
   );
 }
 

@@ -4,6 +4,25 @@ interface State {
   error: Error | null;
 }
 
+/** Normalize whatever React threw into a real Error. React 18 can hand us
+ *  a plain `{}`, a string, or a thenable (the latter happens when a lazy
+ *  component suspends without a Suspense boundary above it — *that*
+ *  silent class of failure cost us a full debugging round). Wrapping
+ *  here means the rendered fallback always has a meaningful message
+ *  and the console log isn't just `[RouteErrorBoundary] {}`. */
+function toError(thrown: unknown): Error {
+  if (thrown instanceof Error) return thrown;
+  if (typeof thrown === "string") return new Error(thrown);
+  if (thrown && typeof thrown === "object" && "then" in thrown) {
+    return new Error("A component suspended without a <Suspense> boundary above it.");
+  }
+  try {
+    return new Error(`Non-Error value thrown: ${JSON.stringify(thrown)}`);
+  } catch {
+    return new Error("Non-Error value thrown (unserializable).");
+  }
+}
+
 /**
  * Catches errors thrown during rendering, in lifecycle methods, and
  * (importantly) failures of `React.lazy(() => import(...))`. Without this
@@ -13,12 +32,13 @@ interface State {
 export class RouteErrorBoundary extends Component<{ children: ReactNode }, State> {
   state: State = { error: null };
 
-  static getDerivedStateFromError(error: Error): State {
-    return { error };
+  static getDerivedStateFromError(error: unknown): State {
+    return { error: toError(error) };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[RouteErrorBoundary]", error, info);
+  componentDidCatch(error: unknown, info: ErrorInfo) {
+    const e = toError(error);
+    console.error("[RouteErrorBoundary]", e.message, info);
   }
 
   reload = () => {
