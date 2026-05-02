@@ -112,10 +112,11 @@ export default function Login() {
                         <FormLabel className="text-sm font-medium text-slate-700">رقم الهاتف</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                             <Input
                               placeholder="أدخل رقم الهاتف"
                               type="tel"
+                              autoComplete="tel"
                               {...field}
                               dir="ltr"
                               className="h-11 text-right pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
@@ -134,10 +135,11 @@ export default function Login() {
                         <FormLabel className="text-sm font-medium text-slate-700">كلمة المرور</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="أدخل كلمة المرور"
+                              autoComplete="current-password"
                               {...field}
                               className="h-11 pr-10 pl-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
                             />
@@ -200,9 +202,10 @@ export default function Login() {
                         <FormLabel className="text-sm font-medium text-slate-700">الاسم الكامل</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <UserIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <UserIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                             <Input
                               placeholder="أدخل اسمك الكامل"
+                              autoComplete="name"
                               {...field}
                               className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
                             />
@@ -220,10 +223,11 @@ export default function Login() {
                         <FormLabel className="text-sm font-medium text-slate-700">رقم الهاتف</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                             <Input
                               placeholder="أدخل رقم الهاتف"
                               type="tel"
+                              autoComplete="tel"
                               {...field}
                               dir="ltr"
                               className="h-11 text-right pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
@@ -242,10 +246,11 @@ export default function Login() {
                         <FormLabel className="text-sm font-medium text-slate-700">كلمة المرور</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="6 أحرف على الأقل"
+                              autoComplete="new-password"
                               {...field}
                               className="h-11 pr-10 pl-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
                             />
@@ -271,10 +276,11 @@ export default function Login() {
                         <FormLabel className="text-sm font-medium text-slate-700">تأكيد كلمة المرور</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="أعد إدخال كلمة المرور"
+                              autoComplete="new-password"
                               {...field}
                               className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
                             />
