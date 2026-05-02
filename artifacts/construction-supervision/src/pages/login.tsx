@@ -203,121 +203,111 @@ export default function Login() {
                 <h2 className="text-xl font-bold text-slate-800">إنشاء حساب جديد</h2>
               </div>
 
-              <Form {...regForm}>
-                <form onSubmit={regForm.handleSubmit(onRegisterSubmit)} className="space-y-5">
-                  <FormField
-                    control={regForm.control}
-                    name="fullName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium text-slate-700">الاسم الكامل</FormLabel>
-                        <div className="relative">
-                          <UserIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
-                          <FormControl>
-                            <Input
-                              placeholder="أدخل اسمك الكامل"
-                              autoComplete="name"
-                              {...field}
-                              className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
-                            />
-                          </FormControl>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={regForm.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium text-slate-700">رقم الهاتف</FormLabel>
-                        <div className="relative">
-                          <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
-                          <FormControl>
-                            <Input
-                              placeholder="أدخل رقم الهاتف"
-                              type="tel"
-                              autoComplete="tel"
-                              dir="ltr"
-                              {...field}
-                              className="h-11 text-right pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
-                            />
-                          </FormControl>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={regForm.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium text-slate-700">كلمة المرور</FormLabel>
-                        <div className="relative">
-                          <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
-                          <FormControl>
-                            <Input
-                              type={showPassword ? "text" : "password"}
-                              placeholder="6 أحرف على الأقل"
-                              autoComplete="new-password"
-                              {...field}
-                              className="h-11 pr-10 pl-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
-                            />
-                          </FormControl>
-                          <button
-                            type="button"
-                            tabIndex={-1}
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors z-10"
-                          >
-                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={regForm.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium text-slate-700">تأكيد كلمة المرور</FormLabel>
-                        <div className="relative">
-                          <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
-                          <FormControl>
-                            <Input
-                              type={showPassword ? "text" : "password"}
-                              placeholder="أعد إدخال كلمة المرور"
-                              autoComplete="new-password"
-                              {...field}
-                              className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
-                            />
-                          </FormControl>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+              {/*
+                The register form uses react-hook-form's `register()` API
+                directly (instead of <FormField>/<Controller>) because the
+                Controller-based wrapper, combined with Radix <Slot> inside
+                <FormControl>, intermittently dropped keystrokes on mobile —
+                tapping the field focused it but typed characters never
+                committed to RHF state. Using register() attaches the input
+                as uncontrolled and works consistently across browsers.
+              */}
+              <form onSubmit={regForm.handleSubmit(onRegisterSubmit)} className="space-y-5" noValidate>
+                <div>
+                  <label htmlFor="reg-fullName" className="block text-sm font-medium text-slate-700 mb-2">الاسم الكامل</label>
+                  <div className="relative">
+                    <UserIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+                    <Input
+                      id="reg-fullName"
+                      placeholder="أدخل اسمك الكامل"
+                      autoComplete="name"
+                      className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
+                      {...regForm.register("fullName")}
+                    />
+                  </div>
+                  {regForm.formState.errors.fullName && (
+                    <p className="text-[0.8rem] font-medium text-destructive mt-1.5">{regForm.formState.errors.fullName.message}</p>
+                  )}
+                </div>
 
-                  <Button
-                    type="submit"
-                    className="w-full h-11 font-semibold text-base bg-gradient-to-l from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-md shadow-emerald-200 transition-all"
-                    disabled={isRegistering}
-                  >
-                    {isRegistering ? (
-                      <>
-                        <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-                        جاري إنشاء الحساب...
-                      </>
-                    ) : (
-                      "إنشاء الحساب"
-                    )}
-                  </Button>
-                </form>
-              </Form>
+                <div>
+                  <label htmlFor="reg-phone" className="block text-sm font-medium text-slate-700 mb-2">رقم الهاتف</label>
+                  <div className="relative">
+                    <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+                    <Input
+                      id="reg-phone"
+                      type="tel"
+                      placeholder="أدخل رقم الهاتف"
+                      autoComplete="tel"
+                      dir="ltr"
+                      className="h-11 text-right pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
+                      {...regForm.register("phone")}
+                    />
+                  </div>
+                  {regForm.formState.errors.phone && (
+                    <p className="text-[0.8rem] font-medium text-destructive mt-1.5">{regForm.formState.errors.phone.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="reg-password" className="block text-sm font-medium text-slate-700 mb-2">كلمة المرور</label>
+                  <div className="relative">
+                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+                    <Input
+                      id="reg-password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="6 أحرف على الأقل"
+                      autoComplete="new-password"
+                      className="h-11 pr-10 pl-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
+                      {...regForm.register("password")}
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors z-10"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {regForm.formState.errors.password && (
+                    <p className="text-[0.8rem] font-medium text-destructive mt-1.5">{regForm.formState.errors.password.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="reg-confirmPassword" className="block text-sm font-medium text-slate-700 mb-2">تأكيد كلمة المرور</label>
+                  <div className="relative">
+                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+                    <Input
+                      id="reg-confirmPassword"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="أعد إدخال كلمة المرور"
+                      autoComplete="new-password"
+                      className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
+                      {...regForm.register("confirmPassword")}
+                    />
+                  </div>
+                  {regForm.formState.errors.confirmPassword && (
+                    <p className="text-[0.8rem] font-medium text-destructive mt-1.5">{regForm.formState.errors.confirmPassword.message}</p>
+                  )}
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full h-11 font-semibold text-base bg-gradient-to-l from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-md shadow-emerald-200 transition-all"
+                  disabled={isRegistering}
+                >
+                  {isRegistering ? (
+                    <>
+                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                      جاري إنشاء الحساب...
+                    </>
+                  ) : (
+                    "إنشاء الحساب"
+                  )}
+                </Button>
+              </form>
 
               <div className="mt-6 pt-5 border-t border-slate-100 text-center text-sm text-slate-500">
                 لديك حساب بالفعل؟{" "}
