@@ -49,15 +49,17 @@ export function defaultPermissionsForRole(projectRole: ProjectRoleForDefaults): 
   }
 
   if (projectRole === "engineer") {
+    // الافتراضي للأعضاء الجدد: كل التبويبات مشاهدة فقط.
+    // يستطيع مدير المشروع/الأدمن رفع الصلاحية لكل تبويب على حدة من نافذة الصلاحيات.
     return {
       overview: "view",
-      activities: "edit",
-      extensions: "edit",
-      suspensions: "edit",
-      reports: "edit",
-      forms: "edit",
-      attendance: "edit",
-      files: "edit",
+      activities: "view",
+      extensions: "view",
+      suspensions: "view",
+      reports: "view",
+      forms: "view",
+      attendance: "view",
+      files: "view",
       deviation: "view",
     };
   }
