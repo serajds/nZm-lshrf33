@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, real, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, real, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 import { projectsTable } from "./projects";
 import { createInsertSchema } from "drizzle-zod";
@@ -18,6 +18,10 @@ export const attendanceRecordsTable = pgTable("attendance_records", {
   selfieFilename: text("selfie_filename"),
   selfieUrl: text("selfie_url"),
   notes: text("notes"),
+  // Client-generated UUID for offline-safe idempotency: a re-sent request
+  // (after a flaky network or queued offline) MUST NOT create a duplicate
+  // record. The unique index below is enforced per-user.
+  clientId: text("client_id"),
   editedAt: timestamp("edited_at", { withTimezone: true }),
   editedByUserId: integer("edited_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   editReason: text("edit_reason"),
@@ -25,6 +29,7 @@ export const attendanceRecordsTable = pgTable("attendance_records", {
 }, (table) => [
   index("attendance_project_user_idx").on(table.projectId, table.userId, table.recordedAt),
   index("attendance_project_recorded_idx").on(table.projectId, table.recordedAt),
+  uniqueIndex("attendance_user_client_id_idx").on(table.userId, table.clientId),
 ]);
 
 export const insertAttendanceRecordSchema = createInsertSchema(attendanceRecordsTable).omit({ id: true, createdAt: true });

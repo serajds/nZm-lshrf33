@@ -1,14 +1,22 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, LogIn, LogOut, AlertTriangle } from "lucide-react";
+import { Loader2, LogIn, LogOut, AlertTriangle, CloudOff, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { SelfieCameraDialog } from "@/components/selfie-camera-dialog";
 import { fmtLibyaDateTime, getCurrentPosition } from "@/lib/attendance-utils";
+import {
+  sendOrQueue,
+  newClientId,
+  flushQueue,
+  queueCount,
+  subscribeQueue,
+} from "@/lib/offline-attendance";
+import { startGeofenceWatch, chimeAndVibrate } from "@/lib/geofence-watcher";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -26,8 +34,10 @@ interface MyStatus {
 }
 
 interface ProjectGeo {
+  name?: string;
   siteLatitude?: number | null;
   siteLongitude?: number | null;
+  siteRadiusMeters?: number | null;
 }
 
 interface AttendanceQuickActionsProps {
@@ -49,6 +59,8 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<"check_in" | "check_out" | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [flushing, setFlushing] = useState(false);
 
   const { data: list = [], refetch } = useQuery<MyStatus[]>({
     queryKey: ["/api/attendance/my-status"],
@@ -63,11 +75,98 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
 
   const status = useMemo(() => list.find(s => s.projectId === projectId), [list, projectId]);
 
+  // Live count of pending offline records — re-renders whenever the queue
+  // changes (enqueue, successful flush, etc).
+  useEffect(() => {
+    let mounted = true;
+    const refresh = () => {
+      queueCount().then((n) => { if (mounted) setPendingSyncCount(n); }).catch(() => {});
+    };
+    refresh();
+    const unsub = subscribeQueue(refresh);
+    return () => { mounted = false; unsub(); };
+  }, []);
+
+  const onlineSync = useCallback(async () => {
+    setFlushing(true);
+    try {
+      const result = await flushQueue();
+      if (result.succeeded > 0) {
+        toast({
+          title: "تمت المزامنة",
+          description: `تم رفع ${result.succeeded} سجل من الانتظار.`,
+        });
+        refetch();
+        qc.invalidateQueries({ queryKey: [`/api/attendance/projects/${projectId}/active`] });
+        qc.invalidateQueries({ queryKey: [`/api/attendance/projects/${projectId}/records`] });
+        qc.invalidateQueries({ queryKey: [`/api/attendance/my-history`] });
+      } else if (result.attempted > 0 && result.stillPending > 0) {
+        toast({
+          variant: "destructive",
+          title: "لا يزال هناك انتظار",
+          description: "تأكد من الاتصال بالإنترنت ثم أعد المحاولة.",
+        });
+      }
+    } finally {
+      setFlushing(false);
+    }
+  }, [toast, refetch, qc, projectId]);
+
   if (hideSelfCheck) return null;
 
   const isCheckedIn = !!status?.currentlyCheckedIn;
   const last = status?.lastRecord;
   const hasLocation = !!project?.siteLatitude && !!project?.siteLongitude;
+
+  // Foreground arrival reminder: while the user is on this page, has a
+  // configured site location, and has NOT yet checked in, watch their GPS
+  // and ring + notify the moment they cross into the geofence. Disposed
+  // automatically on unmount or as soon as the user becomes checked-in.
+  useEffect(() => {
+    if (hideSelfCheck) return;
+    if (isCheckedIn) return;
+    if (!hasLocation) return;
+    if (!project?.siteLatitude || !project?.siteLongitude) return;
+
+    const handle = startGeofenceWatch({
+      projectId,
+      projectName: project.name || "الموقع",
+      siteLatitude: project.siteLatitude,
+      siteLongitude: project.siteLongitude,
+      radiusMeters: project.siteRadiusMeters ?? 200,
+      onArrive: () => {
+        chimeAndVibrate();
+        toast({
+          title: `وصلت إلى ${project.name || "الموقع"}`,
+          description: "يمكنك الآن تسجيل حضورك بنقرة واحدة.",
+        });
+        // If push permission was granted, also surface a system notification
+        // (works even when the page is not the active tab).
+        try {
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            new Notification("وصلت إلى الموقع", {
+              body: `يمكنك تسجيل حضورك في ${project.name || "المشروع"} الآن.`,
+              tag: `arrival-${projectId}`,
+              icon: "/pwa-192x192.png",
+              dir: "rtl",
+              lang: "ar",
+            });
+          }
+        } catch { /* notifications are best-effort */ }
+      },
+    });
+    return () => handle.stop();
+  }, [
+    hideSelfCheck,
+    isCheckedIn,
+    hasLocation,
+    projectId,
+    project?.siteLatitude,
+    project?.siteLongitude,
+    project?.siteRadiusMeters,
+    project?.name,
+    toast,
+  ]);
 
   function start(type: "check_in" | "check_out") {
     setPending(type);
@@ -81,27 +180,46 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
     try {
       toast({ title: "جاري تحديد الموقع..." });
       const pos = await getCurrentPosition();
-      const fd = new FormData();
-      fd.append("selfie", file, file.name);
-      fd.append("latitude", String(pos.coords.latitude));
-      fd.append("longitude", String(pos.coords.longitude));
-      if (Number.isFinite(pos.coords.accuracy)) fd.append("accuracy", String(pos.coords.accuracy));
 
-      const url = `${API_BASE}/attendance/projects/${projectId}/${pending === "check_in" ? "check-in" : "check-out"}`;
-      const r = await authFetch(url, { method: "POST", body: fd });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err?.error || "فشل تسجيل الحضور/الانصراف");
+      const entry = {
+        clientId: newClientId(),
+        projectId,
+        type: pending,
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null,
+        selfie: file,
+        selfieFilename: file.name,
+        capturedAt: Date.now(),
+      };
+
+      const outcome = await sendOrQueue(entry);
+
+      if (outcome.kind === "ok") {
+        const rec = outcome.record as { outOfRange?: boolean };
+        toast({
+          title: pending === "check_in" ? "تم تسجيل الحضور" : "تم تسجيل الانصراف",
+          description: rec?.outOfRange ? "تنبيه: خارج النطاق المحدد للموقع" : undefined,
+        });
+        refetch();
+        qc.invalidateQueries({ queryKey: [`/api/attendance/projects/${projectId}/active`] });
+        qc.invalidateQueries({ queryKey: [`/api/attendance/projects/${projectId}/records`] });
+        qc.invalidateQueries({ queryKey: [`/api/attendance/my-history`] });
+      } else if (outcome.kind === "queued") {
+        // Optimistic UX: tell the user it's recorded — the queue will retry
+        // automatically as soon as the network returns.
+        toast({
+          title: pending === "check_in" ? "تم تسجيل الحضور محلياً" : "تم تسجيل الانصراف محلياً",
+          description: "لا يوجد اتصال بالإنترنت — سيتم الإرسال تلقائياً عند توفّر الشبكة.",
+        });
+      } else {
+        // Reachable server returned an error — do not queue, surface the message.
+        toast({
+          variant: "destructive",
+          title: "تعذّر إتمام العملية",
+          description: outcome.message,
+        });
       }
-      const rec: { outOfRange?: boolean } = await r.json();
-      toast({
-        title: pending === "check_in" ? "تم تسجيل الحضور" : "تم تسجيل الانصراف",
-        description: rec.outOfRange ? "تنبيه: خارج النطاق المحدد للموقع" : undefined,
-      });
-      refetch();
-      qc.invalidateQueries({ queryKey: [`/api/attendance/projects/${projectId}/active`] });
-      qc.invalidateQueries({ queryKey: [`/api/attendance/projects/${projectId}/records`] });
-      qc.invalidateQueries({ queryKey: [`/api/attendance/my-history`] });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "حدث خطأ غير متوقع";
       toast({ variant: "destructive", title: "تعذّر إتمام العملية", description: msg });
@@ -134,6 +252,28 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
               <span>لم يتم ضبط موقع الموقع للمشروع. سيتم قبول التسجيل بدون التحقق من النطاق.</span>
             </div>
           )}
+          {pendingSyncCount > 0 && (
+            <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs p-2 flex items-center gap-2">
+              <CloudOff className="h-4 w-4 shrink-0" />
+              <span className="flex-1">
+                {pendingSyncCount === 1
+                  ? "يوجد سجل واحد بانتظار المزامنة"
+                  : `يوجد ${pendingSyncCount} سجلات بانتظار المزامنة`}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2"
+                onClick={onlineSync}
+                disabled={flushing}
+              >
+                {flushing
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <RefreshCw className="h-3.5 w-3.5" />}
+                <span className="mr-1">مزامنة الآن</span>
+              </Button>
+            </div>
+          )}
           {last && (
             <div className="text-sm text-muted-foreground">
               آخر إجراء: {last.type === "check_in" ? "حضور" : "انصراف"} —{" "}
@@ -161,7 +301,7 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            سيتم طلب صورة سيلفي + إحداثيات GPS.
+            سيتم طلب صورة سيلفي + إحداثيات GPS. يعمل بدون إنترنت — سيُرسل تلقائياً عند توفّر الشبكة.
           </p>
         </CardContent>
       </Card>
