@@ -151,6 +151,23 @@ export default function Users() {
 
   const { data: projectsList = [] } = useListProjects();
 
+  // Projects filtered by the chosen company in the Quick Assign dialog.
+  // Server returns ownerCompanyId/contractorCompanyId/supervisorCompanyId on each
+  // row even though the generated schema omits them.
+  const quickFilteredProjects = useMemo(() => {
+    if (!quickCompanyId) return projectsList;
+    const cid = parseInt(quickCompanyId, 10);
+    if (!Number.isFinite(cid)) return projectsList;
+    return projectsList.filter((p) => {
+      const anyP = p as any;
+      return (
+        anyP.ownerCompanyId === cid ||
+        anyP.contractorCompanyId === cid ||
+        anyP.supervisorCompanyId === cid
+      );
+    });
+  }, [projectsList, quickCompanyId]);
+
   const form = useForm<z.infer<typeof userSchema>>({
     resolver: zodResolver(userSchema),
     defaultValues: {
@@ -821,7 +838,26 @@ export default function Users() {
                 {companies.length === 0 ? (
                   <p className="text-xs text-muted-foreground">لا توجد شركات مسجلة</p>
                 ) : (
-                  <Select value={quickCompanyId} onValueChange={setQuickCompanyId}>
+                  <Select
+                    value={quickCompanyId}
+                    onValueChange={(v) => {
+                      setQuickCompanyId(v);
+                      // Reset project if it no longer belongs to the new company
+                      if (quickProjectId) {
+                        const cid = parseInt(v, 10);
+                        const stillValid = projectsList.some((p) => {
+                          if (String(p.id) !== quickProjectId) return false;
+                          const anyP = p as any;
+                          return (
+                            anyP.ownerCompanyId === cid ||
+                            anyP.contractorCompanyId === cid ||
+                            anyP.supervisorCompanyId === cid
+                          );
+                        });
+                        if (!stillValid) setQuickProjectId("");
+                      }
+                    }}
+                  >
                     <SelectTrigger dir="rtl" data-testid="select-quick-company">
                       <SelectValue placeholder="اختر شركة" />
                     </SelectTrigger>
@@ -848,13 +884,17 @@ export default function Users() {
                 </Label>
                 {projectsList.length === 0 ? (
                   <p className="text-xs text-muted-foreground">لا توجد مشاريع</p>
+                ) : quickCompanyId && quickFilteredProjects.length === 0 ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    لا توجد مشاريع مرتبطة بالشركة المختارة
+                  </p>
                 ) : (
                   <Select value={quickProjectId} onValueChange={setQuickProjectId}>
                     <SelectTrigger dir="rtl" data-testid="select-quick-project">
-                      <SelectValue placeholder="اختر مشروع" />
+                      <SelectValue placeholder={quickCompanyId ? "اختر مشروع للشركة" : "اختر مشروع"} />
                     </SelectTrigger>
                     <SelectContent dir="rtl">
-                      {projectsList.map((p) => {
+                      {quickFilteredProjects.map((p) => {
                         const already = (quickAssignUser.projects || []).some((x) => x.projectId === p.id);
                         return (
                           <SelectItem key={p.id} value={String(p.id)} disabled={already}>
