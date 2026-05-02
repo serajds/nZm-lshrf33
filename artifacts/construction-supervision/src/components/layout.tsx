@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { InstallButton } from "@/components/install-button";
+import { InstallPromptBanner } from "@/components/install-prompt-banner";
 import { NotificationToggle } from "@/components/notification-toggle";
 import {
   LayoutDashboard,
@@ -354,6 +355,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </div>
+
+      {/* Auto-shown PWA install suggestion (snoozes for 7 days on dismiss) */}
+      <InstallPromptBanner />
     </div>
   );
 }
