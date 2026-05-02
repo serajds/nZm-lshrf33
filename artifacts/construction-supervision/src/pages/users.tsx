@@ -10,6 +10,8 @@ import {
   useAddProjectMember,
   useUpdateProjectMember,
   useUpdateMemberTabPermissions,
+  useUpdateMemberGroups,
+  listProjectMembers,
   getListUsersQueryKey,
   getGetIncompleteUsersCountQueryKey,
   getListProjectMembersQueryKey,
@@ -113,6 +115,7 @@ export default function Users() {
   const [quickRole, setQuickRole] = useState<"project_manager" | "engineer" | "contractor" | "viewer">("engineer");
   const [quickCustomizeTabs, setQuickCustomizeTabs] = useState<boolean>(false);
   const [quickTabDraft, setQuickTabDraft] = useState<Record<string, "hidden" | "view" | "edit">>({});
+  const [quickGroupIds, setQuickGroupIds] = useState<number[]>([]);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -135,6 +138,7 @@ export default function Users() {
   const addProjectMember = useAddProjectMember();
   const updateProjectMember = useUpdateProjectMember();
   const updateMemberTabPermissions = useUpdateMemberTabPermissions();
+  const updateMemberGroups = useUpdateMemberGroups();
 
   const { data: companies = [] } = useQuery<Company[]>({
     queryKey: ["companies"],
@@ -213,6 +217,20 @@ export default function Users() {
     return quickProjectMembers.find((m) => m.userId === quickAssignUser.id);
   }, [quickProjectMembers, quickAssignUser]);
 
+  const { data: quickProjectGroups = [] } = useQuery<{ id: number; name: string; color: string; sortOrder: number }[]>({
+    queryKey: [`/api/projects/${quickProjectIdNum}/activity-groups`],
+    queryFn: async () => {
+      const r = await authFetch(`${API}/projects/${quickProjectIdNum}/activity-groups`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: Number.isFinite(quickProjectIdNum) && quickProjectIdNum > 0,
+  });
+  const sortedQuickGroups = useMemo(
+    () => [...quickProjectGroups].sort((a, b) => a.sortOrder - b.sortOrder),
+    [quickProjectGroups],
+  );
+
   const openQuickAssign = (u: User) => {
     setQuickAssignUserId(u.id);
     setQuickCompanyId("");
@@ -220,6 +238,7 @@ export default function Users() {
     setQuickRole("engineer");
     setQuickCustomizeTabs(false);
     setQuickTabDraft({});
+    setQuickGroupIds([]);
   };
 
   const closeQuickAssign = () => {
@@ -229,6 +248,7 @@ export default function Users() {
     setQuickRole("engineer");
     setQuickCustomizeTabs(false);
     setQuickTabDraft({});
+    setQuickGroupIds([]);
   };
 
   const handleQuickAssign = async () => {
@@ -264,24 +284,45 @@ export default function Users() {
         });
       }
 
-      // 2) Add or update the user's project membership with chosen role
+      // 2) Add or update the user's project membership with chosen role.
+      // updateUser above may have auto-created a project_members row, so we
+      // try add first and fall back to update on 409 (already a member).
       let memberId: number | undefined = existingMember?.id;
       if (hasProjectMembership) {
+        const groupsForRole = quickRole === "engineer" ? quickGroupIds : undefined;
         if (existingMember) {
-          if (existingMember.role !== quickRole) {
-            await updateProjectMember.mutateAsync({
-              projectId: pidNum,
-              id: existingMember.id,
-              data: { role: quickRole },
-            });
-          }
+          await updateProjectMember.mutateAsync({
+            projectId: pidNum,
+            id: existingMember.id,
+            data: { role: quickRole, assignedGroupIds: groupsForRole },
+          });
           memberId = existingMember.id;
         } else {
-          const created = await addProjectMember.mutateAsync({
-            projectId: pidNum,
-            data: { userId: quickAssignUser.id, role: quickRole },
-          });
-          memberId = created?.id;
+          try {
+            const created = await addProjectMember.mutateAsync({
+              projectId: pidNum,
+              data: {
+                userId: quickAssignUser.id,
+                role: quickRole,
+                assignedGroupIds: groupsForRole,
+              },
+            });
+            memberId = created?.id;
+          } catch (err: any) {
+            if (err?.status === 409) {
+              const fresh = await listProjectMembers(pidNum);
+              const found = fresh.find((m) => m.userId === quickAssignUser.id);
+              if (!found) throw err;
+              await updateProjectMember.mutateAsync({
+                projectId: pidNum,
+                id: found.id,
+                data: { role: quickRole, assignedGroupIds: groupsForRole },
+              });
+              memberId = found.id;
+            } else {
+              throw err;
+            }
+          }
         }
       }
 
@@ -843,6 +884,40 @@ export default function Users() {
                       </p>
                     )}
                   </div>
+
+                  {quickRole === "engineer" && sortedQuickGroups.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>المجموعات المسموح بإدارتها في الجدول الزمني</Label>
+                      <p className="text-xs text-muted-foreground">
+                        إذا لم تختر أي مجموعة، سيتمكن المهندس من تعديل جميع البنود.
+                      </p>
+                      <div className="space-y-2 max-h-[160px] overflow-y-auto border rounded-md p-2">
+                        {sortedQuickGroups.map((g) => {
+                          const checked = quickGroupIds.includes(g.id);
+                          return (
+                            <label key={g.id} className="flex items-center gap-2 cursor-pointer">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={() =>
+                                  setQuickGroupIds((prev) =>
+                                    prev.includes(g.id)
+                                      ? prev.filter((x) => x !== g.id)
+                                      : [...prev, g.id],
+                                  )
+                                }
+                                data-testid={`quick-group-${g.id}`}
+                              />
+                              <span
+                                className="inline-block w-2.5 h-2.5 rounded-full"
+                                style={{ backgroundColor: g.color }}
+                              />
+                              <span className="text-sm">{g.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-2 border-t pt-3">
                     <label className="flex items-center gap-2 cursor-pointer">
