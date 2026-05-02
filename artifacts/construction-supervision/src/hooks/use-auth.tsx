@@ -41,14 +41,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [error]);
 
   const isAuthLoading = isUserLoading && !!token;
-  useEffect(() => {
-    if (isAuthLoading) return;
-    const splash = document.getElementById("app-splash");
-    if (!splash) return;
-    splash.classList.add("splash-hide");
-    const t = window.setTimeout(() => splash.remove(), 500);
-    return () => window.clearTimeout(t);
-  }, [isAuthLoading]);
+  // Splash dismissal lives in main.tsx now — it fires unconditionally when
+  // React first paints, so a slow/broken /auth/me can never strand the user
+  // on the loading splash.
 
   const login = async (data: LoginBody) => {
     try {

@@ -120,6 +120,17 @@
       <div class="splash-spinner" aria-hidden="true"></div>
     </div>
 
+    <script>
+      // Hard safety net: if the React app failed to mount within 10 seconds
+      // (e.g. a lazy chunk failed to load over a flaky mobile connection,
+      // or a JS error fired before any handler could run), hide the splash
+      // anyway so the user is never trapped on a spinner. The app shell
+      // underneath will then either render or reveal the underlying issue.
+      window.__splashSafetyTimer = setTimeout(function () {
+        var s = document.getElementById('app-splash');
+        if (s) s.classList.add('splash-hide');
+      }, 10000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

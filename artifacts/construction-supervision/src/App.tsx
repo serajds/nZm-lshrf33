@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/layout";
+import { RouteErrorBoundary } from "@/components/error-boundary";
 import { getDefaultProjectId } from "@/lib/user-prefs";
 
 // Eager: tiny + always-needed (login is the very first paint for unauth'd users).
@@ -187,7 +188,9 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <AuthProvider>
-            <Router />
+            <RouteErrorBoundary>
+              <Router />
+            </RouteErrorBoundary>
           </AuthProvider>
         </WouterRouter>
         <Toaster position="top-center" dir="rtl" richColors closeButton />
