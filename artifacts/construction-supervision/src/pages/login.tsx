@@ -110,19 +110,19 @@ export default function Login() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-sm font-medium text-slate-700">رقم الهاتف</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                        <div className="relative">
+                          <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+                          <FormControl>
                             <Input
                               placeholder="أدخل رقم الهاتف"
                               type="tel"
                               autoComplete="tel"
-                              {...field}
                               dir="ltr"
+                              {...field}
                               className="h-11 text-right pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
                             />
-                          </div>
-                        </FormControl>
+                          </FormControl>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -133,9 +133,9 @@ export default function Login() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-sm font-medium text-slate-700">كلمة المرور</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                        <div className="relative">
+                          <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+                          <FormControl>
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="أدخل كلمة المرور"
@@ -143,16 +143,16 @@ export default function Login() {
                               {...field}
                               className="h-11 pr-10 pl-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
                             />
-                            <button
-                              type="button"
-                              tabIndex={-1}
-                              onClick={() => setShowPassword(!showPassword)}
-                              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                            >
-                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
-                        </FormControl>
+                          </FormControl>
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors z-10"
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -200,17 +200,17 @@ export default function Login() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-sm font-medium text-slate-700">الاسم الكامل</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <UserIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                        <div className="relative">
+                          <UserIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+                          <FormControl>
                             <Input
                               placeholder="أدخل اسمك الكامل"
                               autoComplete="name"
                               {...field}
                               className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
                             />
-                          </div>
-                        </FormControl>
+                          </FormControl>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -221,19 +221,19 @@ export default function Login() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-sm font-medium text-slate-700">رقم الهاتف</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                        <div className="relative">
+                          <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+                          <FormControl>
                             <Input
                               placeholder="أدخل رقم الهاتف"
                               type="tel"
                               autoComplete="tel"
-                              {...field}
                               dir="ltr"
+                              {...field}
                               className="h-11 text-right pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
                             />
-                          </div>
-                        </FormControl>
+                          </FormControl>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -244,9 +244,9 @@ export default function Login() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-sm font-medium text-slate-700">كلمة المرور</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                        <div className="relative">
+                          <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+                          <FormControl>
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="6 أحرف على الأقل"
@@ -254,16 +254,16 @@ export default function Login() {
                               {...field}
                               className="h-11 pr-10 pl-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
                             />
-                            <button
-                              type="button"
-                              tabIndex={-1}
-                              onClick={() => setShowPassword(!showPassword)}
-                              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                            >
-                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
-                        </FormControl>
+                          </FormControl>
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors z-10"
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -274,9 +274,9 @@ export default function Login() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-sm font-medium text-slate-700">تأكيد كلمة المرور</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                        <div className="relative">
+                          <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
+                          <FormControl>
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="أعد إدخال كلمة المرور"
@@ -284,8 +284,8 @@ export default function Login() {
                               {...field}
                               className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
                             />
-                          </div>
-                        </FormControl>
+                          </FormControl>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
