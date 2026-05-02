@@ -348,8 +348,16 @@ export default function Users() {
       }
       toast({ title: "تم تعيين المستخدم بنجاح" });
       closeQuickAssign();
-    } catch {
-      toast({ variant: "destructive", title: "فشل تعيين المستخدم" });
+    } catch (err: any) {
+      const serverMsg =
+        (err?.data && typeof err.data === "object" && "error" in err.data && typeof err.data.error === "string")
+          ? err.data.error
+          : err?.message;
+      toast({
+        variant: "destructive",
+        title: "فشل تعيين المستخدم",
+        description: serverMsg || undefined,
+      });
     }
   };
 
