@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
@@ -6,36 +7,53 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/layout";
 import { getDefaultProjectId } from "@/lib/user-prefs";
 
+// Eager: tiny + always-needed (login is the very first paint for unauth'd users).
 import Login from "@/pages/login";
 import PendingAssignment from "@/pages/pending-assignment";
-import Dashboard from "@/pages/dashboard";
-import Projects from "@/pages/projects/index";
-import ProjectDetails from "@/pages/projects/[id]";
-import ProjectActivities from "@/pages/projects/[id]/activities";
-import ProjectReports from "@/pages/projects/[id]/reports";
-import ProjectFiles from "@/pages/projects/[id]/files";
-import ProjectDeviation from "@/pages/projects/[id]/deviation";
-import ProjectExtensions from "@/pages/projects/[id]/extensions";
-import ProjectSuspensions from "@/pages/projects/[id]/suspensions";
-import ProjectForms from "@/pages/projects/[id]/forms";
-import ProjectAttendance from "@/pages/projects/[id]/attendance";
-import Users from "@/pages/users";
-import Companies from "@/pages/companies";
-import AuditLog from "@/pages/audit-log";
-import OwnerPortal from "@/pages/owner/[token]";
-import PublicForm from "@/pages/public-form";
 import NotFound from "@/pages/not-found";
+
+// Lazy: every other page is only loaded when its route is hit. Splits the
+// initial JS bundle into ~15 small per-route chunks instead of one huge file
+// containing recharts, leaflet, xlsx, framer-motion, and 20+ pages.
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Projects = lazy(() => import("@/pages/projects/index"));
+const ProjectDetails = lazy(() => import("@/pages/projects/[id]"));
+const ProjectActivities = lazy(() => import("@/pages/projects/[id]/activities"));
+const ProjectReports = lazy(() => import("@/pages/projects/[id]/reports"));
+const ProjectFiles = lazy(() => import("@/pages/projects/[id]/files"));
+const ProjectDeviation = lazy(() => import("@/pages/projects/[id]/deviation"));
+const ProjectExtensions = lazy(() => import("@/pages/projects/[id]/extensions"));
+const ProjectSuspensions = lazy(() => import("@/pages/projects/[id]/suspensions"));
+const ProjectForms = lazy(() => import("@/pages/projects/[id]/forms"));
+const ProjectAttendance = lazy(() => import("@/pages/projects/[id]/attendance"));
+const Users = lazy(() => import("@/pages/users"));
+const Companies = lazy(() => import("@/pages/companies"));
+const AuditLog = lazy(() => import("@/pages/audit-log"));
+const OwnerPortal = lazy(() => import("@/pages/owner/[token]"));
+const PublicForm = lazy(() => import("@/pages/public-form"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 30,
-      refetchOnMount: "always",
-      refetchOnWindowFocus: true,
+      // Cache server data for 2 min before considering it stale. Aggressive
+      // re-fetches on every focus/mount felt like "the app is slow" because
+      // every tab switch triggered fresh API roundtrips for already-displayed
+      // data. We still revalidate on mount when data IS stale.
+      staleTime: 1000 * 60 * 2,
+      refetchOnMount: true,
+      refetchOnWindowFocus: false,
       retry: 1,
     },
   },
 });
+
+function PageFallback() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
+      جاري التحميل...
+    </div>
+  );
+}
 
 function ProtectedRoute({ component: Component, allowedRoles }: { component: React.ComponentType; allowedRoles?: string[] }) {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -63,7 +81,9 @@ function ProtectedRoute({ component: Component, allowedRoles }: { component: Rea
 
   return (
     <AppLayout>
-      <Component />
+      <Suspense fallback={<PageFallback />}>
+        <Component />
+      </Suspense>
     </AppLayout>
   );
 }
@@ -96,7 +116,9 @@ function HomeRoute() {
 
   return (
     <AppLayout>
-      <Component />
+      <Suspense fallback={<PageFallback />}>
+        <Component />
+      </Suspense>
     </AppLayout>
   );
 }
