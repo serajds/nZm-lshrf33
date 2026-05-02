@@ -37,7 +37,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Edit2, Trash2, Users as UsersIcon, Building2, UserX, AlertTriangle, FolderKanban } from "lucide-react";
+import { Plus, Edit2, Trash2, Users as UsersIcon, Building2, UserX, AlertTriangle, FolderKanban, Zap } from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -79,6 +79,12 @@ export default function Users() {
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<number[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
   const [filter, setFilter] = useState<"all" | "incomplete">("all");
+  // Quick-assign popup state: lets the admin pick one company + one project
+  // for a given user from the row, without opening the full edit dialog.
+  // Selected values are merged with the user's existing assignments.
+  const [quickAssignUserId, setQuickAssignUserId] = useState<number | null>(null);
+  const [quickCompanyId, setQuickCompanyId] = useState<string>("");
+  const [quickProjectId, setQuickProjectId] = useState<string>("");
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -159,6 +165,59 @@ export default function Users() {
       projectIds: [],
     });
     setIsDialogOpen(true);
+  };
+
+  const quickAssignUser = useMemo(
+    () => (users || []).find((u) => u.id === quickAssignUserId) || null,
+    [users, quickAssignUserId],
+  );
+
+  const openQuickAssign = (u: User) => {
+    setQuickAssignUserId(u.id);
+    setQuickCompanyId("");
+    setQuickProjectId("");
+  };
+
+  const closeQuickAssign = () => {
+    setQuickAssignUserId(null);
+    setQuickCompanyId("");
+    setQuickProjectId("");
+  };
+
+  const handleQuickAssign = async () => {
+    if (!quickAssignUser) return;
+    const cidNum = quickCompanyId ? parseInt(quickCompanyId, 10) : NaN;
+    const pidNum = quickProjectId ? parseInt(quickProjectId, 10) : NaN;
+    const existingCompanyIds = (quickAssignUser.companies || []).map((c) => c.companyId);
+    const existingProjectIds = (quickAssignUser.projects || []).map((p) => p.projectId);
+
+    const nextCompanyIds = Number.isFinite(cidNum) && !existingCompanyIds.includes(cidNum)
+      ? [...existingCompanyIds, cidNum]
+      : existingCompanyIds;
+    const nextProjectIds = Number.isFinite(pidNum) && !existingProjectIds.includes(pidNum)
+      ? [...existingProjectIds, pidNum]
+      : existingProjectIds;
+
+    if (
+      nextCompanyIds.length === existingCompanyIds.length &&
+      nextProjectIds.length === existingProjectIds.length
+    ) {
+      toast({ variant: "destructive", title: "اختر شركة أو مشروع للتعيين" });
+      return;
+    }
+
+    try {
+      await updateUser.mutateAsync({
+        id: quickAssignUser.id,
+        data: { companyIds: nextCompanyIds, projectIds: nextProjectIds },
+      });
+      queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetIncompleteUsersCountQueryKey() });
+      toast({ title: "تم تعيين المستخدم بنجاح" });
+      closeQuickAssign();
+    } catch {
+      toast({ variant: "destructive", title: "فشل تعيين المستخدم" });
+    }
   };
 
   const handleDelete = async () => {
@@ -502,6 +561,17 @@ export default function Users() {
                     <TableCell>{getRoleBadge(u.role)}</TableCell>
                     <TableCell className="text-left">
                       <div className="flex justify-end gap-2">
+                        {u.incompleteProfile && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openQuickAssign(u)}
+                            title="تعيين سريع لشركة ومشروع"
+                            data-testid={`button-quick-assign-${u.id}`}
+                          >
+                            <Zap className="h-4 w-4 text-amber-600" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" onClick={() => handleEdit(u)}>
                           <Edit2 className="h-4 w-4 text-muted-foreground" />
                         </Button>
