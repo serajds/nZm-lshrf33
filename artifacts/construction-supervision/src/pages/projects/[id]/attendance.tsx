@@ -185,7 +185,8 @@ export default function ProjectAttendance() {
       return r.json();
     },
     enabled: !!user && canSelfCheck,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 
   const myStatusForProject = useMemo(
@@ -202,7 +203,8 @@ export default function ProjectAttendance() {
       return r.json();
     },
     enabled: !!projectId && isManager,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 
   // Selfie dialog state

@@ -70,7 +70,11 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
       return r.json();
     },
     enabled: !!user && !hideSelfCheck,
-    refetchInterval: 30000,
+    // Poll every 60s (down from 30s) and stop polling entirely when the
+    // tab is in the background — this used to fire every 30s on every
+    // open tab, hammering the API for users who left the app open.
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 
   const status = useMemo(() => list.find(s => s.projectId === projectId), [list, projectId]);
