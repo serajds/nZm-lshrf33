@@ -6,10 +6,17 @@ import {
   useUpdateUser, 
   useDeleteUser,
   useListProjects,
+  useListProjectMembers,
+  useAddProjectMember,
+  useUpdateProjectMember,
+  useUpdateMemberTabPermissions,
   getListUsersQueryKey,
   getGetIncompleteUsersCountQueryKey,
+  getListProjectMembersQueryKey,
+  getGetMemberTabPermissionsQueryKey,
+  getGetMyProjectPermissionsQueryKey,
 } from "@workspace/api-client-react";
-import type { User, UpdateUserBody, CreateUserBody, CreateUserBodyRole } from "@workspace/api-client-react";
+import type { User, UpdateUserBody, CreateUserBody, CreateUserBodyRole, TabPermissionsMap, TabAccess } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +67,24 @@ interface Company {
   type: string;
 }
 
+const QUICK_TAB_DEFS: { key: keyof TabPermissionsMap; label: string }[] = [
+  { key: "overview", label: "ملخص المشروع" },
+  { key: "activities", label: "الجدول الزمني" },
+  { key: "extensions", label: "التمديدات" },
+  { key: "suspensions", label: "التوقفات" },
+  { key: "reports", label: "التقارير" },
+  { key: "forms", label: "النماذج" },
+  { key: "attendance", label: "الحضور" },
+  { key: "files", label: "الملفات" },
+  { key: "deviation", label: "تحليل الانحراف" },
+];
+
+const QUICK_TAB_ACCESS_OPTIONS: { value: "hidden" | "view" | "edit"; label: string }[] = [
+  { value: "hidden", label: "مخفي" },
+  { value: "view", label: "مشاهدة" },
+  { value: "edit", label: "تعديل" },
+];
+
 const userSchema = z.object({
   fullName: z.string().min(1, "الاسم الكامل مطلوب"),
   phone: z.string().min(1, "رقم الهاتف مطلوب"),
@@ -85,6 +110,9 @@ export default function Users() {
   const [quickAssignUserId, setQuickAssignUserId] = useState<number | null>(null);
   const [quickCompanyId, setQuickCompanyId] = useState<string>("");
   const [quickProjectId, setQuickProjectId] = useState<string>("");
+  const [quickRole, setQuickRole] = useState<"project_manager" | "engineer" | "contractor" | "viewer">("engineer");
+  const [quickCustomizeTabs, setQuickCustomizeTabs] = useState<boolean>(false);
+  const [quickTabDraft, setQuickTabDraft] = useState<Record<string, "hidden" | "view" | "edit">>({});
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -104,6 +132,9 @@ export default function Users() {
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
+  const addProjectMember = useAddProjectMember();
+  const updateProjectMember = useUpdateProjectMember();
+  const updateMemberTabPermissions = useUpdateMemberTabPermissions();
 
   const { data: companies = [] } = useQuery<Company[]>({
     queryKey: ["companies"],
@@ -172,16 +203,32 @@ export default function Users() {
     [users, quickAssignUserId],
   );
 
+  const quickProjectIdNum = quickProjectId ? parseInt(quickProjectId, 10) : NaN;
+  const { data: quickProjectMembers = [] } = useListProjectMembers(
+    Number.isFinite(quickProjectIdNum) ? quickProjectIdNum : 0,
+    { query: { enabled: Number.isFinite(quickProjectIdNum) && quickProjectIdNum > 0 } },
+  );
+  const existingMember = useMemo(() => {
+    if (!quickAssignUser) return undefined;
+    return quickProjectMembers.find((m) => m.userId === quickAssignUser.id);
+  }, [quickProjectMembers, quickAssignUser]);
+
   const openQuickAssign = (u: User) => {
     setQuickAssignUserId(u.id);
     setQuickCompanyId("");
     setQuickProjectId("");
+    setQuickRole("engineer");
+    setQuickCustomizeTabs(false);
+    setQuickTabDraft({});
   };
 
   const closeQuickAssign = () => {
     setQuickAssignUserId(null);
     setQuickCompanyId("");
     setQuickProjectId("");
+    setQuickRole("engineer");
+    setQuickCustomizeTabs(false);
+    setQuickTabDraft({});
   };
 
   const handleQuickAssign = async () => {
@@ -198,21 +245,66 @@ export default function Users() {
       ? [...existingProjectIds, pidNum]
       : existingProjectIds;
 
-    if (
-      nextCompanyIds.length === existingCompanyIds.length &&
-      nextProjectIds.length === existingProjectIds.length
-    ) {
+    const hasUserAssignmentChanges =
+      nextCompanyIds.length !== existingCompanyIds.length ||
+      nextProjectIds.length !== existingProjectIds.length;
+    const hasProjectMembership = Number.isFinite(pidNum);
+
+    if (!hasUserAssignmentChanges && !hasProjectMembership) {
       toast({ variant: "destructive", title: "اختر شركة أو مشروع للتعيين" });
       return;
     }
 
     try {
-      await updateUser.mutateAsync({
-        id: quickAssignUser.id,
-        data: { companyIds: nextCompanyIds, projectIds: nextProjectIds },
-      });
+      // 1) Update user-level company/project assignments (additive)
+      if (hasUserAssignmentChanges) {
+        await updateUser.mutateAsync({
+          id: quickAssignUser.id,
+          data: { companyIds: nextCompanyIds, projectIds: nextProjectIds },
+        });
+      }
+
+      // 2) Add or update the user's project membership with chosen role
+      let memberId: number | undefined = existingMember?.id;
+      if (hasProjectMembership) {
+        if (existingMember) {
+          if (existingMember.role !== quickRole) {
+            await updateProjectMember.mutateAsync({
+              projectId: pidNum,
+              id: existingMember.id,
+              data: { role: quickRole },
+            });
+          }
+          memberId = existingMember.id;
+        } else {
+          const created = await addProjectMember.mutateAsync({
+            projectId: pidNum,
+            data: { userId: quickAssignUser.id, role: quickRole },
+          });
+          memberId = created?.id;
+        }
+      }
+
+      // 3) Apply manual tab permissions if customized
+      if (hasProjectMembership && memberId && quickCustomizeTabs) {
+        await updateMemberTabPermissions.mutateAsync({
+          projectId: pidNum,
+          id: memberId,
+          data: { tabPermissions: quickTabDraft as TabPermissionsMap },
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetMemberTabPermissionsQueryKey(pidNum, memberId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetMyProjectPermissionsQueryKey(pidNum),
+        });
+      }
+
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetIncompleteUsersCountQueryKey() });
+      if (hasProjectMembership) {
+        queryClient.invalidateQueries({ queryKey: getListProjectMembersQueryKey(pidNum) });
+      }
       toast({ title: "تم تعيين المستخدم بنجاح" });
       closeQuickAssign();
     } catch {
@@ -661,7 +753,7 @@ export default function Users() {
         open={!!quickAssignUserId}
         onOpenChange={(open) => { if (!open) closeQuickAssign(); }}
       >
-        <DialogContent dir="rtl" className="sm:max-w-[420px]" data-testid="dialog-quick-assign">
+        <DialogContent dir="rtl" className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto" data-testid="dialog-quick-assign">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-amber-600" />
@@ -727,6 +819,89 @@ export default function Users() {
                 )}
               </div>
 
+              {quickProjectId && (
+                <>
+                  <div className="space-y-2">
+                    <Label>الدور في المشروع</Label>
+                    <Select
+                      value={quickRole}
+                      onValueChange={(v) => setQuickRole(v as typeof quickRole)}
+                    >
+                      <SelectTrigger dir="rtl" data-testid="select-quick-role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent dir="rtl">
+                        <SelectItem value="project_manager">مدير مشروع</SelectItem>
+                        <SelectItem value="engineer">مهندس</SelectItem>
+                        <SelectItem value="contractor">مقاول</SelectItem>
+                        <SelectItem value="viewer">مشاهد (قراءة فقط)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {existingMember && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        هذا المستخدم عضو بالفعل في المشروع — سيتم تحديث دوره فقط.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 border-t pt-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={quickCustomizeTabs}
+                        onCheckedChange={(v) => setQuickCustomizeTabs(v === true)}
+                        data-testid="checkbox-quick-customize-tabs"
+                      />
+                      <span className="text-sm font-medium">تخصيص صلاحيات التبويبات يدوياً</span>
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      عند التفعيل، يمكنك تحديد صلاحية كل تبويب. وإلا ستُستخدم الإعدادات الافتراضية حسب الدور.
+                    </p>
+
+                    {quickCustomizeTabs && (
+                      <div className="border rounded-md divide-y mt-2 max-h-[260px] overflow-y-auto">
+                        {QUICK_TAB_DEFS.map((tab) => {
+                          const current = quickTabDraft[tab.key] ?? "hidden";
+                          return (
+                            <div
+                              key={tab.key}
+                              className="flex items-center justify-between gap-2 px-3 py-2"
+                            >
+                              <span className="text-sm">{tab.label}</span>
+                              <div className="flex items-center gap-1">
+                                {QUICK_TAB_ACCESS_OPTIONS.map((opt) => {
+                                  const active = current === opt.value;
+                                  return (
+                                    <button
+                                      key={opt.value}
+                                      type="button"
+                                      onClick={() =>
+                                        setQuickTabDraft((prev) => ({ ...prev, [tab.key]: opt.value }))
+                                      }
+                                      className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+                                        active
+                                          ? opt.value === "edit"
+                                            ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                            : opt.value === "view"
+                                              ? "bg-blue-100 text-blue-800 border-blue-300"
+                                              : "bg-slate-200 text-slate-700 border-slate-300"
+                                          : "bg-background text-muted-foreground border-border hover:bg-muted"
+                                      }`}
+                                      data-testid={`quick-tab-${tab.key}-${opt.value}`}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
               <p className="text-xs text-muted-foreground">
                 ستُضاف الشركة/المشروع المختارَين إلى تعيينات المستخدم الحالية دون استبدالها.
               </p>
@@ -738,7 +913,13 @@ export default function Users() {
                 <Button
                   type="button"
                   onClick={handleQuickAssign}
-                  disabled={updateUser.isPending || (!quickCompanyId && !quickProjectId)}
+                  disabled={
+                    updateUser.isPending ||
+                    addProjectMember.isPending ||
+                    updateProjectMember.isPending ||
+                    updateMemberTabPermissions.isPending ||
+                    (!quickCompanyId && !quickProjectId)
+                  }
                   data-testid="button-quick-assign-save"
                 >
                   حفظ التعيين
