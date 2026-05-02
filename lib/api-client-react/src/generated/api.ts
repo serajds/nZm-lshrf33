@@ -37,6 +37,7 @@ import type {
   ErrorResponse,
   GenerateOwnerLinkBody,
   GetEmployeeAttendanceReportParams,
+  GetIncompleteUsersCount200,
   GetMyAttendanceHistoryParams,
   GetOwnerProjectByToken200,
   GetProjectDeviationParams,
@@ -63,6 +64,7 @@ import type {
   ProjectMember,
   ProjectPermissions,
   ProjectSummary,
+  RegisterBody,
   Report,
   UpdateActivityBody,
   UpdateAttendanceRecordBody,
@@ -326,6 +328,92 @@ export const useLogout = <
   TContext
 > => {
   return useMutation(getLogoutMutationOptions(options));
+};
+
+/**
+ * @summary Self-register a new user (name, phone, password)
+ */
+export const getRegisterUrl = () => {
+  return `/api/auth/register`;
+};
+
+export const register = async (
+  registerBody: RegisterBody,
+  options?: RequestInit,
+): Promise<LoginResponse> => {
+  return customFetch<LoginResponse>(getRegisterUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(registerBody),
+  });
+};
+
+export const getRegisterMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof register>>,
+    TError,
+    { data: BodyType<RegisterBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof register>>,
+  TError,
+  { data: BodyType<RegisterBody> },
+  TContext
+> => {
+  const mutationKey = ["register"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof register>>,
+    { data: BodyType<RegisterBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return register(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RegisterMutationResult = NonNullable<
+  Awaited<ReturnType<typeof register>>
+>;
+export type RegisterMutationBody = BodyType<RegisterBody>;
+export type RegisterMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Self-register a new user (name, phone, password)
+ */
+export const useRegister = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof register>>,
+    TError,
+    { data: BodyType<RegisterBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof register>>,
+  TError,
+  { data: BodyType<RegisterBody> },
+  TContext
+> => {
+  return useMutation(getRegisterMutationOptions(options));
 };
 
 /**
@@ -2972,6 +3060,85 @@ export const useCreateUser = <
 > => {
   return useMutation(getCreateUserMutationOptions(options));
 };
+
+/**
+ * @summary Count of users with incomplete profile (no company or no project)
+ */
+export const getGetIncompleteUsersCountUrl = () => {
+  return `/api/users/incomplete-count`;
+};
+
+export const getIncompleteUsersCount = async (
+  options?: RequestInit,
+): Promise<GetIncompleteUsersCount200> => {
+  return customFetch<GetIncompleteUsersCount200>(
+    getGetIncompleteUsersCountUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetIncompleteUsersCountQueryKey = () => {
+  return [`/api/users/incomplete-count`] as const;
+};
+
+export const getGetIncompleteUsersCountQueryOptions = <
+  TData = Awaited<ReturnType<typeof getIncompleteUsersCount>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getIncompleteUsersCount>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetIncompleteUsersCountQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getIncompleteUsersCount>>
+  > = ({ signal }) => getIncompleteUsersCount({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getIncompleteUsersCount>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetIncompleteUsersCountQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getIncompleteUsersCount>>
+>;
+export type GetIncompleteUsersCountQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Count of users with incomplete profile (no company or no project)
+ */
+
+export function useGetIncompleteUsersCount<
+  TData = Awaited<ReturnType<typeof getIncompleteUsersCount>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getIncompleteUsersCount>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetIncompleteUsersCountQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Update a user

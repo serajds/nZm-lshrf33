@@ -14,5 +14,7 @@ export interface User {
   fullName: string;
   role: UserRole;
   companies?: UserCompany[];
+  incompleteProfile?: boolean;
+  projectMembershipsCount?: number;
   createdAt: Date;
 }

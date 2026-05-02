@@ -42,6 +42,8 @@ export const LoginResponse = zod.object({
         }),
       )
       .optional(),
+    incompleteProfile: zod.boolean().optional(),
+    projectMembershipsCount: zod.number().optional(),
     createdAt: zod.coerce.date(),
   }),
   token: zod.string(),
@@ -52,6 +54,15 @@ export const LoginResponse = zod.object({
  */
 export const LogoutResponse = zod.object({
   message: zod.string(),
+});
+
+/**
+ * @summary Self-register a new user (name, phone, password)
+ */
+export const RegisterBody = zod.object({
+  fullName: zod.string(),
+  phone: zod.string(),
+  password: zod.string(),
 });
 
 /**
@@ -76,6 +87,8 @@ export const GetMeResponse = zod.object({
       }),
     )
     .optional(),
+  incompleteProfile: zod.boolean().optional(),
+  projectMembershipsCount: zod.number().optional(),
   createdAt: zod.coerce.date(),
 });
 
@@ -749,6 +762,8 @@ export const GetEligibleUsersResponseItem = zod.object({
       }),
     )
     .optional(),
+  incompleteProfile: zod.boolean().optional(),
+  projectMembershipsCount: zod.number().optional(),
   createdAt: zod.coerce.date(),
 });
 export const GetEligibleUsersResponse = zod.array(GetEligibleUsersResponseItem);
@@ -842,6 +857,8 @@ export const ListUsersResponseItem = zod.object({
       }),
     )
     .optional(),
+  incompleteProfile: zod.boolean().optional(),
+  projectMembershipsCount: zod.number().optional(),
   createdAt: zod.coerce.date(),
 });
 export const ListUsersResponse = zod.array(ListUsersResponseItem);
@@ -861,6 +878,13 @@ export const CreateUserBody = zod.object({
     "contractor",
   ]),
   companyIds: zod.array(zod.number()).optional(),
+});
+
+/**
+ * @summary Count of users with incomplete profile (no company or no project)
+ */
+export const GetIncompleteUsersCountResponse = zod.object({
+  count: zod.number(),
 });
 
 /**
@@ -897,6 +921,8 @@ export const UpdateUserResponse = zod.object({
       }),
     )
     .optional(),
+  incompleteProfile: zod.boolean().optional(),
+  projectMembershipsCount: zod.number().optional(),
   createdAt: zod.coerce.date(),
 });
 

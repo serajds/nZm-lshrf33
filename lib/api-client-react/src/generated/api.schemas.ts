@@ -82,12 +82,20 @@ export interface User {
   fullName: string;
   role: UserRole;
   companies?: UserCompany[];
+  incompleteProfile?: boolean;
+  projectMembershipsCount?: number;
   createdAt: string;
 }
 
 export interface LoginResponse {
   user: User;
   token: string;
+}
+
+export interface RegisterBody {
+  fullName: string;
+  phone: string;
+  password: string;
 }
 
 export type CreateUserBodyRole =
@@ -1073,6 +1081,10 @@ export type UpdateMemberGroupsBody = {
 
 export type UpdateMemberGroups200 = {
   groupIds?: number[];
+};
+
+export type GetIncompleteUsersCount200 = {
+  count: number;
 };
 
 export type GetOwnerProjectByToken200 = {
