@@ -5,9 +5,9 @@ import {
   useListFiles,
   useDeleteFile,
   useGetProject,
-  useGetMyProjectPermissions,
   getListFilesQueryKey 
 } from "@workspace/api-client-react";
+import { useTabAccess } from "@/hooks/use-tab-access";
 import type { ProjectFile } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
@@ -72,8 +72,8 @@ export default function ProjectFiles() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
-  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
-  const isViewer = myPermissions?.isViewer === true;
+  const { canEdit, isHidden } = useTabAccess(projectId, "files", { redirectIfHidden: true });
+  const isViewer = !canEdit;
   
   const { data: allFiles, isLoading } = useListFiles(projectId, {}, { query: { enabled: !!projectId } });
   

@@ -17,5 +17,4 @@ export interface TabPermissionsMap {
   attendance?: TabAccess;
   files?: TabAccess;
   deviation?: TabAccess;
-  [key: string]: TabAccess;
 }

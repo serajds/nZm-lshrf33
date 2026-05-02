@@ -11,6 +11,7 @@ import {
   getListActivitiesQueryKey,
   useGetMyProjectPermissions,
 } from "@workspace/api-client-react";
+import { useTabAccess } from "@/hooks/use-tab-access";
 import type { Activity, ProjectSuspension, UpdateActivityBodyStatus } from "@workspace/api-client-react";
 import {
   DndContext,
@@ -341,9 +342,10 @@ export default function ProjectActivities() {
   });
 
   const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
-  const canEditAll = myPermissions?.canEditAll ?? true;
+  const { canEdit: canEditActivities, isHidden } = useTabAccess(projectId, "activities", { redirectIfHidden: true });
+  const canEditAll = canEditActivities && (myPermissions?.canEditAll ?? true);
   const assignedGroupIds = myPermissions?.assignedGroupIds ?? [];
-  const isViewer = myPermissions?.isViewer === true;
+  const isViewer = !canEditActivities;
   const canEditActivity = useCallback((a: Activity) => {
     if (isViewer) return false;
     if (canEditAll) return true;
