@@ -113,6 +113,23 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Split heavy third-party libraries into their own chunks so they don't
+    // get pulled into the initial bundle alongside the framework code, and
+    // so a single page that uses xlsx/leaflet doesn't drag the rest of
+    // the app down with it.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "wouter", "@tanstack/react-query"],
+          "vendor-charts": ["recharts"],
+          "vendor-leaflet": ["leaflet", "react-leaflet"],
+          "vendor-xlsx": ["xlsx"],
+          "vendor-motion": ["framer-motion"],
+          "vendor-dnd": ["@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/utilities"],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 800,
   },
   server: {
     port,
