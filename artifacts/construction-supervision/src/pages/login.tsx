@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -41,11 +41,12 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<"login" | "register">("login");
 
-  if (isAuthenticated) {
-    setLocation("/");
-    return null;
-  }
-
+  // CRITICAL: every hook below MUST run on every render. Returning early
+  // (or calling setLocation during render) above this line broke the
+  // Rules of Hooks and put RHF into an inconsistent internal state — on
+  // mobile this manifested as inputs that focused but never committed
+  // characters, because RHF's controller re-mounted on every render
+  // and reverted each keystroke.
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: { phone: "", password: "" },
@@ -55,6 +56,16 @@ export default function Login() {
     resolver: zodResolver(registerSchema),
     defaultValues: { fullName: "", phone: "", password: "", confirmPassword: "" },
   });
+
+  // Redirect AFTER render via effect — never call setLocation in the
+  // render body (it triggers a state update during render and warns).
+  useEffect(() => {
+    if (isAuthenticated) setLocation("/");
+  }, [isAuthenticated, setLocation]);
+
+  if (isAuthenticated) {
+    return null;
+  }
 
   async function onSubmit(values: z.infer<typeof loginSchema>) {
     try {
