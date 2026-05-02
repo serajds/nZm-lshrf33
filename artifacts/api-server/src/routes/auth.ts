@@ -47,7 +47,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   if (incompleteProfile) {
     res.status(403).json({
       code: "ACCOUNT_NOT_ACTIVATED",
-      error: "حسابك غير مفعّل بعد. يرجى التواصل مع مسؤول النظام لتفعيل حسابك وتعيينك إلى الشركة والمشاريع.",
+      error: "حسابك غير مفعّل بعد، يرجى التواصل مع مدير النظام.",
     });
     return;
   }

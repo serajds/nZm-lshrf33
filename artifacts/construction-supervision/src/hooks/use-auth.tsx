@@ -117,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           title: "حسابك غير مفعّل بعد",
           description:
             e?.data?.error ||
-            "يرجى التواصل مع مسؤول النظام لتفعيل حسابك وتعيينك إلى الشركة والمشاريع.",
+            "حسابك غير مفعّل بعد، يرجى التواصل مع مدير النظام.",
         });
         return;
       }
