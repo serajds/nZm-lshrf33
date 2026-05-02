@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable, companiesTable, userCompaniesTable, projectMembersTable, projectsTable } from "@workspace/db";
 import { eq, inArray, count, and } from "drizzle-orm";
-import { requireAuth, requireAdmin, requireEngineerOrAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
 
 async function getProjectMembershipCounts(userIds: number[]) {
@@ -142,7 +142,7 @@ async function setCompaniesForUser(userId: number, companyIds: number[]) {
   }
 }
 
-router.get("/users", requireEngineerOrAdmin, async (_req, res): Promise<void> => {
+router.get("/users", requireAdmin, async (_req, res): Promise<void> => {
   const users = await db.select({
     id: usersTable.id,
     phone: usersTable.phone,
