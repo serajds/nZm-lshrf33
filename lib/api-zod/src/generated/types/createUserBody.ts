@@ -13,4 +13,5 @@ export interface CreateUserBody {
   fullName: string;
   role: CreateUserBodyRole;
   companyIds?: number[];
+  projectIds?: number[];
 }

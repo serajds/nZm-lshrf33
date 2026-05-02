@@ -5,6 +5,7 @@ import {
   useCreateUser, 
   useUpdateUser, 
   useDeleteUser,
+  useListProjects,
   getListUsersQueryKey,
   getGetIncompleteUsersCountQueryKey,
 } from "@workspace/api-client-react";
@@ -36,7 +37,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Edit2, Trash2, Users as UsersIcon, Building2, UserX, AlertTriangle } from "lucide-react";
+import { Plus, Edit2, Trash2, Users as UsersIcon, Building2, UserX, AlertTriangle, FolderKanban } from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -65,6 +66,7 @@ const userSchema = z.object({
   role: z.enum(["admin", "project_manager", "engineer"]),
   password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل").optional().or(z.literal('')),
   companyIds: z.array(z.number()).optional(),
+  projectIds: z.array(z.number()).optional(),
 });
 
 export default function Users() {
@@ -75,6 +77,7 @@ export default function Users() {
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<number[]>([]);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
   const [filter, setFilter] = useState<"all" | "incomplete">("all");
 
   const queryClient = useQueryClient();
@@ -105,6 +108,8 @@ export default function Users() {
     },
   });
 
+  const { data: projectsList = [] } = useListProjects();
+
   const form = useForm<z.infer<typeof userSchema>>({
     resolver: zodResolver(userSchema),
     defaultValues: {
@@ -113,6 +118,7 @@ export default function Users() {
       role: "engineer",
       password: "",
       companyIds: [],
+      projectIds: [],
     }
   });
 
@@ -123,14 +129,17 @@ export default function Users() {
 
   const handleEdit = (u: User) => {
     setEditingUserId(u.id);
-    const cIds = (u as any).companies?.map((c: any) => c.companyId) || [];
+    const cIds = u.companies?.map((c) => c.companyId) || [];
+    const pIds = u.projects?.map((p) => p.projectId) || [];
     setSelectedCompanyIds(cIds);
+    setSelectedProjectIds(pIds);
     form.reset({
       fullName: u.fullName,
       phone: u.phone,
       role: u.role as "admin" | "project_manager" | "engineer" | "contractor" | "owner",
       password: "",
       companyIds: cIds,
+      projectIds: pIds,
     });
     setIsDialogOpen(true);
   };
@@ -138,12 +147,14 @@ export default function Users() {
   const handleOpenNew = () => {
     setEditingUserId(null);
     setSelectedCompanyIds([]);
+    setSelectedProjectIds([]);
     form.reset({
       fullName: "",
       phone: "",
       role: "engineer",
       password: "",
       companyIds: [],
+      projectIds: [],
     });
     setIsDialogOpen(true);
   };
@@ -172,6 +183,16 @@ export default function Users() {
     });
   };
 
+  const toggleProject = (projectId: number) => {
+    setSelectedProjectIds(prev => {
+      const next = prev.includes(projectId)
+        ? prev.filter(id => id !== projectId)
+        : [...prev, projectId];
+      form.setValue("projectIds", next);
+      return next;
+    });
+  };
+
   const getCompanyTypeName = (type: string) => {
     switch (type) {
       case "owner": return "مالك";
@@ -185,7 +206,7 @@ export default function Users() {
     try {
       if (editingUserId) {
         const { password, ...rest } = values;
-        const updateData: any = { ...rest, companyIds: selectedCompanyIds };
+        const updateData: any = { ...rest, companyIds: selectedCompanyIds, projectIds: selectedProjectIds };
         if (password) updateData.password = password;
         await updateUser.mutateAsync({ id: editingUserId, data: updateData });
         toast({ title: "تم تحديث المستخدم بنجاح" });
@@ -194,7 +215,7 @@ export default function Users() {
             toast({ variant: "destructive", title: "كلمة المرور مطلوبة للمستخدم الجديد" });
             return;
         }
-        await createUser.mutateAsync({ data: { ...values, password: values.password!, companyIds: selectedCompanyIds } as any });
+        await createUser.mutateAsync({ data: { ...values, password: values.password!, companyIds: selectedCompanyIds, projectIds: selectedProjectIds } as any });
         toast({ title: "تم إنشاء المستخدم بنجاح" });
       }
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
@@ -203,6 +224,7 @@ export default function Users() {
       form.reset();
       setEditingUserId(null);
       setSelectedCompanyIds([]);
+      setSelectedProjectIds([]);
     } catch (e) {
       toast({ variant: "destructive", title: "فشل حفظ المستخدم" });
     }
@@ -265,6 +287,7 @@ export default function Users() {
             form.reset();
             setEditingUserId(null);
             setSelectedCompanyIds([]);
+            setSelectedProjectIds([]);
           }
         }}>
           <DialogTrigger asChild>
@@ -353,6 +376,31 @@ export default function Users() {
                         ))}
                       </div>
                     )}
+                  </div>
+                  <div className="sm:col-span-2 space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <FolderKanban className="h-4 w-4" />
+                      المشاريع
+                    </Label>
+                    {projectsList.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">لا توجد مشاريع</p>
+                    ) : (
+                      <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto" data-testid="project-membership-picker">
+                        {projectsList.map(p => (
+                          <label key={p.id} className="flex items-center gap-2 cursor-pointer">
+                            <Checkbox
+                              checked={selectedProjectIds.includes(p.id)}
+                              onCheckedChange={() => toggleProject(p.id)}
+                              data-testid={`checkbox-project-${p.id}`}
+                            />
+                            <span className="text-sm">{p.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      سيتم تعيين المستخدم في المشاريع المختارة بدور افتراضي بناءً على صلاحيته في النظام.
+                    </p>
                   </div>
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
