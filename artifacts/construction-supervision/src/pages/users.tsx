@@ -617,6 +617,18 @@ export default function Users() {
                   </div>
                 )}
                 <div className="flex justify-end gap-1 pt-1 border-t">
+                  {u.incompleteProfile && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => openQuickAssign(u)}
+                      title="تعيين سريع لشركة ومشروع"
+                      data-testid={`button-quick-assign-mobile-${u.id}`}
+                    >
+                      <Zap className="h-4 w-4 text-amber-600" />
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(u)}>
                     <Edit2 className="h-4 w-4 text-muted-foreground" />
                   </Button>
@@ -644,6 +656,98 @@ export default function Users() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={!!quickAssignUserId}
+        onOpenChange={(open) => { if (!open) closeQuickAssign(); }}
+      >
+        <DialogContent dir="rtl" className="sm:max-w-[420px]" data-testid="dialog-quick-assign">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5 text-amber-600" />
+              تعيين سريع
+            </DialogTitle>
+          </DialogHeader>
+          {quickAssignUser && (
+            <div className="space-y-4 pt-2">
+              <div className="text-sm">
+                <div className="font-medium">{quickAssignUser.fullName}</div>
+                <div className="text-xs text-muted-foreground" dir="ltr">{quickAssignUser.phone}</div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>الشركة</Label>
+                {companies.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">لا توجد شركات مسجلة</p>
+                ) : (
+                  <Select value={quickCompanyId} onValueChange={setQuickCompanyId}>
+                    <SelectTrigger dir="rtl" data-testid="select-quick-company">
+                      <SelectValue placeholder="اختر شركة" />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl">
+                      {companies.map((c) => {
+                        const already = (quickAssignUser.companies || []).some((x) => x.companyId === c.id);
+                        return (
+                          <SelectItem key={c.id} value={String(c.id)} disabled={already}>
+                            {c.name}
+                            <span className="text-xs text-muted-foreground"> ({getCompanyTypeName(c.type)})</span>
+                            {already && <span className="text-xs text-muted-foreground"> — مُعيَّنة</span>}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <FolderKanban className="h-4 w-4" />
+                  المشروع
+                </Label>
+                {projectsList.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">لا توجد مشاريع</p>
+                ) : (
+                  <Select value={quickProjectId} onValueChange={setQuickProjectId}>
+                    <SelectTrigger dir="rtl" data-testid="select-quick-project">
+                      <SelectValue placeholder="اختر مشروع" />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl">
+                      {projectsList.map((p) => {
+                        const already = (quickAssignUser.projects || []).some((x) => x.projectId === p.id);
+                        return (
+                          <SelectItem key={p.id} value={String(p.id)} disabled={already}>
+                            {p.name}
+                            {already && <span className="text-xs text-muted-foreground"> — مُعيَّن</span>}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                ستُضاف الشركة/المشروع المختارَين إلى تعيينات المستخدم الحالية دون استبدالها.
+              </p>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={closeQuickAssign}>
+                  إلغاء
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleQuickAssign}
+                  disabled={updateUser.isPending || (!quickCompanyId && !quickProjectId)}
+                  data-testid="button-quick-assign-save"
+                >
+                  حفظ التعيين
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
