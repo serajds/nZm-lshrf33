@@ -76,12 +76,29 @@ export interface UserCompany {
   companyName: string;
 }
 
+export type UserProjectMembershipRole =
+  (typeof UserProjectMembershipRole)[keyof typeof UserProjectMembershipRole];
+
+export const UserProjectMembershipRole = {
+  project_manager: "project_manager",
+  engineer: "engineer",
+  contractor: "contractor",
+  viewer: "viewer",
+} as const;
+
+export interface UserProjectMembership {
+  projectId: number;
+  projectName: string;
+  role: UserProjectMembershipRole;
+}
+
 export interface User {
   id: number;
   phone: string;
   fullName: string;
   role: UserRole;
   companies?: UserCompany[];
+  projects?: UserProjectMembership[];
   incompleteProfile?: boolean;
   projectMembershipsCount?: number;
   createdAt: string;
@@ -115,6 +132,7 @@ export interface CreateUserBody {
   fullName: string;
   role: CreateUserBodyRole;
   companyIds?: number[];
+  projectIds?: number[];
 }
 
 export type ProjectMemberRole =
@@ -189,6 +207,7 @@ export interface UpdateUserBody {
   /** @nullable */
   password?: string | null;
   companyIds?: number[];
+  projectIds?: number[];
 }
 
 export type ProjectStatus = (typeof ProjectStatus)[keyof typeof ProjectStatus];

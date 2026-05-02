@@ -42,6 +42,20 @@ export const LoginResponse = zod.object({
         }),
       )
       .optional(),
+    projects: zod
+      .array(
+        zod.object({
+          projectId: zod.number(),
+          projectName: zod.string(),
+          role: zod.enum([
+            "project_manager",
+            "engineer",
+            "contractor",
+            "viewer",
+          ]),
+        }),
+      )
+      .optional(),
     incompleteProfile: zod.boolean().optional(),
     projectMembershipsCount: zod.number().optional(),
     createdAt: zod.coerce.date(),
@@ -84,6 +98,15 @@ export const GetMeResponse = zod.object({
       zod.object({
         companyId: zod.number(),
         companyName: zod.string(),
+      }),
+    )
+    .optional(),
+  projects: zod
+    .array(
+      zod.object({
+        projectId: zod.number(),
+        projectName: zod.string(),
+        role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
       }),
     )
     .optional(),
@@ -762,6 +785,15 @@ export const GetEligibleUsersResponseItem = zod.object({
       }),
     )
     .optional(),
+  projects: zod
+    .array(
+      zod.object({
+        projectId: zod.number(),
+        projectName: zod.string(),
+        role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
+      }),
+    )
+    .optional(),
   incompleteProfile: zod.boolean().optional(),
   projectMembershipsCount: zod.number().optional(),
   createdAt: zod.coerce.date(),
@@ -857,6 +889,15 @@ export const ListUsersResponseItem = zod.object({
       }),
     )
     .optional(),
+  projects: zod
+    .array(
+      zod.object({
+        projectId: zod.number(),
+        projectName: zod.string(),
+        role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
+      }),
+    )
+    .optional(),
   incompleteProfile: zod.boolean().optional(),
   projectMembershipsCount: zod.number().optional(),
   createdAt: zod.coerce.date(),
@@ -878,6 +919,7 @@ export const CreateUserBody = zod.object({
     "contractor",
   ]),
   companyIds: zod.array(zod.number()).optional(),
+  projectIds: zod.array(zod.number()).optional(),
 });
 
 /**
@@ -900,6 +942,7 @@ export const UpdateUserBody = zod.object({
   role: zod.string().nullish(),
   password: zod.string().nullish(),
   companyIds: zod.array(zod.number()).optional(),
+  projectIds: zod.array(zod.number()).optional(),
 });
 
 export const UpdateUserResponse = zod.object({
@@ -918,6 +961,15 @@ export const UpdateUserResponse = zod.object({
       zod.object({
         companyId: zod.number(),
         companyName: zod.string(),
+      }),
+    )
+    .optional(),
+  projects: zod
+    .array(
+      zod.object({
+        projectId: zod.number(),
+        projectName: zod.string(),
+        role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
       }),
     )
     .optional(),

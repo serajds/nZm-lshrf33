@@ -116,4 +116,6 @@ export * from "./updateUserBody";
 export * from "./uploadFileBody";
 export * from "./user";
 export * from "./userCompany";
+export * from "./userProjectMembership";
+export * from "./userProjectMembershipRole";
 export * from "./userRole";

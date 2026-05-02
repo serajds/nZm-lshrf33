@@ -1515,6 +1515,21 @@ components:
         - companyId
         - companyName
 
+    UserProjectMembership:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        projectName:
+          type: string
+        role:
+          type: string
+          enum: [project_manager, engineer, contractor, viewer]
+      required:
+        - projectId
+        - projectName
+        - role
+
     User:
       type: object
       properties:
@@ -1531,6 +1546,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/UserCompany"
+        projects:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserProjectMembership"
         incompleteProfile:
           type: boolean
         projectMembershipsCount:
@@ -1558,6 +1577,10 @@ components:
           type: string
           enum: [admin, project_manager, engineer, owner, contractor]
         companyIds:
+          type: array
+          items:
+            type: integer
+        projectIds:
           type: array
           items:
             type: integer
@@ -1664,6 +1687,10 @@ components:
         password:
           type: ["string", "null"]
         companyIds:
+          type: array
+          items:
+            type: integer
+        projectIds:
           type: array
           items:
             type: integer
