@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useCallback, ReactNode } from "react";
 import { useGetMe, useLogin, useLogout, useRegister } from "@workspace/api-client-react";
 import type { User, LoginBody, RegisterBody } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,16 +16,54 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+// Cache the last-seen user payload in localStorage so the app shell can
+// render IMMEDIATELY on every subsequent open instead of showing a full-
+// screen "جاري التحميل" spinner while /auth/me round-trips. React Query
+// still revalidates in the background and updates the UI silently if
+// anything changed (or kicks the user to /login if the token expired).
+const USER_CACHE_KEY = "auth_user_cache";
+
+function readCachedUser(): User | undefined {
+  try {
+    const raw = localStorage.getItem(USER_CACHE_KEY);
+    if (!raw) return undefined;
+    return JSON.parse(raw) as User;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeCachedUser(user: User | null) {
+  try {
+    if (user) localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+    else localStorage.removeItem(USER_CACHE_KEY);
+  } catch {
+    // localStorage may be full or unavailable (private mode) — non-fatal.
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(localStorage.getItem("auth_token"));
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
+  // Read once per token change. We don't depend on `user` here — that would
+  // create a write/read loop with the cache-update effect below.
+  const cachedUser = useMemo<User | undefined>(
+    () => (token ? readCachedUser() : undefined),
+    [token],
+  );
+
   const { data: user, isLoading: isUserLoading, error } = useGetMe({
     query: {
       enabled: !!token,
       retry: false,
-    }
+      initialData: cachedUser,
+      // Trust the cache for 5 minutes before forcing a refetch on mount.
+      // Background revalidation still happens; this just stops every page
+      // navigation from showing a fresh loading state.
+      staleTime: 1000 * 60 * 5,
+    },
   });
 
   const queryClient = useQueryClient();
@@ -33,14 +71,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const registerMutation = useRegister();
   const logoutMutation = useLogout();
 
+  // Persist the freshest /auth/me payload so the next app launch is instant.
+  useEffect(() => {
+    if (user) writeCachedUser(user);
+  }, [user]);
+
   useEffect(() => {
     if (error) {
       localStorage.removeItem("auth_token");
+      writeCachedUser(null);
       setToken(null);
     }
   }, [error]);
 
-  const isAuthLoading = isUserLoading && !!token;
+  // Only block the UI with a full-screen spinner on the very FIRST login
+  // (no cached user yet). On every subsequent open we have a cached user,
+  // so the app shell renders immediately while React Query revalidates in
+  // the background.
+  const isAuthLoading = isUserLoading && !!token && !cachedUser;
   // Splash dismissal lives in main.tsx now — it fires unconditionally when
   // React first paints, so a slow/broken /auth/me can never strand the user
   // on the loading splash.
@@ -49,6 +97,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const result = await loginMutation.mutateAsync({ data });
       localStorage.setItem("auth_token", result.token);
+      // Seed the cache from the login response if it includes the user
+      // payload, so the post-login redirect doesn't flash a loading screen.
+      const maybeUser = (result as unknown as { user?: User }).user;
+      if (maybeUser) writeCachedUser(maybeUser);
       setToken(result.token);
       toast({
         title: "تم تسجيل الدخول بنجاح",
@@ -87,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     localStorage.removeItem("auth_token");
+    writeCachedUser(null);
     setToken(null);
     queryClient.clear();
     setLocation("/login");
