@@ -9,7 +9,7 @@ import {
   getListUsersQueryKey,
   getGetIncompleteUsersCountQueryKey,
 } from "@workspace/api-client-react";
-import type { User } from "@workspace/api-client-react";
+import type { User, UpdateUserBody, CreateUserBody, CreateUserBodyRole } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -133,10 +133,12 @@ export default function Users() {
     const pIds = u.projects?.map((p) => p.projectId) || [];
     setSelectedCompanyIds(cIds);
     setSelectedProjectIds(pIds);
+    const formRole: "admin" | "project_manager" | "engineer" =
+      u.role === "admin" || u.role === "project_manager" ? u.role : "engineer";
     form.reset({
       fullName: u.fullName,
       phone: u.phone,
-      role: u.role as "admin" | "project_manager" | "engineer" | "contractor" | "owner",
+      role: formRole,
       password: "",
       companyIds: cIds,
       projectIds: pIds,
@@ -205,9 +207,14 @@ export default function Users() {
   const onSubmit = async (values: z.infer<typeof userSchema>) => {
     try {
       if (editingUserId) {
-        const { password, ...rest } = values;
-        const updateData: any = { ...rest, companyIds: selectedCompanyIds, projectIds: selectedProjectIds };
-        if (password) updateData.password = password;
+        const updateData: UpdateUserBody = {
+          fullName: values.fullName,
+          phone: values.phone,
+          role: values.role,
+          companyIds: selectedCompanyIds,
+          projectIds: selectedProjectIds,
+        };
+        if (values.password) updateData.password = values.password;
         await updateUser.mutateAsync({ id: editingUserId, data: updateData });
         toast({ title: "تم تحديث المستخدم بنجاح" });
       } else {
@@ -215,7 +222,15 @@ export default function Users() {
             toast({ variant: "destructive", title: "كلمة المرور مطلوبة للمستخدم الجديد" });
             return;
         }
-        await createUser.mutateAsync({ data: { ...values, password: values.password!, companyIds: selectedCompanyIds, projectIds: selectedProjectIds } as any });
+        const createData: CreateUserBody = {
+          fullName: values.fullName,
+          phone: values.phone,
+          role: values.role as CreateUserBodyRole,
+          password: values.password,
+          companyIds: selectedCompanyIds,
+          projectIds: selectedProjectIds,
+        };
+        await createUser.mutateAsync({ data: createData });
         toast({ title: "تم إنشاء المستخدم بنجاح" });
       }
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
