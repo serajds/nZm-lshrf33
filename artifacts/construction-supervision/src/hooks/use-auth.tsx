@@ -40,6 +40,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [error]);
 
+  const isAuthLoading = isUserLoading && !!token;
+  useEffect(() => {
+    if (isAuthLoading) return;
+    const splash = document.getElementById("app-splash");
+    if (!splash) return;
+    splash.classList.add("splash-hide");
+    const t = window.setTimeout(() => splash.remove(), 500);
+    return () => window.clearTimeout(t);
+  }, [isAuthLoading]);
+
   const login = async (data: LoginBody) => {
     try {
       const result = await loginMutation.mutateAsync({ data });
@@ -95,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user: token ? (user || null) : null,
-      isLoading: isUserLoading && !!token,
+      isLoading: isAuthLoading,
       login,
       register,
       logout,

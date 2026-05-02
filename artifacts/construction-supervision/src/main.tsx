@@ -9,24 +9,6 @@ setAuthTokenGetter(() => localStorage.getItem("auth_token"));
 const rootEl = document.getElementById("root")!;
 createRoot(rootEl).render(<App />);
 
-function hideSplash() {
-  const splash = document.getElementById("app-splash");
-  if (!splash) return;
-  splash.classList.add("splash-hide");
-  window.setTimeout(() => splash.remove(), 600);
-}
-
-const MIN_SPLASH_MS = 600;
-const startedAt = performance.now();
-
-requestAnimationFrame(() => {
-  requestAnimationFrame(() => {
-    const elapsed = performance.now() - startedAt;
-    const remaining = Math.max(0, MIN_SPLASH_MS - elapsed);
-    window.setTimeout(hideSplash, remaining);
-  });
-});
-
 if (import.meta.env.PROD) {
   registerSW({ immediate: true });
 }
