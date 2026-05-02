@@ -21,6 +21,7 @@ import { fmtLibyaDateTime, fmtLibyaTime, fmtLibyaDate, getCurrentPosition, withA
 import { Loader2, MapPin, LogIn, LogOut, Camera, Printer, AlertTriangle, CheckCircle2, Crosshair, Image as ImageIcon, ArrowRight } from "lucide-react";
 import { previewAttendanceReport, type CompanyLogo, type AttendanceReportData } from "@/lib/report-pdf";
 import { AttendanceLocationMapDialog, type AttendanceMapPoint } from "@/components/attendance-location-map-dialog";
+import { SiteGeofenceMap } from "@/components/site-geofence-map";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -1390,6 +1391,10 @@ function SiteSettingsTab({ projectId, onUpdated }: { projectId: number; onUpdate
   const latNum = parseFloat(lat);
   const lngNum = parseFloat(lng);
   const hasCoords = !Number.isNaN(latNum) && !Number.isNaN(lngNum);
+  const radiusNum = (() => {
+    const n = parseInt(radius, 10);
+    return Number.isNaN(n) || n <= 0 ? 200 : Math.min(n, 5000);
+  })();
 
   return (
     <Card>
@@ -1448,10 +1453,14 @@ function SiteSettingsTab({ projectId, onUpdated }: { projectId: number; onUpdate
             <a className="text-sm text-primary hover:underline inline-flex items-center gap-1" target="_blank" rel="noreferrer" href={osmLink(latNum, lngNum)}>
               <MapPin className="h-4 w-4" /> فتح الموقع في الخريطة
             </a>
-            <iframe
-              title="موقع المشروع"
-              className="w-full h-72 rounded-md border"
-              src={`https://www.openstreetmap.org/export/embed.html?bbox=${lngNum - 0.005}%2C${latNum - 0.003}%2C${lngNum + 0.005}%2C${latNum + 0.003}&layer=mapnik&marker=${latNum}%2C${lngNum}`}
+            <SiteGeofenceMap
+              lat={latNum}
+              lng={lngNum}
+              radius={radiusNum}
+              onChange={({ lat: la, lng: ln }) => {
+                setLat(la.toFixed(6));
+                setLng(ln.toFixed(6));
+              }}
             />
           </div>
         ) : null}
