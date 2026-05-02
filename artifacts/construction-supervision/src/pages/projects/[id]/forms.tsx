@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useGetProject, useGetMyProjectPermissions } from "@workspace/api-client-react";
-import { useTabAccess } from "@/hooks/use-tab-access";
+import { useGetProject } from "@workspace/api-client-react";
+import { useMyProjectPermissions, useTabAccess } from "@/hooks/use-tab-access";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1021,7 +1021,7 @@ export default function ProjectForms() {
 
   const isAdminOrPM = user?.role === "admin" || user?.role === "project_manager";
   const isContractorBase = user?.role === "contractor" || user?.isContractorCompanyUser === true;
-  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
+  const { data: myPermissions } = useMyProjectPermissions(projectId);
   const { canEdit: canEditForms, isHidden } = useTabAccess(projectId, "forms", { redirectIfHidden: true });
   const isViewer = !canEditForms;
   const isContractor = isContractorBase || isViewer;

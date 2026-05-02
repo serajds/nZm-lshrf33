@@ -9,10 +9,9 @@ import {
   useDeleteReport,
   useGetProject,
   useListActivities,
-  useGetMyProjectPermissions,
   getListReportsQueryKey 
 } from "@workspace/api-client-react";
-import { useTabAccess } from "@/hooks/use-tab-access";
+import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
 import type { Report, Activity, CreateReportBody, UpdateReportBody } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
@@ -173,7 +172,7 @@ export default function ProjectReports() {
   const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
-  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
+  const { data: myPermissions } = useMyProjectPermissions(projectId);
   const { canEdit: canEditReports, isHidden } = useTabAccess(projectId, "reports", { redirectIfHidden: true });
   const isViewer = !canEditReports;
   const canApprove = myPermissions?.projectRole === "admin" || myPermissions?.projectRole === "project_manager";

@@ -34,6 +34,7 @@ The system is a pnpm monorepo with separate packages for the API server and the 
 - **Offline Capabilities**: Offline-first attendance system using IndexedDB for queuing requests and auto-flushing when online. Implements idempotency on the backend for queued submissions.
 - **Notifications**: Web Push notifications for key events (attendance, project extensions/suspensions) using VAPID keys. Includes foreground geofence arrival reminders with `watchPosition` and audio/visual alerts.
 - **Backup System**: Admin-only database backup system creating JSON snapshots of all tables, stored locally on the server with download/delete functionality.
+- **Performance**: Express API uses gzip `compression` middleware (threshold 1KB) — list payloads (activities/members/files/reports) shrink 5-10x. The `/my-permissions` query (used by every project tab via `useTabAccess` and `ProjectNav`) is cached in React Query for 10 minutes (`staleTime`) with `refetchOnMount: false`, eliminating spinner flashes on tab switches. Global default `staleTime` is 2 min; `refetchOnWindowFocus` is disabled.
 
 ## Feature Specifications
 

@@ -2,6 +2,24 @@ import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useGetMyProjectPermissions } from "@workspace/api-client-react";
 
+// إعدادات كاش موحّدة لاستعلام صلاحيات المشروع. يُستخدم في كل المواضع التي
+// تستدعي `useGetMyProjectPermissions` مباشرة لكي يتشارك الجميع نفس الإعداد
+// ولا تحدث إعادة جلب مفاجئة على بعض الصفحات دون غيرها.
+const PERMISSIONS_QUERY_OPTIONS = {
+  staleTime: 10 * 60 * 1000,
+  gcTime: 30 * 60 * 1000,
+  refetchOnMount: false,
+} as const;
+
+export function useMyProjectPermissions(projectId: number) {
+  return useGetMyProjectPermissions(projectId, {
+    query: {
+      enabled: !!projectId,
+      ...PERMISSIONS_QUERY_OPTIONS,
+    } as any,
+  });
+}
+
 export type TabKey =
   | "overview"
   | "activities"
@@ -29,16 +47,7 @@ export function useTabAccess(
   tab: TabKey,
   options?: { redirectIfHidden?: boolean },
 ): UseTabAccessResult {
-  const { data, isLoading } = useGetMyProjectPermissions(projectId, {
-    query: {
-      enabled: !!projectId,
-      // صلاحيات المشروع نادراً ما تتغير — نُبقيها 10 دقائق دون إعادة جلب
-      // لتفادي تأخير ظاهر عند كل تنقل بين التبويبات.
-      staleTime: 10 * 60 * 1000,
-      gcTime: 30 * 60 * 1000,
-      refetchOnMount: false,
-    } as any,
-  });
+  const { data, isLoading } = useMyProjectPermissions(projectId);
   const [, setLocation] = useLocation();
 
   const explicit = data?.tabPermissions?.[tab] as TabAccess | undefined;

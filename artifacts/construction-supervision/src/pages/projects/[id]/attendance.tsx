@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useGetProject, useGetMyProjectPermissions } from "@workspace/api-client-react";
-import { useTabAccess } from "@/hooks/use-tab-access";
+import { useGetProject } from "@workspace/api-client-react";
+import { useMyProjectPermissions, useTabAccess } from "@/hooks/use-tab-access";
 import { useAuth } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { ProjectNav } from "@/components/project-nav";
@@ -163,7 +163,7 @@ export default function ProjectAttendance() {
   usePageTitle("حضور وانصراف الطاقم");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
-  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
+  const { data: myPermissions } = useMyProjectPermissions(projectId);
 
   const role = user?.role;
   const isAdmin = role === "admin";
@@ -625,7 +625,7 @@ function ProjectHistoryTab({ projectId, onShowPhoto, onShowMap }: {
   onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
 }) {
   const { user } = useAuth();
-  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
+  const { data: myPermissions } = useMyProjectPermissions(projectId);
   const isManager = user?.role === "admin" || myPermissions?.role === "project_manager";
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");

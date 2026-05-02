@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { useGetMyProjectPermissions } from "@workspace/api-client-react";
+import { useMyProjectPermissions } from "@/hooks/use-tab-access";
 
 type TabKey =
   | "overview"
@@ -36,15 +36,7 @@ export function ProjectNav({ projectId }: ProjectNavProps) {
   const basePath = `/projects/${projectId}`;
   const userRole = user?.role;
 
-  const { data: myPermissions } = useGetMyProjectPermissions(projectId, {
-    query: {
-      enabled: !!projectId,
-      // الصلاحيات شبه ثابتة — نُبقيها لـ10 دقائق لتفادي تكرار الجلب على كل تنقل.
-      staleTime: 10 * 60 * 1000,
-      gcTime: 30 * 60 * 1000,
-      refetchOnMount: false,
-    } as any,
-  });
+  const { data: myPermissions } = useMyProjectPermissions(projectId);
 
   const isContractorCompanyUser = user?.isContractorCompanyUser === true;
   const tabPermissions = myPermissions?.tabPermissions as Record<TabKey, "hidden" | "view" | "edit"> | undefined;
