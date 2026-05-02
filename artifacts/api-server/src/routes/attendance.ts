@@ -7,6 +7,7 @@ import { haversineDistanceMeters } from "../lib/geo";
 import { logAudit } from "../lib/audit";
 import { pairAttendanceSessions, type AttendanceSession } from "../lib/attendance-sessions";
 import { uploadToCloud, streamFromCloud } from "../lib/fileStorage";
+import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
 import { verifyToken } from "../lib/auth";
 import multer from "multer";
 import path from "path";
@@ -251,6 +252,9 @@ router.post(
   },
 );
 
+// UUID v4 (any case) — strict to prevent abuse of the idempotency cache.
+const CLIENT_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 async function recordAttendance(req: Request, res: Response, type: "check_in" | "check_out"): Promise<void> {
   // Owner is a stakeholder, not on-site staff. They cannot check in/out.
   if (req.user?.role === "owner") {
@@ -271,6 +275,29 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
   const userId = req.user!.userId;
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
+
+  // Idempotency: if the client sent a clientId and we already have a record
+  // with that (userId, clientId), short-circuit and return the existing one.
+  // This makes offline retries safe — the device may flush the same queued
+  // request many times after re-connect without creating duplicates.
+  const rawClientId = req.body.clientId !== undefined ? String(req.body.clientId).trim() : "";
+  const clientId = rawClientId && CLIENT_ID_REGEX.test(rawClientId) ? rawClientId : null;
+  if (clientId) {
+    const [existing] = await db.select()
+      .from(attendanceRecordsTable)
+      .where(and(
+        eq(attendanceRecordsTable.userId, userId),
+        eq(attendanceRecordsTable.clientId, clientId),
+      ))
+      .limit(1);
+    if (existing) {
+      // Same logical request — drop the (likely re-uploaded) selfie file
+      // and return the existing record so the client can clear its queue.
+      if (req.file) fs.unlink(req.file.path, () => {});
+      res.status(200).json(existing);
+      return;
+    }
+  }
 
   if (!req.file) { res.status(400).json({ error: "صورة من الموقع مطلوبة" }); return; }
 
@@ -380,6 +407,7 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
     selfieFilename,
     selfieUrl: `/api/attendance/records/__ID__/photo`, // placeholder; real URL is built per-request
     notes,
+    clientId,
   }).returning();
 
   // Patch in correct id-based URL
@@ -402,6 +430,29 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
     projectName: project.name,
     details: { type, outOfRange, distanceMeters: distance },
   });
+
+  // Fire-and-forget push notification to project supervisors. We never
+  // await this — a slow push provider must not delay the user's response.
+  (async () => {
+    try {
+      const recipients = await getProjectSupervisorIds(projectId, userId);
+      if (recipients.length === 0) return;
+      const [actor] = await db.select({ fullName: usersTable.fullName }).from(usersTable).where(eq(usersTable.id, userId));
+      const who = actor?.fullName || "موظف";
+      const action = type === "check_in" ? "سجّل حضور" : "سجّل انصراف";
+      const oor = outOfRange ? " (خارج النطاق)" : "";
+      await sendPushToUsers(recipients, {
+        title: `${action} • ${project.name}`,
+        body: `${who}${oor}`,
+        url: `/projects/${projectId}/attendance`,
+        tag: `attendance-${projectId}`,
+        data: { kind: "attendance", projectId, recordId: record.id, type },
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[push] attendance dispatch failed:", err);
+    }
+  })();
 
   res.status(201).json(record);
 }

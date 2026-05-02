@@ -4,6 +4,7 @@ import { projectExtensionsTable, projectsTable } from "@workspace/db";
 import { eq, desc, and, asc } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { recalcExpectedEndDate, getActivitiesBaseEndDate } from "../lib/recalc-end-date";
+import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
 
 const router: IRouter = Router();
 
@@ -74,6 +75,24 @@ router.post("/projects/:projectId/extensions", requireProjectAccess("projectId")
   const [updatedExtension] = await db.select()
     .from(projectExtensionsTable)
     .where(eq(projectExtensionsTable.id, extension.id));
+
+  (async () => {
+    try {
+      const actorId = req.user?.userId;
+      const recipients = await getProjectSupervisorIds(projectId, actorId);
+      if (recipients.length === 0) return;
+      await sendPushToUsers(recipients, {
+        title: `تمديد جديد • ${project.name}`,
+        body: `+${Number(daysAdded)} يوم • تاريخ التمديد ${extensionDate}`,
+        url: `/projects/${projectId}/extensions`,
+        tag: `extension-${projectId}`,
+        data: { kind: "extension", projectId, extensionId: extension.id },
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[push] extension dispatch failed:", err);
+    }
+  })();
 
   res.status(201).json(updatedExtension);
 });

@@ -21,6 +21,7 @@ import formsRouter from "./forms";
 import publicFormsRouter from "./public-forms";
 import backupRouter from "./backup";
 import attendanceRouter from "./attendance";
+import pushRouter from "./push";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use(formsRouter);
 router.use(publicFormsRouter);
 router.use(backupRouter);
 router.use(attendanceRouter);
+router.use(pushRouter);
 
 export default router;

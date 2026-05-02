@@ -15,3 +15,4 @@ export * from "./form_templates";
 export * from "./form_submissions";
 export * from "./skipped_days";
 export * from "./attendance_records";
+export * from "./push_subscriptions";

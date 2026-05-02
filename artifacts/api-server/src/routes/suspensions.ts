@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { projectSuspensionsTable, projectsTable, activitiesTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
+import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
 
 const router: IRouter = Router();
 
@@ -105,6 +106,25 @@ router.post("/projects/:projectId/suspensions", requireProjectAccess("projectId"
         .where(eq(projectsTable.id, projectId));
     }
   }
+
+  (async () => {
+    try {
+      const actorId = req.user?.userId;
+      const recipients = await getProjectSupervisorIds(projectId, actorId);
+      if (recipients.length === 0) return;
+      const typeLabel = type === "official_holiday" ? "عطلة رسمية" : type === "force_majeure" ? "قوة قاهرة" : "تأخير المقاول";
+      await sendPushToUsers(recipients, {
+        title: `توقّف جديد • ${project.name}`,
+        body: `${title} • ${typeLabel} (${calendarDays} يوم)`,
+        url: `/projects/${projectId}/suspensions`,
+        tag: `suspension-${projectId}`,
+        data: { kind: "suspension", projectId, suspensionId: suspension.id },
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[push] suspension dispatch failed:", err);
+    }
+  })();
 
   res.status(201).json({ ...suspension, activitiesShifted: shouldShift });
 });

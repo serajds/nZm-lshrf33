@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { InstallButton } from "@/components/install-button";
+import { NotificationToggle } from "@/components/notification-toggle";
 import {
   LayoutDashboard,
   Building2,
@@ -342,6 +343,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               {currentPage?.name || "إدارة الإشراف والمتابعة"}
             </h1>
             <div className="mr-auto flex items-center gap-2">
+              <NotificationToggle />
               <InstallButton />
             </div>
           </header>

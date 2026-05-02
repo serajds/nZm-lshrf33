@@ -31,6 +31,12 @@ export default defineConfig({
           new RegExp("^" + basePath.replace(/\/$/, "") + "/api"),
           /^\/api/,
         ],
+        // Custom push + notificationclick handlers live in public/push-handler.js
+        // and are loaded into the generated workbox SW at runtime. The path
+        // is resolved relative to the SW's scope, which is always `basePath`,
+        // so we strip the leading slash and let the browser join it correctly
+        // even when basePath ≠ "/".
+        importScripts: [(basePath.endsWith("/") ? basePath : basePath + "/") + "push-handler.js"],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         runtimeCaching: [

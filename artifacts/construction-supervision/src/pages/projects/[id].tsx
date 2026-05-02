@@ -372,7 +372,12 @@ export default function ProjectDetails() {
       {/* ── Quick attendance check-in/out (visible to non-owner staff) ── */}
       <AttendanceQuickActions
         projectId={project.id}
-        project={{ siteLatitude: project.siteLatitude, siteLongitude: project.siteLongitude }}
+        project={{
+          name: project.name,
+          siteLatitude: project.siteLatitude,
+          siteLongitude: project.siteLongitude,
+          siteRadiusMeters: project.siteRadiusMeters,
+        }}
       />
 
       {/* ── Summary Content ── */}
