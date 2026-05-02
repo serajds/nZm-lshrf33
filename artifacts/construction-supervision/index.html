@@ -46,7 +46,7 @@
         background: #ffffff;
         color: #1f4d8b;
         font-family: 'Noto Kufi Arabic', sans-serif;
-        transition: opacity 0.45s ease, visibility 0.45s ease;
+        transition: opacity 0.2s ease, visibility 0.2s ease;
         padding: 24px;
         text-align: center;
       }
@@ -121,15 +121,14 @@
     </div>
 
     <script>
-      // Hard safety net: if the React app failed to mount within 10 seconds
-      // (e.g. a lazy chunk failed to load over a flaky mobile connection,
-      // or a JS error fired before any handler could run), hide the splash
-      // anyway so the user is never trapped on a spinner. The app shell
-      // underneath will then either render or reveal the underlying issue.
+      // Safety net only: hides the splash if React never mounts within 5s
+      // (e.g. a lazy chunk failed to load on a flaky connection). Under
+      // normal conditions main.tsx clears this timer on the first paint,
+      // so it never fires.
       window.__splashSafetyTimer = setTimeout(function () {
         var s = document.getElementById('app-splash');
         if (s) s.classList.add('splash-hide');
-      }, 10000);
+      }, 5000);
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
