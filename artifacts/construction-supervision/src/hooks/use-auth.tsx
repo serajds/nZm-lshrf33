@@ -97,41 +97,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const result = await loginMutation.mutateAsync({ data });
       localStorage.setItem("auth_token", result.token);
-      // Seed the cache from the login response if it includes the user
-      // payload, so the post-login redirect doesn't flash a loading screen.
-      const maybeUser = (result as unknown as { user?: User }).user;
-      if (maybeUser) writeCachedUser(maybeUser);
+      // Seed the cache from the login response so the post-login redirect
+      // doesn't flash a loading screen.
+      if (result.user) writeCachedUser(result.user);
       setToken(result.token);
       toast({
         title: "تم تسجيل الدخول بنجاح",
       });
       setLocation("/");
     } catch (err) {
-      const e = err as { error?: string };
+      // The server returns 403 with code "ACCOUNT_NOT_ACTIVATED" when the
+      // credentials are valid but the admin hasn't linked the user to a
+      // company/project yet. customFetch wraps that in an ApiError where
+      // `status` is the HTTP code and `data` is the parsed body.
+      const e = err as { status?: number; data?: { code?: string; error?: string } };
+      if (e?.status === 403 || e?.data?.code === "ACCOUNT_NOT_ACTIVATED") {
+        toast({
+          variant: "destructive",
+          title: "حسابك غير مفعّل بعد",
+          description:
+            e?.data?.error ||
+            "يرجى التواصل مع مسؤول النظام لتفعيل حسابك وتعيينك إلى الشركة والمشاريع.",
+        });
+        return;
+      }
       toast({
         variant: "destructive",
         title: "فشل تسجيل الدخول",
-        description: e?.error || "تأكد من رقم الهاتف وكلمة المرور",
+        description: e?.data?.error || "تأكد من رقم الهاتف وكلمة المرور",
       });
     }
   };
 
   const register = async (data: RegisterBody) => {
     try {
-      const result = await registerMutation.mutateAsync({ data });
-      localStorage.setItem("auth_token", result.token);
-      setToken(result.token);
+      // Newly-registered users are inert until an admin activates them, so
+      // the server no longer returns a token here. We just confirm the
+      // account was created and let the user back to the login screen;
+      // when the admin assigns them they can log in normally.
+      await registerMutation.mutateAsync({ data });
       toast({
         title: "تم إنشاء حسابك بنجاح",
-        description: "بانتظار تعيينك من قبل المسؤول",
+        description: "حسابك بانتظار التفعيل من قبل المسؤول. سيتم إعلامك عند تفعيله.",
       });
-      setLocation("/");
     } catch (err) {
-      const e = err as { error?: string };
+      const e = err as { data?: { error?: string } };
       toast({
         variant: "destructive",
         title: "فشل إنشاء الحساب",
-        description: e?.error || "تأكد من البيانات المدخلة",
+        description: e?.data?.error || "تأكد من البيانات المدخلة",
       });
       throw err;
     }

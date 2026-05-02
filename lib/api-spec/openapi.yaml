@@ -70,6 +70,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Account not yet activated by admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /auth/logout:
     post:
@@ -88,7 +94,7 @@ paths:
     post:
       operationId: register
       tags: [auth]
-      summary: Self-register a new user (name, phone, password)
+      summary: Self-register a new user (name, phone, password). The new account starts inactive — no token is issued; the admin must link the user to a company and project before they can log in.
       requestBody:
         required: true
         content:
@@ -97,11 +103,11 @@ paths:
               $ref: "#/components/schemas/RegisterBody"
       responses:
         "201":
-          description: Account created and logged in
+          description: Account created (inactive — awaiting admin activation)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LoginResponse"
+                $ref: "#/components/schemas/RegisterResponse"
         "409":
           description: Phone already in use
           content:
@@ -1547,6 +1553,14 @@ components:
       required:
         - user
         - token
+
+    RegisterResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+      required:
+        - user
 
     RegisterBody:
       type: object

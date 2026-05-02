@@ -109,6 +109,10 @@ export interface LoginResponse {
   token: string;
 }
 
+export interface RegisterResponse {
+  user: User;
+}
+
 export interface RegisterBody {
   fullName: string;
   phone: string;

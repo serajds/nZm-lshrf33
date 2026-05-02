@@ -93,6 +93,7 @@ export * from "./projectPermissions";
 export * from "./projectStatus";
 export * from "./projectSummary";
 export * from "./registerBody";
+export * from "./registerResponse";
 export * from "./report";
 export * from "./reportActivitiesSnapshotItem";
 export * from "./reportImageGroupsItem";

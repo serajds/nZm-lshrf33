@@ -69,6 +69,11 @@ export default function Login() {
     try {
       setIsRegistering(true);
       await register({ fullName: values.fullName, phone: values.phone, password: values.password });
+      // Registration no longer auto-logs the user in (account starts inert
+      // until the admin activates it). Reset the form and switch back to
+      // the login tab so the user sees the success toast in context.
+      regForm.reset();
+      setMode("login");
     } catch {
       // toast handled in hook
     } finally {
@@ -183,7 +188,6 @@ export default function Login() {
             <>
               <div className="mb-6">
                 <h2 className="text-xl font-bold text-slate-800">إنشاء حساب جديد</h2>
-                <p className="text-sm text-slate-500 mt-1">أدخل بياناتك ثم سيقوم المسؤول بتعيينك للشركة والمشروع</p>
               </div>
 
               <Form {...regForm}>
