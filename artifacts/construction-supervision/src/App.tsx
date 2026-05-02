@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
-import { AppLayout } from "@/components/layout";
 import { RouteErrorBoundary } from "@/components/error-boundary";
 import { getDefaultProjectId } from "@/lib/user-prefs";
 
@@ -12,6 +11,13 @@ import { getDefaultProjectId } from "@/lib/user-prefs";
 import Login from "@/pages/login";
 import PendingAssignment from "@/pages/pending-assignment";
 import NotFound from "@/pages/not-found";
+
+// AppLayout pulls in the sidebar, install banner, notification toggle, and
+// a chunk of lucide icons — none of which the unauth'd login page needs.
+// Lazy-loading it knocks ~30 KB (gzipped) off the initial bundle.
+const AppLayout = lazy(() =>
+  import("@/components/layout").then((m) => ({ default: m.AppLayout })),
+);
 
 // Lazy: every other page is only loaded when its route is hit. Splits the
 // initial JS bundle into ~15 small per-route chunks instead of one huge file
