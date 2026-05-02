@@ -37,7 +37,13 @@ export function ProjectNav({ projectId }: ProjectNavProps) {
   const userRole = user?.role;
 
   const { data: myPermissions } = useGetMyProjectPermissions(projectId, {
-    query: { enabled: !!projectId },
+    query: {
+      enabled: !!projectId,
+      // الصلاحيات شبه ثابتة — نُبقيها لـ10 دقائق لتفادي تكرار الجلب على كل تنقل.
+      staleTime: 10 * 60 * 1000,
+      gcTime: 30 * 60 * 1000,
+      refetchOnMount: false,
+    } as any,
   });
 
   const isContractorCompanyUser = user?.isContractorCompanyUser === true;

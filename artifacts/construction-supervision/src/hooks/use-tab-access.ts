@@ -30,7 +30,14 @@ export function useTabAccess(
   options?: { redirectIfHidden?: boolean },
 ): UseTabAccessResult {
   const { data, isLoading } = useGetMyProjectPermissions(projectId, {
-    query: { enabled: !!projectId },
+    query: {
+      enabled: !!projectId,
+      // صلاحيات المشروع نادراً ما تتغير — نُبقيها 10 دقائق دون إعادة جلب
+      // لتفادي تأخير ظاهر عند كل تنقل بين التبويبات.
+      staleTime: 10 * 60 * 1000,
+      gcTime: 30 * 60 * 1000,
+      refetchOnMount: false,
+    } as any,
   });
   const [, setLocation] = useLocation();
 
