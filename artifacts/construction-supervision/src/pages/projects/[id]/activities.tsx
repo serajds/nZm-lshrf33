@@ -9,9 +9,8 @@ import {
   useDeleteActivity,
   useGetProject,
   getListActivitiesQueryKey,
-  useGetMyProjectPermissions,
 } from "@workspace/api-client-react";
-import { useTabAccess } from "@/hooks/use-tab-access";
+import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
 import type { Activity, ProjectSuspension, UpdateActivityBodyStatus } from "@workspace/api-client-react";
 import {
   DndContext,
@@ -341,7 +340,7 @@ export default function ProjectActivities() {
     enabled: !!projectId,
   });
 
-  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
+  const { data: myPermissions } = useMyProjectPermissions(projectId);
   const { canEdit: canEditActivities, isHidden } = useTabAccess(projectId, "activities", { redirectIfHidden: true });
   const canEditAll = canEditActivities && (myPermissions?.canEditAll ?? true);
   const assignedGroupIds = myPermissions?.assignedGroupIds ?? [];

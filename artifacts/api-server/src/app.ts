@@ -1,5 +1,6 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
+import compression from "compression";
 import pinoHttp from "pino-http";
 import path from "path";
 import fs from "fs";
@@ -34,6 +35,10 @@ app.use(
   }),
 );
 app.use(cors());
+// Gzip-compress JSON & text responses. Cuts list payloads (activities,
+// members, files, reports) by 5-10x, which is the single biggest perceived
+// win on slow connections.
+app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
