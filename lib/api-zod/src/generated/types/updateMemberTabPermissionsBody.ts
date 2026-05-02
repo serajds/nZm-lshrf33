@@ -7,11 +7,6 @@
  */
 import type { TabPermissionsMap } from "./tabPermissionsMap";
 
-export interface ProjectPermissions {
-  role: string;
-  projectRole?: string;
-  assignedGroupIds?: number[];
-  canEditAll: boolean;
-  isViewer?: boolean;
-  tabPermissions?: TabPermissionsMap;
-}
+export type UpdateMemberTabPermissionsBody = {
+  tabPermissions: TabPermissionsMap | null;
+};

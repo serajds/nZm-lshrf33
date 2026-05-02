@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { projectExtensionsTable, projectsTable } from "@workspace/db";
 import { eq, desc, and, asc } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
+import { requireTabEdit } from "../middlewares/tab-access";
 import { recalcExpectedEndDate, getActivitiesBaseEndDate } from "../lib/recalc-end-date";
 import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
 
@@ -38,7 +39,7 @@ router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"),
   res.json(extensions);
 });
 
-router.post("/projects/:projectId/extensions", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.post("/projects/:projectId/extensions", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("extensions"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
 
   const { extensionDate, daysAdded, reason, documentRef, approvedBy, notes } = req.body;
@@ -97,7 +98,7 @@ router.post("/projects/:projectId/extensions", requireProjectAccess("projectId")
   res.status(201).json(updatedExtension);
 });
 
-router.delete("/projects/:projectId/extensions/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/extensions/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("extensions"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
   const id = parseInt(req.params.id as string, 10);
 

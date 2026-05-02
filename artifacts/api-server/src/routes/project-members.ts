@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { projectMembersTable, usersTable, memberGroupAssignmentsTable, activityGroupsTable, projectsTable, companiesTable, userCompaniesTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { requireProjectManager, requireProjectAccess, requireAdmin, rejectContractor } from "../middlewares/auth";
+import { resolveTabPermissions, isValidTabPermissions, TAB_KEYS } from "../lib/tab-permissions";
 
 const router: IRouter = Router();
 
@@ -379,7 +380,13 @@ router.get("/projects/:projectId/my-permissions", requireProjectAccess("projectI
   const user = (req as any).user;
 
   if (user.role === "admin") {
-    res.json({ role: "admin", projectRole: "admin", assignedGroupIds: [], canEditAll: true });
+    res.json({
+      role: "admin",
+      projectRole: "admin",
+      assignedGroupIds: [],
+      canEditAll: true,
+      tabPermissions: resolveTabPermissions("admin", null),
+    });
     return;
   }
 
@@ -393,29 +400,89 @@ router.get("/projects/:projectId/my-permissions", requireProjectAccess("projectI
     );
 
   if (!membership) {
-    res.json({ role: user.role, canEditAll: false, assignedGroupIds: [] });
+    // Likely a contractor company user — fall back to contractor defaults
+    const fallbackRole = user.role === "owner" ? "owner" : "contractor";
+    res.json({
+      role: user.role,
+      canEditAll: false,
+      assignedGroupIds: [],
+      tabPermissions: resolveTabPermissions(fallbackRole as any, null),
+    });
     return;
   }
 
-  if (membership.role === "project_manager") {
-    res.json({ role: user.role, projectRole: "project_manager", assignedGroupIds: [], canEditAll: true, isViewer: false });
-    return;
-  }
-
-  if (membership.role === "viewer") {
-    res.json({ role: user.role, projectRole: "viewer", assignedGroupIds: [], canEditAll: false, isViewer: true });
-    return;
-  }
-
-  const assignedGroupIds = await getGroupIdsForMember(membership.id);
-  const canEditAll = assignedGroupIds.length === 0;
+  const assignedGroupIds = membership.role === "engineer"
+    ? await getGroupIdsForMember(membership.id)
+    : [];
+  const canEditAll = membership.role === "project_manager"
+    || (membership.role === "engineer" && assignedGroupIds.length === 0);
 
   res.json({
     role: user.role,
     projectRole: membership.role,
     assignedGroupIds,
     canEditAll,
-    isViewer: false,
+    isViewer: membership.role === "viewer",
+    tabPermissions: resolveTabPermissions(membership.role as any, membership.tabPermissions ?? null),
+  });
+});
+
+// Get effective per-tab permissions for a specific project member (admin / project manager view).
+router.get("/projects/:projectId/members/:id/permissions", requireProjectManager("projectId"), async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
+  const projectId = parseInt(raw, 10);
+  const memberId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+
+  const [membership] = await db.select().from(projectMembersTable)
+    .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)));
+  if (!membership) {
+    res.status(404).json({ error: "العضو غير موجود" });
+    return;
+  }
+
+  res.json({
+    memberId: membership.id,
+    projectId: membership.projectId,
+    userId: membership.userId,
+    role: membership.role,
+    overrides: membership.tabPermissions ?? null,
+    effective: resolveTabPermissions(membership.role as any, membership.tabPermissions ?? null),
+  });
+});
+
+// Replace per-tab permission overrides for a project member.
+router.put("/projects/:projectId/members/:id/permissions", requireProjectManager("projectId"), async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
+  const projectId = parseInt(raw, 10);
+  const memberId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const body = req.body || {};
+  const overrides = body.tabPermissions;
+
+  if (overrides !== null && overrides !== undefined && !isValidTabPermissions(overrides)) {
+    res.status(400).json({
+      error: "صلاحيات التبويبات غير صالحة",
+      allowedTabs: TAB_KEYS,
+    });
+    return;
+  }
+
+  const [updated] = await db.update(projectMembersTable)
+    .set({ tabPermissions: overrides ?? null })
+    .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)))
+    .returning();
+
+  if (!updated) {
+    res.status(404).json({ error: "العضو غير موجود" });
+    return;
+  }
+
+  res.json({
+    memberId: updated.id,
+    projectId: updated.projectId,
+    userId: updated.userId,
+    role: updated.role,
+    overrides: updated.tabPermissions ?? null,
+    effective: resolveTabPermissions(updated.role as any, updated.tabPermissions ?? null),
   });
 });
 

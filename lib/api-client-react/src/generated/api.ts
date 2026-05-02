@@ -53,6 +53,7 @@ import type {
   ListReportsParams,
   LoginBody,
   LoginResponse,
+  MemberTabPermissions,
   MessageResponse,
   MyAttendanceHistoryItem,
   MyAttendanceProjectStatus,
@@ -70,6 +71,7 @@ import type {
   UpdateAttendanceRecordBody,
   UpdateMemberGroups200,
   UpdateMemberGroupsBody,
+  UpdateMemberTabPermissionsBody,
   UpdateProjectBody,
   UpdateProjectMemberBody,
   UpdateReportBody,
@@ -2909,6 +2911,226 @@ export function useGetMyProjectPermissions<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Get effective per-tab permissions for a project member
+ */
+export const getGetMemberTabPermissionsUrl = (
+  projectId: number,
+  id: number,
+) => {
+  return `/api/projects/${projectId}/members/${id}/permissions`;
+};
+
+export const getMemberTabPermissions = async (
+  projectId: number,
+  id: number,
+  options?: RequestInit,
+): Promise<MemberTabPermissions> => {
+  return customFetch<MemberTabPermissions>(
+    getGetMemberTabPermissionsUrl(projectId, id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetMemberTabPermissionsQueryKey = (
+  projectId: number,
+  id: number,
+) => {
+  return [`/api/projects/${projectId}/members/${id}/permissions`] as const;
+};
+
+export const getGetMemberTabPermissionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMemberTabPermissions>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMemberTabPermissions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMemberTabPermissionsQueryKey(projectId, id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMemberTabPermissions>>
+  > = ({ signal }) =>
+    getMemberTabPermissions(projectId, id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(projectId && id),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMemberTabPermissions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMemberTabPermissionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMemberTabPermissions>>
+>;
+export type GetMemberTabPermissionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get effective per-tab permissions for a project member
+ */
+
+export function useGetMemberTabPermissions<
+  TData = Awaited<ReturnType<typeof getMemberTabPermissions>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMemberTabPermissions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMemberTabPermissionsQueryOptions(
+    projectId,
+    id,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update per-tab permission overrides for a project member
+ */
+export const getUpdateMemberTabPermissionsUrl = (
+  projectId: number,
+  id: number,
+) => {
+  return `/api/projects/${projectId}/members/${id}/permissions`;
+};
+
+export const updateMemberTabPermissions = async (
+  projectId: number,
+  id: number,
+  updateMemberTabPermissionsBody: UpdateMemberTabPermissionsBody,
+  options?: RequestInit,
+): Promise<MemberTabPermissions> => {
+  return customFetch<MemberTabPermissions>(
+    getUpdateMemberTabPermissionsUrl(projectId, id),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updateMemberTabPermissionsBody),
+    },
+  );
+};
+
+export const getUpdateMemberTabPermissionsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMemberTabPermissions>>,
+    TError,
+    {
+      projectId: number;
+      id: number;
+      data: BodyType<UpdateMemberTabPermissionsBody>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateMemberTabPermissions>>,
+  TError,
+  {
+    projectId: number;
+    id: number;
+    data: BodyType<UpdateMemberTabPermissionsBody>;
+  },
+  TContext
+> => {
+  const mutationKey = ["updateMemberTabPermissions"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateMemberTabPermissions>>,
+    {
+      projectId: number;
+      id: number;
+      data: BodyType<UpdateMemberTabPermissionsBody>;
+    }
+  > = (props) => {
+    const { projectId, id, data } = props ?? {};
+
+    return updateMemberTabPermissions(projectId, id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateMemberTabPermissionsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateMemberTabPermissions>>
+>;
+export type UpdateMemberTabPermissionsMutationBody =
+  BodyType<UpdateMemberTabPermissionsBody>;
+export type UpdateMemberTabPermissionsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update per-tab permission overrides for a project member
+ */
+export const useUpdateMemberTabPermissions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMemberTabPermissions>>,
+    TError,
+    {
+      projectId: number;
+      id: number;
+      data: BodyType<UpdateMemberTabPermissionsBody>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateMemberTabPermissions>>,
+  TError,
+  {
+    projectId: number;
+    id: number;
+    data: BodyType<UpdateMemberTabPermissionsBody>;
+  },
+  TContext
+> => {
+  return useMutation(getUpdateMemberTabPermissionsMutationOptions(options));
+};
 
 /**
  * @summary List all users

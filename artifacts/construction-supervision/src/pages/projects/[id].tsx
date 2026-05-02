@@ -26,6 +26,7 @@ import { ProjectNav } from "@/components/project-nav";
 import { ProjectMembers } from "@/components/project-members";
 import { ProjectQuickViewDialog } from "@/components/project-quick-view-dialog";
 import { AttendanceQuickActions } from "@/components/attendance-quick-actions";
+import { SiteGeofenceMap } from "@/components/site-geofence-map";
 import { previewExecutiveSummary, type ActivityForReport } from "@/lib/report-pdf";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -649,6 +650,26 @@ export default function ProjectDetails() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Project Site Location (read-only map with geofence circle) */}
+        {project.siteLatitude != null && project.siteLongitude != null && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                موقع المشروع والنطاق المسموح
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SiteGeofenceMap
+                lat={project.siteLatitude}
+                lng={project.siteLongitude}
+                radius={project.siteRadiusMeters ?? 200}
+                className="h-64"
+              />
+            </CardContent>
+          </Card>
+        )}
 
         {!isContractor && <ProjectMembers projectId={project.id} />}
       </div>

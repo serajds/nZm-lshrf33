@@ -189,12 +189,43 @@ export interface UpdateProjectMemberBody {
   assignedGroupIds?: number[];
 }
 
+export type TabAccess = (typeof TabAccess)[keyof typeof TabAccess];
+
+export const TabAccess = {
+  hidden: "hidden",
+  view: "view",
+  edit: "edit",
+} as const;
+
+export interface TabPermissionsMap {
+  overview?: TabAccess;
+  activities?: TabAccess;
+  extensions?: TabAccess;
+  suspensions?: TabAccess;
+  reports?: TabAccess;
+  forms?: TabAccess;
+  attendance?: TabAccess;
+  files?: TabAccess;
+  deviation?: TabAccess;
+  [key: string]: TabAccess;
+}
+
 export interface ProjectPermissions {
   role: string;
   projectRole?: string;
   assignedGroupIds?: number[];
   canEditAll: boolean;
   isViewer?: boolean;
+  tabPermissions?: TabPermissionsMap;
+}
+
+export interface MemberTabPermissions {
+  memberId: number;
+  projectId: number;
+  userId: number;
+  role: string;
+  overrides?: TabPermissionsMap | null;
+  effective: TabPermissionsMap;
 }
 
 export interface UpdateUserBody {
@@ -1100,6 +1131,10 @@ export type UpdateMemberGroupsBody = {
 
 export type UpdateMemberGroups200 = {
   groupIds?: number[];
+};
+
+export type UpdateMemberTabPermissionsBody = {
+  tabPermissions: TabPermissionsMap | null;
 };
 
 export type GetIncompleteUsersCount200 = {

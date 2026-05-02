@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { activitiesTable, projectsTable, activityGroupsTable, projectMembersTable, memberGroupAssignmentsTable } from "@workspace/db";
 import { eq, and, avg, max } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
+import { requireTabEdit } from "../middlewares/tab-access";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
 import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
 import multer from "multer";
@@ -68,7 +69,7 @@ router.get("/projects/:projectId/activities", requireProjectAccess("projectId"),
   res.json(activities);
 });
 
-router.post("/projects/:projectId/activities", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.post("/projects/:projectId/activities", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -132,7 +133,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
   res.status(201).json(activity);
 });
 
-router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
@@ -241,7 +242,7 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   res.json(activity);
 });
 
-router.post("/projects/:projectId/activities/import", requireProjectAccess("projectId"), rejectContractor, rejectViewer, upload.single("file"), async (req, res): Promise<void> => {
+router.post("/projects/:projectId/activities/import", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), upload.single("file"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -378,7 +379,7 @@ function parseExcelDate(val: string): string | null {
   return null;
 }
 
-router.delete("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
@@ -411,7 +412,7 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
   res.sendStatus(204);
 });
 
-router.put("/projects/:projectId/activities/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.put("/projects/:projectId/activities/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
   const { items } = req.body;
   if (!Array.isArray(items)) {
