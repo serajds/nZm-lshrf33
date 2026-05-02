@@ -24,8 +24,9 @@ scheduleIdle(() => {
 // splash whenever the network was slow or the API was momentarily down.
 function dismissSplash() {
   if (typeof window !== "undefined") {
-    const t = (window as unknown as { __splashSafetyTimer?: number }).__splashSafetyTimer;
-    if (t) clearTimeout(t);
+    const w = window as unknown as { __splashSafetyTimer?: number; __splashSlowTimer?: number };
+    if (w.__splashSafetyTimer) clearTimeout(w.__splashSafetyTimer);
+    if (w.__splashSlowTimer) clearTimeout(w.__splashSlowTimer);
   }
   const splash = document.getElementById("app-splash");
   if (!splash) return;

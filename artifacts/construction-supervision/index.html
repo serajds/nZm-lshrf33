@@ -121,14 +121,21 @@
     </div>
 
     <script>
-      // Safety net only: hides the splash if React never mounts within 5s
-      // (e.g. a lazy chunk failed to load on a flaky connection). Under
-      // normal conditions main.tsx clears this timer on the first paint,
-      // so it never fires.
+      // Safety net only: hides the splash if React never mounts within 30s
+      // (e.g. a lazy chunk failed to load on a flaky connection, or the
+      // user is on dev preview through a slow mobile network where Vite
+      // serves hundreds of ES modules individually). Under normal
+      // conditions main.tsx clears this timer on the first paint, so it
+      // never fires. After 8s we update the splash text so the user knows
+      // the app is still loading instead of staring at a frozen spinner.
       window.__splashSafetyTimer = setTimeout(function () {
         var s = document.getElementById('app-splash');
         if (s) s.classList.add('splash-hide');
-      }, 5000);
+      }, 30000);
+      window.__splashSlowTimer = setTimeout(function () {
+        var sub = document.querySelector('#app-splash .splash-sub');
+        if (sub) sub.textContent = 'لا يزال التحميل جارياً — قد يستغرق وقتاً أطول على الشبكات البطيئة.';
+      }, 8000);
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
