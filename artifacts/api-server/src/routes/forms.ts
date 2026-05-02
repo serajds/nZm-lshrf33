@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { formTemplatesTable, formSubmissionsTable, usersTable, skippedDaysTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
+import { requireTabEdit } from "../middlewares/tab-access";
 
 const router = Router();
 
@@ -184,7 +185,7 @@ router.get("/projects/:id/form-submissions/:submissionId", requireProjectAccess(
   res.json(submission);
 });
 
-router.post("/projects/:id/form-submissions", requireProjectAccess("id"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.post("/projects/:id/form-submissions", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const { templateId, data, reportDate, notes, status } = req.body;
 
@@ -235,7 +236,7 @@ router.post("/projects/:id/form-submissions", requireProjectAccess("id"), reject
   res.status(201).json(submission);
 });
 
-router.put("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.put("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const submissionId = parseInt(Array.isArray(req.params.submissionId) ? req.params.submissionId[0] : req.params.submissionId, 10);
   const { data, reportDate, notes, status } = req.body;
@@ -279,7 +280,7 @@ router.put("/projects/:id/form-submissions/:submissionId", requireProjectAccess(
   res.json(submission);
 });
 
-router.delete("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.delete("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const submissionId = parseInt(Array.isArray(req.params.submissionId) ? req.params.submissionId[0] : req.params.submissionId, 10);
 

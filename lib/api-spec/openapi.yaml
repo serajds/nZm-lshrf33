@@ -824,6 +824,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProjectPermissions"
 
+  /projects/{projectId}/members/{id}/permissions:
+    get:
+      operationId: getMemberTabPermissions
+      tags: [project-members]
+      summary: Get effective per-tab permissions for a project member
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Effective tab permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberTabPermissions"
+    put:
+      operationId: updateMemberTabPermissions
+      tags: [project-members]
+      summary: Update per-tab permission overrides for a project member
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tabPermissions:
+                  oneOf:
+                    - $ref: "#/components/schemas/TabPermissionsMap"
+                    - type: "null"
+              required:
+                - tabPermissions
+      responses:
+        "200":
+          description: Updated permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberTabPermissions"
+
   # Users
   /users:
     get:
@@ -1671,9 +1730,63 @@ components:
           type: boolean
         isViewer:
           type: boolean
+        tabPermissions:
+          $ref: "#/components/schemas/TabPermissionsMap"
       required:
         - role
         - canEditAll
+
+    TabAccess:
+      type: string
+      enum: [hidden, view, edit]
+
+    TabPermissionsMap:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/TabAccess"
+      properties:
+        overview:
+          $ref: "#/components/schemas/TabAccess"
+        activities:
+          $ref: "#/components/schemas/TabAccess"
+        extensions:
+          $ref: "#/components/schemas/TabAccess"
+        suspensions:
+          $ref: "#/components/schemas/TabAccess"
+        reports:
+          $ref: "#/components/schemas/TabAccess"
+        forms:
+          $ref: "#/components/schemas/TabAccess"
+        attendance:
+          $ref: "#/components/schemas/TabAccess"
+        files:
+          $ref: "#/components/schemas/TabAccess"
+        deviation:
+          $ref: "#/components/schemas/TabAccess"
+
+    MemberTabPermissions:
+      type: object
+      properties:
+        memberId:
+          type: integer
+        projectId:
+          type: integer
+        userId:
+          type: integer
+        role:
+          type: string
+        overrides:
+          oneOf:
+            - $ref: "#/components/schemas/TabPermissionsMap"
+            - type: "null"
+        effective:
+          $ref: "#/components/schemas/TabPermissionsMap"
+      required:
+        - memberId
+        - projectId
+        - userId
+        - role
+        - effective
 
     UpdateUserBody:
       type: object

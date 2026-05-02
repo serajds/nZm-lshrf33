@@ -7,11 +7,11 @@
  */
 import type { TabPermissionsMap } from "./tabPermissionsMap";
 
-export interface ProjectPermissions {
+export interface MemberTabPermissions {
+  memberId: number;
+  projectId: number;
+  userId: number;
   role: string;
-  projectRole?: string;
-  assignedGroupIds?: number[];
-  canEditAll: boolean;
-  isViewer?: boolean;
-  tabPermissions?: TabPermissionsMap;
+  overrides?: TabPermissionsMap | null;
+  effective: TabPermissionsMap;
 }

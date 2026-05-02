@@ -865,6 +865,120 @@ export const GetMyProjectPermissionsResponse = zod.object({
   assignedGroupIds: zod.array(zod.number()).optional(),
   canEditAll: zod.boolean(),
   isViewer: zod.boolean().optional(),
+  tabPermissions: zod
+    .object({
+      overview: zod.enum(["hidden", "view", "edit"]).optional(),
+      activities: zod.enum(["hidden", "view", "edit"]).optional(),
+      extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+      suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+      reports: zod.enum(["hidden", "view", "edit"]).optional(),
+      forms: zod.enum(["hidden", "view", "edit"]).optional(),
+      attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+      files: zod.enum(["hidden", "view", "edit"]).optional(),
+      deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+    })
+    .optional(),
+});
+
+/**
+ * @summary Get effective per-tab permissions for a project member
+ */
+export const GetMemberTabPermissionsParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+export const GetMemberTabPermissionsResponse = zod.object({
+  memberId: zod.number(),
+  projectId: zod.number(),
+  userId: zod.number(),
+  role: zod.string(),
+  overrides: zod
+    .union([
+      zod.object({
+        overview: zod.enum(["hidden", "view", "edit"]).optional(),
+        activities: zod.enum(["hidden", "view", "edit"]).optional(),
+        extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+        suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+        reports: zod.enum(["hidden", "view", "edit"]).optional(),
+        forms: zod.enum(["hidden", "view", "edit"]).optional(),
+        attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+        files: zod.enum(["hidden", "view", "edit"]).optional(),
+        deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  effective: zod.object({
+    overview: zod.enum(["hidden", "view", "edit"]).optional(),
+    activities: zod.enum(["hidden", "view", "edit"]).optional(),
+    extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+    suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+    reports: zod.enum(["hidden", "view", "edit"]).optional(),
+    forms: zod.enum(["hidden", "view", "edit"]).optional(),
+    attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+    files: zod.enum(["hidden", "view", "edit"]).optional(),
+    deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+  }),
+});
+
+/**
+ * @summary Update per-tab permission overrides for a project member
+ */
+export const UpdateMemberTabPermissionsParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+export const UpdateMemberTabPermissionsBody = zod.object({
+  tabPermissions: zod.union([
+    zod.object({
+      overview: zod.enum(["hidden", "view", "edit"]).optional(),
+      activities: zod.enum(["hidden", "view", "edit"]).optional(),
+      extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+      suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+      reports: zod.enum(["hidden", "view", "edit"]).optional(),
+      forms: zod.enum(["hidden", "view", "edit"]).optional(),
+      attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+      files: zod.enum(["hidden", "view", "edit"]).optional(),
+      deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+    }),
+    zod.null(),
+  ]),
+});
+
+export const UpdateMemberTabPermissionsResponse = zod.object({
+  memberId: zod.number(),
+  projectId: zod.number(),
+  userId: zod.number(),
+  role: zod.string(),
+  overrides: zod
+    .union([
+      zod.object({
+        overview: zod.enum(["hidden", "view", "edit"]).optional(),
+        activities: zod.enum(["hidden", "view", "edit"]).optional(),
+        extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+        suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+        reports: zod.enum(["hidden", "view", "edit"]).optional(),
+        forms: zod.enum(["hidden", "view", "edit"]).optional(),
+        attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+        files: zod.enum(["hidden", "view", "edit"]).optional(),
+        deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  effective: zod.object({
+    overview: zod.enum(["hidden", "view", "edit"]).optional(),
+    activities: zod.enum(["hidden", "view", "edit"]).optional(),
+    extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+    suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+    reports: zod.enum(["hidden", "view", "edit"]).optional(),
+    forms: zod.enum(["hidden", "view", "edit"]).optional(),
+    attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+    files: zod.enum(["hidden", "view", "edit"]).optional(),
+    deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+  }),
 });
 
 /**

@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { attendanceRecordsTable, projectsTable, usersTable, projectMembersTable, userCompaniesTable } from "@workspace/db";
 import { eq, and, desc, gte, lte, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireProjectAccess } from "../middlewares/auth";
+import { requireTabEdit } from "../middlewares/tab-access";
 import { haversineDistanceMeters } from "../lib/geo";
 import { logAudit } from "../lib/audit";
 import { pairAttendanceSessions, type AttendanceSession } from "../lib/attendance-sessions";
@@ -236,6 +237,7 @@ router.get("/attendance/my-history", requireAuth, async (req, res): Promise<void
 router.post(
   "/attendance/projects/:projectId/check-in",
   requireProjectAccess("projectId"),
+  requireTabEdit("attendance"),
   upload.single("selfie"),
   async (req: Request, res: Response): Promise<void> => {
     await recordAttendance(req, res, "check_in");
@@ -246,6 +248,7 @@ router.post(
 router.post(
   "/attendance/projects/:projectId/check-out",
   requireProjectAccess("projectId"),
+  requireTabEdit("attendance"),
   upload.single("selfie"),
   async (req: Request, res: Response): Promise<void> => {
     await recordAttendance(req, res, "check_out");

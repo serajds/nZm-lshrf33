@@ -1,11 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useListProjectMembers,
   useAddProjectMember,
   useUpdateProjectMember,
   useRemoveProjectMember,
   useGetEligibleUsers,
+  useGetMemberTabPermissions,
+  useUpdateMemberTabPermissions,
   getListProjectMembersQueryKey,
+  getGetMemberTabPermissionsQueryKey,
+  getGetMyProjectPermissionsQueryKey,
 } from "@workspace/api-client-react";
 import type { ProjectMember } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,7 +34,7 @@ import {
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { UserPlus, Trash2, Shield, Users, FolderOpen, Building2 } from "lucide-react";
+import { UserPlus, Trash2, Shield, Users, FolderOpen, Building2, ShieldCheck, RotateCcw } from "lucide-react";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -66,6 +70,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
   const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
   const [editingGroupsMemberId, setEditingGroupsMemberId] = useState<number | null>(null);
   const [editGroupIds, setEditGroupIds] = useState<number[]>([]);
+  const [permissionsMemberId, setPermissionsMemberId] = useState<number | null>(null);
 
   const isAdmin = user?.role === "admin";
 
@@ -371,6 +376,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                                 }
                                 openGroupsEditor(member);
                               }}
+                              title="مجموعات البنود"
                             >
                               <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
                             </Button>
@@ -384,16 +390,26 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                     </TableCell>
                     {canManageMembers && (
                       <TableCell className="text-left">
-                        {member.userId !== user?.id && (
+                        <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => setRemovingId(member.id)}
-                            disabled={removeMember.isPending}
+                            onClick={() => setPermissionsMemberId(member.id)}
+                            title="إدارة صلاحيات التبويبات"
                           >
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                            <ShieldCheck className="h-4 w-4 text-primary" />
                           </Button>
-                        )}
+                          {member.userId !== user?.id && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setRemovingId(member.id)}
+                              disabled={removeMember.isPending}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     )}
                   </TableRow>
@@ -417,6 +433,12 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <TabPermissionsDialog
+        projectId={projectId}
+        memberId={permissionsMemberId}
+        memberName={members.find(m => m.id === permissionsMemberId)?.fullName ?? ""}
+        onClose={() => setPermissionsMemberId(null)}
+      />
       <Dialog open={editingGroupsMemberId !== null} onOpenChange={(open) => { if (!open) setEditingGroupsMemberId(null); }}>
         <DialogContent dir="rtl" className="sm:max-w-[400px]">
           <DialogHeader>
@@ -460,3 +482,164 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
     </Card>
   );
 }
+
+const TAB_DEFS: { key: string; label: string }[] = [
+  { key: "overview", label: "ملخص المشروع" },
+  { key: "activities", label: "الجدول الزمني" },
+  { key: "extensions", label: "التمديدات" },
+  { key: "suspensions", label: "التوقفات" },
+  { key: "reports", label: "التقارير" },
+  { key: "forms", label: "النماذج" },
+  { key: "attendance", label: "الحضور" },
+  { key: "files", label: "الملفات" },
+  { key: "deviation", label: "تحليل الانحراف" },
+];
+
+const ACCESS_OPTIONS: { value: "hidden" | "view" | "edit"; label: string; className: string }[] = [
+  { value: "hidden", label: "مخفي", className: "data-[state=on]:bg-slate-200 data-[state=on]:text-slate-800" },
+  { value: "view", label: "مشاهدة", className: "data-[state=on]:bg-blue-100 data-[state=on]:text-blue-700" },
+  { value: "edit", label: "تعديل", className: "data-[state=on]:bg-emerald-100 data-[state=on]:text-emerald-700" },
+];
+
+interface TabPermissionsDialogProps {
+  projectId: number;
+  memberId: number | null;
+  memberName: string;
+  onClose: () => void;
+}
+
+function TabPermissionsDialog({ projectId, memberId, memberName, onClose }: TabPermissionsDialogProps) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [draft, setDraft] = useState<Record<string, "hidden" | "view" | "edit">>({});
+  const [overrideEnabled, setOverrideEnabled] = useState(false);
+
+  const { data, isLoading } = useGetMemberTabPermissions(projectId, memberId ?? 0, {
+    query: { enabled: !!memberId },
+  });
+
+  const updateMutation = useUpdateMemberTabPermissions();
+
+  // Sync draft state from server response whenever the dialog opens or data refreshes.
+  useEffect(() => {
+    if (!memberId || !data) return;
+    const eff = (data.effective ?? {}) as Record<string, "hidden" | "view" | "edit">;
+    setDraft({ ...eff });
+    setOverrideEnabled(!!data.overrides);
+  }, [memberId, data]);
+
+  const handleSave = async () => {
+    if (!memberId) return;
+    try {
+      await updateMutation.mutateAsync({
+        projectId,
+        id: memberId,
+        data: { tabPermissions: overrideEnabled ? draft : null },
+      });
+      queryClient.invalidateQueries({ queryKey: getGetMemberTabPermissionsQueryKey(projectId, memberId) });
+      queryClient.invalidateQueries({ queryKey: getGetMyProjectPermissionsQueryKey(projectId) });
+      queryClient.invalidateQueries({ queryKey: getListProjectMembersQueryKey(projectId) });
+      toast({ title: "تم حفظ الصلاحيات" });
+      onClose();
+    } catch {
+      toast({ variant: "destructive", title: "فشل حفظ الصلاحيات" });
+    }
+  };
+
+  const handleResetToDefaults = () => {
+    setOverrideEnabled(false);
+    if (data?.effective) {
+      setDraft({ ...(data.effective as Record<string, "hidden" | "view" | "edit">) });
+    }
+  };
+
+  const setTabAccess = (tab: string, access: "hidden" | "view" | "edit") => {
+    setOverrideEnabled(true);
+    setDraft(prev => ({ ...prev, [tab]: access }));
+  };
+
+  const open = memberId !== null;
+  const effective = (overrideEnabled ? draft : (data?.effective as Record<string, "hidden" | "view" | "edit"> | undefined)) ?? {};
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent dir="rtl" className="sm:max-w-[560px] max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5 text-primary" />
+            صلاحيات التبويبات — {memberName}
+          </DialogTitle>
+        </DialogHeader>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground text-center py-6">جاري التحميل...</p>
+        ) : (
+          <div className="space-y-3 pt-2">
+            <p className="text-xs text-muted-foreground">
+              حدد لكل تبويب: مخفي / مشاهدة فقط / تعديل. الإعدادات الافتراضية مشتقة من دور العضو في المشروع.
+              {overrideEnabled && (
+                <span className="block mt-1 text-amber-700 dark:text-amber-400">
+                  وضع التخصيص مُفعَّل لهذا العضو.
+                </span>
+              )}
+            </p>
+
+            <div className="border rounded-md divide-y">
+              {TAB_DEFS.map(tab => {
+                const current = effective[tab.key] ?? "hidden";
+                return (
+                  <div key={tab.key} className="flex items-center justify-between gap-3 px-3 py-2">
+                    <span className="text-sm font-medium">{tab.label}</span>
+                    <div className="flex items-center gap-1">
+                      {ACCESS_OPTIONS.map(opt => {
+                        const active = current === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setTabAccess(tab.key, opt.value)}
+                            className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                              active
+                                ? opt.value === "edit"
+                                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                  : opt.value === "view"
+                                    ? "bg-blue-100 text-blue-800 border-blue-300"
+                                    : "bg-slate-200 text-slate-700 border-slate-300"
+                                : "bg-background text-muted-foreground border-border hover:bg-muted"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-row-reverse justify-between gap-2 pt-3">
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={onClose}>إلغاء</Button>
+                <Button onClick={handleSave} disabled={updateMutation.isPending}>
+                  حفظ
+                </Button>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleResetToDefaults}
+                className="gap-1"
+                title="استعادة الإعدادات الافتراضية حسب الدور"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                إعادة للافتراضي
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
