@@ -26,7 +26,12 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "apple-touch-icon.png", "opengraph.jpg"],
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
+        // Precache only the app shell (HTML, CSS, the framework chunk, and
+        // icons). Heavy vendor chunks (recharts, leaflet, xlsx) and
+        // per-page chunks are NOT precached — they're cached on first use
+        // by the runtime cache below. This keeps the install download
+        // small (~200 KB instead of ~2.5 MB) so the first visit is fast.
+        globPatterns: ["**/*.{css,html,svg,ico,woff2}", "assets/index-*.js", "assets/vendor-react-*.js"],
         navigateFallbackDenylist: [
           new RegExp("^" + basePath.replace(/\/$/, "") + "/api"),
           /^\/api/,
@@ -40,6 +45,16 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         runtimeCaching: [
+          // Per-page + vendor JS chunks: cache on first use. Subsequent visits
+          // are instant.
+          {
+            urlPattern: /\/assets\/.*\.(?:js|css)$/,
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "asset-chunks",
+              expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
+          },
           {
             urlPattern: ({ url }) => url.pathname.startsWith("/api"),
             handler: "NetworkFirst",
@@ -131,6 +146,33 @@ export default defineConfig({
     },
     chunkSizeWarningLimit: 800,
   },
+  // Pre-bundle heavy dependencies at dev-server startup instead of on-demand
+  // when the user lands on the page that needs them. This eliminates the
+  // multi-second pause the user sees the first time a page imports recharts,
+  // leaflet, xlsx, framer-motion, etc.
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "react-dom/client",
+      "wouter",
+      "@tanstack/react-query",
+      "sonner",
+      "lucide-react",
+      "date-fns",
+      "react-hook-form",
+      "zod",
+      "@hookform/resolvers/zod",
+      "framer-motion",
+      "recharts",
+      "leaflet",
+      "react-leaflet",
+      "xlsx",
+      "@dnd-kit/core",
+      "@dnd-kit/sortable",
+      "@dnd-kit/utilities",
+    ],
+  },
   server: {
     port,
     host: "0.0.0.0",
@@ -138,6 +180,20 @@ export default defineConfig({
     fs: {
       strict: true,
       deny: ["**/.*"],
+    },
+    // Eagerly transform the entry chain at startup so the very first page
+    // request doesn't pay the full module-graph compile cost.
+    warmup: {
+      clientFiles: [
+        "./src/main.tsx",
+        "./src/App.tsx",
+        "./src/components/layout.tsx",
+        "./src/hooks/use-auth.tsx",
+        "./src/pages/login.tsx",
+        "./src/pages/dashboard.tsx",
+        "./src/pages/projects/index.tsx",
+        "./src/pages/projects/[id].tsx",
+      ],
     },
   },
   preview: {
