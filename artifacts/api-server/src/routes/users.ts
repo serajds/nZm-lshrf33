@@ -1,9 +1,28 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable, companiesTable, userCompaniesTable } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { usersTable, companiesTable, userCompaniesTable, projectMembersTable } from "@workspace/db";
+import { eq, inArray, count } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireEngineerOrAdmin } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
+
+async function getProjectMembershipCounts(userIds: number[]) {
+  if (userIds.length === 0) return new Map<number, number>();
+  const rows = await db.select({
+    userId: projectMembersTable.userId,
+    value: count(),
+  })
+    .from(projectMembersTable)
+    .where(inArray(projectMembersTable.userId, userIds))
+    .groupBy(projectMembersTable.userId);
+  const map = new Map<number, number>();
+  for (const r of rows) map.set(r.userId, Number(r.value) || 0);
+  return map;
+}
+
+function isUserIncomplete(role: string, companiesCount: number, membershipsCount: number) {
+  if (role === "admin") return false;
+  return companiesCount === 0 || membershipsCount === 0;
+}
 
 const router: IRouter = Router();
 
@@ -57,14 +76,37 @@ router.get("/users", requireEngineerOrAdmin, async (_req, res): Promise<void> =>
   }).from(usersTable)
     .orderBy(usersTable.createdAt);
 
-  const companiesMap = await getCompaniesForUsers(users.map(u => u.id));
+  const userIds = users.map(u => u.id);
+  const companiesMap = await getCompaniesForUsers(userIds);
+  const membershipsMap = await getProjectMembershipCounts(userIds);
 
-  const result = users.map(u => ({
-    ...u,
-    companies: companiesMap.get(u.id) || [],
-  }));
+  const result = users.map(u => {
+    const companies = companiesMap.get(u.id) || [];
+    const projectMembershipsCount = membershipsMap.get(u.id) || 0;
+    return {
+      ...u,
+      companies,
+      projectMembershipsCount,
+      incompleteProfile: isUserIncomplete(u.role, companies.length, projectMembershipsCount),
+    };
+  });
 
   res.json(result);
+});
+
+router.get("/users/incomplete-count", requireAdmin, async (_req, res): Promise<void> => {
+  const users = await db.select({ id: usersTable.id, role: usersTable.role }).from(usersTable);
+  const userIds = users.map(u => u.id);
+  const companiesMap = await getCompaniesForUsers(userIds);
+  const membershipsMap = await getProjectMembershipCounts(userIds);
+
+  let c = 0;
+  for (const u of users) {
+    const cc = (companiesMap.get(u.id) || []).length;
+    const mc = membershipsMap.get(u.id) || 0;
+    if (isUserIncomplete(u.role, cc, mc)) c++;
+  }
+  res.json({ count: c });
 });
 
 const VALID_ROLES = ["admin", "project_manager", "engineer", "owner", "contractor"] as const;

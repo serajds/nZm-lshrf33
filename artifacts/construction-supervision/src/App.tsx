@@ -7,6 +7,7 @@ import { AppLayout } from "@/components/layout";
 import { getDefaultProjectId } from "@/lib/user-prefs";
 
 import Login from "@/pages/login";
+import PendingAssignment from "@/pages/pending-assignment";
 import Dashboard from "@/pages/dashboard";
 import Projects from "@/pages/projects/index";
 import ProjectDetails from "@/pages/projects/[id]";
@@ -47,6 +48,10 @@ function ProtectedRoute({ component: Component, allowedRoles }: { component: Rea
     return <Redirect to="/login" />;
   }
 
+  if ((user as any)?.incompleteProfile) {
+    return <Redirect to="/" />;
+  }
+
   if (allowedRoles && user?.role && !allowedRoles.includes(user.role)) {
     return <Redirect to="/" />;
   }
@@ -72,6 +77,10 @@ function HomeRoute() {
 
   if (!isAuthenticated) {
     return <Redirect to="/login" />;
+  }
+
+  if ((user as any)?.incompleteProfile) {
+    return <PendingAssignment />;
   }
 
   const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;

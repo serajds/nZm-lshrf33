@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { 
   useListUsers, 
   useCreateUser, 
   useUpdateUser, 
   useDeleteUser,
-  getListUsersQueryKey
+  getListUsersQueryKey,
+  getGetIncompleteUsersCountQueryKey,
 } from "@workspace/api-client-react";
 import type { User } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,7 +36,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Edit2, Trash2, Users as UsersIcon, Building2, UserX } from "lucide-react";
+import { Plus, Edit2, Trash2, Users as UsersIcon, Building2, UserX, AlertTriangle } from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -74,11 +75,23 @@ export default function Users() {
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<number[]>([]);
-  
+  const [filter, setFilter] = useState<"all" | "incomplete">("all");
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const { data: users, isLoading } = useListUsers();
+
+  const incompleteCount = useMemo(
+    () => (users || []).filter((u: any) => u.incompleteProfile).length,
+    [users],
+  );
+
+  const filteredUsers = useMemo(() => {
+    if (!users) return [];
+    if (filter === "incomplete") return users.filter((u: any) => u.incompleteProfile);
+    return users;
+  }, [users, filter]);
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
@@ -140,6 +153,7 @@ export default function Users() {
     try {
       await deleteUser.mutateAsync({ id: deletingId });
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetIncompleteUsersCountQueryKey() });
       toast({ title: "تم حذف المستخدم بنجاح" });
     } catch (e) {
       toast({ variant: "destructive", title: "حدث خطأ أثناء الحذف" });
@@ -184,6 +198,7 @@ export default function Users() {
         toast({ title: "تم إنشاء المستخدم بنجاح" });
       }
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetIncompleteUsersCountQueryKey() });
       setIsDialogOpen(false);
       form.reset();
       setEditingUserId(null);
@@ -227,7 +242,19 @@ export default function Users() {
             <UsersIcon className="h-6 w-6 text-violet-600" />
           </div>
           <div>
-            <h1 className="text-lg md:text-2xl font-bold">المستخدمون</h1>
+            <h1 className="text-lg md:text-2xl font-bold flex items-center gap-2">
+              المستخدمون
+              {incompleteCount > 0 && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-amber-300 bg-amber-50 text-amber-700"
+                  data-testid="badge-incomplete-count"
+                >
+                  <AlertTriangle className="h-3 w-3" />
+                  {incompleteCount} بانتظار التعيين
+                </Badge>
+              )}
+            </h1>
             <p className="text-sm text-muted-foreground mt-0.5">إدارة حسابات المستخدمين والصلاحيات</p>
           </div>
         </div>
@@ -338,14 +365,42 @@ export default function Users() {
         </Dialog>
       </div>
 
+      <div className="flex items-center gap-2 border-b">
+        <button
+          type="button"
+          onClick={() => setFilter("all")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            filter === "all"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid="tab-all-users"
+        >
+          الكل {users ? `(${users.length})` : ""}
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter("incomplete")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px flex items-center gap-1.5 ${
+            filter === "incomplete"
+              ? "border-amber-500 text-amber-700"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid="tab-incomplete-users"
+        >
+          <AlertTriangle className="h-3.5 w-3.5" />
+          بيانات ناقصة ({incompleteCount})
+        </button>
+      </div>
+
       {isLoading ? (
         <LoadingSpinner text="جاري تحميل المستخدمين..." />
-      ) : users?.length === 0 ? (
+      ) : filteredUsers.length === 0 ? (
         <Card>
           <EmptyState
-            icon={<UserX className="h-7 w-7 text-muted-foreground/60" />}
-            title="لا يوجد مستخدمين"
-            description="أضف مستخدمين جدد لمنحهم صلاحيات الوصول للنظام"
+            icon={filter === "incomplete" ? <AlertTriangle className="h-7 w-7 text-amber-500/70" /> : <UserX className="h-7 w-7 text-muted-foreground/60" />}
+            title={filter === "incomplete" ? "لا يوجد مستخدمين ببيانات ناقصة" : "لا يوجد مستخدمين"}
+            description={filter === "incomplete" ? "جميع المستخدمين تم تعيينهم لشركات ومشاريع" : "أضف مستخدمين جدد لمنحهم صلاحيات الوصول للنظام"}
           />
         </Card>
       ) : (
@@ -365,9 +420,20 @@ export default function Users() {
             </TableHeader>
             <TableBody>
               {
-                users?.map(u => (
-                  <TableRow key={u.id}>
-                    <TableCell className="font-medium">{u.fullName}</TableCell>
+                filteredUsers.map((u: any) => (
+                  <TableRow
+                    key={u.id}
+                    className={u.incompleteProfile ? "bg-amber-50/40 hover:bg-amber-50/60" : undefined}
+                    data-testid={u.incompleteProfile ? `row-incomplete-${u.id}` : `row-user-${u.id}`}
+                  >
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {u.incompleteProfile && (
+                          <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" aria-label="بيانات ناقصة" />
+                        )}
+                        <span>{u.fullName}</span>
+                      </div>
+                    </TableCell>
                     <TableCell dir="ltr" className="text-right">{u.phone}</TableCell>
                     <TableCell>{renderCompanyBadges(u)}</TableCell>
                     <TableCell>{getRoleBadge(u.role)}</TableCell>
@@ -389,10 +455,19 @@ export default function Users() {
 
         {/* Mobile Card View */}
         <CardContent className="sm:hidden space-y-3 p-3">
-          {users?.map(u => (
-              <div key={u.id} className="rounded-lg border p-3 space-y-2">
+          {filteredUsers.map((u: any) => (
+              <div
+                key={u.id}
+                className={`rounded-lg border p-3 space-y-2 ${u.incompleteProfile ? "border-amber-300 bg-amber-50/40" : ""}`}
+                data-testid={u.incompleteProfile ? `card-incomplete-${u.id}` : `card-user-${u.id}`}
+              >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium">{u.fullName}</span>
+                  <span className="text-sm font-medium flex items-center gap-2">
+                    {u.incompleteProfile && (
+                      <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" aria-label="بيانات ناقصة" />
+                    )}
+                    {u.fullName}
+                  </span>
                   {getRoleBadge(u.role)}
                 </div>
                 <div className="text-xs text-muted-foreground" dir="ltr">

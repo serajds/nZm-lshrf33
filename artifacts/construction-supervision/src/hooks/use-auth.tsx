@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
-import { useGetMe, useLogin, useLogout } from "@workspace/api-client-react";
-import type { User, LoginBody } from "@workspace/api-client-react";
+import { useGetMe, useLogin, useLogout, useRegister } from "@workspace/api-client-react";
+import type { User, LoginBody, RegisterBody } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -9,6 +9,7 @@ type AuthContextType = {
   user: User | null;
   isLoading: boolean;
   login: (data: LoginBody) => Promise<void>;
+  register: (data: RegisterBody) => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
 };
@@ -29,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const queryClient = useQueryClient();
   const loginMutation = useLogin();
+  const registerMutation = useRegister();
   const logoutMutation = useLogout();
 
   useEffect(() => {
@@ -57,6 +59,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const register = async (data: RegisterBody) => {
+    try {
+      const result = await registerMutation.mutateAsync({ data });
+      localStorage.setItem("auth_token", result.token);
+      setToken(result.token);
+      toast({
+        title: "تم إنشاء حسابك بنجاح",
+        description: "بانتظار تعيينك من قبل المسؤول",
+      });
+      setLocation("/");
+    } catch (err) {
+      const e = err as { error?: string };
+      toast({
+        variant: "destructive",
+        title: "فشل إنشاء الحساب",
+        description: e?.error || "تأكد من البيانات المدخلة",
+      });
+      throw err;
+    }
+  };
+
   const logout = useCallback(async () => {
     localStorage.removeItem("auth_token");
     setToken(null);
@@ -74,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: token ? (user || null) : null,
       isLoading: isUserLoading && !!token,
       login,
+      register,
       logout,
       isAuthenticated: !!token && !!user
     }}>

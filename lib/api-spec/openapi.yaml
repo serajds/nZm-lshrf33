@@ -84,6 +84,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
 
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Self-register a new user (name, phone, password)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterBody"
+      responses:
+        "201":
+          description: Account created and logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "409":
+          description: Phone already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /auth/me:
     get:
       operationId: getMe
@@ -826,6 +857,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/User"
 
+  /users/incomplete-count:
+    get:
+      operationId: getIncompleteUsersCount
+      tags: [users]
+      summary: Count of users with incomplete profile (no company or no project)
+      responses:
+        "200":
+          description: Count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                required:
+                  - count
+
   /users/{id}:
     patch:
       operationId: updateUser
@@ -1440,6 +1489,20 @@ components:
         - user
         - token
 
+    RegisterBody:
+      type: object
+      properties:
+        fullName:
+          type: string
+        phone:
+          type: string
+        password:
+          type: string
+      required:
+        - fullName
+        - phone
+        - password
+
     # User
     UserCompany:
       type: object
@@ -1468,6 +1531,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/UserCompany"
+        incompleteProfile:
+          type: boolean
+        projectMembershipsCount:
+          type: integer
         createdAt:
           type: string
           format: date-time
