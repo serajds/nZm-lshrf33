@@ -86,6 +86,8 @@ export default function ProjectDetails() {
     query: { enabled: !!projectId }
   });
   const { data: activities = [] } = useListActivities(projectId, { query: { enabled: !!projectId } });
+  // These three lists rarely change during a session; trust the cache for
+  // 5 minutes so navigating between project tabs doesn't re-hit the API.
   const { data: extensions = [] } = useQuery<ProjectExtension[]>({
     queryKey: [`/api/projects/${projectId}/extensions`],
     queryFn: async () => {
@@ -94,6 +96,7 @@ export default function ProjectDetails() {
       return r.json();
     },
     enabled: !!projectId,
+    staleTime: 1000 * 60 * 5,
   });
 
   const totalExtDays = extensions.reduce((s, e) => s + e.daysAdded, 0);
@@ -109,16 +112,21 @@ export default function ProjectDetails() {
       return r.json();
     },
     enabled: !!projectId,
+    staleTime: 1000 * 60 * 5,
   });
 
+  // IMPORTANT: share the same cache key as the forms tab so opening the
+  // project overview AFTER the forms tab (or vice-versa) doesn't re-fetch
+  // the same /form-templates endpoint a second time.
   const { data: formTemplates = [] } = useQuery<FormTemplateOption[]>({
-    queryKey: [`/api/projects/${projectId}/form-templates-for-widgets`],
+    queryKey: [`/api/projects/${projectId}/form-templates`],
     queryFn: async () => {
       const r = await authFetch(`/api/projects/${projectId}/form-templates`);
       if (!r.ok) return [];
       return r.json();
     },
     enabled: !!projectId,
+    staleTime: 1000 * 60 * 5,
   });
 
   const [widgetConfigOpen, setWidgetConfigOpen] = useState(false);
