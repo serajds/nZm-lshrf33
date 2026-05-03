@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, unique, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, unique, jsonb, index } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 import { projectsTable } from "./projects";
 import { createInsertSchema } from "drizzle-zod";
@@ -16,6 +16,7 @@ export const projectMembersTable = pgTable("project_members", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique("project_members_project_user_unique").on(table.projectId, table.userId),
+  index("project_members_user_idx").on(table.userId),
 ]);
 
 export const insertProjectMemberSchema = createInsertSchema(projectMembersTable).omit({ id: true, createdAt: true });
