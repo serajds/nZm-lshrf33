@@ -44,6 +44,7 @@ import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle,
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
+import { Progress } from "@/components/ui/progress";
 import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
@@ -168,8 +169,10 @@ export default function ProjectReports() {
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
-  const [uploadingGroupIdx, setUploadingGroupIdx] = useState<number | null>(null);
+  type GroupUploadState = { loaded: number; total: number; doneCount: number; totalCount: number };
+  const [uploadProgress, setUploadProgress] = useState<Record<number, GroupUploadState>>({});
   const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
+  const isAnyUploading = Object.keys(uploadProgress).length > 0;
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: myPermissions } = useMyProjectPermissions(projectId);
@@ -385,42 +388,103 @@ export default function ProjectReports() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, groupIndex: number) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    setUploadingGroupIdx(groupIndex);
+    const fileList = Array.from(files);
+    e.target.value = "";
     const token = localStorage.getItem("auth_token");
-    const newUrls: string[] = [];
-    for (const file of Array.from(files)) {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("description", "صورة تقرير");
-      try {
+    const totalBytes = fileList.reduce((s, f) => s + f.size, 0);
+
+    // Track per-file loaded bytes so the aggregated progress for this
+    // group reflects every file in the batch. Uploads from different
+    // groups run independently — a slow upload in one tab never blocks
+    // adding photos to another tab.
+    const perFileLoaded = new Array(fileList.length).fill(0);
+    setUploadProgress(prev => ({
+      ...prev,
+      [groupIndex]: {
+        loaded: (prev[groupIndex]?.loaded ?? 0),
+        total: (prev[groupIndex]?.total ?? 0) + totalBytes,
+        doneCount: (prev[groupIndex]?.doneCount ?? 0),
+        totalCount: (prev[groupIndex]?.totalCount ?? 0) + fileList.length,
+      },
+    }));
+
+    const uploadOne = (file: File, idx: number): Promise<string | null> =>
+      new Promise((resolve) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("description", "صورة تقرير");
+        const xhr = new XMLHttpRequest();
         // Dedicated report-uploads endpoint that's gated by the "reports"
         // tab permission. Engineers who can edit reports but don't have
         // edit access to the "files" tab were getting a 403 from the old
         // /files endpoint.
-        const resp = await fetch(`/api/projects/${projectId}/reports/uploads`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
-        if (resp.ok) {
-          const data = await resp.json() as { fileUrl?: string };
-          if (data.fileUrl) {
-            newUrls.push(data.fileUrl);
+        xhr.open("POST", `/api/projects/${projectId}/reports/uploads`);
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.upload.onprogress = (ev) => {
+          if (!ev.lengthComputable) return;
+          const delta = ev.loaded - perFileLoaded[idx];
+          perFileLoaded[idx] = ev.loaded;
+          setUploadProgress(prev => {
+            const cur = prev[groupIndex];
+            if (!cur) return prev;
+            return { ...prev, [groupIndex]: { ...cur, loaded: cur.loaded + delta } };
+          });
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText) as { fileUrl?: string };
+              resolve(data.fileUrl ?? null);
+            } catch {
+              resolve(null);
+            }
+          } else {
+            toast({ variant: "destructive", title: `فشل رفع ${file.name}` });
+            resolve(null);
           }
-        } else {
-          toast({ variant: "destructive", title: `فشل رفع ${file.name}` });
+        };
+        xhr.onerror = () => {
+          toast({ variant: "destructive", title: `خطأ في رفع ${file.name}` });
+          resolve(null);
+        };
+        xhr.send(formData);
+      }).then((url) => {
+        // Push each finished URL into the form immediately so the user
+        // sees thumbnails appear as files complete instead of waiting
+        // for the whole batch.
+        if (url) {
+          const groups = [...(form.getValues("imageGroups") ?? [])];
+          if (groups[groupIndex]) {
+            groups[groupIndex] = {
+              ...groups[groupIndex],
+              urls: [...(groups[groupIndex].urls ?? []), url],
+            };
+            form.setValue("imageGroups", groups, { shouldDirty: true });
+          }
         }
-      } catch {
-        toast({ variant: "destructive", title: `خطأ في رفع ${file.name}` });
+        setUploadProgress(prev => {
+          const cur = prev[groupIndex];
+          if (!cur) return prev;
+          return { ...prev, [groupIndex]: { ...cur, doneCount: cur.doneCount + 1 } };
+        });
+        return url;
+      });
+
+    await Promise.all(fileList.map((f, i) => uploadOne(f, i)));
+
+    // Clear this group's progress once everything for this batch finished.
+    // If another batch was queued in the meantime its own state entry
+    // will already exist with the additional totals; we only clear when
+    // the counters caught up with the totals.
+    setUploadProgress(prev => {
+      const cur = prev[groupIndex];
+      if (!cur) return prev;
+      if (cur.doneCount >= cur.totalCount) {
+        const { [groupIndex]: _drop, ...rest } = prev;
+        return rest;
       }
-    }
-    const groups = [...(form.getValues("imageGroups") ?? [])];
-    if (groups[groupIndex]) {
-      groups[groupIndex] = { ...groups[groupIndex], urls: [...(groups[groupIndex].urls ?? []), ...newUrls] };
-      form.setValue("imageGroups", groups, { shouldDirty: true });
-    }
-    setUploadingGroupIdx(null);
-    e.target.value = "";
+      return prev;
+    });
   };
 
   const onSubmit = async (values: ReportFormValues) => {
@@ -718,10 +782,14 @@ export default function ProjectReports() {
                         </FormLabel>
                         <div className="space-y-3">
                           {groups.map((group, gIdx) => {
-                            const isThisUploading = uploadingGroupIdx === gIdx;
+                            const groupProgress = uploadProgress[gIdx];
+                            const isThisUploading = !!groupProgress;
+                            const progressPct = groupProgress && groupProgress.total > 0
+                              ? Math.min(100, Math.round((groupProgress.loaded / groupProgress.total) * 100))
+                              : 0;
                             const isOpen = openGroupIdx === gIdx;
                             const isEmpty = group.urls.length === 0;
-                            const canDelete = isEmpty && groups.length > 1;
+                            const canDelete = isEmpty && groups.length > 1 && !isThisUploading;
                             return (
                               <Collapsible
                                 key={gIdx}
@@ -745,11 +813,10 @@ export default function ProjectReports() {
                                         multiple
                                         className="hidden"
                                         onChange={(e) => { setOpenGroupIdx(gIdx); handleImageUpload(e, gIdx); }}
-                                        disabled={isThisUploading}
                                       />
-                                      <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border bg-background hover:bg-accent transition-colors ${isThisUploading ? "opacity-60 pointer-events-none" : ""}`}>
+                                      <span className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border bg-background hover:bg-accent transition-colors">
                                         {isThisUploading ? (
-                                          <><Loader2 className="h-3.5 w-3.5 animate-spin" /> جاري الرفع...</>
+                                          <><Loader2 className="h-3.5 w-3.5 animate-spin" /> إضافة المزيد</>
                                         ) : (
                                           <><ImagePlus className="h-3.5 w-3.5" /> إضافة صور</>
                                         )}
@@ -781,6 +848,18 @@ export default function ProjectReports() {
                                     )}
                                   </div>
                                 </div>
+                                {isThisUploading && (
+                                  <div className="px-3 pb-3 -mt-1">
+                                    <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
+                                      <span className="flex items-center gap-1.5">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        جاري رفع {groupProgress.doneCount} / {groupProgress.totalCount}
+                                      </span>
+                                      <span className="font-mono">{progressPct}%</span>
+                                    </div>
+                                    <Progress value={progressPct} className="h-1.5" />
+                                  </div>
+                                )}
                                 <CollapsibleContent>
                                   <div className="px-3 pb-3">
                                     {isEmpty ? (
@@ -829,7 +908,13 @@ export default function ProjectReports() {
 
                 <div className="flex justify-end gap-2 pt-4 sticky bottom-0 bg-background pb-2 mt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
-                  <Button type="submit" disabled={createReport.isPending || updateReport.isPending}>حفظ التقرير</Button>
+                  <Button
+                    type="submit"
+                    disabled={createReport.isPending || updateReport.isPending || isAnyUploading}
+                    title={isAnyUploading ? "يرجى الانتظار حتى اكتمال رفع الصور" : undefined}
+                  >
+                    {isAnyUploading ? "جاري رفع الصور..." : "حفظ التقرير"}
+                  </Button>
                 </div>
               </form>
             </Form>
