@@ -1077,13 +1077,23 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
       const r = await authFetch(`${API_BASE}/projects/${projectId}/members`);
       if (!r.ok) return [];
       const data = await r.json();
-      // shape from /projects/:id/members: [{ id (member row id), userId, fullName, phone, role, userRole, ... }]
-      return (data?.members ?? data ?? []).map((m: { user?: { id: number; fullName: string; phone?: string | null }; userId?: number; id?: number; fullName?: string; phone?: string | null; role: string }) => ({
-        id: m.user?.id ?? m.userId ?? m.id ?? 0,
-        fullName: m.user?.fullName ?? m.fullName ?? "",
-        phone: m.user?.phone ?? m.phone ?? null,
-        role: m.role,
-      })).filter((m: { id: number; role: string }) => !!m.id && m.role !== "owner");
+      // Response shape from /projects/:id/members:
+      //   [{ id (project_member row id), userId, fullName, phone, role, userRole, ... }]
+      // CRITICAL: the dropdown value MUST be the USER id (so the report
+      // endpoint /attendance/projects/:projectId/users/:userId/report gets
+      // a real user id). Member-row ids and user ids can overlap across
+      // different people in the same project, so falling back to `m.id`
+      // (the member-row id) would silently fetch the wrong employee's
+      // report. Therefore we only ever use `userId` here — never `m.id`.
+      return (data?.members ?? data ?? [])
+        .map((m: { user?: { id: number; fullName: string; phone?: string | null }; userId?: number; fullName?: string; phone?: string | null; role: string }) => ({
+          id: (typeof m.userId === "number" ? m.userId : m.user?.id) ?? 0,
+          fullName: m.user?.fullName ?? m.fullName ?? "",
+          phone: m.user?.phone ?? m.phone ?? null,
+          role: m.role,
+        }))
+        .filter((m: { id: number; role: string }) => !!m.id && m.role !== "owner")
+        .sort((a: { fullName: string }, b: { fullName: string }) => a.fullName.localeCompare(b.fullName, "ar"));
     },
   });
 
