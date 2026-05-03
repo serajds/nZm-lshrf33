@@ -79,9 +79,10 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
 
   const isAdmin = user?.role === "admin";
 
-  const { data: members = [], isLoading } = useListProjectMembers(projectId, {
+  const { data: rawMembers = [], isLoading } = useListProjectMembers(projectId, {
     query: { enabled: !!projectId }
   });
+  const members = rawMembers as ProjectMember[];
 
   const { data: groups = [] } = useQuery<ActivityGroup[]>({
     queryKey: [`/api/projects/${projectId}/activity-groups`],
