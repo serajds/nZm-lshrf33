@@ -76,7 +76,20 @@ app.use("/api/uploads", (req: Request, res: Response, next: NextFunction) => {
   const localPath = path.join(uploadsDir, filename);
 
   if (fs.existsSync(localPath)) {
-    return express.static(uploadsDir)(req, res, next);
+    // Uploaded filenames are content-addressed (timestamp + random suffix),
+    // so the same URL always points to the same bytes. Without an explicit
+    // maxAge, express.static sends `Cache-Control: public, max-age=0` and
+    // every <img> on every page revalidates with a 304 round-trip — the
+    // logs were full of 304s for thumbnails. 30-day immutable caching
+    // turns repeat views (and tab-switches) into pure browser-cache hits
+    // with zero network activity.
+    return express.static(uploadsDir, {
+      maxAge: "30d",
+      immutable: true,
+      setHeaders: (res) => {
+        res.setHeader("Cache-Control", "public, max-age=2592000, immutable");
+      },
+    })(req, res, next);
   }
 
   streamFromCloud(filename).then((result) => {
