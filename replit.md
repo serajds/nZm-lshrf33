@@ -1,6 +1,6 @@
 # Overview
 
-This project is a full-stack Arabic RTL engineering supervision system for construction projects, built as a pnpm monorepo using TypeScript. Its primary purpose is to provide comprehensive management and oversight for construction activities, offering features from project planning and progress tracking to reporting, auditing, and team collaboration. The system aims to streamline project management, improve communication, and ensure timely and efficient project delivery in the construction sector.
+This project is a full-stack Arabic RTL engineering supervision system for construction projects, built as a pnpm monorepo using TypeScript. It provides comprehensive management and oversight for construction activities, including project planning, progress tracking, reporting, auditing, and team collaboration. The system aims to streamline project management, improve communication, and ensure timely and efficient project delivery in the construction sector.
 
 # User Preferences
 
@@ -13,52 +13,50 @@ The system is a pnpm monorepo with separate packages for the API server and the 
 ## UI/UX Decisions
 
 - **Language & Layout**: Full Arabic RTL layout with Noto Kufi Arabic font.
-- **PWA**: Installable PWA with offline capabilities, manifest, and animated splash screen.
-- **Responsiveness**: Mobile-responsive design using `grid-cols` and `hidden md:block` patterns for adaptive layouts.
-- **Consistency**: Shared `LoadingSpinner` and `EmptyState` components. Consistent page headers with colored icon containers.
+- **PWA**: Installable with offline capabilities and animated splash screen.
+- **Responsiveness**: Mobile-responsive design using adaptive layout patterns.
+- **Consistency**: Shared `LoadingSpinner` and `EmptyState` components, consistent page headers.
 - **Error Handling**: Dedicated Arabic 404 "Not Found" page.
-- **Numerals**: All dates/times use `en-GB` locale or `ar-u-nu-latn` (Arabic text with Latin digits) for consistent numeral display.
+- **Numerals**: All dates/times use `en-GB` locale or `ar-u-nu-latn` for consistent numeral display.
 
 ## Technical Implementations
 
-- **Monorepo**: pnpm workspaces for managing multiple packages.
+- **Monorepo**: pnpm workspaces.
 - **Backend**: Node.js 24, Express 5 REST API.
 - **Frontend**: React + Vite, built for RTL Arabic.
 - **Database**: PostgreSQL with Drizzle ORM.
 - **Type Safety & Validation**: TypeScript 5.9, Zod (`zod/v4`), `drizzle-zod`.
 - **API Codegen**: Orval generates API hooks and Zod schemas from OpenAPI specifications.
 - **Build Tool**: esbuild for CJS bundles.
-- **Authentication**: JWT stored in `localStorage` for session management. Owner portal uses a separate token + password verification. **Account activation gate**: self-registration via `POST /api/auth/register` creates an inactive user (`incompleteProfile: true`) and intentionally returns NO token — the admin must link the user to a company AND add them to a project before they can log in. `POST /api/auth/login` re-checks the same activation predicate (`role !== "admin" && (companyLinks.length === 0 || projectMembershipsCount === 0)`) and returns `403 { code: "ACCOUNT_NOT_ACTIVATED", error: "..." }` instead of issuing a token. The login screen surfaces both states as toasts ("حسابك بانتظار التفعيل" after register, "حسابك غير مفعّل بعد" on blocked login). The legacy `PendingAssignment` route stays for in-flight sessions whose token was issued before this change.
-- **Authorization**: Role-based access control (Admin, Project Manager, Engineer, Contractor, Owner) with project-level permissions enforced via `project_members` table and middleware. Admin users bypass membership checks. Group-based permissions allow engineers restricted access to specific activity groups. Per-user, per-project tab permissions (`project_members.tab_permissions` jsonb) let PMs/admins set each of the 9 project tabs (overview, activities, extensions, suspensions, reports, forms, attendance, files, deviation) to `hidden` / `view` / `edit` for individual members; falls back to role defaults when not overridden. Backend enforces via `requireTabEdit(tabKey)` middleware on write routes; frontend hides tabs and disables edit affordances accordingly.
-- **File Management**: Uploads via `multer`, images compressed with `sharp`. Files are stored persistently in Google Cloud Storage via Replit Object Storage, with local filesystem caching.
-- **Offline Capabilities**: Offline-first attendance system using IndexedDB for queuing requests and auto-flushing when online. Implements idempotency on the backend for queued submissions.
-- **Notifications**: Web Push notifications for key events (attendance, project extensions/suspensions) using VAPID keys. Includes foreground geofence arrival reminders with `watchPosition` and audio/visual alerts.
-- **Backup System**: Admin-only database backup system creating JSON snapshots of all tables, stored locally on the server with download/delete functionality.
-- **Performance**: Express API uses gzip `compression` middleware (threshold 1KB) — list payloads (activities/members/files/reports) shrink 5-10x. The `/my-permissions` query (used by every project tab via `useTabAccess` and `ProjectNav`) is cached in React Query for 10 minutes (`staleTime`) with `refetchOnMount: false`, eliminating spinner flashes on tab switches. Global default `staleTime` is 2 min; `refetchOnWindowFocus` is disabled. **Backend**: `/dashboard/summary` and `/projects/:id/summary` parallelize their independent DB reads via `Promise.all` (was 5-7 serial round-trips → now one). **Client**: project overview page uses `staleTime: 5 min` for rarely-changing reads (extensions, summary-widgets, form-templates) and shares the `form-templates` cache key with the forms tab to avoid duplicate fetches when switching tabs. Attendance polling reduced from 30s → 60s and pauses entirely when the tab is in the background (`refetchIntervalInBackground: false`). **Anti-waterfall**: the project page (`/projects/:id`) primes the cache for ALL queries its children need (`my-permissions`, `members`, `eligible-users`, `activity-groups`, `attendance/my-status`) at the very top of the component — without this, queries fired one-by-one as each lazy-mounted child woke up, producing a measured 4-second waterfall in dev mode. With the priming, every request fires in the same micro-task and React Query dedupes when the children mount. **Workspace pre-bundling**: `@workspace/api-client-react` is a 180 KB orval-generated package imported by 19 different files. By default Vite skips pre-bundling for workspace packages, so every cold page load forced the browser to re-parse 5,441 lines of TypeScript on the fly. Adding `@workspace/api-client-react` to `optimizeDeps.include` in `vite.config.ts` makes esbuild pre-bundle it once at startup.
-
-**Eager-load the entry pages, not just the login** (the bug that was actually making the app feel "broken"): `AppLayout`, `Dashboard`, `Projects`, and `ProjectDetails` were all `lazy()` imports. `AppLayout` in particular was rendered in `ProtectedRoute` and `HomeRoute` *without a surrounding `<Suspense>` boundary* — the inner `<Suspense>` was around the page Component, not around AppLayout itself. In React 18 a lazy component that suspends with no Suspense above it throws to the nearest error boundary; ours (`RouteErrorBoundary`) caught the empty rejection (visible in browser console as `[RouteErrorBoundary] {}`) and triggered "React will try to recreate this component tree from scratch". This rebuild happened on every cold authenticated load — the user perceived it as "the page locks up and reloads". Eager-loading these four (which are needed on virtually every authenticated paint) removes the suspension entirely. Heavy/rarely-visited pages (`activities`, `reports`, `files`, `deviation`, `extensions`, `suspensions`, `forms`, `attendance`, `users`, `companies`, `audit-log`, `owner`, `public-form`) — most of which pull in `xlsx`, `recharts`, `leaflet`, or `react-pdf` — stay lazy, so the initial bundle is still well under the original "everything in one file" size.
+- **Authentication**: JWT stored in `localStorage`. Account activation gate requires admin linkage to a company and project before login.
+- **Authorization**: Role-based access control (Admin, Project Manager, Engineer, Contractor, Owner) with project-level permissions and per-user, per-project tab permissions.
+- **File Management**: Uploads via `multer`, images compressed with `sharp`, stored in Google Cloud Storage via Replit Object Storage.
+- **Offline Capabilities**: Offline-first attendance system using IndexedDB for queuing requests.
+- **Notifications**: Web Push notifications for key events using VAPID keys, including geofence reminders.
+- **Backup System**: Admin-only database backup creating JSON snapshots.
+- **Performance**: Gzip compression for API, React Query caching, parallelized DB reads, client-side caching strategies, and workspace pre-bundling.
 
 ## Feature Specifications
 
-- **Projects**: CRUD operations, auto-calculated `expectedEndDate` based on activity dates and extensions/suspensions. "No Schedule" mode for projects without approved timelines, allowing optional dates and skipping date-related calculations.
-- **Activities**: CRUD, Excel import/export, drag-and-drop reordering with activity groups. Automatic `actualStartDate` and `actualEndDate` tracking based on progress updates.
-- **Reports**: Periodic reports with activity snapshots (JSON) to preserve historical data. Date range filtering for reports.
-- **Dashboard**: Project statistics, charts (Recharts), and delay notifications for top 10 delayed activities.
-- **Owner Portal**: Public, password-protected read-only view for project owners, including customizable slugs, activity status pie charts, progress summary cards, and a Gantt chart with planned vs. actual timelines.
-- **Form Builder**: Custom form templates with various field types (text, number, select, table, checklist_qty). Supports customizable signatures (supervisor, contractor, owner). Public links for forms allow unauthenticated submissions. Daily templates track missing submissions and allow skipping days.
-- **Audit Log**: Tracks create/update/delete operations on key entities (projects, activities, reports) with detailed JSON logs, accessible via an admin-only API and frontend page with filtering.
-- **Companies**: Management of companies (owner, contractor, supervisor) with logo uploads. Projects can link to companies. Users can belong to multiple companies, enabling project member filtering based on linked company affiliations.
-- **Suspensions**: Tracks project stoppages, with optional date shifting for planned activity dates and project `expectedEndDate`.
-- **Executive Summary PDF**: Print-ready project overview generated from the project detail page. PDF library (`jspdf`) is dynamically imported on click to keep the project page lightweight in dev.
-- **Quick-Assign**: On the users page, incomplete users (no company or no project) show a lightning-bolt button that opens a small dialog to pick one company + one project. Selections are MERGED with existing memberships via `PATCH /api/users/:id` (additive, never replaces).
-- **Project page lazy-loading**: The site geofence map (leaflet + react-leaflet) is lazy-loaded with `React.lazy`/`Suspense` to avoid blocking the project page on first navigation in Vite dev.
+- **Projects**: CRUD, auto-calculated `expectedEndDate`, "No Schedule" mode.
+- **Activities**: CRUD, Excel import/export, drag-and-drop reordering, automatic `actualStartDate`/`actualEndDate` tracking.
+- **Reports**: Periodic reports with activity snapshots, date range filtering.
+- **Dashboard**: Project statistics, charts, delay notifications.
+- **Owner Portal**: Public, password-protected read-only view with customizable slugs, activity status, and Gantt chart.
+- **Form Builder**: Custom form templates with various field types and customizable signatures. Public links for unauthenticated submissions. Daily templates track missing submissions.
+- **Audit Log**: Tracks create/update/delete operations on key entities with detailed JSON logs.
+- **Companies**: Management of companies with logo uploads, linking to projects, and user affiliation.
+- **Suspensions**: Tracks project stoppages, with optional date shifting.
+- **Executive Summary PDF**: Print-ready project overview generated from project detail page.
+- **Quick-Assign**: Tool for quickly assigning incomplete users to companies and projects.
+- **Project page lazy-loading**: Site geofence map is lazy-loaded.
 
 # External Dependencies
 
 - **pnpm**: Monorepo management.
-- **Node.js**: Runtime environment (version 24).
-- **TypeScript**: Language (version 5.9).
-- **Express**: API framework (version 5).
+- **Node.js**: Runtime environment.
+- **TypeScript**: Language.
+- **Express**: API framework.
 - **PostgreSQL**: Database.
 - **Drizzle ORM**: Object Relational Mapper.
 - **Zod**: Schema validation.
@@ -66,53 +64,12 @@ The system is a pnpm monorepo with separate packages for the API server and the 
 - **esbuild**: JavaScript bundler.
 - **Recharts**: Charting library.
 - **`vite-plugin-pwa`**: PWA functionality.
-- **`localStorage`**: Client-side storage for JWT.
+- **`localStorage`**: Client-side storage.
 - **`xlsx`**: Excel file parsing and generation.
-- **`multer`**: Node.js middleware for handling `multipart/form-data`.
-- **`sharp`**: Image processing (compression).
+- **`multer`**: `multipart/form-data` handling.
+- **`sharp`**: Image processing.
 - **Replit Object Storage (Google Cloud Storage)**: Persistent file storage.
-- **IndexedDB**: Browser-side storage for offline attendance.
+- **IndexedDB**: Browser-side storage.
 - **Web Push API**: Browser notifications.
-- **Microsoft Graph API (via Replit OneDrive connector)**: OneDrive integration for test results.
+- **Microsoft Graph API (via Replit OneDrive connector)**: OneDrive integration.
 - **`@dnd-kit`**: Drag-and-drop functionality.
-## Performance Optimizations (May 2026)
-A full-system audit + tuning pass was performed. Key changes:
-
-### Database
-- **22 indexes** added across 12 tables: `activities (project_id, sort_order)`, `activities (group_id)`, `reports (project_id, report_date)`, `audit_log` (3 indexes incl. `(project_id, created_at)`), `projects` (status + 3 company FKs + owner_token), `project_files (project_id, category)`, `form_submissions (template_id, created_at)` + `(project_id)`, `form_templates (project_id)`, `activity_groups (project_id, sort_order)`, `project_extensions (project_id, extension_date)`, `project_suspensions (project_id, start_date)`, `skipped_days` (2 indexes), `users (role)` + `(full_name)`. Reflected in schema files for drift, applied via `CREATE INDEX IF NOT EXISTS`.
-
-### API
-- **Auth gate cache** (`app.ts`): the per-request "incomplete profile" check used to run 3-4 sequential DB queries on EVERY `/api` call. Now cached in-memory per-userId for 60s, with the remaining cache-miss queries parallelized via `Promise.all`. Cache is explicitly invalidated from `users.ts` (POST/PATCH/DELETE) and `project-members.ts` (POST/PATCH/DELETE). Exported as `invalidateProfileCache(userId?)`.
-- **List endpoints** drop heavy JSONB columns to cut payload sizes:
-  - `GET /api/projects` no longer returns `summaryWidgets` or `ownerAccessPassword` (also removes a sensitive field from the wire). Detail endpoint still returns them.
-  - `GET /api/projects/:id/reports` no longer returns `activitiesSnapshot` or `imageGroups` (multi-MB savings on projects with many reports).
-  - `GET /api/audit-log` no longer returns `details`.
-- **`activities/reorder`** now wraps all updates in a single `db.transaction` with `Promise.all`, replacing a serial `for await` loop (was N round-trips, now 1 batched commit).
-- **`/projects/:id/company-logos`** narrowed to selected columns + `inArray` instead of full `companies` table scan.
-- **Async I/O** in `files.ts` and `companies.ts`: replaced sync `fs.unlinkSync` / `fs.statSync` with `fs.promises` to stop blocking the event loop on uploads/deletes.
-
-### Frontend
-- **App.tsx**: `Dashboard`, `Projects`, `ProjectDetails` are now lazy-loaded (`React.lazy`). Only one of them is shown after login → cuts the initial bundle dramatically.
-- **Image lazy loading**: added `loading="lazy" decoding="async"` to `<img>` tags in `companies.tsx`, `attendance.tsx` (selfie modal), and `files.tsx` (preview dialog).
-
-### Bugfix: chunk-load failures ("تعذر تحميل جزء من البيانات")
-After the lazy-loading change above, users started seeing repeated
-"تعذر تحميل جزء من البيانات بسبب قطع الاتصال" toasts even with healthy
-internet. Root cause: `Dashboard / Projects / ProjectDetails` were
-converted to `React.lazy`, but every dev-server reload (HMR full reload)
-or production redeploy changes chunk hashes — the user's open tab still
-held references to the old chunk URLs, which 404'd. Worse, the PWA's
-`StaleWhileRevalidate` for `/assets/*.js` happily served the cached
-old chunks, whose dynamic imports referenced new ones that no longer
-existed.
-
-Fix:
-1. Reverted `Dashboard / Projects / ProjectDetails` to eager imports in
-   `App.tsx` (preserving the original explanatory comment). The truly
-   heavy pages (activities, reports, files, deviation, attendance,
-   forms, geo, audit, users, companies, settings) remain lazy.
-2. `RouteErrorBoundary` now auto-reloads ONCE per session on chunk
-   errors (guarded by `sessionStorage` to prevent loops), and clears
-   the `asset-chunks` cache before reloading so the new HTML pulls
-   real chunks instead of stale ones. Manual reload button does the
-   same cache clear.
