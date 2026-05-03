@@ -48,24 +48,46 @@ const queryClient = new QueryClient({
   },
 });
 
+// PageFallback used to be a centered "جاري التحميل..." text that REPLACED
+// the previous page on every navigation, which made the whole app feel
+// "stuck loading everywhere". A lazy chunk usually resolves in <100ms once
+// it's cached, so a thin top progress bar conveys activity without ripping
+// the chrome off the screen.
 function PageFallback() {
   return (
-    <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
+    <div className="fixed top-0 right-0 left-0 z-[60] h-0.5 overflow-hidden pointer-events-none">
+      <div
+        className="h-full bg-primary"
+        style={{
+          width: "40%",
+          animation: "page-loading-bar 1.1s ease-in-out infinite",
+        }}
+      />
+      <style>{`
+        @keyframes page-loading-bar {
+          0% { transform: translateX(120%); }
+          100% { transform: translateX(-220%); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function FullScreenLoader() {
+  return (
+    <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
       جاري التحميل...
     </div>
   );
 }
 
-function ProtectedRoute({ component: Component, allowedRoles }: { component: React.ComponentType; allowedRoles?: string[] }) {
-  const { isAuthenticated, isLoading, user } = useAuth();
-
-  if (isLoading) {
-    return <div className="flex min-h-screen items-center justify-center">جاري التحميل...</div>;
-  }
-
-  if (!isAuthenticated) {
-    return <Redirect to="/login" />;
-  }
+// Pure access-control wrapper. It only decides whether to render the page
+// or redirect — it no longer wraps the page in AppLayout. AppLayout is now
+// mounted ONCE above the route Switch (see AuthenticatedShell), so navigating
+// between pages no longer unmounts/remounts the sidebar and header on every
+// click.
+function RequireRole({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
+  const { user } = useAuth();
 
   if (user?.incompleteProfile) {
     return <Redirect to="/" />;
@@ -80,25 +102,11 @@ function ProtectedRoute({ component: Component, allowedRoles }: { component: Rea
     return <Redirect to="/" />;
   }
 
-  return (
-    <AppLayout>
-      <Suspense fallback={<PageFallback />}>
-        <Component />
-      </Suspense>
-    </AppLayout>
-  );
+  return <>{children}</>;
 }
 
 function HomeRoute() {
-  const { isAuthenticated, isLoading, user } = useAuth();
-
-  if (isLoading) {
-    return <div className="flex min-h-screen items-center justify-center">جاري التحميل...</div>;
-  }
-
-  if (!isAuthenticated) {
-    return <Redirect to="/login" />;
-  }
+  const { user } = useAuth();
 
   if (user?.incompleteProfile) {
     return <PendingAssignment />;
@@ -113,72 +121,108 @@ function HomeRoute() {
     }
   }
 
-  const Component = isContractor ? Projects : Dashboard;
+  return isContractor ? <Projects /> : <Dashboard />;
+}
 
+// Mounted ONCE for any authenticated route. AppLayout (sidebar + header)
+// stays put; only the inner page swaps. The single Suspense boundary uses
+// the slim top progress bar so navigating between lazy pages doesn't blank
+// out the screen.
+function AuthenticatedShell() {
   return (
     <AppLayout>
       <Suspense fallback={<PageFallback />}>
-        <Component />
+        <Switch>
+          <Route path="/">
+            <HomeRoute />
+          </Route>
+          <Route path="/projects">
+            <Projects />
+          </Route>
+          <Route path="/dashboard">
+            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+              <Dashboard />
+            </RequireRole>
+          </Route>
+          <Route path="/projects/:id/activities">
+            <ProjectActivities />
+          </Route>
+          <Route path="/projects/:id/reports">
+            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+              <ProjectReports />
+            </RequireRole>
+          </Route>
+          <Route path="/projects/:id/files">
+            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+              <ProjectFiles />
+            </RequireRole>
+          </Route>
+          <Route path="/projects/:id/deviation">
+            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+              <ProjectDeviation />
+            </RequireRole>
+          </Route>
+          <Route path="/projects/:id/extensions">
+            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+              <ProjectExtensions />
+            </RequireRole>
+          </Route>
+          <Route path="/projects/:id/suspensions">
+            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+              <ProjectSuspensions />
+            </RequireRole>
+          </Route>
+          <Route path="/projects/:id/forms">
+            <ProjectForms />
+          </Route>
+          <Route path="/projects/:id/attendance">
+            <RequireRole allowedRoles={["admin", "project_manager", "engineer", "owner"]}>
+              <ProjectAttendance />
+            </RequireRole>
+          </Route>
+          <Route path="/projects/:id">
+            <ProjectDetails />
+          </Route>
+          <Route path="/users">
+            <RequireRole allowedRoles={["admin"]}>
+              <Users />
+            </RequireRole>
+          </Route>
+          <Route path="/companies">
+            <RequireRole allowedRoles={["admin", "project_manager"]}>
+              <Companies />
+            </RequireRole>
+          </Route>
+          <Route path="/audit-log">
+            <RequireRole allowedRoles={["admin"]}>
+              <AuditLog />
+            </RequireRole>
+          </Route>
+          <Route component={NotFound} />
+        </Switch>
       </Suspense>
     </AppLayout>
   );
 }
 
 function Router() {
+  const { isAuthenticated, isLoading } = useAuth();
+
   return (
     <Suspense fallback={<PageFallback />}>
       <Switch>
         <Route path="/login" component={Login} />
         <Route path="/owner/:token" component={OwnerPortal} />
         <Route path="/form/:token" component={PublicForm} />
-      
-      <Route path="/">
-        <HomeRoute />
-      </Route>
-      <Route path="/projects">
-        <ProtectedRoute component={Projects} />
-      </Route>
-      <Route path="/dashboard">
-        <ProtectedRoute component={Dashboard} allowedRoles={["admin", "project_manager", "engineer"]} />
-      </Route>
-      <Route path="/projects/:id/activities">
-        <ProtectedRoute component={ProjectActivities} />
-      </Route>
-      <Route path="/projects/:id/reports">
-        <ProtectedRoute component={ProjectReports} allowedRoles={["admin", "project_manager", "engineer"]} />
-      </Route>
-      <Route path="/projects/:id/files">
-        <ProtectedRoute component={ProjectFiles} allowedRoles={["admin", "project_manager", "engineer"]} />
-      </Route>
-      <Route path="/projects/:id/deviation">
-        <ProtectedRoute component={ProjectDeviation} allowedRoles={["admin", "project_manager", "engineer"]} />
-      </Route>
-      <Route path="/projects/:id/extensions">
-        <ProtectedRoute component={ProjectExtensions} allowedRoles={["admin", "project_manager", "engineer"]} />
-      </Route>
-      <Route path="/projects/:id/suspensions">
-        <ProtectedRoute component={ProjectSuspensions} allowedRoles={["admin", "project_manager", "engineer"]} />
-      </Route>
-      <Route path="/projects/:id/forms">
-        <ProtectedRoute component={ProjectForms} />
-      </Route>
-      <Route path="/projects/:id/attendance">
-        <ProtectedRoute component={ProjectAttendance} allowedRoles={["admin", "project_manager", "engineer", "owner"]} />
-      </Route>
-      <Route path="/projects/:id">
-        <ProtectedRoute component={ProjectDetails} />
-      </Route>
-      <Route path="/users">
-        <ProtectedRoute component={Users} allowedRoles={["admin"]} />
-      </Route>
-      <Route path="/companies">
-        <ProtectedRoute component={Companies} allowedRoles={["admin", "project_manager"]} />
-      </Route>
-      <Route path="/audit-log">
-        <ProtectedRoute component={AuditLog} allowedRoles={["admin"]} />
-      </Route>
-      
-      <Route component={NotFound} />
+        <Route>
+          {isLoading ? (
+            <FullScreenLoader />
+          ) : !isAuthenticated ? (
+            <Redirect to="/login" />
+          ) : (
+            <AuthenticatedShell />
+          )}
+        </Route>
       </Switch>
     </Suspense>
   );
