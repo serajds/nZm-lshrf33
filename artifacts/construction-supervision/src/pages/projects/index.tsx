@@ -105,9 +105,13 @@ export default function Projects() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // Companies barely change during a working session — trust the cache for
+  // 10 minutes so opening / re-opening the projects screen doesn't trip a
+  // network round-trip just to populate the dialog dropdowns.
   const { data: companies = [] } = useQuery<CompanyOption[]>({
     queryKey: ["companies"],
     queryFn: () => authFetchJson(`${API_BASE}/companies`),
+    staleTime: 1000 * 60 * 10,
   });
 
   const ownerCompanies = companies.filter(c => c.type === "owner");
@@ -124,10 +128,23 @@ export default function Projects() {
   const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
   const getProjectLink = (projectId: number) => `/projects/${projectId}`;
 
-  const { data: projects, isLoading } = useListProjects({
-    search: debouncedSearch || undefined,
-    status: statusFilter && statusFilter !== "all" ? statusFilter : undefined,
-  });
+  // `placeholderData` keeps the previous list visible while a new search
+  // / filter request is in flight, so typing in the search box (or
+  // changing the status filter) no longer wipes the cards to a spinner
+  // for every keystroke. `staleTime` of 5 min prevents revisits to the
+  // page from re-fetching when the underlying data hasn't changed.
+  const { data: projects, isLoading } = useListProjects(
+    {
+      search: debouncedSearch || undefined,
+      status: statusFilter && statusFilter !== "all" ? statusFilter : undefined,
+    },
+    {
+      query: {
+        staleTime: 1000 * 60 * 5,
+        placeholderData: (prev: any) => prev,
+      } as any,
+    },
+  );
 
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();

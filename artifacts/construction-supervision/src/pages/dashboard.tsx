@@ -125,7 +125,16 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { data: summary, isLoading } = useGetDashboardSummary();
+  // Dashboard summary aggregates data across every project + activity in
+  // the system, so it's the single most expensive endpoint we have. We
+  // keep the previously-fetched payload visible on subsequent visits so
+  // navigating BACK to the dashboard never blanks the screen, and we
+  // trust the cache for 5 minutes before considering it stale (the
+  // global 2-minute default was too aggressive — every tab-switch was
+  // tripping a re-fetch + full-screen spinner).
+  const { data: summary, isLoading } = useGetDashboardSummary({
+    query: { staleTime: 1000 * 60 * 5, placeholderData: (prev: any) => prev } as any,
+  });
   const [defaultProjectId, setDefaultProjectIdState] = useState<string | null>(
     () => getDefaultProjectId(user?.id),
   );
@@ -140,7 +149,13 @@ export default function Dashboard() {
   const today = new Date();
   const dateStr = today.toLocaleDateString("ar-u-nu-latn", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
-  if (isLoading) {
+  // Only block the screen on the VERY first load (no cached payload yet).
+  // On every subsequent visit, `summary` is populated from the previous
+  // fetch via placeholderData so we render the dashboard immediately and
+  // let React Query revalidate silently in the background. Without this,
+  // every navigation back to /dashboard was wiping the page for a full
+  // round-trip and felt like the app froze.
+  if (isLoading && !summary) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
         <div className="text-center space-y-3">
