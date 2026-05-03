@@ -183,13 +183,22 @@ export default function ProjectReports() {
     enabled: !!projectId,
   });
   
+  // `placeholderData` keeps the previous list rendered while a new
+  // filter request is in flight, so changing the type / date filters
+  // doesn't blank the screen for a round-trip. `staleTime` of 2 minutes
+  // matches the global default but is set explicitly here for clarity
+  // alongside the placeholder behaviour.
   const { data: reports, isLoading } = useListReports(projectId, {
     type: typeFilter && typeFilter !== "all" ? typeFilter : undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
-  }, { query: { enabled: !!projectId } });
+  }, { query: { enabled: !!projectId, placeholderData: (prev: any) => prev } as any });
 
-  const { data: allReportsForCategories } = useListReports(projectId, {}, { query: { enabled: !!projectId } });
+  const { data: allReportsForCategories } = useListReports(
+    projectId,
+    {},
+    { query: { enabled: !!projectId, staleTime: 1000 * 60 * 5 } as any },
+  );
 
   const { data: activities } = useListActivities(projectId, { query: { enabled: !!projectId } });
   

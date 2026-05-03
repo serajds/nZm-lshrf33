@@ -89,12 +89,27 @@ export default function ProjectDetails() {
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [showRegenerateForm, setShowRegenerateForm] = useState(false);
 
+  // The project record itself rarely changes during a session and is read
+  // by every project sub-page (overview, reports, activities, files…). A
+  // 5-minute staleTime + previous-data fallback keeps tab-switching from
+  // re-fetching it and from flashing an empty header on every navigation.
   const { data: project, isLoading: isProjectLoading } = useGetProject(projectId, {
-    query: { enabled: !!projectId }
+    query: {
+      enabled: !!projectId,
+      staleTime: 1000 * 60 * 5,
+      placeholderData: (prev: any) => prev,
+    } as any,
   });
   usePageTitle(project?.name ?? "تفاصيل المشروع");
+  // Project summary aggregates progress + activities + recent reports —
+  // it's the heaviest query on this page. Same treatment: keep the prior
+  // payload visible so the overview never blanks while revalidating.
   const { data: summary, isLoading: isSummaryLoading } = useGetProjectSummary(projectId, {
-    query: { enabled: !!projectId }
+    query: {
+      enabled: !!projectId,
+      staleTime: 1000 * 60 * 5,
+      placeholderData: (prev: any) => prev,
+    } as any,
   });
   const { data: activities = [] } = useListActivities(projectId, { query: { enabled: !!projectId } });
 
