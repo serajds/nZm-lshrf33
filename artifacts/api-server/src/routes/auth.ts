@@ -29,11 +29,10 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  // Activation gate (server-enforced): a non-admin user is considered
-  // "active" only after the admin has linked them to at least one company
-  // AND added them to at least one project. Until then we refuse to issue
-  // a token at all — without this check, a hostile user could read the
-  // token straight out of devtools and bypass the client-side block.
+  // Activation gate (server-enforced): non-admin needs a company link AND
+  // project access. Project access can be either an explicit project_members
+  // row OR (for contractor-company users) belonging to a company that is the
+  // contractorCompany of at least one project.
   const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
     .from(userCompaniesTable)
     .where(eq(userCompaniesTable.userId, user.id));
@@ -41,8 +40,21 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     .from(projectMembersTable)
     .where(eq(projectMembersTable.userId, user.id));
   const projectMembershipsCount = Number(membershipsCount) || 0;
+
+  let hasContractorCompanyProject = false;
+  if (projectMembershipsCount === 0 && companyLinks.length > 0) {
+    const companyIds = companyLinks.map(c => c.companyId);
+    const [hasProject] = await db.select({ id: projectsTable.id })
+      .from(projectsTable)
+      .where(inArray(projectsTable.contractorCompanyId, companyIds))
+      .limit(1);
+    if (hasProject) hasContractorCompanyProject = true;
+  }
+
   const incompleteProfile =
-    user.role !== "admin" && (companyLinks.length === 0 || projectMembershipsCount === 0);
+    user.role !== "admin"
+    && (companyLinks.length === 0
+      || (projectMembershipsCount === 0 && !hasContractorCompanyProject));
 
   if (incompleteProfile) {
     res.status(403).json({
@@ -146,11 +158,12 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
     .where(eq(userCompaniesTable.userId, user.id));
 
   let isContractorCompanyUser = false;
-  if (user.role !== "contractor" && user.role !== "admin" && user.role !== "project_manager" && companyLinks.length > 0) {
+  if (user.role !== "admin" && user.role !== "project_manager" && companyLinks.length > 0) {
     const companyIds = companyLinks.map(c => c.companyId);
     const [hasProject] = await db.select({ id: projectsTable.id })
       .from(projectsTable)
-      .where(inArray(projectsTable.contractorCompanyId, companyIds));
+      .where(inArray(projectsTable.contractorCompanyId, companyIds))
+      .limit(1);
     if (hasProject) isContractorCompanyUser = true;
   }
 
@@ -159,7 +172,10 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
     .where(eq(projectMembersTable.userId, user.id));
 
   const projectMembershipsCount = Number(membershipsCount) || 0;
-  const incompleteProfile = user.role !== "admin" && (companyLinks.length === 0 || projectMembershipsCount === 0);
+  const incompleteProfile =
+    user.role !== "admin"
+    && (companyLinks.length === 0
+      || (projectMembershipsCount === 0 && !isContractorCompanyUser));
 
   const { passwordHash: _, ...safeUser } = user;
   res.json({
