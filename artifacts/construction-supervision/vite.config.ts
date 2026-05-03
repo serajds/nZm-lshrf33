@@ -24,7 +24,17 @@ export default defineConfig({
     runtimeErrorOverlay(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg", "apple-touch-icon.png", "opengraph.jpg"],
+      includeAssets: [
+        "favicon.svg",
+        "apple-touch-icon.png",
+        "opengraph.jpg",
+        "pwa-72x72.png",
+        "pwa-96x96.png",
+        "pwa-128x128.png",
+        "pwa-144x144.png",
+        "pwa-152x152.png",
+        "pwa-384x384.png",
+      ],
       workbox: {
         // Precache only the app shell (HTML, CSS, the framework chunk, and
         // icons). Heavy vendor chunks (recharts, leaflet, xlsx) and
@@ -86,14 +96,22 @@ export default defineConfig({
         theme_color: "#1f4d8b",
         background_color: "#ffffff",
         display: "standalone",
-        orientation: "portrait",
+        display_override: ["standalone", "minimal-ui"],
+        orientation: "any",
         lang: "ar",
         dir: "rtl",
         start_url: basePath,
         scope: basePath,
+        prefer_related_applications: false,
         icons: [
-          { src: "pwa-192x192.png", sizes: "192x192", type: "image/png" },
-          { src: "pwa-512x512.png", sizes: "512x512", type: "image/png" },
+          { src: "pwa-72x72.png", sizes: "72x72", type: "image/png", purpose: "any" },
+          { src: "pwa-96x96.png", sizes: "96x96", type: "image/png", purpose: "any" },
+          { src: "pwa-128x128.png", sizes: "128x128", type: "image/png", purpose: "any" },
+          { src: "pwa-144x144.png", sizes: "144x144", type: "image/png", purpose: "any" },
+          { src: "pwa-152x152.png", sizes: "152x152", type: "image/png", purpose: "any" },
+          { src: "pwa-192x192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "pwa-384x384.png", sizes: "384x384", type: "image/png", purpose: "any" },
+          { src: "pwa-512x512.png", sizes: "512x512", type: "image/png", purpose: "any" },
           {
             src: "pwa-maskable-512x512.png",
             sizes: "512x512",
