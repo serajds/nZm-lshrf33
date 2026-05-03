@@ -80,7 +80,12 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), re
     updatedAt: reportsTable.updatedAt,
   }).from(reportsTable)
     .where(and(...conditions))
-    .orderBy(desc(reportsTable.reportDate));
+    // reportDate is a DATE (no time component), so two reports created on
+    // the same day need a deterministic secondary key — fall back to
+    // createdAt/id desc so the most recently entered report always wins
+    // the tiebreak. Without this, same-day reports appeared in arbitrary
+    // order and "newest" felt broken to users.
+    .orderBy(desc(reportsTable.reportDate), desc(reportsTable.createdAt), desc(reportsTable.id));
 
   res.json(reports);
 });
