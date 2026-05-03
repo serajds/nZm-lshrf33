@@ -4,6 +4,7 @@ import { usersTable, companiesTable, userCompaniesTable, projectMembersTable, pr
 import { eq, inArray, count, and } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
+import { invalidateProfileCache } from "../app";
 
 async function getProjectMembershipCounts(userIds: number[]) {
   if (userIds.length === 0) return new Map<number, number>();
@@ -293,6 +294,9 @@ router.post("/users", requireAdmin, async (req, res): Promise<void> => {
       return rows;
     });
 
+    // New user has fresh assignments — invalidate any prior cache.
+    invalidateProfileCache(inserted.id);
+
     const companies = await getCompaniesForUser(inserted.id);
     const projects = await getProjectsForUser(inserted.id);
 
@@ -448,6 +452,10 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
     await setProjectMembershipsForUser(id, parsedProjectIds, updatedUser.role);
   }
 
+  // Role / company links / project memberships may have changed —
+  // drop the cached completeness decision so the next request re-evaluates.
+  invalidateProfileCache(id);
+
   const companies = await getCompaniesForUser(id);
   const projects = await getProjectsForUser(id);
 
@@ -472,6 +480,7 @@ router.delete("/users/:id", requireAdmin, async (req, res): Promise<void> => {
   }
 
   const [user] = await db.delete(usersTable).where(eq(usersTable.id, id)).returning();
+  invalidateProfileCache(id);
   if (!user) {
     res.status(404).json({ error: "المستخدم غير موجود" });
     return;

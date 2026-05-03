@@ -467,6 +467,8 @@ export default function ProjectFiles() {
                 <img 
                   src={getFileUrl(previewFile)} 
                   alt={previewFile.originalName} 
+                  loading="lazy"
+                  decoding="async"
                   className="max-w-full max-h-[70vh] object-contain"
                 />
               </div>

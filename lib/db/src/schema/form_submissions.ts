@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, jsonb, index } from "drizzle-orm/pg-core";
 import { projectsTable } from "./projects";
 import { formTemplatesTable } from "./form_templates";
 import { usersTable } from "./users";
@@ -17,7 +17,10 @@ export const formSubmissionsTable = pgTable("form_submissions", {
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (t) => [
+  index("form_submissions_template_created_idx").on(t.templateId, t.createdAt),
+  index("form_submissions_project_idx").on(t.projectId),
+]);
 
 export const insertFormSubmissionSchema = createInsertSchema(formSubmissionsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertFormSubmission = z.infer<typeof insertFormSubmissionSchema>;

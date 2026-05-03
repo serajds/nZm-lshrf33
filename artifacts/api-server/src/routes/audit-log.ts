@@ -35,7 +35,21 @@ router.get("/audit-log", requireAdmin, async (req, res): Promise<void> => {
 
   const maxRows = Math.min(parseInt(limitStr as string, 10) || 100, 500);
 
-  const logs = await db.select().from(auditLogTable)
+  // Skip the `details` JSONB column in the list view — it's typically
+  // a large change-diff that's only needed when expanding a single log
+  // entry. Massive payload reduction for the audit log page.
+  const logs = await db.select({
+    id: auditLogTable.id,
+    userId: auditLogTable.userId,
+    userName: auditLogTable.userName,
+    action: auditLogTable.action,
+    entityType: auditLogTable.entityType,
+    entityId: auditLogTable.entityId,
+    entityName: auditLogTable.entityName,
+    projectId: auditLogTable.projectId,
+    projectName: auditLogTable.projectName,
+    createdAt: auditLogTable.createdAt,
+  }).from(auditLogTable)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(auditLogTable.createdAt))
     .limit(maxRows);

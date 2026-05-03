@@ -75,3 +75,22 @@ The system is a pnpm monorepo with separate packages for the API server and the 
 - **Web Push API**: Browser notifications.
 - **Microsoft Graph API (via Replit OneDrive connector)**: OneDrive integration for test results.
 - **`@dnd-kit`**: Drag-and-drop functionality.
+## Performance Optimizations (May 2026)
+A full-system audit + tuning pass was performed. Key changes:
+
+### Database
+- **22 indexes** added across 12 tables: `activities (project_id, sort_order)`, `activities (group_id)`, `reports (project_id, report_date)`, `audit_log` (3 indexes incl. `(project_id, created_at)`), `projects` (status + 3 company FKs + owner_token), `project_files (project_id, category)`, `form_submissions (template_id, created_at)` + `(project_id)`, `form_templates (project_id)`, `activity_groups (project_id, sort_order)`, `project_extensions (project_id, extension_date)`, `project_suspensions (project_id, start_date)`, `skipped_days` (2 indexes), `users (role)` + `(full_name)`. Reflected in schema files for drift, applied via `CREATE INDEX IF NOT EXISTS`.
+
+### API
+- **Auth gate cache** (`app.ts`): the per-request "incomplete profile" check used to run 3-4 sequential DB queries on EVERY `/api` call. Now cached in-memory per-userId for 60s, with the remaining cache-miss queries parallelized via `Promise.all`. Cache is explicitly invalidated from `users.ts` (POST/PATCH/DELETE) and `project-members.ts` (POST/PATCH/DELETE). Exported as `invalidateProfileCache(userId?)`.
+- **List endpoints** drop heavy JSONB columns to cut payload sizes:
+  - `GET /api/projects` no longer returns `summaryWidgets` or `ownerAccessPassword` (also removes a sensitive field from the wire). Detail endpoint still returns them.
+  - `GET /api/projects/:id/reports` no longer returns `activitiesSnapshot` or `imageGroups` (multi-MB savings on projects with many reports).
+  - `GET /api/audit-log` no longer returns `details`.
+- **`activities/reorder`** now wraps all updates in a single `db.transaction` with `Promise.all`, replacing a serial `for await` loop (was N round-trips, now 1 batched commit).
+- **`/projects/:id/company-logos`** narrowed to selected columns + `inArray` instead of full `companies` table scan.
+- **Async I/O** in `files.ts` and `companies.ts`: replaced sync `fs.unlinkSync` / `fs.statSync` with `fs.promises` to stop blocking the event loop on uploads/deletes.
+
+### Frontend
+- **App.tsx**: `Dashboard`, `Projects`, `ProjectDetails` are now lazy-loaded (`React.lazy`). Only one of them is shown after login → cuts the initial bundle dramatically.
+- **Image lazy loading**: added `loading="lazy" decoding="async"` to `<img>` tags in `companies.tsx`, `attendance.tsx` (selfie modal), and `files.tsx` (preview dialog).

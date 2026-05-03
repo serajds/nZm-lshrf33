@@ -4,6 +4,7 @@ import { projectMembersTable, usersTable, memberGroupAssignmentsTable, activityG
 import { eq, and, inArray } from "drizzle-orm";
 import { requireProjectManager, requireProjectAccess, requireAdmin, rejectContractor } from "../middlewares/auth";
 import { resolveTabPermissions, isValidTabPermissions, TAB_KEYS } from "../lib/tab-permissions";
+import { invalidateProfileCache } from "../app";
 
 const router: IRouter = Router();
 
@@ -328,6 +329,9 @@ router.post("/projects/:projectId/members", requireProjectManager("projectId"), 
       await setGroupsForMember(member.id, assignedGroupIds, projectId);
     }
 
+    // Newly added project membership flips a user from "incomplete" → "complete".
+    invalidateProfileCache(userId);
+
     const memberWithUser = await getMemberWithUser(member.id);
     res.status(201).json(memberWithUser);
   } catch (e: any) {
@@ -369,6 +373,9 @@ router.patch("/projects/:projectId/members/:id", requireProjectManager("projectI
       res.status(404).json({ error: "العضو غير موجود" });
       return;
     }
+    // Role change doesn't affect completeness today, but invalidate
+    // anyway to keep semantics consistent if logic changes.
+    invalidateProfileCache(targetMember.userId);
   }
 
   if (Array.isArray(assignedGroupIds)) {
@@ -628,6 +635,9 @@ router.delete("/projects/:projectId/members/:id", requireProjectManager("project
     res.status(404).json({ error: "العضو غير موجود" });
     return;
   }
+
+  // Removing a membership may flip user back to "incomplete".
+  invalidateProfileCache(deleted.userId);
 
   res.sendStatus(204);
 });

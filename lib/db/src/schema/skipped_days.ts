@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, index } from "drizzle-orm/pg-core";
 import { projectsTable } from "./projects";
 import { formTemplatesTable } from "./form_templates";
 import { usersTable } from "./users";
@@ -11,4 +11,7 @@ export const skippedDaysTable = pgTable("skipped_days", {
   reason: text("reason"),
   skippedById: integer("skipped_by_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("skipped_days_template_date_idx").on(t.templateId, t.date),
+  index("skipped_days_project_idx").on(t.projectId),
+]);

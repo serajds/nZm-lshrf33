@@ -7,24 +7,24 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { RouteErrorBoundary } from "@/components/error-boundary";
 import { getDefaultProjectId } from "@/lib/user-prefs";
 
-// Eager imports — these are needed for the very first authenticated paint,
-// so lazy-loading them only added round-trips. AppLayout in particular was
-// being lazy-rendered WITHOUT a surrounding Suspense, which made React 18
-// throw an empty error to the route boundary on every cold load (visible
-// in browser console as `[RouteErrorBoundary] {}`). The user perceived
-// this as "the page gets stuck and reloads" — actually the error boundary
-// caught the suspension and forced a tree rebuild from scratch.
+// Truly eager: only what's needed before any route resolves. Login is
+// the very first paint for unauth users; Layout is needed by every
+// authenticated route; the other small "shell" pages are kept eager
+// because they're tiny and lazy-loading would only add a round trip.
 import Login from "@/pages/login";
 import PendingAssignment from "@/pages/pending-assignment";
 import NotFound from "@/pages/not-found";
 import { AppLayout } from "@/components/layout";
-import Dashboard from "@/pages/dashboard";
-import Projects from "@/pages/projects/index";
-import ProjectDetails from "@/pages/projects/[id]";
 
-// Genuinely heavy/rarely-visited pages stay lazy. These pull in xlsx,
-// recharts, leaflet, react-pdf, etc. — keeping them out of the initial
-// bundle is still worth a separate request.
+// Lazy: every page that isn't strictly needed in the first paint.
+// Dashboard / Projects / ProjectDetails were previously eager — they're
+// each multi-hundred-KB pages with their own dependency trees, and only
+// ONE of them is shown after login. Lazy-loading shrank the initial
+// bundle dramatically (the user only downloads the one page they
+// actually navigate to).
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Projects = lazy(() => import("@/pages/projects/index"));
+const ProjectDetails = lazy(() => import("@/pages/projects/[id]"));
 const ProjectActivities = lazy(() => import("@/pages/projects/[id]/activities"));
 const ProjectReports = lazy(() => import("@/pages/projects/[id]/reports"));
 const ProjectFiles = lazy(() => import("@/pages/projects/[id]/files"));

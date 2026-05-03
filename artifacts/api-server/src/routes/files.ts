@@ -7,6 +7,7 @@ import { requireTabEdit } from "../middlewares/tab-access";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { promises as fsp } from "fs";
 import sharp from "sharp";
 import { uploadToCloud, deleteFromCloud } from "../lib/fileStorage";
 
@@ -47,9 +48,9 @@ async function compressImage(filePath: string): Promise<{ size: number; filename
   pipeline = pipeline.jpeg({ quality: IMAGE_QUALITY, mozjpeg: true });
   await pipeline.toFile(compressedPath);
 
-  fs.unlinkSync(filePath);
-
-  const stats = fs.statSync(compressedPath);
+  // Async I/O — was blocking the event loop on every upload.
+  await fsp.unlink(filePath);
+  const stats = await fsp.stat(compressedPath);
   return { size: stats.size, filename: compressedName };
 }
 
@@ -144,10 +145,9 @@ router.delete("/projects/:projectId/files/:id", requireProjectAccess("projectId"
     return;
   }
 
+  // Async unlink; ignore if missing.
   const filePath = path.join(uploadsDir, file.filename);
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-  }
+  await fsp.unlink(filePath).catch(() => {});
   await deleteFromCloud(file.filename);
 
   res.sendStatus(204);

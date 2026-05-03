@@ -6,6 +6,7 @@ import { requireAuth, requireAdminOrPM } from "../middlewares/auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { promises as fsp } from "fs";
 import { uploadToCloud, deleteFromCloud } from "../lib/fileStorage";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
@@ -155,9 +156,7 @@ router.delete("/companies/:id", requireAdminOrPM, async (req, res): Promise<void
     const filename = company.logoUrl.split("/").pop();
     if (filename) {
       const filePath = path.join(uploadsDir, filename);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+      await fsp.unlink(filePath).catch(() => {});
       await deleteFromCloud(filename);
     }
   }
