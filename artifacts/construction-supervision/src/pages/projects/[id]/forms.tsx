@@ -1372,7 +1372,7 @@ export default function ProjectForms() {
                       </div>
                     )}
                     <div className="flex gap-1.5">
-                      {!isViewer && (
+                      {(!isViewer || (isContractorBase && t.visibleToContractor)) && (
                       <Button
                         variant="default"
                         size="sm"
