@@ -10,8 +10,8 @@ import { logger } from "./lib/logger";
 import { verifyToken } from "./lib/auth";
 import { streamFromCloud, migrateExistingUploads } from "./lib/fileStorage";
 import { db } from "@workspace/db";
-import { usersTable, userCompaniesTable, projectMembersTable } from "@workspace/db";
-import { eq, count } from "drizzle-orm";
+import { usersTable, userCompaniesTable, projectMembersTable, projectsTable } from "@workspace/db";
+import { eq, count, inArray } from "drizzle-orm";
 
 const app: Express = express();
 
@@ -154,8 +154,8 @@ app.use("/api", async (req: Request, res: Response, next: NextFunction): Promise
       return next();
     }
 
-    const [companyCount] = await db
-      .select({ value: count() })
+    const companyLinks = await db
+      .select({ companyId: userCompaniesTable.companyId })
       .from(userCompaniesTable)
       .where(eq(userCompaniesTable.userId, payload.userId));
 
@@ -164,9 +164,20 @@ app.use("/api", async (req: Request, res: Response, next: NextFunction): Promise
       .from(projectMembersTable)
       .where(eq(projectMembersTable.userId, payload.userId));
 
+    const memberships = Number(membershipCount?.value ?? 0);
+    let hasContractorCompanyProject = false;
+    if (memberships === 0 && companyLinks.length > 0) {
+      const [hasProject] = await db
+        .select({ id: projectsTable.id })
+        .from(projectsTable)
+        .where(inArray(projectsTable.contractorCompanyId, companyLinks.map(c => c.companyId)))
+        .limit(1);
+      if (hasProject) hasContractorCompanyProject = true;
+    }
+
     const isIncomplete =
-      Number(companyCount?.value ?? 0) === 0 ||
-      Number(membershipCount?.value ?? 0) === 0;
+      companyLinks.length === 0 ||
+      (memberships === 0 && !hasContractorCompanyProject);
 
     if (isIncomplete) {
       res.status(403).json({
