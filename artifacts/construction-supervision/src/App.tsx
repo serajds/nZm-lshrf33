@@ -36,11 +36,19 @@ const PublicForm = lazy(() => import("@/pages/public-form"));
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Cache server data for 2 min before considering it stale. Aggressive
-      // re-fetches on every focus/mount felt like "the app is slow" because
-      // every tab switch triggered fresh API roundtrips for already-displayed
-      // data. We still revalidate on mount when data IS stale.
-      staleTime: 1000 * 60 * 2,
+      // Trust cached data for 5 minutes before considering it stale, and
+      // keep it in memory for 30 minutes after the last component that
+      // uses it unmounts. This is the single biggest perceived-speed win
+      // because every project sub-tab (reports, activities, files, …)
+      // re-uses the same /api/projects/:id, /members, /permissions and
+      // /activities responses; with 5-minute caching, jumping between
+      // tabs becomes instant once you've visited each one.
+      //
+      // Heavy/expensive queries (dashboard summary, project summary,
+      // project list, …) override these defaults locally where useful
+      // (placeholderData to avoid blanking on key-changes etc.).
+      staleTime: 1000 * 60 * 5,
+      gcTime: 1000 * 60 * 30,
       refetchOnMount: true,
       refetchOnWindowFocus: false,
       retry: 1,
