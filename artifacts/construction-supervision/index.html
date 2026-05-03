@@ -127,21 +127,21 @@
     </div>
 
     <script>
-      // Safety net only: hides the splash if React never mounts within 30s
-      // (e.g. a lazy chunk failed to load on a flaky connection, or the
-      // user is on dev preview through a slow mobile network where Vite
-      // serves hundreds of ES modules individually). Under normal
-      // conditions main.tsx clears this timer on the first paint, so it
-      // never fires. After 8s we update the splash text so the user knows
-      // the app is still loading instead of staring at a frozen spinner.
+      // Safety net only: hides the splash if the auth bootstrap never
+      // settles within 12s (e.g. a lazy chunk failed to load on a flaky
+      // connection, or /auth/me is hanging). Under normal conditions
+      // AuthProvider calls window.__dismissAppSplash as soon as auth is
+      // ready, so this never fires. After 6s we update the splash text
+      // so the user knows the app is still loading instead of staring at
+      // a frozen spinner.
       window.__splashSafetyTimer = setTimeout(function () {
         var s = document.getElementById('app-splash');
         if (s) s.classList.add('splash-hide');
-      }, 30000);
+      }, 12000);
       window.__splashSlowTimer = setTimeout(function () {
         var sub = document.querySelector('#app-splash .splash-sub');
         if (sub) sub.textContent = 'لا يزال التحميل جارياً — قد يستغرق وقتاً أطول على الشبكات البطيئة.';
-      }, 8000);
+      }, 6000);
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
