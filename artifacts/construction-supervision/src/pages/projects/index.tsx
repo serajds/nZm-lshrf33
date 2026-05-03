@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useListProjects, useCreateProject, useUpdateProject, useDeleteProject, getListProjectsQueryKey } from "@workspace/api-client-react";
+import { useListProjects, useCreateProject, useUpdateProject, useDeleteProject, getListProjectsQueryKey, getGetProjectQueryKey, getGetProjectSummaryQueryKey, getProject, getProjectSummary } from "@workspace/api-client-react";
 import type { Project } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -127,6 +127,23 @@ export default function Projects() {
   const canManageProjects = user?.role === "admin" || user?.role === "project_manager";
   const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
   const getProjectLink = (projectId: number) => `/projects/${projectId}`;
+
+  // Prefetch a project's core data the moment the user hovers/touches its
+  // card. By the time the click navigates to the details screen, the data
+  // is usually already in the React Query cache, making the transition
+  // feel instant. Throttled by `staleTime` so it never fires twice in a row.
+  const prefetchProject = (projectId: number) => {
+    queryClient.prefetchQuery({
+      queryKey: getGetProjectQueryKey(projectId),
+      queryFn: ({ signal }) => getProject(projectId, { signal }),
+      staleTime: 1000 * 60 * 5,
+    });
+    queryClient.prefetchQuery({
+      queryKey: getGetProjectSummaryQueryKey(projectId),
+      queryFn: ({ signal }) => getProjectSummary(projectId, { signal }),
+      staleTime: 1000 * 60 * 5,
+    });
+  };
 
   // `placeholderData` keeps the previous list visible while a new search
   // / filter request is in flight, so typing in the search box (or
@@ -603,7 +620,12 @@ export default function Projects() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projects?.map((project) => (
-            <Card key={project.id} className="hover:shadow-md transition-shadow flex flex-col h-full">
+            <Card
+              key={project.id}
+              className="hover:shadow-md transition-shadow flex flex-col h-full"
+              onMouseEnter={() => prefetchProject(project.id)}
+              onTouchStart={() => prefetchProject(project.id)}
+            >
               <CardHeader className="pb-3 border-b border-border/50">
                 <div className="flex justify-between items-start gap-2">
                   <CardTitle className="text-lg line-clamp-2 flex-1">
