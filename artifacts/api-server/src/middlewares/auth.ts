@@ -116,6 +116,14 @@ export function requireProjectAccess(paramName: string = "projectId") {
       const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, req.user!.userId));
       const actualRole = dbUser?.role || role;
 
+      // Global contractor users are always treated as contractors at the
+      // project level, regardless of any project_members row they may have.
+      if (actualRole === "contractor") {
+        req.projectRole = "contractor";
+        next();
+        return;
+      }
+
       const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
         .from(userCompaniesTable)
         .where(eq(userCompaniesTable.userId, req.user!.userId));
@@ -175,6 +183,13 @@ export function requireProjectManager(paramName: string = "projectId") {
 
       const projectId = parseInt(Array.isArray(rawId) ? rawId[0] : rawId, 10);
 
+      // Global contractors can never be project managers, even if a stale
+      // project_members row says otherwise.
+      if (role === "contractor") {
+        res.status(403).json({ error: "يجب أن تكون مدير المشروع للقيام بهذا الإجراء" });
+        return;
+      }
+
       const [membership] = await db.select()
         .from(projectMembersTable)
         .where(
@@ -187,6 +202,23 @@ export function requireProjectManager(paramName: string = "projectId") {
       if (!membership || membership.role !== "project_manager") {
         res.status(403).json({ error: "يجب أن تكون مدير المشروع للقيام بهذا الإجراء" });
         return;
+      }
+
+      // Contractor-company users can never act as project managers either,
+      // unless their global role is admin or project_manager (PM exemption
+      // mirrors requireProjectAccess). Anyone else linked to the project's
+      // contractor company is a contractor, period.
+      const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
+        .from(userCompaniesTable)
+        .where(eq(userCompaniesTable.userId, req.user!.userId));
+      if (companyLinks.length > 0 && role !== "project_manager") {
+        const [project] = await db.select({ contractorCompanyId: projectsTable.contractorCompanyId })
+          .from(projectsTable).where(eq(projectsTable.id, projectId));
+        if (project?.contractorCompanyId
+          && companyLinks.some(c => c.companyId === project.contractorCompanyId)) {
+          res.status(403).json({ error: "يجب أن تكون مدير المشروع للقيام بهذا الإجراء" });
+          return;
+        }
       }
 
       req.projectRole = membership.role;
