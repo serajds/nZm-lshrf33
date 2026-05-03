@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
-import { RouteErrorBoundary } from "@/components/error-boundary";
 import { getDefaultProjectId } from "@/lib/user-prefs";
 
 // Eager imports — these are needed for the very first authenticated paint.
@@ -196,9 +195,7 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <AuthProvider>
-            <RouteErrorBoundary>
-              <Router />
-            </RouteErrorBoundary>
+            <Router />
           </AuthProvider>
         </WouterRouter>
         <Toaster position="top-center" dir="rtl" richColors closeButton />
