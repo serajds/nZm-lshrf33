@@ -125,11 +125,6 @@ function HomeRoute() {
 }
 
 function Router() {
-  // Top-level Suspense closes the last lazy-without-boundary gap: the public
-  // routes /owner/:token and /form/:token render their lazy components
-  // directly (not via ProtectedRoute), so they had nowhere to surface the
-  // initial chunk-load suspension. Without this wrapper they would hit the
-  // same RouteErrorBoundary crash that the authenticated routes used to.
   return (
     <Suspense fallback={<PageFallback />}>
       <Switch>
