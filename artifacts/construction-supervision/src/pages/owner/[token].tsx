@@ -972,7 +972,7 @@ export default function OwnerPortal() {
                       <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-xs font-medium text-muted-foreground">نسبة الإنجاز للفترة</span>
+                            <span className="text-xs font-medium text-muted-foreground">نسبة الإنجاز الكلي حتى إعداد التقرير</span>
                             <span className="text-sm font-bold text-primary">{report.progressPercentage}%</span>
                           </div>
                           <div className="h-2 bg-muted rounded-full overflow-hidden" dir="ltr">
