@@ -182,6 +182,19 @@ router.get("/projects/:id/form-submissions/:submissionId", requireProjectAccess(
     return;
   }
 
+  // Contractors may only see submissions for templates marked
+  // visibleToContractor=true, mirroring the list/template-detail filters.
+  const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
+  if (isContractor) {
+    const [template] = await db.select({ visibleToContractor: formTemplatesTable.visibleToContractor })
+      .from(formTemplatesTable)
+      .where(eq(formTemplatesTable.id, submission.templateId));
+    if (!template?.visibleToContractor) {
+      res.status(404).json({ error: "التعبئة غير موجودة" });
+      return;
+    }
+  }
+
   res.json(submission);
 });
 
