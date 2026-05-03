@@ -89,11 +89,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // so the app shell renders immediately while React Query revalidates in
   // the background.
   const isAuthLoading = isUserLoading && !!token && !cachedUser;
-  // Splash dismissal lives in main.tsx now — it fires unconditionally when
-  // React first paints, so a slow/broken /auth/me can never strand the user
-  // on the loading splash.
 
-  const login = async (data: LoginBody) => {
+  // Dismiss the index.html splash once the auth bootstrap settles. This
+  // replaces the previous unconditional rAF-based dismissal that fired
+  // before /auth/me resolved, causing a brief "جاري التحميل..." flash on
+  // tokens with no cached user.
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (typeof window === "undefined") return;
+    const w = window as unknown as {
+      __dismissAppSplash?: () => void;
+      __splashDismissed?: boolean;
+    };
+    if (w.__splashDismissed) return;
+    if (typeof w.__dismissAppSplash !== "function") return;
+    w.__dismissAppSplash();
+    w.__splashDismissed = true;
+  }, [isAuthLoading]);
+
+  const login = useCallback(async (data: LoginBody) => {
     try {
       const result = await loginMutation.mutateAsync({ data });
       localStorage.setItem("auth_token", result.token);
@@ -127,9 +141,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: e?.data?.error || "تأكد من رقم الهاتف وكلمة المرور",
       });
     }
-  };
+  }, [loginMutation, setLocation, toast]);
 
-  const register = async (data: RegisterBody) => {
+  const register = useCallback(async (data: RegisterBody) => {
     try {
       // Newly-registered users are inert until an admin activates them, so
       // the server no longer returns a token here. We just confirm the
@@ -149,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       throw err;
     }
-  };
+  }, [registerMutation, toast]);
 
   const logout = useCallback(async () => {
     localStorage.removeItem("auth_token");
@@ -164,15 +178,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [queryClient, setLocation, logoutMutation]);
 
-  return (
-    <AuthContext.Provider value={{
+  // Memoize the context value so consumers (layout, dashboard, project
+  // pages, navigation, …) don't re-render on every AuthProvider tick. The
+  // login/register/logout callbacks are stable via useCallback above; the
+  // value identity now only changes when token, user, or isAuthLoading
+  // actually change.
+  const contextValue = useMemo(
+    () => ({
       user: token ? (user || null) : null,
       isLoading: isAuthLoading,
       login,
       register,
       logout,
-      isAuthenticated: !!token && !!user
-    }}>
+      isAuthenticated: !!token && !!user,
+    }),
+    [token, user, isAuthLoading, login, register, logout],
+  );
+
+  return (
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

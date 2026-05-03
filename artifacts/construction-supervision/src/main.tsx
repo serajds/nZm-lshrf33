@@ -19,9 +19,13 @@ scheduleIdle(() => {
   void import("./lib/offline-attendance").then((m) => m.installAutoFlush());
 });
 
-// Hide the splash screen as soon as React commits its first render. We do
-// NOT wait for /auth/me to resolve — that used to leave users stuck on the
-// splash whenever the network was slow or the API was momentarily down.
+// Hide the splash screen ONLY when the auth bootstrap has settled — see
+// AuthProvider, which calls window.__dismissAppSplash once /auth/me has
+// resolved (or immediately when there is no token / a cached user is
+// available). Dismissing earlier caused a brief "جاري التحميل..." text
+// flash for tokens with no cached user. The 12-second safety timer in
+// index.html still hides the splash if React or the network never makes
+// it that far.
 function dismissSplash() {
   if (typeof window !== "undefined") {
     const w = window as unknown as { __splashSafetyTimer?: number; __splashSlowTimer?: number };
@@ -35,9 +39,7 @@ function dismissSplash() {
   // when the fade ends — no extra dead time on top of the visible fade.
   setTimeout(() => splash.remove(), 220);
 }
-// Two rAFs guarantees we run after React has actually painted, not just
-// committed.
-requestAnimationFrame(() => requestAnimationFrame(dismissSplash));
+(window as unknown as { __dismissAppSplash?: () => void }).__dismissAppSplash = dismissSplash;
 
 if (import.meta.env.PROD) {
   registerSW({ immediate: true });
