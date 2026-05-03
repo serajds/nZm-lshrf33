@@ -20,25 +20,12 @@ export async function loadEffectiveTabPermissions(
     return { effective: resolveTabPermissions("admin", null), projectRole: "admin" };
   }
 
-  // Global contractor users are always locked to historical contractor
-  // permissions, regardless of any project_members row or stored overrides.
   if (user.role === "contractor") {
     return { effective: resolveTabPermissions("contractor", null), projectRole: "contractor" };
   }
 
-  // Contractor short-circuit: any user belonging to the project's contractor
-  // company is locked to the historical contractor permissions, regardless of
-  // any project_members row they may have. This keeps "مهندس المقاول" (a user
-  // whose system role is engineer but who works for the contractor company)
-  // out of the dynamic per-tab permissions system entirely. It also catches
-  // users explicitly added with role=contractor in project_members. Their
-  // permissions are always the fixed defaults — overview/activities/forms
-  // visible, everything else hidden — and any stored tab_permissions are
-  // ignored.
-  //
-  // EXEMPTION: global project_manager users are NOT coerced to contractor
-  // even when linked to the contractor company, mirroring the precedence in
-  // `requireProjectAccess`. A PM remains a PM regardless of their company.
+  // Contractor-company users are locked to fixed contractor permissions.
+  // Global project_manager users are exempt (mirrors requireProjectAccess).
   const isPmExempt = user.role === "project_manager";
   const companyLinks = isPmExempt ? [] : await db.select({ companyId: userCompaniesTable.companyId })
     .from(userCompaniesTable)
