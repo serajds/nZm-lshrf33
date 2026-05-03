@@ -116,14 +116,6 @@ export function requireProjectAccess(paramName: string = "projectId") {
       const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, req.user!.userId));
       const actualRole = dbUser?.role || role;
 
-      // Global contractor users are always treated as contractors at the
-      // project level, regardless of any project_members row they may have.
-      if (actualRole === "contractor") {
-        req.projectRole = "contractor";
-        next();
-        return;
-      }
-
       const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
         .from(userCompaniesTable)
         .where(eq(userCompaniesTable.userId, req.user!.userId));
@@ -154,7 +146,11 @@ export function requireProjectAccess(paramName: string = "projectId") {
         );
 
       if (membership) {
-        req.projectRole = membership.role;
+        // Global contractors are always locked to projectRole "contractor",
+        // regardless of what their project_members row says, but they still
+        // need a valid membership (or contractor-company link) to access the
+        // project at all — never trust role alone for project access.
+        req.projectRole = actualRole === "contractor" ? "contractor" : membership.role;
         next();
         return;
       }
