@@ -27,7 +27,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from "recharts";
-import { useState } from "react";
+import { useState, memo } from "react";
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; ring: string }> = {
   active:    { label: "نشط",    color: "text-blue-600",   bg: "bg-blue-100",    ring: "ring-blue-400" },
@@ -80,7 +80,7 @@ interface KpiCardProps {
   gradient: string;
   sub?: string;
 }
-function KpiCard({ label, value, icon: Icon, gradient, sub }: KpiCardProps) {
+const KpiCard = memo(function KpiCard({ label, value, icon: Icon, gradient, sub }: KpiCardProps) {
   return (
     <Card className="overflow-hidden border-0 shadow-md">
       <CardContent className="p-0">
@@ -97,7 +97,7 @@ function KpiCard({ label, value, icon: Icon, gradient, sub }: KpiCardProps) {
       </CardContent>
     </Card>
   );
-}
+});
 
 const CustomDonutLabel = ({ viewBox, total }: { viewBox?: { cx: number; cy: number }; total: number }) => {
   const cx = viewBox?.cx ?? 0;
