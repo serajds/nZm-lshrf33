@@ -66,8 +66,35 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   const token = signToken({ userId: user.id, phone: user.phone, role: user.role });
 
+  const companiesWithNames = await db.select({
+    companyId: userCompaniesTable.companyId,
+    companyName: companiesTable.name,
+  })
+    .from(userCompaniesTable)
+    .innerJoin(companiesTable, eq(userCompaniesTable.companyId, companiesTable.id))
+    .where(eq(userCompaniesTable.userId, user.id));
+
+  let isContractorCompanyUser = false;
+  if (user.role !== "admin" && user.role !== "project_manager" && companyLinks.length > 0) {
+    const companyIds = companyLinks.map(c => c.companyId);
+    const [hasProject] = await db.select({ id: projectsTable.id })
+      .from(projectsTable)
+      .where(inArray(projectsTable.contractorCompanyId, companyIds))
+      .limit(1);
+    if (hasProject) isContractorCompanyUser = true;
+  }
+
   const { passwordHash: _, ...safeUser } = user;
-  res.json({ user: safeUser, token });
+  res.json({
+    user: {
+      ...safeUser,
+      companies: companiesWithNames,
+      isContractorCompanyUser,
+      incompleteProfile: false,
+      projectMembershipsCount,
+    },
+    token,
+  });
 });
 
 router.post("/auth/register", async (req, res): Promise<void> => {
