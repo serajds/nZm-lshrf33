@@ -71,15 +71,28 @@ export default function ProjectDeviation() {
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { isHidden } = useTabAccess(projectId, "deviation", { redirectIfHidden: true });
+  // Deviation analysis is heavy (joins activities, suspensions, planned
+  // vs actual) — keep the prior payload visible so revisits don't blank
+  // the screen while React Query revalidates in the background.
   const { data: deviationData, isLoading } = useGetProjectDeviation(
     projectId,
     { curve: "linear" },
-    { query: { enabled: !!projectId } },
+    {
+      query: {
+        enabled: !!projectId,
+        placeholderData: (prev: any) => prev,
+      } as any,
+    },
   );
   const { data: timelineData } = useGetProjectDeviationTimeline(
     projectId,
     { curve: "linear" },
-    { query: { enabled: !!projectId } },
+    {
+      query: {
+        enabled: !!projectId,
+        placeholderData: (prev: any) => prev,
+      } as any,
+    },
   );
 
   const isNoSchedule = deviationData?.noSchedule === true;
@@ -140,7 +153,10 @@ export default function ProjectDeviation() {
     fill: SUSPENSION_COLORS[b.type] || "hsl(var(--muted))",
   })), [deviationData]);
 
-  if (isLoading) {
+  // Only show the centered spinner on the FIRST visit (no cached data
+  // yet). Re-visits render the previous analysis instantly and React
+  // Query refreshes silently in the background.
+  if (isLoading && !deviationData) {
     return (
       <div className="flex h-60 items-center justify-center">
         <div className="flex flex-col items-center gap-3">
