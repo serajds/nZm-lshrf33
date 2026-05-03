@@ -792,6 +792,8 @@ export default function ProjectReports() {
                                             <img
                                               src={url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`}
                                               alt={`صورة ${idx + 1}`}
+                                              loading="lazy"
+                                              decoding="async"
                                               className="w-full h-full object-cover"
                                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                             />
@@ -982,6 +984,8 @@ export default function ProjectReports() {
                                       <img
                                         src={authUrl}
                                         alt={`صورة ${idx + 1}`}
+                                        loading="lazy"
+                                        decoding="async"
                                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                       />

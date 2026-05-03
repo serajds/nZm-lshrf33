@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, usersTable, formSubmissionsTable, formTemplatesTable } from "@workspace/db";
-import { eq, ilike, or, sql, inArray } from "drizzle-orm";
+import { eq, ilike, or, sql, inArray, and } from "drizzle-orm";
 import { requireAuth, requireEngineerOrAdmin, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
@@ -395,34 +395,64 @@ router.get("/projects/:id/summary-widgets", requireProjectAccess("id"), async (r
 
   const widgets = (project.summaryWidgets as any[]) || [];
 
-  const results = await Promise.all(widgets.map(async (w: any) => {
-    if (!w.templateId || !w.fieldId) return { ...w, value: null, fieldLabel: null };
+  // PERFORMANCE: the previous implementation did 2 sequential DB
+  // round-trips PER widget (template fetch, then latest submission).
+  // With 5 widgets that's 10 serialized queries. We now:
+  //   1. Pull every referenced template in ONE query
+  //   2. Pull every referenced submission for THIS PROJECT in ONE query
+  //      (also fixes a data-leak bug: the old query forgot to filter by
+  //      projectId, so widgets could show values from a different
+  //      project that happened to use the same template)
+  // Total round-trips drop from O(2N) sequential to 2 in parallel.
+  const templateIds = Array.from(
+    new Set(widgets.map((w: any) => w.templateId).filter((x: any) => typeof x === "number")),
+  );
 
-    const [template] = await db.select({ fields: formTemplatesTable.fields })
+  if (templateIds.length === 0) {
+    res.json(widgets.map((w: any) => ({ ...w, value: null, fieldLabel: null })));
+    return;
+  }
+
+  const [templateRows, submissionRows] = await Promise.all([
+    db.select({ id: formTemplatesTable.id, fields: formTemplatesTable.fields })
       .from(formTemplatesTable)
-      .where(eq(formTemplatesTable.id, w.templateId));
-
-    const fieldLabel = template
-      ? (template.fields as any[])?.find((f: any) => f.id === w.fieldId)?.label || null
-      : null;
-
-    const [latestSubmission] = await db.select({ data: formSubmissionsTable.data, reportDate: formSubmissionsTable.reportDate, createdAt: formSubmissionsTable.createdAt })
+      .where(inArray(formTemplatesTable.id, templateIds)),
+    db.select({
+        templateId: formSubmissionsTable.templateId,
+        data: formSubmissionsTable.data,
+        reportDate: formSubmissionsTable.reportDate,
+        createdAt: formSubmissionsTable.createdAt,
+      })
       .from(formSubmissionsTable)
-      .where(eq(formSubmissionsTable.templateId, w.templateId))
-      .orderBy(sql`created_at DESC`)
-      .limit(1);
+      .where(and(
+        eq(formSubmissionsTable.projectId, projectId),
+        inArray(formSubmissionsTable.templateId, templateIds),
+      ))
+      .orderBy(sql`created_at DESC`),
+  ]);
 
-    if (!latestSubmission) return { ...w, value: null, fieldLabel };
+  const templateMap = new Map(templateRows.map(t => [t.id, t.fields as any[]]));
+  // First row per templateId wins because the query is ordered desc.
+  const latestByTemplate = new Map<number, typeof submissionRows[number]>();
+  for (const row of submissionRows) {
+    if (!latestByTemplate.has(row.templateId)) latestByTemplate.set(row.templateId, row);
+  }
 
-    const formData = latestSubmission.data as Record<string, any>;
+  const results = widgets.map((w: any) => {
+    if (!w.templateId || !w.fieldId) return { ...w, value: null, fieldLabel: null };
+    const fields = templateMap.get(w.templateId);
+    const fieldLabel = fields ? (fields.find((f: any) => f.id === w.fieldId)?.label ?? null) : null;
+    const latest = latestByTemplate.get(w.templateId);
+    if (!latest) return { ...w, value: null, fieldLabel };
+    const formData = latest.data as Record<string, any>;
     return {
       ...w,
       value: formData[w.fieldId] ?? null,
       fieldLabel,
-      reportDate: latestSubmission.reportDate,
-      submittedAt: latestSubmission.createdAt,
+      reportDate: latest.reportDate,
+      submittedAt: latest.createdAt,
     };
-  }));
+  });
 
   res.json(results);
 });
