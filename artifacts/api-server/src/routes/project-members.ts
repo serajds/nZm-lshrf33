@@ -137,11 +137,36 @@ router.get("/projects/:projectId/members", requireProjectAccess("projectId"), re
     }
   }
 
-  const result = members.map(m => ({
-    ...m,
-    companyNames: companyMap.get(m.userId) || [],
-    assignedGroupIds: assignmentMap.get(m.id) || [],
-  }));
+  // Mark members whose effective permissions are locked to the historical
+  // contractor defaults so the UI can hide the dynamic permissions editor.
+  // Locked when: project_members.role === "contractor", OR users.role ===
+  // "contractor", OR the user belongs to the project's contractor company
+  // (and is not a global project_manager — PMs are exempt, mirroring
+  // requireProjectAccess).
+  const contractorCompanyId = project?.contractorCompanyId ?? null;
+  const contractorCompanyUserIds = new Set<number>();
+  if (contractorCompanyId && userIds.length > 0) {
+    const ccRows = await db.select({ userId: userCompaniesTable.userId })
+      .from(userCompaniesTable)
+      .where(and(
+        inArray(userCompaniesTable.userId, userIds),
+        eq(userCompaniesTable.companyId, contractorCompanyId),
+      ));
+    for (const r of ccRows) contractorCompanyUserIds.add(r.userId);
+  }
+
+  const result = members.map(m => {
+    const isContractorLocked =
+      m.role === "contractor"
+      || m.userRole === "contractor"
+      || (contractorCompanyUserIds.has(m.userId) && m.userRole !== "project_manager");
+    return {
+      ...m,
+      companyNames: companyMap.get(m.userId) || [],
+      assignedGroupIds: assignmentMap.get(m.id) || [],
+      isContractorLocked,
+    };
+  });
 
   res.json(result);
 });
@@ -390,6 +415,18 @@ router.get("/projects/:projectId/my-permissions", requireProjectAccess("projectI
     return;
   }
 
+  // Global contractor users are always locked to fixed contractor permissions.
+  if (user.role === "contractor") {
+    res.json({
+      role: "contractor",
+      projectRole: "contractor",
+      assignedGroupIds: [],
+      canEditAll: false,
+      tabPermissions: resolveTabPermissions("contractor", null),
+    });
+    return;
+  }
+
   // Contractor short-circuit: any user belonging to the project's contractor
   // company is locked to the historical contractor permissions, even if they
   // also have a project_members row with a different role. Mirrors the same
@@ -498,10 +535,40 @@ router.put("/projects/:projectId/members/:id/permissions", requireProjectManager
 
   // Contractors are excluded from the override system. Reject any attempt to
   // store custom tab permissions on a contractor membership — their effective
-  // permissions are always the historical contractor defaults.
-  const [existing] = await db.select({ role: projectMembersTable.role }).from(projectMembersTable)
+  // permissions are always the historical contractor defaults. This covers
+  // three cases: (1) project_members.role === "contractor", (2) the target
+  // user's global users.role === "contractor", and (3) the target user is a
+  // member of the project's contractor company.
+  const [existing] = await db.select({
+    role: projectMembersTable.role,
+    userId: projectMembersTable.userId,
+  }).from(projectMembersTable)
     .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)));
-  if (existing?.role === "contractor") {
+  if (!existing) {
+    res.status(404).json({ error: "العضو غير موجود" });
+    return;
+  }
+  let isLockedContractor = existing.role === "contractor";
+  if (!isLockedContractor) {
+    const [targetUser] = await db.select({ role: usersTable.role })
+      .from(usersTable).where(eq(usersTable.id, existing.userId));
+    if (targetUser?.role === "contractor") {
+      isLockedContractor = true;
+    }
+  }
+  if (!isLockedContractor) {
+    const [proj] = await db.select({ contractorCompanyId: projectsTable.contractorCompanyId })
+      .from(projectsTable).where(eq(projectsTable.id, projectId));
+    if (proj?.contractorCompanyId) {
+      const links = await db.select({ companyId: userCompaniesTable.companyId })
+        .from(userCompaniesTable)
+        .where(eq(userCompaniesTable.userId, existing.userId));
+      if (links.some(l => l.companyId === proj.contractorCompanyId)) {
+        isLockedContractor = true;
+      }
+    }
+  }
+  if (isLockedContractor) {
     res.status(400).json({ error: "صلاحيات المقاول ثابتة وغير قابلة للتعديل" });
     return;
   }
