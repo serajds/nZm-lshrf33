@@ -55,10 +55,11 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), re
     conditions.push(lte(reportsTable.reportDate, dateTo));
   }
 
-  // Drop the heavy JSONB columns (activitiesSnapshot, imageGroups) from the
-  // list response. They're only needed when opening a single report. For
-  // a project with 50 reports × 100 activities, this cut payload from
-  // ~3 MB to ~50 KB.
+  // Drop the heavy JSONB column (activitiesSnapshot) from the list
+  // response. It's only needed when opening a single report. For a project
+  // with 50 reports × 100 activities, this cut payload significantly.
+  // imageGroups must stay because the list view renders the photo
+  // sections directly on each report card.
   const reports = await db.select({
     id: reportsTable.id,
     projectId: reportsTable.projectId,
@@ -72,6 +73,7 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), re
     technicalNotes: reportsTable.technicalNotes,
     recommendations: reportsTable.recommendations,
     imageUrls: reportsTable.imageUrls,
+    imageGroups: reportsTable.imageGroups,
     status: reportsTable.status,
     approvedAt: reportsTable.approvedAt,
     approvedById: reportsTable.approvedById,
