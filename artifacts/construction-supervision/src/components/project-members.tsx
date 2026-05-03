@@ -11,7 +11,12 @@ import {
   getGetMemberTabPermissionsQueryKey,
   getGetMyProjectPermissionsQueryKey,
 } from "@workspace/api-client-react";
-import type { ProjectMember } from "@workspace/api-client-react";
+import type { ProjectMember as ApiProjectMember } from "@workspace/api-client-react";
+
+// The /projects/:id/members response includes a server-computed flag that
+// is not yet in the generated OpenAPI types. We extend the shape locally
+// until the next codegen run picks it up.
+type ProjectMember = ApiProjectMember & { isContractorLocked?: boolean };
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -391,7 +396,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                     {canManageMembers && (
                       <TableCell className="text-left">
                         <div className="flex items-center gap-1">
-                          {((member as any).isContractorLocked || member.role === "contractor") ? (
+                          {(member.isContractorLocked || member.role === "contractor") ? (
                             <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground" title="صلاحيات المقاول ثابتة وغير قابلة للتعديل">
                               صلاحيات ثابتة
                             </Badge>

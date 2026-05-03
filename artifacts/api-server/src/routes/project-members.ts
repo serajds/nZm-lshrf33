@@ -549,14 +549,14 @@ router.put("/projects/:projectId/members/:id/permissions", requireProjectManager
     return;
   }
   let isLockedContractor = existing.role === "contractor";
-  if (!isLockedContractor) {
-    const [targetUser] = await db.select({ role: usersTable.role })
-      .from(usersTable).where(eq(usersTable.id, existing.userId));
-    if (targetUser?.role === "contractor") {
-      isLockedContractor = true;
-    }
+  const [targetUser] = await db.select({ role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, existing.userId));
+  if (targetUser?.role === "contractor") {
+    isLockedContractor = true;
   }
-  if (!isLockedContractor) {
+  // Global project_manager users are exempt from contractor-company coercion,
+  // mirroring requireProjectAccess and the read paths.
+  if (!isLockedContractor && targetUser?.role !== "project_manager") {
     const [proj] = await db.select({ contractorCompanyId: projectsTable.contractorCompanyId })
       .from(projectsTable).where(eq(projectsTable.id, projectId));
     if (proj?.contractorCompanyId) {

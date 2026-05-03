@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { formTemplatesTable, formSubmissionsTable, usersTable, skippedDaysTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { requireTabEdit } from "../middlewares/tab-access";
+import { requireTabEdit, loadEffectiveTabPermissions } from "../middlewares/tab-access";
 
 const router = Router();
 
@@ -185,7 +185,7 @@ router.get("/projects/:id/form-submissions/:submissionId", requireProjectAccess(
   res.json(submission);
 });
 
-router.post("/projects/:id/form-submissions", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res): Promise<void> => {
+router.post("/projects/:id/form-submissions", requireProjectAccess("id"), rejectViewer, async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const { templateId, data, reportDate, notes, status } = req.body;
 
@@ -203,10 +203,22 @@ router.post("/projects/:id/form-submissions", requireProjectAccess("id"), reject
     return;
   }
 
+  // Contractors are excluded from the dynamic per-tab permission system, so
+  // we cannot require forms=edit for them. Instead they may submit only when
+  // the template is explicitly visibleToContractor=true. Everyone else must
+  // have forms=edit (mirrors requireTabEdit("forms")).
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
-  if (isContractor && !template.visibleToContractor) {
-    res.status(403).json({ error: "هذا النموذج غير متاح" });
-    return;
+  if (isContractor) {
+    if (!template.visibleToContractor) {
+      res.status(403).json({ error: "هذا النموذج غير متاح" });
+      return;
+    }
+  } else {
+    const perms = await loadEffectiveTabPermissions(req.user!.userId, projectId);
+    if (!perms || perms.effective.forms !== "edit") {
+      res.status(403).json({ error: "ليس لديك صلاحية التعديل على هذا القسم" });
+      return;
+    }
   }
 
   let submitterName = "مجهول";
