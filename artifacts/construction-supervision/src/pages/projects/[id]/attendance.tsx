@@ -363,7 +363,7 @@ export default function ProjectAttendance() {
             <DialogTitle>صورة الحضور</DialogTitle>
           </DialogHeader>
           {photoModalUrl ? (
-            <img src={withAuthToken(photoModalUrl)} alt="صورة سيلفي" className="w-full h-auto rounded-md" />
+            <img src={withAuthToken(photoModalUrl)} alt="صورة سيلفي" loading="lazy" decoding="async" className="w-full h-auto rounded-md" />
           ) : null}
         </DialogContent>
       </Dialog>

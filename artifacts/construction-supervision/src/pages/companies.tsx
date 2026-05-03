@@ -247,7 +247,7 @@ export default function Companies() {
                   onClick={() => fileInputRef.current?.click()}
                 >
                   {logoPreview ? (
-                    <img src={logoPreview} alt="شعار" className="w-full h-full object-contain p-1" />
+                    <img src={logoPreview} alt="شعار" loading="lazy" decoding="async" className="w-full h-full object-contain p-1" />
                   ) : (
                     <div className="text-center">
                       <Image className="h-8 w-8 mx-auto text-gray-400" />

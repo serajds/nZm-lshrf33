@@ -117,6 +117,22 @@ const PENDING_PROFILE_ALLOWLIST = new Set([
   "/healthz",
 ]);
 
+// In-memory cache for the pending-profile gate.
+// Was previously running 3-4 DB queries on EVERY /api request, adding
+// 30-100ms of fixed latency to the entire app. Now we cache the
+// "is this user complete?" decision per userId for 60s. The cache is
+// invalidated automatically when the TTL expires; explicit invalidation
+// happens in users.ts/companies.ts/project-members.ts when assignments
+// change (see invalidateProfileCache below).
+type ProfileStatus = { isAdmin: boolean; isIncomplete: boolean; expiresAt: number };
+const profileCache = new Map<number, ProfileStatus>();
+const PROFILE_CACHE_TTL_MS = 60_000;
+
+export function invalidateProfileCache(userId?: number) {
+  if (userId === undefined) profileCache.clear();
+  else profileCache.delete(userId);
+}
+
 app.use("/api", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const reqPath = req.path;
 
@@ -144,27 +160,36 @@ app.use("/api", async (req: Request, res: Response, next: NextFunction): Promise
     return next();
   }
 
-  try {
-    const [dbUser] = await db
-      .select({ role: usersTable.role })
-      .from(usersTable)
-      .where(eq(usersTable.id, payload.userId));
+  const now = Date.now();
+  const cached = profileCache.get(payload.userId);
+  if (cached && cached.expiresAt > now) {
+    if (cached.isAdmin) return next();
+    if (cached.isIncomplete) {
+      res.status(403).json({
+        error: "حسابك بانتظار التعيين من قبل المسؤول",
+        incompleteProfile: true,
+      });
+      return;
+    }
+    return next();
+  }
 
+  try {
+    // Run all 3 independent lookups in parallel. Previously serial → ~3x
+    // wall-clock latency on a cache miss.
+    const [userRows, companyLinks, membershipRows] = await Promise.all([
+      db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, payload.userId)),
+      db.select({ companyId: userCompaniesTable.companyId }).from(userCompaniesTable).where(eq(userCompaniesTable.userId, payload.userId)),
+      db.select({ value: count() }).from(projectMembersTable).where(eq(projectMembersTable.userId, payload.userId)),
+    ]);
+
+    const dbUser = userRows[0];
     if (dbUser?.role === "admin") {
+      profileCache.set(payload.userId, { isAdmin: true, isIncomplete: false, expiresAt: now + PROFILE_CACHE_TTL_MS });
       return next();
     }
 
-    const companyLinks = await db
-      .select({ companyId: userCompaniesTable.companyId })
-      .from(userCompaniesTable)
-      .where(eq(userCompaniesTable.userId, payload.userId));
-
-    const [membershipCount] = await db
-      .select({ value: count() })
-      .from(projectMembersTable)
-      .where(eq(projectMembersTable.userId, payload.userId));
-
-    const memberships = Number(membershipCount?.value ?? 0);
+    const memberships = Number(membershipRows[0]?.value ?? 0);
     let hasContractorCompanyProject = false;
     if (memberships === 0 && companyLinks.length > 0) {
       const [hasProject] = await db
@@ -178,6 +203,8 @@ app.use("/api", async (req: Request, res: Response, next: NextFunction): Promise
     const isIncomplete =
       companyLinks.length === 0 ||
       (memberships === 0 && !hasContractorCompanyProject);
+
+    profileCache.set(payload.userId, { isAdmin: false, isIncomplete, expiresAt: now + PROFILE_CACHE_TTL_MS });
 
     if (isIncomplete) {
       res.status(403).json({

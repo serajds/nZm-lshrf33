@@ -419,13 +419,18 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
     res.status(400).json({ error: "items مطلوب" });
     return;
   }
-  for (const item of items) {
-    const updateData: Record<string, unknown> = { sortOrder: item.sortOrder };
-    if (item.groupId !== undefined) updateData.groupId = item.groupId === null ? null : item.groupId;
-    await db.update(activitiesTable)
-      .set(updateData)
-      .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
-  }
+  // Run all updates in parallel inside one transaction. Previously
+  // each row was awaited serially → reordering 50 items took 50 round
+  // trips. Now it's a single batched commit.
+  await db.transaction(async (tx) => {
+    await Promise.all(items.map((item: any) => {
+      const updateData: Record<string, unknown> = { sortOrder: item.sortOrder };
+      if (item.groupId !== undefined) updateData.groupId = item.groupId === null ? null : item.groupId;
+      return tx.update(activitiesTable)
+        .set(updateData)
+        .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
+    }));
+  });
   res.json({ success: true });
 });
 
