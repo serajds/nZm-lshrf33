@@ -7,24 +7,19 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { RouteErrorBoundary } from "@/components/error-boundary";
 import { getDefaultProjectId } from "@/lib/user-prefs";
 
-// Truly eager: only what's needed before any route resolves. Login is
-// the very first paint for unauth users; Layout is needed by every
-// authenticated route; the other small "shell" pages are kept eager
-// because they're tiny and lazy-loading would only add a round trip.
+// Eager imports — these are needed for the very first authenticated paint.
+// Lazy-loading Dashboard/Projects/ProjectDetails was tried but caused
+// "Failed to fetch dynamically imported module" errors whenever the
+// dev server reloaded or a deployment changed chunk hashes — users
+// saw an Arabic toast "تعذر تحميل جزء من البيانات بسبب قطع الاتصال".
+// Keep these eager; the other heavier route pages stay lazy below.
 import Login from "@/pages/login";
 import PendingAssignment from "@/pages/pending-assignment";
 import NotFound from "@/pages/not-found";
 import { AppLayout } from "@/components/layout";
-
-// Lazy: every page that isn't strictly needed in the first paint.
-// Dashboard / Projects / ProjectDetails were previously eager — they're
-// each multi-hundred-KB pages with their own dependency trees, and only
-// ONE of them is shown after login. Lazy-loading shrank the initial
-// bundle dramatically (the user only downloads the one page they
-// actually navigate to).
-const Dashboard = lazy(() => import("@/pages/dashboard"));
-const Projects = lazy(() => import("@/pages/projects/index"));
-const ProjectDetails = lazy(() => import("@/pages/projects/[id]"));
+import Dashboard from "@/pages/dashboard";
+import Projects from "@/pages/projects/index";
+import ProjectDetails from "@/pages/projects/[id]";
 const ProjectActivities = lazy(() => import("@/pages/projects/[id]/activities"));
 const ProjectReports = lazy(() => import("@/pages/projects/[id]/reports"));
 const ProjectFiles = lazy(() => import("@/pages/projects/[id]/files"));

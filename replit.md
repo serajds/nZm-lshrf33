@@ -94,3 +94,25 @@ A full-system audit + tuning pass was performed. Key changes:
 ### Frontend
 - **App.tsx**: `Dashboard`, `Projects`, `ProjectDetails` are now lazy-loaded (`React.lazy`). Only one of them is shown after login → cuts the initial bundle dramatically.
 - **Image lazy loading**: added `loading="lazy" decoding="async"` to `<img>` tags in `companies.tsx`, `attendance.tsx` (selfie modal), and `files.tsx` (preview dialog).
+
+### Bugfix: chunk-load failures ("تعذر تحميل جزء من البيانات")
+After the lazy-loading change above, users started seeing repeated
+"تعذر تحميل جزء من البيانات بسبب قطع الاتصال" toasts even with healthy
+internet. Root cause: `Dashboard / Projects / ProjectDetails` were
+converted to `React.lazy`, but every dev-server reload (HMR full reload)
+or production redeploy changes chunk hashes — the user's open tab still
+held references to the old chunk URLs, which 404'd. Worse, the PWA's
+`StaleWhileRevalidate` for `/assets/*.js` happily served the cached
+old chunks, whose dynamic imports referenced new ones that no longer
+existed.
+
+Fix:
+1. Reverted `Dashboard / Projects / ProjectDetails` to eager imports in
+   `App.tsx` (preserving the original explanatory comment). The truly
+   heavy pages (activities, reports, files, deviation, attendance,
+   forms, geo, audit, users, companies, settings) remain lazy.
+2. `RouteErrorBoundary` now auto-reloads ONCE per session on chunk
+   errors (guarded by `sessionStorage` to prevent loops), and clears
+   the `asset-chunks` cache before reloading so the new HTML pulls
+   real chunks instead of stale ones. Manual reload button does the
+   same cache clear.
