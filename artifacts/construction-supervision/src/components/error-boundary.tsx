@@ -39,10 +39,38 @@ export class RouteErrorBoundary extends Component<{ children: ReactNode }, State
   componentDidCatch(error: unknown, info: ErrorInfo) {
     const e = toError(error);
     console.error("[RouteErrorBoundary]", e.message, info);
+
+    // Auto-recover from chunk-load failures (most common cause: a deploy
+    // shipped new chunk hashes while the user's tab still references the
+    // old ones, OR the StaleWhileRevalidate service worker served a
+    // cached chunk whose imports no longer exist on the server). Reload
+    // ONCE per session — guarded by sessionStorage to prevent infinite
+    // refresh loops if reload doesn't fix the underlying issue.
+    const isChunkError =
+      /Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed/i.test(
+        e.message,
+      );
+    if (isChunkError) {
+      const KEY = "__chunk_reload_attempted_at";
+      const last = Number(sessionStorage.getItem(KEY) || 0);
+      if (Date.now() - last > 30_000) {
+        sessionStorage.setItem(KEY, String(Date.now()));
+        // Best-effort: blow away the SW asset cache before reloading so
+        // the freshly fetched HTML pulls real chunks, not stale ones.
+        if ("caches" in window) {
+          caches.delete("asset-chunks").catch(() => {});
+        }
+        // Small delay so the boundary's UI can paint a hint before the
+        // reload, in case it takes a moment.
+        setTimeout(() => window.location.reload(), 300);
+      }
+    }
   }
 
   reload = () => {
-    // Hard reload — clears module cache and SW-served stale chunks.
+    if ("caches" in window) {
+      caches.delete("asset-chunks").catch(() => {});
+    }
     window.location.reload();
   };
 
@@ -66,7 +94,7 @@ export class RouteErrorBoundary extends Component<{ children: ReactNode }, State
           </h2>
           <p className="text-sm text-muted-foreground leading-6">
             {isChunkError
-              ? "يبدو أن الاتصال انقطع أثناء التحميل. تحقق من الإنترنت ثم أعد المحاولة."
+              ? "جارٍ إعادة التحميل تلقائياً... إذا لم يحدث شيء خلال ثانية، اضغط الزر بالأسفل."
               : this.state.error.message}
           </p>
           <button
