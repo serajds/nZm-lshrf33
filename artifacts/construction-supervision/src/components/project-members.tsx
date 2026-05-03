@@ -391,7 +391,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                     {canManageMembers && (
                       <TableCell className="text-left">
                         <div className="flex items-center gap-1">
-                          {member.role === "contractor" ? (
+                          {((member as any).isContractorLocked || member.role === "contractor") ? (
                             <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground" title="صلاحيات المقاول ثابتة وغير قابلة للتعديل">
                               صلاحيات ثابتة
                             </Badge>

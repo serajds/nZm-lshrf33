@@ -20,6 +20,12 @@ export async function loadEffectiveTabPermissions(
     return { effective: resolveTabPermissions("admin", null), projectRole: "admin" };
   }
 
+  // Global contractor users are always locked to historical contractor
+  // permissions, regardless of any project_members row or stored overrides.
+  if (user.role === "contractor") {
+    return { effective: resolveTabPermissions("contractor", null), projectRole: "contractor" };
+  }
+
   // Contractor short-circuit: any user belonging to the project's contractor
   // company is locked to the historical contractor permissions, regardless of
   // any project_members row they may have. This keeps "مهندس المقاول" (a user
