@@ -382,10 +382,13 @@ export default function ProjectReports() {
     for (const file of Array.from(files)) {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("category", "image");
       formData.append("description", "صورة تقرير");
       try {
-        const resp = await fetch(`/api/projects/${projectId}/files`, {
+        // Dedicated report-uploads endpoint that's gated by the "reports"
+        // tab permission. Engineers who can edit reports but don't have
+        // edit access to the "files" tab were getting a 403 from the old
+        // /files endpoint.
+        const resp = await fetch(`/api/projects/${projectId}/reports/uploads`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           body: formData,
