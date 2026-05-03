@@ -109,12 +109,20 @@ export function defaultPermissionsForRole(projectRole: ProjectRoleForDefaults): 
 /**
  * Merge defaults with explicit overrides stored on project_members.tab_permissions.
  * Overrides only apply to known TAB_KEYS; unknown keys are ignored.
+ *
+ * Contractors are intentionally excluded from the override system — their
+ * permissions are locked to the historical defaults (overview/activities/forms
+ * = view, everything else hidden). This protects the well-known contractor
+ * behavior from being accidentally widened or narrowed by a project manager
+ * editing the per-tab permissions UI. Any stored overrides on contractor
+ * memberships are ignored at read time; no DB cleanup is required.
  */
 export function resolveTabPermissions(
   projectRole: ProjectRoleForDefaults,
   overrides: TabPermissionsMap | null | undefined,
 ): Record<TabKey, TabAccess> {
   const base = defaultPermissionsForRole(projectRole);
+  if (projectRole === "contractor") return base;
   if (!overrides) return base;
   const out: Record<TabKey, TabAccess> = { ...base };
   for (const key of TAB_KEYS) {

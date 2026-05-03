@@ -391,14 +391,20 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                     {canManageMembers && (
                       <TableCell className="text-left">
                         <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setPermissionsMemberId(member.id)}
-                            title="إدارة صلاحيات التبويبات"
-                          >
-                            <ShieldCheck className="h-4 w-4 text-primary" />
-                          </Button>
+                          {member.role === "contractor" ? (
+                            <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground" title="صلاحيات المقاول ثابتة وغير قابلة للتعديل">
+                              صلاحيات ثابتة
+                            </Badge>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setPermissionsMemberId(member.id)}
+                              title="إدارة صلاحيات التبويبات"
+                            >
+                              <ShieldCheck className="h-4 w-4 text-primary" />
+                            </Button>
+                          )}
                           {member.userId !== user?.id && (
                             <Button
                               variant="ghost"

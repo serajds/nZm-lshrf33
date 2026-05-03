@@ -390,6 +390,25 @@ router.get("/projects/:projectId/my-permissions", requireProjectAccess("projectI
     return;
   }
 
+  // Contractor short-circuit: any user belonging to the project's contractor
+  // company is locked to the historical contractor permissions, even if they
+  // also have a project_members row with a different role. Mirrors the same
+  // logic (and the project_manager exemption) in middlewares/tab-access.ts
+  // and middlewares/auth.ts requireProjectAccess.
+  const isPmExempt = user.role === "project_manager";
+  const userCompanies = isPmExempt ? [] : await db.select({ companyId: userCompaniesTable.companyId })
+    .from(userCompaniesTable)
+    .where(eq(userCompaniesTable.userId, user.userId));
+  let isContractorOnProject = false;
+  if (userCompanies.length > 0) {
+    const [proj] = await db.select({ contractorCompanyId: projectsTable.contractorCompanyId })
+      .from(projectsTable)
+      .where(eq(projectsTable.id, projectId));
+    if (proj?.contractorCompanyId && userCompanies.some(c => c.companyId === proj.contractorCompanyId)) {
+      isContractorOnProject = true;
+    }
+  }
+
   const [membership] = await db.select()
     .from(projectMembersTable)
     .where(
@@ -399,8 +418,19 @@ router.get("/projects/:projectId/my-permissions", requireProjectAccess("projectI
       )
     );
 
+  if (isContractorOnProject || membership?.role === "contractor") {
+    res.json({
+      role: user.role,
+      projectRole: "contractor",
+      assignedGroupIds: [],
+      canEditAll: false,
+      tabPermissions: resolveTabPermissions("contractor", null),
+    });
+    return;
+  }
+
   if (!membership) {
-    // Likely a contractor company user — fall back to contractor defaults
+    // Owner fallback (no membership, not on contractor company).
     const fallbackRole = user.role === "owner" ? "owner" : "contractor";
     res.json({
       role: user.role,
@@ -463,6 +493,16 @@ router.put("/projects/:projectId/members/:id/permissions", requireProjectManager
       error: "صلاحيات التبويبات غير صالحة",
       allowedTabs: TAB_KEYS,
     });
+    return;
+  }
+
+  // Contractors are excluded from the override system. Reject any attempt to
+  // store custom tab permissions on a contractor membership — their effective
+  // permissions are always the historical contractor defaults.
+  const [existing] = await db.select({ role: projectMembersTable.role }).from(projectMembersTable)
+    .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)));
+  if (existing?.role === "contractor") {
+    res.status(400).json({ error: "صلاحيات المقاول ثابتة وغير قابلة للتعديل" });
     return;
   }
 
