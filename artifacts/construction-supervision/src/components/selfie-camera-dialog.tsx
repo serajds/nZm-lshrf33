@@ -83,7 +83,11 @@ export function SelfieCameraDialog({ open, onClose, onCapture, title = "التق
     c.height = h;
     const ctx = c.getContext("2d");
     if (!ctx) return;
+    ctx.save();
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
     ctx.drawImage(v, 0, 0, w, h);
+    ctx.restore();
     c.toBlob(
       (blob) => {
         if (!blob) return;
@@ -132,7 +136,7 @@ export function SelfieCameraDialog({ open, onClose, onCapture, title = "التق
                   ref={videoRef}
                   playsInline
                   muted
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover scale-x-[-1]"
                 />
                 {starting ? (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/40">
