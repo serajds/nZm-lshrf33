@@ -295,7 +295,7 @@ export default function ProjectAttendance() {
           لا توجد بيانات حضور متاحة لعرضها بصلاحياتك الحالية.
         </div>
       ) : (
-      <Tabs defaultValue={isManager ? "active" : "my-history"} className="w-full">
+      <Tabs dir="rtl" defaultValue={isManager ? "active" : "my-history"} className="w-full">
         <div className="-mx-4 sm:mx-0 overflow-x-auto">
           <TabsList className="inline-flex w-max min-w-full sm:w-full sm:min-w-0 sm:flex-wrap h-auto px-4 sm:px-1 gap-1">
             {isManager && <TabsTrigger value="active" className="whitespace-nowrap">الحاضرون الآن</TabsTrigger>}
