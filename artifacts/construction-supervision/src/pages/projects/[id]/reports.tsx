@@ -9,7 +9,9 @@ import {
   useDeleteReport,
   useGetProject,
   useListActivities,
-  getListReportsQueryKey 
+  getReport,
+  getListReportsQueryKey,
+  getGetReportQueryKey,
 } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
 import type { Report, Activity, CreateReportBody, UpdateReportBody } from "@workspace/api-client-react";
@@ -172,6 +174,7 @@ export default function ProjectReports() {
   type GroupUploadState = { loaded: number; total: number; doneCount: number; totalCount: number };
   const [uploadProgress, setUploadProgress] = useState<Record<number, GroupUploadState>>({});
   const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
+  const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
   const isAnyUploading = Object.keys(uploadProgress).length > 0;
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
@@ -331,6 +334,7 @@ export default function ProjectReports() {
     try {
       await deleteReport.mutateAsync({ projectId, id: deletingId });
       queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
+      queryClient.removeQueries({ queryKey: getGetReportQueryKey(projectId, deletingId) });
       toast({ title: "تم حذف التقرير" });
     } catch {
       toast({ variant: "destructive", title: "فشل الحذف" });
@@ -339,16 +343,39 @@ export default function ProjectReports() {
     }
   };
 
-  const handlePreview = (report: Report) => {
+  const handlePreview = async (report: Report) => {
     if (!project) return;
+    // The list endpoint strips the heavy `activitiesSnapshot` column to keep
+    // payloads small, so the row we got from `useListReports` doesn't carry
+    // the timeline that was captured when this report was created. Fetch the
+    // single report (which includes the snapshot) and cache it so future
+    // previews don't re-hit the network.
+    setPreviewLoadingId(report.id);
+    let fullReport: Report = report;
+    try {
+      fullReport = await queryClient.fetchQuery({
+        queryKey: getGetReportQueryKey(projectId, report.id),
+        queryFn: ({ signal }) => getReport(projectId, report.id, { signal }),
+        staleTime: 1000 * 60 * 5,
+      }) as Report;
+    } catch {
+      toast({ title: "تعذّر تحميل تفاصيل التقرير", variant: "destructive" });
+      setPreviewLoadingId(null);
+      return;
+    } finally {
+      setPreviewLoadingId(null);
+    }
     const token = localStorage.getItem("auth_token");
     const withToken = (url: string) => (url.includes("?") ? url : `${url}?token=${token}`);
-    const imageUrls = (report.imageUrls ?? []).map(withToken);
-    const rawGroups = (report.imageGroups as ImageGroup[] | null | undefined) ?? null;
+    const imageUrls = (fullReport.imageUrls ?? []).map(withToken);
+    const rawGroups = (fullReport.imageGroups as ImageGroup[] | null | undefined) ?? null;
     const imageGroups = rawGroups && rawGroups.length > 0
       ? rawGroups.map(g => ({ category: g.category, urls: (g.urls ?? []).map(withToken) }))
       : null;
-    const snapshotActivities = (report as any).activitiesSnapshot as any[] | null;
+    // Prefer the saved snapshot — that's the timeline as it was when the
+    // report was created. Only fall back to current activities for legacy
+    // reports created before snapshots were stored.
+    const snapshotActivities = (fullReport as any).activitiesSnapshot as any[] | null;
     const sourceActivities = snapshotActivities ?? ((activities ?? []) as Activity[]);
     const activityList: ActivityForReport[] = sourceActivities.map((a: any) => ({
       name: a.name,
@@ -502,6 +529,7 @@ export default function ProjectReports() {
           imageGroups: groupsForApi,
         };
         await updateReport.mutateAsync({ projectId, id: editingId, data: updateBody });
+        queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, editingId) });
         toast({ title: "تم التحديث" });
       } else {
         const createBody: CreateReportBody = {
@@ -968,9 +996,15 @@ export default function ProjectReports() {
                         size="sm"
                         className="text-violet-600 hover:bg-violet-50 hover:text-violet-700 border-violet-200 gap-1 h-8 text-xs sm:text-sm sm:gap-1.5"
                         onClick={() => handlePreview(report)}
+                        disabled={previewLoadingId === report.id}
                         title="معاينة وطباعة"
                       >
-                        <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">معاينة و</span>طباعة
+                        {previewLoadingId === report.id ? (
+                          <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                        ) : (
+                          <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                        )}{" "}
+                        <span className="hidden sm:inline">معاينة و</span>طباعة
                       </Button>
                       {canApprove && (
                         report.status === "draft" ? (
