@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useVerifyOwnerAccess } from "@workspace/api-client-react";
-import type { OwnerProjectView, Activity, Report, ProjectExtension, ProjectSuspension } from "@workspace/api-client-react";
+import type { OwnerProjectView, Activity, Report, ProjectExtension, ProjectSuspension, ReportActivitiesSnapshotItem } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -440,13 +440,14 @@ export default function OwnerPortal() {
     // shows the timeline as it was when the report was created; fall back to
     // current `activities` only for legacy reports created before snapshots
     // existed (`activitiesSnapshot` is null).
-    const snapshotActivities = (report as any).activitiesSnapshot as any[] | null;
-    const sourceActivities = snapshotActivities ?? (activities as Activity[]);
-    const activityList: ActivityForReport[] = sourceActivities.map((a: any) => ({
-      name: a.name,
+    const snapshotActivities = report.activitiesSnapshot ?? null;
+    const sourceActivities: Array<ReportActivitiesSnapshotItem | Activity> =
+      snapshotActivities ?? (activities as Activity[]);
+    const activityList: ActivityForReport[] = sourceActivities.map((a) => ({
+      name: a.name ?? "",
       plannedProgress: a.plannedProgress ?? 0,
       actualProgress: a.actualProgress ?? 0,
-      status: a.status ?? "not_started",
+      status: (a.status as ActivityForReport["status"]) ?? "not_started",
     }));
     previewReport({
       projectName: project.name,

@@ -14,7 +14,7 @@ import {
   getGetReportQueryKey,
 } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
-import type { Report, Activity, CreateReportBody, UpdateReportBody } from "@workspace/api-client-react";
+import type { Report, Activity, CreateReportBody, UpdateReportBody, ReportActivitiesSnapshotItem } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -375,13 +375,14 @@ export default function ProjectReports() {
     // Prefer the saved snapshot — that's the timeline as it was when the
     // report was created. Only fall back to current activities for legacy
     // reports created before snapshots were stored.
-    const snapshotActivities = (fullReport as any).activitiesSnapshot as any[] | null;
-    const sourceActivities = snapshotActivities ?? ((activities ?? []) as Activity[]);
-    const activityList: ActivityForReport[] = sourceActivities.map((a: any) => ({
-      name: a.name,
+    const snapshotActivities = fullReport.activitiesSnapshot ?? null;
+    const sourceActivities: Array<ReportActivitiesSnapshotItem | Activity> =
+      snapshotActivities ?? (activities ?? []);
+    const activityList: ActivityForReport[] = sourceActivities.map((a) => ({
+      name: a.name ?? "",
       plannedProgress: a.plannedProgress ?? 0,
       actualProgress: a.actualProgress ?? 0,
-      status: a.status ?? "not_started",
+      status: (a.status as ActivityForReport["status"]) ?? "not_started",
     }));
     const apiBase = API_BASE.replace("/api", "");
     previewReport({
