@@ -434,6 +434,12 @@ export default function OwnerPortal() {
     const imageUrls = (report.imageUrls ?? []).map((url) =>
       url.includes("?") ? url : `${url}?token=${ownerJwt}`
     );
+    // Owner backend (`buildOwnerProjectData` in api-server/src/routes/owner.ts)
+    // returns reports with `activitiesSnapshot` already populated, so the
+    // snapshot is on the row we already have. Prefer it so the print preview
+    // shows the timeline as it was when the report was created; fall back to
+    // current `activities` only for legacy reports created before snapshots
+    // existed (`activitiesSnapshot` is null).
     const snapshotActivities = (report as any).activitiesSnapshot as any[] | null;
     const sourceActivities = snapshotActivities ?? (activities as Activity[]);
     const activityList: ActivityForReport[] = sourceActivities.map((a: any) => ({
