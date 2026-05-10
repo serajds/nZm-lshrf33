@@ -8,6 +8,80 @@ import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
 
 type ImageGroup = { category: string; urls: string[] };
 
+type SnapshotRow = {
+  id?: number;
+  name?: string;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  actualStartDate?: string | null;
+  actualEndDate?: string | null;
+  plannedProgress?: number;
+  actualProgress?: number;
+  weight?: number;
+  status?: string;
+  sortOrder?: number;
+};
+
+const ALLOWED_ACTIVITY_STATUSES = new Set([
+  "not_started",
+  "in_progress",
+  "completed",
+  "delayed",
+]);
+
+function clampPercent(n: unknown): number {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 0;
+  return Math.min(100, Math.max(0, v));
+}
+
+function calcWeightedProgress(rows: SnapshotRow[]): number {
+  let totalWeight = 0;
+  let weightedSum = 0;
+  for (const r of rows) {
+    const w = typeof r.weight === "number" && r.weight > 0 ? r.weight : 1;
+    totalWeight += w;
+    weightedSum += (r.actualProgress ?? 0) * w;
+  }
+  return totalWeight > 0 ? roundPercent(weightedSum / totalWeight) : 0;
+}
+
+/**
+ * Apply partial snapshot edits keyed by `id`. Only `actualProgress` (clamped
+ * 0–100, rounded) and `status` (whitelist) are applied to existing rows.
+ * Unknown ids are ignored; rows omitted from the payload are kept unchanged.
+ * The function never touches the project's master `activities` table — edits
+ * are stored on the report row only. See task #45.
+ */
+function mergeSnapshot(
+  existing: SnapshotRow[] | null | undefined,
+  incoming: unknown,
+): SnapshotRow[] | null {
+  if (!Array.isArray(existing) || existing.length === 0) return null;
+  if (!Array.isArray(incoming)) return null;
+  const byId = new Map<number, Partial<SnapshotRow>>();
+  for (const raw of incoming) {
+    if (!raw || typeof raw !== "object") continue;
+    const r = raw as Record<string, unknown>;
+    const idNum = Number(r.id);
+    if (!Number.isFinite(idNum)) continue;
+    const patch: Partial<SnapshotRow> = {};
+    if (r.actualProgress !== undefined) {
+      patch.actualProgress = roundPercent(clampPercent(r.actualProgress));
+    }
+    if (typeof r.status === "string" && ALLOWED_ACTIVITY_STATUSES.has(r.status)) {
+      patch.status = r.status;
+    }
+    if (Object.keys(patch).length > 0) byId.set(idNum, patch);
+  }
+  if (byId.size === 0) return existing;
+  return existing.map(row => {
+    if (typeof row.id !== "number") return row;
+    const patch = byId.get(row.id);
+    return patch ? { ...row, ...patch } : row;
+  });
+}
+
 const normalizeImageGroups = (groups: unknown): ImageGroup[] | null => {
   if (!Array.isArray(groups)) return null;
   const cleaned: ImageGroup[] = [];
@@ -209,6 +283,30 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
       ? body.imageUrls.filter((u: unknown): u is string => typeof u === "string")
       : [];
     updateData.imageGroups = null;
+  }
+
+  // Snapshot edits are local to the report (see task #45). We load the
+  // existing snapshot, merge the partial payload (only actualProgress and
+  // status, keyed by id), and — when the client did NOT explicitly pass
+  // `progressPercentage` — recompute the report's overall % as a weighted
+  // average using each row's stored `weight`. The project's master
+  // `activities` table is never touched by this path.
+  if (body.activitiesSnapshot !== undefined) {
+    const [current] = await db.select({ snapshot: reportsTable.activitiesSnapshot })
+      .from(reportsTable)
+      .where(and(eq(reportsTable.id, id), eq(reportsTable.projectId, projectId)));
+    if (!current) {
+      res.status(404).json({ error: "التقرير غير موجود" });
+      return;
+    }
+    const existing = (current.snapshot ?? null) as SnapshotRow[] | null;
+    const merged = mergeSnapshot(existing, body.activitiesSnapshot);
+    if (merged) {
+      updateData.activitiesSnapshot = merged;
+      if (body.progressPercentage === undefined) {
+        updateData.progressPercentage = calcWeightedProgress(merged);
+      }
+    }
   }
 
   if (Object.keys(updateData).length === 0) {

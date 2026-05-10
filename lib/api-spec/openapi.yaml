@@ -2143,6 +2143,9 @@ components:
                 type: number
               actualProgress:
                 type: number
+              weight:
+                type: number
+                description: Activity weight (cost/volume share) used for the report's weighted progress.
               status:
                 type: string
               sortOrder:
@@ -2276,6 +2279,26 @@ components:
             required:
               - category
               - urls
+        activitiesSnapshot:
+          type: ["array", "null"]
+          description: |
+            Partial-merge update for the report's activities snapshot. Each item
+            must carry the snapshot row `id`; only `actualProgress` and `status`
+            are applied. Unknown ids are ignored; rows omitted from the payload
+            are kept unchanged. When provided WITHOUT an explicit
+            `progressPercentage`, the server recomputes the report's overall
+            progress as a weighted average using each row's stored `weight`.
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              actualProgress:
+                type: number
+              status:
+                type: string
+            required:
+              - id
 
     # Files
     ProjectFile:

@@ -436,6 +436,12 @@ export const ListReportsResponseItem = zod.object({
         actualEndDate: zod.string().nullish(),
         plannedProgress: zod.number().optional(),
         actualProgress: zod.number().optional(),
+        weight: zod
+          .number()
+          .optional()
+          .describe(
+            "Activity weight (cost\/volume share) used for the report's weighted progress.",
+          ),
         status: zod.string().optional(),
         sortOrder: zod.number().optional(),
       }),
@@ -517,6 +523,12 @@ export const GetReportResponse = zod.object({
         actualEndDate: zod.string().nullish(),
         plannedProgress: zod.number().optional(),
         actualProgress: zod.number().optional(),
+        weight: zod
+          .number()
+          .optional()
+          .describe(
+            "Activity weight (cost\/volume share) used for the report's weighted progress.",
+          ),
         status: zod.string().optional(),
         sortOrder: zod.number().optional(),
       }),
@@ -558,6 +570,18 @@ export const UpdateReportBody = zod.object({
       }),
     )
     .nullish(),
+  activitiesSnapshot: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        actualProgress: zod.number().optional(),
+        status: zod.string().optional(),
+      }),
+    )
+    .nullish()
+    .describe(
+      "Partial-merge update for the report's activities snapshot. Each item\nmust carry the snapshot row `id`; only `actualProgress` and `status`\nare applied. Unknown ids are ignored; rows omitted from the payload\nare kept unchanged. When provided WITHOUT an explicit\n`progressPercentage`, the server recomputes the report's overall\nprogress as a weighted average using each row's stored `weight`.\n",
+    ),
 });
 
 export const UpdateReportResponse = zod.object({
@@ -592,6 +616,12 @@ export const UpdateReportResponse = zod.object({
         actualEndDate: zod.string().nullish(),
         plannedProgress: zod.number().optional(),
         actualProgress: zod.number().optional(),
+        weight: zod
+          .number()
+          .optional()
+          .describe(
+            "Activity weight (cost\/volume share) used for the report's weighted progress.",
+          ),
         status: zod.string().optional(),
         sortOrder: zod.number().optional(),
       }),
@@ -657,6 +687,12 @@ export const UpdateReportStatusResponse = zod.object({
         actualEndDate: zod.string().nullish(),
         plannedProgress: zod.number().optional(),
         actualProgress: zod.number().optional(),
+        weight: zod
+          .number()
+          .optional()
+          .describe(
+            "Activity weight (cost\/volume share) used for the report's weighted progress.",
+          ),
         status: zod.string().optional(),
         sortOrder: zod.number().optional(),
       }),
@@ -1198,6 +1234,12 @@ export const VerifyOwnerAccessResponse = zod.object({
             actualEndDate: zod.string().nullish(),
             plannedProgress: zod.number().optional(),
             actualProgress: zod.number().optional(),
+            weight: zod
+              .number()
+              .optional()
+              .describe(
+                "Activity weight (cost\/volume share) used for the report's weighted progress.",
+              ),
             status: zod.string().optional(),
             sortOrder: zod.number().optional(),
           }),
