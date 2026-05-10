@@ -14,6 +14,12 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     .where(eq(activitiesTable.projectId, project.id))
     .orderBy(activitiesTable.sortOrder);
 
+  // The owner portal renders each report's activities table inline (and on
+  // its print preview), so we MUST include `activitiesSnapshot` on every
+  // row — that's the timeline as it was when the report was created. If
+  // we ever switch to a slimmed projection here (the way the engineer-side
+  // list endpoint does), the owner page will silently start showing the
+  // CURRENT activities for old reports. Keep the full select.
   const reports = await db.select().from(reportsTable)
     .where(and(eq(reportsTable.projectId, project.id), eq(reportsTable.status, "approved")))
     .orderBy(desc(reportsTable.reportDate));
