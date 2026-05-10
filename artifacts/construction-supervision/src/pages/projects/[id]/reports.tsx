@@ -14,7 +14,7 @@ import {
   getGetReportQueryKey,
 } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
-import type { Report, Activity, CreateReportBody, UpdateReportBody, ReportActivitiesSnapshotItem } from "@workspace/api-client-react";
+import type { Report, Activity, CreateReportBody, UpdateReportBody, ReportActivitiesSnapshotItem, UpdateReportBodyActivitiesSnapshotItem } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -177,6 +177,17 @@ export default function ProjectReports() {
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
   const isAnyUploading = Object.keys(uploadProgress).length > 0;
 
+  // Editable copy of the report's activities snapshot. Populated when
+  // opening an existing report's edit dialog (see `handleEdit`). Edits
+  // here only touch the report's snapshot — never the master activities
+  // table. See task #45.
+  const [snapshotRows, setSnapshotRows] = useState<ReportActivitiesSnapshotItem[]>([]);
+  const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
+  // When true, the user wants to type a manual overall %. Otherwise the
+  // overall % is auto-recomputed from the snapshot rows using the
+  // weighted-average formula.
+  const [manualOverrideProgress, setManualOverrideProgress] = useState(false);
+
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: myPermissions } = useMyProjectPermissions(projectId);
   const { canEdit: canEditReports, isHidden } = useTabAccess(projectId, "reports", { redirectIfHidden: true });
@@ -308,7 +319,7 @@ export default function ProjectReports() {
     form.setValue("periodEnd", endDate.toISOString().split("T")[0]);
   }, [watchedType, watchedPeriodStart, editingId]);
 
-  const handleEdit = (r: Report) => {
+  const handleEdit = async (r: Report) => {
     setEditingId(r.id);
     const existingGroups = (r.imageGroups as ImageGroup[] | null | undefined) ?? null;
     const initialGroups: ImageGroup[] = existingGroups && existingGroups.length > 0
@@ -326,7 +337,64 @@ export default function ProjectReports() {
       imageGroups: initialGroups,
     });
     setOpenGroupIdx(0);
+    setSnapshotRows([]);
+    setManualOverrideProgress(false);
     setIsDialogOpen(true);
+
+    // The list endpoint strips `activitiesSnapshot` to keep payloads small,
+    // so fetch the full report (cached) to populate the editable timeline.
+    setIsLoadingSnapshot(true);
+    try {
+      const full = await queryClient.fetchQuery({
+        queryKey: getGetReportQueryKey(projectId, r.id),
+        queryFn: ({ signal }) => getReport(projectId, r.id, { signal }),
+        staleTime: 1000 * 60 * 5,
+      }) as Report;
+      const snap = (full.activitiesSnapshot ?? []) as ReportActivitiesSnapshotItem[];
+      const sorted = [...snap].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      setSnapshotRows(sorted);
+    } catch {
+      toast({ title: "تعذّر تحميل بنود التقرير", variant: "destructive" });
+    } finally {
+      setIsLoadingSnapshot(false);
+    }
+  };
+
+  const snapshotWeightedProgress = useMemo(() => {
+    if (snapshotRows.length === 0) return null;
+    let totalWeight = 0;
+    let weighted = 0;
+    for (const row of snapshotRows) {
+      const w = typeof row.weight === "number" && row.weight > 0 ? row.weight : 1;
+      totalWeight += w;
+      weighted += (row.actualProgress ?? 0) * w;
+    }
+    if (totalWeight === 0) return null;
+    return Math.round((weighted / totalWeight) * 10) / 10;
+  }, [snapshotRows]);
+
+  // Keep the form's overall % synced with the live weighted average as
+  // long as the user hasn't toggled manual override. This way the field
+  // (and any consumers that read the form value at submit time) reflects
+  // what the user actually sees in the table.
+  useEffect(() => {
+    if (!editingId) return;
+    if (manualOverrideProgress) return;
+    if (snapshotWeightedProgress == null) return;
+    if (form.getValues("progressPercentage") !== snapshotWeightedProgress) {
+      form.setValue("progressPercentage", snapshotWeightedProgress, { shouldDirty: true });
+    }
+  }, [snapshotWeightedProgress, manualOverrideProgress, editingId]);
+
+  const updateSnapshotRow = (id: number, patch: Partial<ReportActivitiesSnapshotItem>) => {
+    setSnapshotRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const STATUS_LABELS: Record<string, string> = {
+    not_started: "لم يبدأ",
+    in_progress: "جارٍ",
+    completed: "منجز",
+    delayed: "متأخر",
   };
 
   const handleDelete = async () => {
@@ -524,11 +592,30 @@ export default function ProjectReports() {
       const { imageGroups: _omit, ...rest } = values;
       const groupsForApi = cleanedGroups.length > 0 ? cleanedGroups : null;
       if (editingId) {
+        // Only send snapshot rows that actually have an id (defensive — the
+        // generated type marks `id` as required, and rows without one
+        // wouldn't match anything server-side anyway).
+        const snapshotPayload: UpdateReportBodyActivitiesSnapshotItem[] = snapshotRows
+          .filter((r): r is ReportActivitiesSnapshotItem & { id: number } => typeof r.id === "number")
+          .map(r => ({
+            id: r.id,
+            actualProgress: r.actualProgress ?? 0,
+            status: r.status ?? "not_started",
+          }));
         const updateBody: UpdateReportBody = {
           ...rest,
           imageUrls: flatImageUrls,
           imageGroups: groupsForApi,
         };
+        if (snapshotPayload.length > 0) {
+          updateBody.activitiesSnapshot = snapshotPayload;
+          // When the user is letting the system auto-compute, drop the
+          // explicit % so the server's recompute path wins. Otherwise
+          // keep the manual value (rest already includes it).
+          if (!manualOverrideProgress) {
+            delete (updateBody as { progressPercentage?: number | null }).progressPercentage;
+          }
+        }
         await updateReport.mutateAsync({ projectId, id: editingId, data: updateBody });
         queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, editingId) });
         toast({ title: "تم التحديث" });
@@ -620,7 +707,12 @@ export default function ProjectReports() {
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           setIsDialogOpen(open);
           setOpenGroupIdx(0);
-          if (!open) { form.reset(); setEditingId(null); }
+          if (!open) {
+            form.reset();
+            setEditingId(null);
+            setSnapshotRows([]);
+            setManualOverrideProgress(false);
+          }
         }}>
           <DialogTrigger asChild>
             <Button className="gap-2" onClick={() => {
@@ -721,11 +813,29 @@ export default function ProjectReports() {
                     name="progressPercentage"
                     render={({ field }) => {
                       const autoVal = calcAutoProgress();
+                      // When editing an existing report with a loaded
+                      // snapshot, the overall % is derived from the table
+                      // below using the weighted-average formula. The user
+                      // can still force a manual value via the override
+                      // toggle. When creating a new report (no editingId)
+                      // we fall back to the existing project-activities
+                      // auto-suggest button.
+                      const hasSnapshot = !!editingId && snapshotRows.length > 0;
+                      const isDerivedReadOnly = hasSnapshot && !manualOverrideProgress;
                       return (
                         <FormItem className="sm:col-span-2">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
                             <FormLabel className="mb-0">نسبة الإنجاز حتى تاريخه (%)</FormLabel>
-                            {autoVal !== null && (
+                            {hasSnapshot ? (
+                              <button
+                                type="button"
+                                onClick={() => setManualOverrideProgress(v => !v)}
+                                className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium bg-primary/8 hover:bg-primary/15 rounded-md px-2.5 py-1 transition-colors border border-primary/20"
+                              >
+                                <Calculator className="h-3.5 w-3.5" />
+                                {manualOverrideProgress ? "العودة للحساب التلقائي" : "تجاوز يدوي"}
+                              </button>
+                            ) : autoVal !== null && (
                               <button
                                 type="button"
                                 onClick={() => field.onChange(autoVal)}
@@ -744,12 +854,19 @@ export default function ProjectReports() {
                                 max={100}
                                 step={0.1}
                                 {...field}
+                                disabled={isDerivedReadOnly}
                                 className="pl-8"
                               />
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium pointer-events-none">%</span>
                             </div>
                           </FormControl>
-                          {autoVal !== null && (
+                          {hasSnapshot ? (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {isDerivedReadOnly
+                                ? `محتسب تلقائياً من المتوسط الموزون لبنود التقرير (${snapshotRows.length} بند)`
+                                : "وضع يدوي: لن تتم إعادة حساب النسبة من البنود عند الحفظ"}
+                            </p>
+                          ) : autoVal !== null && (
                             <p className="text-xs text-muted-foreground mt-1">
                               محتسب من المتوسط الموزون لجميع بنود المشروع ({(activities ?? []).length} بند)
                             </p>
@@ -793,6 +910,95 @@ export default function ProjectReports() {
                     )}
                   />
                 </div>
+
+                {/* Editable activities snapshot (edit mode only — see task #45). */}
+                {!!editingId && (
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="bg-muted/50 px-3 py-2 flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold">بنود التقرير</h3>
+                        {snapshotRows.length > 0 && (
+                          <span className="text-xs text-muted-foreground">({snapshotRows.length} بند)</span>
+                        )}
+                      </div>
+                      {snapshotWeightedProgress != null && (
+                        <Badge variant="outline" className="font-mono">
+                          المتوسط الموزون: {snapshotWeightedProgress}%
+                        </Badge>
+                      )}
+                    </div>
+                    {isLoadingSnapshot ? (
+                      <div className="p-4"><LoadingSpinner text="جاري تحميل البنود..." /></div>
+                    ) : snapshotRows.length === 0 ? (
+                      <p className="text-xs text-muted-foreground p-4 text-center">
+                        لا توجد بنود محفوظة في هذا التقرير
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/30 text-xs text-muted-foreground">
+                            <tr>
+                              <th className="text-right px-2 py-2 font-medium">البند</th>
+                              <th className="text-center px-2 py-2 font-medium whitespace-nowrap">الوزن</th>
+                              <th className="text-center px-2 py-2 font-medium whitespace-nowrap">المخطط %</th>
+                              <th className="text-center px-2 py-2 font-medium whitespace-nowrap w-28">الفعلي %</th>
+                              <th className="text-center px-2 py-2 font-medium whitespace-nowrap w-32">الحالة</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {snapshotRows.map(row => {
+                              const rowId = row.id;
+                              if (typeof rowId !== "number") return null;
+                              return (
+                                <tr key={rowId} className="border-t">
+                                  <td className="px-2 py-2 align-middle">
+                                    <span className="text-foreground">{row.name ?? "—"}</span>
+                                  </td>
+                                  <td className="px-2 py-2 text-center font-mono text-xs text-muted-foreground">
+                                    {typeof row.weight === "number" ? row.weight : 1}
+                                  </td>
+                                  <td className="px-2 py-2 text-center font-mono text-xs text-muted-foreground">
+                                    {typeof row.plannedProgress === "number" ? Math.round(row.plannedProgress * 10) / 10 : 0}%
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      max={100}
+                                      step={0.1}
+                                      value={row.actualProgress ?? 0}
+                                      onChange={e => {
+                                        const v = e.target.value === "" ? 0 : Number(e.target.value);
+                                        const clamped = Math.min(100, Math.max(0, Number.isFinite(v) ? v : 0));
+                                        updateSnapshotRow(rowId, { actualProgress: clamped });
+                                      }}
+                                      className="h-8 text-center font-mono text-xs"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <Select
+                                      value={row.status ?? "not_started"}
+                                      onValueChange={(v) => updateSnapshotRow(rowId, { status: v })}
+                                    >
+                                      <SelectTrigger dir="rtl" className="h-8 text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent dir="rtl">
+                                        {Object.entries(STATUS_LABELS).map(([v, label]) => (
+                                          <SelectItem key={v} value={v}>{label}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Image Groups Section */}
                 <FormField

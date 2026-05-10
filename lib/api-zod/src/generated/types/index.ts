@@ -113,6 +113,7 @@ export * from "./updateProjectBodyStatus";
 export * from "./updateProjectMemberBody";
 export * from "./updateProjectMemberBodyRole";
 export * from "./updateReportBody";
+export * from "./updateReportBodyActivitiesSnapshotItem";
 export * from "./updateReportBodyImageGroupsItem";
 export * from "./updateReportBodyType";
 export * from "./updateReportStatusBody";

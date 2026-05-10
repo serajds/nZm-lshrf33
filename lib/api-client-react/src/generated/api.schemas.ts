@@ -443,6 +443,8 @@ export type ReportActivitiesSnapshotItem = {
   actualEndDate?: string | null;
   plannedProgress?: number;
   actualProgress?: number;
+  /** Activity weight (cost/volume share) used for the report's weighted progress. */
+  weight?: number;
   status?: string;
   sortOrder?: number;
 };
@@ -542,6 +544,12 @@ export type UpdateReportBodyImageGroupsItem = {
   urls: string[];
 };
 
+export type UpdateReportBodyActivitiesSnapshotItem = {
+  id: number;
+  actualProgress?: number;
+  status?: string;
+};
+
 export interface UpdateReportBody {
   /** @nullable */
   type?: UpdateReportBodyType;
@@ -562,6 +570,17 @@ export interface UpdateReportBody {
   imageUrls?: string[];
   /** @nullable */
   imageGroups?: UpdateReportBodyImageGroupsItem[] | null;
+  /**
+   * Partial-merge update for the report's activities snapshot. Each item
+must carry the snapshot row `id`; only `actualProgress` and `status`
+are applied. Unknown ids are ignored; rows omitted from the payload
+are kept unchanged. When provided WITHOUT an explicit
+`progressPercentage`, the server recomputes the report's overall
+progress as a weighted average using each row's stored `weight`.
+
+   * @nullable
+   */
+  activitiesSnapshot?: UpdateReportBodyActivitiesSnapshotItem[] | null;
 }
 
 export type ProjectFileCategory =
