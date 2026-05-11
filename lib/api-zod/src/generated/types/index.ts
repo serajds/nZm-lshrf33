@@ -96,6 +96,8 @@ export * from "./registerBody";
 export * from "./registerResponse";
 export * from "./report";
 export * from "./reportActivitiesSnapshotItem";
+export * from "./reportAuditLogEntry";
+export * from "./reportAuditLogEntryAction";
 export * from "./reportImageGroupsItem";
 export * from "./reportStatus";
 export * from "./reportType";

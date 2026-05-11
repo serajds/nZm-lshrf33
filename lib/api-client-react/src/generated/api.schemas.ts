@@ -515,6 +515,29 @@ export interface CreateReportBody {
   imageGroups?: CreateReportBodyImageGroupsItem[] | null;
 }
 
+export type ReportAuditLogEntryAction =
+  (typeof ReportAuditLogEntryAction)[keyof typeof ReportAuditLogEntryAction];
+
+export const ReportAuditLogEntryAction = {
+  create: "create",
+  update: "update",
+  delete: "delete",
+} as const;
+
+export interface ReportAuditLogEntry {
+  id: number;
+  action: ReportAuditLogEntryAction;
+  /** @nullable */
+  entityName?: string | null;
+  /** @nullable */
+  userId?: number | null;
+  /** @nullable */
+  userName?: string | null;
+  /** @nullable */
+  userFullName?: string | null;
+  createdAt: string;
+}
+
 export type UpdateReportStatusBodyStatus =
   (typeof UpdateReportStatusBodyStatus)[keyof typeof UpdateReportStatusBodyStatus];
 

@@ -68,6 +68,7 @@ import type {
   RegisterBody,
   RegisterResponse,
   Report,
+  ReportAuditLogEntry,
   UpdateActivityBody,
   UpdateAttendanceRecordBody,
   UpdateMemberGroups200,
@@ -1908,6 +1909,101 @@ export const useUpdateReportStatus = <
 > => {
   return useMutation(getUpdateReportStatusMutationOptions(options));
 };
+
+/**
+ * @summary Get the activity log for a single report
+ */
+export const getGetReportAuditLogUrl = (projectId: number, id: number) => {
+  return `/api/projects/${projectId}/reports/${id}/audit-log`;
+};
+
+export const getReportAuditLog = async (
+  projectId: number,
+  id: number,
+  options?: RequestInit,
+): Promise<ReportAuditLogEntry[]> => {
+  return customFetch<ReportAuditLogEntry[]>(
+    getGetReportAuditLogUrl(projectId, id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetReportAuditLogQueryKey = (projectId: number, id: number) => {
+  return [`/api/projects/${projectId}/reports/${id}/audit-log`] as const;
+};
+
+export const getGetReportAuditLogQueryOptions = <
+  TData = Awaited<ReturnType<typeof getReportAuditLog>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReportAuditLog>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetReportAuditLogQueryKey(projectId, id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getReportAuditLog>>
+  > = ({ signal }) =>
+    getReportAuditLog(projectId, id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(projectId && id),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getReportAuditLog>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetReportAuditLogQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getReportAuditLog>>
+>;
+export type GetReportAuditLogQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get the activity log for a single report
+ */
+
+export function useGetReportAuditLog<
+  TData = Awaited<ReturnType<typeof getReportAuditLog>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReportAuditLog>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReportAuditLogQueryOptions(projectId, id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Export project reports as PDF

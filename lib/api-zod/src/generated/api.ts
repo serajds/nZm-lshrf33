@@ -707,6 +707,27 @@ export const UpdateReportStatusResponse = zod.object({
 });
 
 /**
+ * @summary Get the activity log for a single report
+ */
+export const GetReportAuditLogParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+export const GetReportAuditLogResponseItem = zod.object({
+  id: zod.number(),
+  action: zod.enum(["create", "update", "delete"]),
+  entityName: zod.string().nullish(),
+  userId: zod.number().nullish(),
+  userName: zod.string().nullish(),
+  userFullName: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const GetReportAuditLogResponse = zod.array(
+  GetReportAuditLogResponseItem,
+);
+
+/**
  * @summary Export project reports as PDF
  */
 export const ExportReportsPdfParams = zod.object({
