@@ -164,11 +164,14 @@ export async function sendOrQueue(entry: Omit<QueuedAttendance, "attempts" | "la
 
   // Reachable but server-side error. Surface to caller — do NOT queue,
   // because re-sending will just produce the same error.
-  let message = "تعذّر تسجيل الحضور";
+  let message = "";
+  const text = await response.text().catch(() => "");
   try {
-    const body = await response.json();
+    const body = JSON.parse(text);
     if (body?.error) message = String(body.error);
-  } catch { /* ignore */ }
+  } catch { /* not json */ }
+  if (!message && text && text.length < 200) message = text;
+  if (!message) message = `HTTP ${response.status}${response.statusText ? " " + response.statusText : ""}`;
   return { kind: "error", status: response.status, message };
 }
 
