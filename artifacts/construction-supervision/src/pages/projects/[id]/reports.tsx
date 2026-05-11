@@ -1175,7 +1175,6 @@ export default function ProjectReports() {
         };
 
         const renderActions = (report: Report, size: "row" | "panel" = "row") => {
-          const btnSize = size === "panel" ? "sm" : "sm";
           const btnClass = size === "panel"
             ? "gap-1.5 h-9 text-sm"
             : "gap-1 h-8 text-xs sm:text-sm sm:gap-1.5";
@@ -1183,10 +1182,11 @@ export default function ProjectReports() {
             <div
               className="flex flex-wrap gap-1.5 sm:gap-2"
               onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
             >
               <Button
                 variant="outline"
-                size={btnSize}
+                size="sm"
                 className={`text-violet-600 hover:bg-violet-50 hover:text-violet-700 border-violet-200 ${btnClass}`}
                 onClick={() => handlePreview(report)}
                 disabled={previewLoadingId === report.id}
@@ -1202,7 +1202,7 @@ export default function ProjectReports() {
               {canApprove && (
                 report.status === "draft" ? (
                   <Button
-                    variant="outline" size={btnSize}
+                    variant="outline" size="sm"
                     className={`text-emerald-700 border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 ${btnClass}`}
                     onClick={() => handleApprove(report.id, "approved")}
                     disabled={updateReportStatus.isPending}
@@ -1212,7 +1212,7 @@ export default function ProjectReports() {
                   </Button>
                 ) : (
                   <Button
-                    variant="outline" size={btnSize}
+                    variant="outline" size="sm"
                     className={`text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800 ${btnClass}`}
                     onClick={() => handleApprove(report.id, "draft")}
                     disabled={updateReportStatus.isPending}
@@ -1224,11 +1224,11 @@ export default function ProjectReports() {
               )}
               {!isViewer && (
                 <>
-                  <Button variant="outline" size={btnSize} className={btnClass} onClick={() => handleEdit(report)}>
+                  <Button variant="outline" size="sm" className={btnClass} onClick={() => handleEdit(report)}>
                     <Edit2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> تعديل
                   </Button>
                   <Button
-                    variant="outline" size={btnSize}
+                    variant="outline" size="sm"
                     className={`text-destructive hover:bg-destructive hover:text-white ${btnClass}`}
                     onClick={() => setDeletingId(report.id)}
                   >
