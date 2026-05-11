@@ -9,10 +9,13 @@ import {
   useDeleteReport,
   useGetProject,
   useListActivities,
+  useGetReportAuditLog,
+  getGetReportAuditLogQueryKey,
   getReport,
   getListReportsQueryKey,
   getGetReportQueryKey,
 } from "@workspace/api-client-react";
+import type { ReportAuditLogEntry } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
 import type { Report, Activity, CreateReportBody, UpdateReportBody, ReportActivitiesSnapshotItem, UpdateReportBodyActivitiesSnapshotItem } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -45,7 +48,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw } from "lucide-react";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
@@ -160,6 +163,112 @@ function AddImageGroupButton({
   );
 }
 
+function ReportActivityLog({ projectId, reportId }: { projectId: number; reportId: number }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading, isError } = useGetReportAuditLog(projectId, reportId, {
+    query: {
+      queryKey: getGetReportAuditLogQueryKey(projectId, reportId),
+      enabled: open,
+      staleTime: 1000 * 30,
+    },
+  });
+
+  const entries: ReportAuditLogEntry[] = data ?? [];
+
+  const actionLabel = (entry: ReportAuditLogEntry) => {
+    if (entry.action === "create") return "إنشاء التقرير";
+    if (entry.action === "delete") return "حذف التقرير";
+    // update — try to enrich from entityName which may include
+    // status-change context like "(اعتماد)" or "(إرجاع لمسودة)".
+    const name = entry.entityName ?? "";
+    if (/اعتماد/.test(name)) return "اعتماد التقرير";
+    if (/إرجاع لمسودة/.test(name)) return "إرجاع التقرير إلى مسودة";
+    return "تعديل التقرير";
+  };
+
+  const actionStyle = (action: string) => {
+    if (action === "create") return "bg-emerald-100 text-emerald-800 border-emerald-300";
+    if (action === "delete") return "bg-red-100 text-red-800 border-red-300";
+    return "bg-blue-100 text-blue-800 border-blue-300";
+  };
+
+  const fmtDateTime = (iso: string) => {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleString("ar-SA-u-nu-latn", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit",
+    });
+  };
+
+  return (
+    <div className="pt-3 border-t print:hidden">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="w-full flex items-center justify-between gap-2 text-right hover:bg-accent/40 rounded-md px-2 py-2 transition-colors"
+            aria-expanded={open}
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <History className="h-4 w-4 text-muted-foreground" />
+              سجل النشاط
+              {entries.length > 0 && open && (
+                <span className="text-xs text-muted-foreground font-normal">({entries.length})</span>
+              )}
+            </span>
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="mt-2 px-2">
+            {isLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-3">
+                <Loader2 className="h-4 w-4 animate-spin" /> جاري تحميل السجل...
+              </div>
+            ) : isError ? (
+              <p className="text-sm text-destructive py-2">تعذّر تحميل سجل النشاط.</p>
+            ) : entries.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">
+                لا توجد عمليات مسجَّلة لهذا التقرير.
+              </p>
+            ) : (
+              <ol className="relative border-r-2 border-muted pr-4 space-y-3 py-1">
+                {entries.map((entry) => {
+                  const actor = entry.userFullName || entry.userName || "غير معروف";
+                  return (
+                    <li key={entry.id} className="relative">
+                      <span
+                        className="absolute -right-[22px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background"
+                        aria-hidden
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={`text-xs font-medium ${actionStyle(entry.action)}`}
+                        >
+                          {actionLabel(entry)}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {fmtDateTime(entry.createdAt)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5 text-sm text-foreground">
+                        <UserCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>{actor}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  );
+}
+
 export default function ProjectReports() {
   const params = useParams();
   const [, setLocation] = useLocation();
@@ -235,6 +344,8 @@ export default function ProjectReports() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId, { type: typeFilter && typeFilter !== "all" ? typeFilter : undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }) });
           queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
+          queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, reportId) });
+          queryClient.invalidateQueries({ queryKey: getGetReportAuditLogQueryKey(projectId, reportId) });
           toast({ title: nextStatus === "approved" ? "تم اعتماد التقرير" : "أُعيد التقرير إلى المسودة" });
         },
         onError: () => toast({ title: "تعذّر تغيير الحالة", variant: "destructive" }),
@@ -622,6 +733,7 @@ export default function ProjectReports() {
         }
         await updateReport.mutateAsync({ projectId, id: editingId, data: updateBody });
         queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, editingId) });
+        queryClient.invalidateQueries({ queryKey: getGetReportAuditLogQueryKey(projectId, editingId) });
         toast({ title: "تم التحديث" });
       } else {
         const createBody: CreateReportBody = {
@@ -1526,6 +1638,7 @@ export default function ProjectReports() {
                     </SheetHeader>
                     <div className="mt-5">
                       {renderDetailsBody(selectedReport)}
+                      <ReportActivityLog projectId={projectId} reportId={selectedReport.id} />
                     </div>
                   </>
                 )}
