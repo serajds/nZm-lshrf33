@@ -77,8 +77,14 @@ export function SelfieCameraDialog({ open, onClose, onCapture, title = "التق
     if (!videoRef.current || !canvasRef.current) return;
     const v = videoRef.current;
     const c = canvasRef.current;
-    const w = v.videoWidth || 720;
-    const h = v.videoHeight || 720;
+    const srcW = v.videoWidth || 720;
+    const srcH = v.videoHeight || 720;
+    // Cap the longest edge so multipart payloads stay small enough to pass
+    // through deployment proxies (which often reject large uploads with 403).
+    const MAX_EDGE = 1024;
+    const scale = Math.min(1, MAX_EDGE / Math.max(srcW, srcH));
+    const w = Math.round(srcW * scale);
+    const h = Math.round(srcH * scale);
     c.width = w;
     c.height = h;
     const ctx = c.getContext("2d");
@@ -98,7 +104,7 @@ export function SelfieCameraDialog({ open, onClose, onCapture, title = "التق
         stopStream();
       },
       "image/jpeg",
-      0.85,
+      0.75,
     );
   }
 
