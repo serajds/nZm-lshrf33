@@ -26,6 +26,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from "@/components/ui/dialog";
 import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -175,6 +178,7 @@ export default function ProjectReports() {
   const [uploadProgress, setUploadProgress] = useState<Record<number, GroupUploadState>>({});
   const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
+  const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
   const isAnyUploading = Object.keys(uploadProgress).length > 0;
 
   // Editable copy of the report's activities snapshot. Populated when
@@ -1158,185 +1162,378 @@ export default function ProjectReports() {
         )}
       </div>
 
-      <div className="grid gap-4">
-        {isLoading ? (
-          <LoadingSpinner text="جاري تحميل التقارير..." />
-        ) : (reports ?? []).length === 0 ? (
-          <Card className="border-dashed">
-            <EmptyState
-              icon={<FileText className="h-7 w-7 text-muted-foreground/60" />}
-              title="لا توجد تقارير"
-              description="لم يتم إضافة أي تقارير لهذا المشروع بعد"
-            />
-          </Card>
-        ) : (
-          (reports ?? []).map((report) => (
-            <Card key={report.id} className="overflow-hidden">
-              <div className="flex flex-col md:flex-row">
-                <div className="bg-muted p-4 md:w-48 flex flex-col justify-center items-center text-center border-b md:border-b-0 md:border-l">
-                  <FileText className={`h-8 w-8 mb-2 ${report.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
-                  <div className="text-lg font-bold mb-1">#{report.reportNumber}</div>
-                  <Badge variant="outline" className="mb-2 bg-background">
-                    {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
-                  </Badge>
-                  {report.status === "draft" ? (
-                    <Badge className="mb-2 bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">مسودة</Badge>
-                  ) : (
-                    <Badge className="mb-2 bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100">معتمد</Badge>
-                  )}
-                  <div className="text-sm font-semibold font-mono">{fmtDate(report.reportDate)}</div>
+      {(() => {
+        const reportsList = reports ?? [];
+        const selectedReport = reportsList.find((r) => r.id === selectedReportId) ?? null;
+
+        const countImages = (report: Report) => {
+          const groups = (report.imageGroups as ImageGroup[] | null | undefined) ?? null;
+          if (groups && groups.length > 0) {
+            return groups.reduce((s, g) => s + (g.urls?.length ?? 0), 0);
+          }
+          return report.imageUrls?.length ?? 0;
+        };
+
+        const renderActions = (report: Report, size: "row" | "panel" = "row") => {
+          const btnSize = size === "panel" ? "sm" : "sm";
+          const btnClass = size === "panel"
+            ? "gap-1.5 h-9 text-sm"
+            : "gap-1 h-8 text-xs sm:text-sm sm:gap-1.5";
+          return (
+            <div
+              className="flex flex-wrap gap-1.5 sm:gap-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Button
+                variant="outline"
+                size={btnSize}
+                className={`text-violet-600 hover:bg-violet-50 hover:text-violet-700 border-violet-200 ${btnClass}`}
+                onClick={() => handlePreview(report)}
+                disabled={previewLoadingId === report.id}
+                title="معاينة وطباعة"
+              >
+                {previewLoadingId === report.id ? (
+                  <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                ) : (
+                  <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                )}{" "}
+                <span className="hidden sm:inline">معاينة و</span>طباعة
+              </Button>
+              {canApprove && (
+                report.status === "draft" ? (
+                  <Button
+                    variant="outline" size={btnSize}
+                    className={`text-emerald-700 border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 ${btnClass}`}
+                    onClick={() => handleApprove(report.id, "approved")}
+                    disabled={updateReportStatus.isPending}
+                    title="اعتماد التقرير وإظهاره في تقارير المالك"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> اعتماد
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline" size={btnSize}
+                    className={`text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800 ${btnClass}`}
+                    onClick={() => handleApprove(report.id, "draft")}
+                    disabled={updateReportStatus.isPending}
+                    title="إرجاع التقرير إلى المسودة (يُخفى من تقارير المالك)"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> إرجاع لمسودة
+                  </Button>
+                )
+              )}
+              {!isViewer && (
+                <>
+                  <Button variant="outline" size={btnSize} className={btnClass} onClick={() => handleEdit(report)}>
+                    <Edit2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> تعديل
+                  </Button>
+                  <Button
+                    variant="outline" size={btnSize}
+                    className={`text-destructive hover:bg-destructive hover:text-white ${btnClass}`}
+                    onClick={() => setDeletingId(report.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> حذف
+                  </Button>
+                </>
+              )}
+            </div>
+          );
+        };
+
+        const renderDetailsBody = (report: Report) => {
+          const reportGroups = (report.imageGroups as ImageGroup[] | null | undefined) ?? null;
+          const hasGroups = reportGroups && reportGroups.length > 0 && reportGroups.some(g => (g.urls?.length ?? 0) > 0);
+          const hasImages = (report.imageUrls && report.imageUrls.length > 0) || hasGroups;
+          const totalImages = hasGroups
+            ? reportGroups!.reduce((s, g) => s + (g.urls?.length ?? 0), 0)
+            : (report.imageUrls?.length ?? 0);
+          const displayGroups: ImageGroup[] = hasGroups
+            ? reportGroups!.filter(g => (g.urls?.length ?? 0) > 0)
+            : [{ category: "صور الموقع", urls: report.imageUrls ?? [] }];
+          let runningCounter = 0;
+          return (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <div className="text-xs text-muted-foreground mb-0.5">النوع</div>
+                  <div className="font-medium">{report.type === "weekly" ? "أسبوعي" : "شهري"}</div>
                 </div>
-                <div className="flex-1 p-4 sm:p-6">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
-                    <div>
-                      <div className="text-xs sm:text-sm text-muted-foreground mb-1">
-                        الفترة: <span className="font-mono">{fmtDate(report.periodStart)}</span> — <span className="font-mono">{fmtDate(report.periodEnd)}</span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-sm font-medium">الإنجاز التراكمي:</span>
-                        <Badge className="bg-primary">{report.progressPercentage}%</Badge>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-violet-600 hover:bg-violet-50 hover:text-violet-700 border-violet-200 gap-1 h-8 text-xs sm:text-sm sm:gap-1.5"
-                        onClick={() => handlePreview(report)}
-                        disabled={previewLoadingId === report.id}
-                        title="معاينة وطباعة"
-                      >
-                        {previewLoadingId === report.id ? (
-                          <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
-                        ) : (
-                          <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                        )}{" "}
-                        <span className="hidden sm:inline">معاينة و</span>طباعة
-                      </Button>
-                      {canApprove && (
-                        report.status === "draft" ? (
-                          <Button
-                            variant="outline" size="sm"
-                            className="gap-1 h-8 text-xs sm:text-sm sm:gap-1.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
-                            onClick={() => handleApprove(report.id, "approved")}
-                            disabled={updateReportStatus.isPending}
-                            title="اعتماد التقرير وإظهاره في تقارير المالك"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> اعتماد
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline" size="sm"
-                            className="gap-1 h-8 text-xs sm:text-sm sm:gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800"
-                            onClick={() => handleApprove(report.id, "draft")}
-                            disabled={updateReportStatus.isPending}
-                            title="إرجاع التقرير إلى المسودة (يُخفى من تقارير المالك)"
-                          >
-                            <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> إرجاع لمسودة
-                          </Button>
-                        )
-                      )}
-                      {!isViewer && (
-                      <>
-                      <Button variant="outline" size="sm" className="gap-1 h-8 text-xs sm:text-sm sm:gap-1.5" onClick={() => handleEdit(report)}>
-                        <Edit2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> تعديل
-                      </Button>
-                      <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive hover:text-white gap-1 h-8 text-xs sm:text-sm sm:gap-1.5" onClick={() => setDeletingId(report.id)}>
-                        <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> حذف
-                      </Button>
-                      </>
-                      )}
-                    </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-0.5">الحالة</div>
+                  <div>
+                    {report.status === "draft" ? (
+                      <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">مسودة</Badge>
+                    ) : (
+                      <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100">معتمد</Badge>
+                    )}
                   </div>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-semibold mb-1 text-foreground">وصف الأعمال</h4>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{report.workDescription}</p>
-                    </div>
-                    
-                    <div className="grid md:grid-cols-2 gap-4 pt-2 border-t">
-                      {report.technicalNotes && (
-                        <div>
-                          <h4 className="text-sm font-semibold text-destructive flex items-center gap-1 mb-1">
-                            <AlertTriangle className="h-4 w-4" /> الملاحظات الفنية
-                          </h4>
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{report.technicalNotes}</p>
-                        </div>
-                      )}
-                      {report.recommendations && (
-                        <div>
-                          <h4 className="text-sm font-semibold text-emerald-600 flex items-center gap-1 mb-1">
-                            <CheckCircle2 className="h-4 w-4" /> التوصيات
-                          </h4>
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{report.recommendations}</p>
-                        </div>
-                      )}
-                    </div>
-                    {(() => {
-                      const reportGroups = (report.imageGroups as ImageGroup[] | null | undefined) ?? null;
-                      const hasGroups = reportGroups && reportGroups.length > 0 && reportGroups.some(g => (g.urls?.length ?? 0) > 0);
-                      const hasImages = (report.imageUrls && report.imageUrls.length > 0) || hasGroups;
-                      if (!hasImages) return null;
-                      const totalImages = hasGroups
-                        ? reportGroups!.reduce((s, g) => s + (g.urls?.length ?? 0), 0)
-                        : (report.imageUrls?.length ?? 0);
-                      const displayGroups: ImageGroup[] = hasGroups
-                        ? reportGroups!.filter(g => (g.urls?.length ?? 0) > 0)
-                        : [{ category: "صور الموقع", urls: report.imageUrls ?? [] }];
-                      let runningCounter = 0;
-                      return (
-                        <div className="pt-3 border-t space-y-4">
-                          {displayGroups.map((group, gi) => (
-                            <div key={gi}>
-                              <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
-                                <ImagePlus className="h-4 w-4 text-muted-foreground" />
-                                {group.category}
-                                <span className="text-xs text-muted-foreground font-normal">({group.urls.length} صورة)</span>
-                              </h4>
-                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                                {group.urls.map((url, idx) => {
-                                  const authUrl = url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`;
-                                  runningCounter += 1;
-                                  const positionLabel = `${runningCounter}/${totalImages}`;
-                                  return (
-                                    <a
-                                      key={idx}
-                                      href={authUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="group relative aspect-video rounded-lg overflow-hidden border-2 border-muted hover:border-primary/40 transition-all shadow-sm hover:shadow-md block"
-                                    >
-                                      <img
-                                        src={authUrl}
-                                        alt={`صورة ${idx + 1}`}
-                                        loading="lazy"
-                                        decoding="async"
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                      />
-                                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                        <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                                      </div>
-                                      <div className="absolute bottom-1.5 right-1.5 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">
-                                        {positionLabel}
-                                      </div>
-                                    </a>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-0.5">تاريخ التقرير</div>
+                  <div className="font-mono">{fmtDate(report.reportDate)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-0.5">الإنجاز التراكمي</div>
+                  <Badge className="bg-primary">{report.progressPercentage}%</Badge>
+                </div>
+                <div className="col-span-2 sm:col-span-4">
+                  <div className="text-xs text-muted-foreground mb-0.5">الفترة</div>
+                  <div className="font-mono text-sm">
+                    {fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}
                   </div>
                 </div>
               </div>
-            </Card>
-          ))
-        )}
-      </div>
+
+              <div className="pt-3 border-t">
+                <h4 className="text-sm font-semibold mb-1 text-foreground">وصف الأعمال</h4>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{report.workDescription}</p>
+              </div>
+
+              {(report.technicalNotes || report.recommendations) && (
+                <div className="grid md:grid-cols-2 gap-4 pt-3 border-t">
+                  {report.technicalNotes && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-destructive flex items-center gap-1 mb-1">
+                        <AlertTriangle className="h-4 w-4" /> الملاحظات الفنية
+                      </h4>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{report.technicalNotes}</p>
+                    </div>
+                  )}
+                  {report.recommendations && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-emerald-600 flex items-center gap-1 mb-1">
+                        <CheckCircle2 className="h-4 w-4" /> التوصيات
+                      </h4>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{report.recommendations}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {hasImages && (
+                <div className="pt-3 border-t space-y-4">
+                  {displayGroups.map((group, gi) => (
+                    <div key={gi}>
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                        <ImagePlus className="h-4 w-4 text-muted-foreground" />
+                        {group.category}
+                        <span className="text-xs text-muted-foreground font-normal">({group.urls.length} صورة)</span>
+                      </h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        {group.urls.map((url, idx) => {
+                          const authUrl = url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`;
+                          runningCounter += 1;
+                          const positionLabel = `${runningCounter}/${totalImages}`;
+                          return (
+                            <a
+                              key={idx}
+                              href={authUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="group relative aspect-video rounded-lg overflow-hidden border-2 border-muted hover:border-primary/40 transition-all shadow-sm hover:shadow-md block"
+                            >
+                              <img
+                                src={authUrl}
+                                alt={`صورة ${idx + 1}`}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                              <div className="absolute bottom-1.5 right-1.5 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">
+                                {positionLabel}
+                              </div>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        return (
+          <>
+            {isLoading ? (
+              <LoadingSpinner text="جاري تحميل التقارير..." />
+            ) : reportsList.length === 0 ? (
+              <Card className="border-dashed">
+                <EmptyState
+                  icon={<FileText className="h-7 w-7 text-muted-foreground/60" />}
+                  title="لا توجد تقارير"
+                  description="لم يتم إضافة أي تقارير لهذا المشروع بعد"
+                />
+              </Card>
+            ) : (
+              <>
+                {/* Desktop: table view */}
+                <Card className="hidden md:block overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/60 text-muted-foreground">
+                        <tr className="text-right">
+                          <th className="px-3 py-2 font-medium">#</th>
+                          <th className="px-3 py-2 font-medium">النوع</th>
+                          <th className="px-3 py-2 font-medium">الحالة</th>
+                          <th className="px-3 py-2 font-medium">التاريخ</th>
+                          <th className="px-3 py-2 font-medium">الفترة</th>
+                          <th className="px-3 py-2 font-medium">الإنجاز</th>
+                          <th className="px-3 py-2 font-medium">الصور</th>
+                          <th className="px-3 py-2 font-medium text-left">الإجراءات</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportsList.map((report) => {
+                          const imgCount = countImages(report);
+                          return (
+                            <tr
+                              key={report.id}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`فتح تفاصيل التقرير رقم ${report.reportNumber}`}
+                              className="border-t hover:bg-accent/40 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                              onClick={() => setSelectedReportId(report.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelectedReportId(report.id);
+                                }
+                              }}
+                            >
+                              <td className="px-3 py-2.5 font-bold whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1.5">
+                                  <FileText className={`h-4 w-4 ${report.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
+                                  #{report.reportNumber}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5 whitespace-nowrap">
+                                <Badge variant="outline" className="bg-background">
+                                  {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                                </Badge>
+                              </td>
+                              <td className="px-3 py-2.5 whitespace-nowrap">
+                                {report.status === "draft" ? (
+                                  <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">مسودة</Badge>
+                                ) : (
+                                  <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100">معتمد</Badge>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap">{fmtDate(report.reportDate)}</td>
+                              <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap text-muted-foreground">
+                                {fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}
+                              </td>
+                              <td className="px-3 py-2.5 whitespace-nowrap">
+                                <Badge className="bg-primary">{report.progressPercentage}%</Badge>
+                              </td>
+                              <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
+                                <span className="inline-flex items-center gap-1">
+                                  <ImagePlus className="h-3.5 w-3.5" />
+                                  {imgCount}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-left">
+                                {renderActions(report)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                {/* Mobile: compact cards */}
+                <div className="grid gap-3 md:hidden">
+                  {reportsList.map((report) => {
+                    const imgCount = countImages(report);
+                    return (
+                      <Card
+                        key={report.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`فتح تفاصيل التقرير رقم ${report.reportNumber}`}
+                        className="overflow-hidden cursor-pointer hover:bg-accent/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => setSelectedReportId(report.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedReportId(report.id);
+                          }
+                        }}
+                      >
+                        <CardContent className="p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileText className={`h-5 w-5 shrink-0 ${report.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
+                              <span className="font-bold">#{report.reportNumber}</span>
+                              <Badge variant="outline" className="bg-background text-xs">
+                                {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                              </Badge>
+                              {report.status === "draft" ? (
+                                <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100 text-xs">مسودة</Badge>
+                              ) : (
+                                <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 text-xs">معتمد</Badge>
+                              )}
+                            </div>
+                            <Badge className="bg-primary shrink-0">{report.progressPercentage}%</Badge>
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span className="font-mono">{fmtDate(report.reportDate)}</span>
+                            <span className="font-mono">
+                              {fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <ImagePlus className="h-3.5 w-3.5" /> {imgCount}
+                            </span>
+                          </div>
+                          <div className="pt-1">
+                            {renderActions(report)}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            <Sheet
+              open={!!selectedReport}
+              onOpenChange={(open) => { if (!open) setSelectedReportId(null); }}
+            >
+              <SheetContent
+                side="left"
+                className="w-full sm:max-w-2xl overflow-y-auto"
+                dir="rtl"
+              >
+                {selectedReport && (
+                  <>
+                    <SheetHeader className="text-right space-y-3 pr-10">
+                      <SheetTitle className="flex items-center gap-2 flex-wrap">
+                        <FileText className={`h-5 w-5 ${selectedReport.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
+                        تقرير #{selectedReport.reportNumber}
+                        <Badge variant="outline" className="bg-background font-normal">
+                          {selectedReport.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                        </Badge>
+                      </SheetTitle>
+                      <div>{renderActions(selectedReport, "panel")}</div>
+                    </SheetHeader>
+                    <div className="mt-5">
+                      {renderDetailsBody(selectedReport)}
+                    </div>
+                  </>
+                )}
+              </SheetContent>
+            </Sheet>
+          </>
+        );
+      })()}
       <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
