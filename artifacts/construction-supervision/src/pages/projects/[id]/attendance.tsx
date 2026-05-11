@@ -244,8 +244,13 @@ export default function ProjectAttendance() {
       const url = `${API_BASE}/attendance/projects/${projectId}/${pendingType === "check_in" ? "check-in" : "check-out"}`;
       const r = await authFetch(url, { method: "POST", body: fd });
       if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err?.error || "فشل تسجيل الحضور/الانصراف");
+        const text = await r.text().catch(() => "");
+        let serverMsg = "";
+        try { serverMsg = (JSON.parse(text)?.error as string) || ""; } catch { /* not json */ }
+        const detail = serverMsg
+          || (text && text.length < 200 ? text : "")
+          || `HTTP ${r.status}${r.statusText ? " " + r.statusText : ""}`;
+        throw new Error(detail);
       }
       const rec: AttendanceRecordWithUser = await r.json();
       toast({
