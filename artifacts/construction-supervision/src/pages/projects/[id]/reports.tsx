@@ -344,6 +344,8 @@ export default function ProjectReports() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId, { type: typeFilter && typeFilter !== "all" ? typeFilter : undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }) });
           queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
+          queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, reportId) });
+          queryClient.invalidateQueries({ queryKey: getGetReportAuditLogQueryKey(projectId, reportId) });
           toast({ title: nextStatus === "approved" ? "تم اعتماد التقرير" : "أُعيد التقرير إلى المسودة" });
         },
         onError: () => toast({ title: "تعذّر تغيير الحالة", variant: "destructive" }),
@@ -731,6 +733,7 @@ export default function ProjectReports() {
         }
         await updateReport.mutateAsync({ projectId, id: editingId, data: updateBody });
         queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, editingId) });
+        queryClient.invalidateQueries({ queryKey: getGetReportAuditLogQueryKey(projectId, editingId) });
         toast({ title: "تم التحديث" });
       } else {
         const createBody: CreateReportBody = {
