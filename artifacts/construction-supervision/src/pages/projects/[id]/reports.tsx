@@ -1385,7 +1385,7 @@ export default function ProjectReports() {
                           <th className="px-3 py-2 font-medium">الفترة</th>
                           <th className="px-3 py-2 font-medium">الإنجاز</th>
                           <th className="px-3 py-2 font-medium">الصور</th>
-                          <th className="px-3 py-2 font-medium text-left">الإجراءات</th>
+                          <th className="px-3 py-2 font-medium text-center">الإجراءات</th>
                         </tr>
                       </thead>
                       <tbody>
