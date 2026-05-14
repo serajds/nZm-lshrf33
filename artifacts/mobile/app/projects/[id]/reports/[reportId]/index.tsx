@@ -2,11 +2,15 @@ import { Feather } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import React from "react";
-import { Alert, Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useState } from "react";
 import { Card, Empty, PrimaryButton, Screen } from "@/components/Screen";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import { ApiError, apiDeleteReport, apiGetReport, apiMyProjectPermissions, apiSetReportStatus } from "@/lib/api";
+import {
+  ApiError, apiCreateReportComment, apiDeleteReport, apiDeleteReportComment,
+  apiGetReport, apiListReportComments, apiMyProjectPermissions, apiSetReportStatus,
+} from "@/lib/api";
 
 export default function ReportDetailScreen() {
   const { id, reportId } = useLocalSearchParams<{ id: string; reportId: string }>();
@@ -104,11 +108,99 @@ export default function ReportDetailScreen() {
               } />
             ) : null}
           </View>
+
+          <CommentsSection projectId={projectId} reportId={rId} colors={colors} currentUserId={user?.id ?? null} isAdmin={user?.role === "admin"} />
         </>
       )}
     </Screen>
   );
 }
+
+function CommentsSection({ projectId, reportId, colors, currentUserId, isAdmin }: {
+  projectId: number; reportId: number;
+  colors: ReturnType<typeof useColors>;
+  currentUserId: number | null; isAdmin: boolean;
+}) {
+  const qc = useQueryClient();
+  const [text, setText] = useState("");
+  const listQ = useQuery({
+    queryKey: ["report-comments", projectId, reportId],
+    queryFn: () => apiListReportComments(projectId, reportId),
+    enabled: Number.isFinite(projectId) && Number.isFinite(reportId),
+  });
+  const create = useMutation({
+    mutationFn: (body: string) => apiCreateReportComment(projectId, reportId, body),
+    onSuccess: () => { setText(""); qc.invalidateQueries({ queryKey: ["report-comments", projectId, reportId] }); },
+    onError: (e) => Alert.alert("خطأ", e instanceof ApiError ? e.message : "تعذّر إضافة التعليق"),
+  });
+  const remove = useMutation({
+    mutationFn: (id: number) => apiDeleteReportComment(projectId, reportId, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["report-comments", projectId, reportId] }),
+    onError: (e) => Alert.alert("خطأ", e instanceof ApiError ? e.message : "تعذّر الحذف"),
+  });
+
+  return (
+    <Card>
+      <Text style={[styles.sectionLabel, { color: colors.foreground }]}>التعليقات</Text>
+      {listQ.isLoading ? (
+        <Text style={{ color: colors.mutedForeground, fontFamily: "Cairo_400Regular" }}>جاري التحميل…</Text>
+      ) : !listQ.data?.length ? (
+        <Text style={{ color: colors.mutedForeground, fontFamily: "Cairo_400Regular" }}>لا توجد تعليقات بعد.</Text>
+      ) : (
+        listQ.data.map(c => (
+          <View key={c.id} style={[commentStyles.item, { borderColor: colors.border }]}>
+            <View style={commentStyles.head}>
+              <Text style={[commentStyles.author, { color: colors.foreground }]}>{c.userName ?? "مستخدم"}</Text>
+              <Text style={[commentStyles.date, { color: colors.mutedForeground }]}>
+                {new Date(c.createdAt).toLocaleString("ar")}
+              </Text>
+            </View>
+            <Text style={[commentStyles.body, { color: colors.foreground }]}>{c.body}</Text>
+            {(c.userId === currentUserId || isAdmin) && (
+              <TouchableOpacity
+                onPress={() => Alert.alert("حذف التعليق", "هل تريد الحذف؟", [
+                  { text: "إلغاء", style: "cancel" },
+                  { text: "حذف", style: "destructive", onPress: () => remove.mutate(c.id) },
+                ])}
+                style={commentStyles.delBtn}
+              >
+                <Feather name="trash-2" size={14} color={colors.destructive} />
+              </TouchableOpacity>
+            )}
+          </View>
+        ))
+      )}
+
+      <TextInput
+        value={text}
+        onChangeText={setText}
+        placeholder="اكتب تعليقاً…"
+        placeholderTextColor={colors.mutedForeground}
+        multiline
+        style={[commentStyles.input, { color: colors.foreground, borderColor: colors.input }]}
+        textAlign="right"
+        textAlignVertical="top"
+      />
+      <PrimaryButton
+        label="إرسال التعليق"
+        icon="send"
+        loading={create.isPending}
+        disabled={!text.trim()}
+        onPress={() => create.mutate(text.trim())}
+      />
+    </Card>
+  );
+}
+
+const commentStyles = StyleSheet.create({
+  item: { borderWidth: 1, borderRadius: 10, padding: 10, marginTop: 8 },
+  head: { flexDirection: "row-reverse", justifyContent: "space-between", marginBottom: 4 },
+  author: { fontFamily: "Cairo_700Bold", fontSize: 13 },
+  date: { fontFamily: "Cairo_400Regular", fontSize: 11 },
+  body: { fontFamily: "Cairo_400Regular", fontSize: 13, lineHeight: 20 },
+  delBtn: { alignSelf: "flex-start", marginTop: 6, padding: 4 },
+  input: { borderWidth: 1, borderRadius: 10, padding: 10, marginTop: 12, marginBottom: 8, minHeight: 70, fontFamily: "Cairo_400Regular", fontSize: 14 },
+});
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 8 },

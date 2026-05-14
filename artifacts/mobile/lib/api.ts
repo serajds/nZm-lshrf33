@@ -326,6 +326,22 @@ export const apiCreateExtension = (projectId: number, body: { extensionDate: str
 export const apiDeleteExtension = (projectId: number, id: number) =>
   request<void>(`/api/projects/${projectId}/extensions/${id}`, { method: "DELETE" });
 
+// Report comments
+export interface ApiReportComment {
+  id: number;
+  reportId: number;
+  userId: number;
+  userName: string | null;
+  body: string;
+  createdAt: string;
+}
+export const apiListReportComments = (projectId: number, reportId: number) =>
+  request<ApiReportComment[]>(`/api/projects/${projectId}/reports/${reportId}/comments`);
+export const apiCreateReportComment = (projectId: number, reportId: number, body: string) =>
+  request<ApiReportComment>(`/api/projects/${projectId}/reports/${reportId}/comments`, { method: "POST", body: JSON.stringify({ body }) });
+export const apiDeleteReportComment = (projectId: number, reportId: number, id: number) =>
+  request<void>(`/api/projects/${projectId}/reports/${reportId}/comments/${id}`, { method: "DELETE" });
+
 // Push
 export const apiRegisterExpoPushToken = (token: string, platform: string, deviceName: string) =>
   request<{ ok: true }>("/api/push/expo/register", { method: "POST", body: JSON.stringify({ token, platform, deviceName }) });
