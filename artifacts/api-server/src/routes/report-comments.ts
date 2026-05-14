@@ -77,7 +77,7 @@ router.post(
     // Fan-out push notifications to report author + project supervisors,
     // excluding the commenter themselves. Fire-and-forget.
     Promise.all([
-      import("../lib/push").then(async ({ sendPushToUser, sendPushToUsers, getProjectSupervisorIds }) => {
+      import("../lib/push").then(async ({ sendPushToUsers, getProjectSupervisorIds }) => {
         const supervisors = await getProjectSupervisorIds(projectId, userId).catch(() => [] as number[]);
         const recipients = new Set<number>(supervisors);
         if (report.createdById && report.createdById !== userId) recipients.add(report.createdById);
@@ -88,8 +88,6 @@ router.post(
           url: `/projects/${projectId}/reports/${reportId}`,
           data: { type: "report_comment", projectId, reportId },
         });
-        // Also send to the commenter? No.
-        void sendPushToUser;
       }).catch(() => {}),
       import("../lib/expoPush").then(async ({ sendExpoPushToUser }) => {
         const targets = new Set<number>();

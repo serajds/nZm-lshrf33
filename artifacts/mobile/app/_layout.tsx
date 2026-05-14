@@ -33,19 +33,25 @@ function RootLayoutNav() {
   // Deep-link push notifications: when the user taps a notification, route
   // them to the relevant screen if our payload tells us where to go.
   useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((resp) => {
-      const data = resp.notification.request.content.data as Record<string, unknown> | undefined;
+    function routeFromData(data: Record<string, unknown> | undefined) {
       if (!data) return;
       try {
-        const t = data.type;
-        if ((t === "report_approved" || t === "report_comment") && data.projectId && data.reportId) {
-          router.push(`/projects/${Number(data.projectId)}/reports/${Number(data.reportId)}` as never);
-        } else if (data.projectId && data.reportId) {
+        if (data.projectId && data.reportId) {
           router.push(`/projects/${Number(data.projectId)}/reports/${Number(data.reportId)}` as never);
         } else if (data.projectId) {
           router.push(`/projects/${Number(data.projectId)}` as never);
         }
       } catch { /* ignore */ }
+    }
+
+    // Cold-start: app opened by tapping a notification while killed.
+    Notifications.getLastNotificationResponseAsync().then((resp) => {
+      if (resp) routeFromData(resp.notification.request.content.data as Record<string, unknown> | undefined);
+    }).catch(() => {});
+
+    // Foreground/background tap.
+    const sub = Notifications.addNotificationResponseReceivedListener((resp) => {
+      routeFromData(resp.notification.request.content.data as Record<string, unknown> | undefined);
     });
     return () => sub.remove();
   }, []);
