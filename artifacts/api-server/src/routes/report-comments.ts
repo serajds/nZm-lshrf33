@@ -89,17 +89,22 @@ router.post(
           data: { type: "report_comment", projectId, reportId },
         });
       }).catch(() => {}),
-      import("../lib/expoPush").then(async ({ sendExpoPushToUser }) => {
-        const targets = new Set<number>();
+      (async () => {
+        const [{ sendExpoPushToUser }, { getProjectSupervisorIds }] = await Promise.all([
+          import("../lib/expoPush"),
+          import("../lib/push"),
+        ]);
+        const supervisors = await getProjectSupervisorIds(projectId, userId).catch(() => [] as number[]);
+        const targets = new Set<number>(supervisors);
         if (report.createdById && report.createdById !== userId) targets.add(report.createdById);
         await Promise.all(Array.from(targets).map((uid) =>
           sendExpoPushToUser(uid, {
-            title: "تعليق جديد على تقريرك",
+            title: "تعليق جديد على تقرير",
             body: `${author?.fullName ?? "مستخدم"}: ${body.slice(0, 80)}`,
             data: { type: "report_comment", projectId, reportId },
           }).catch(() => {}),
         ));
-      }).catch(() => {}),
+      })().catch(() => {}),
     ]).catch(() => {});
 
     res.status(201).json({
