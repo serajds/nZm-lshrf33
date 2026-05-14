@@ -93,6 +93,9 @@ export default function ReportDetailScreen() {
               <PrimaryButton label="إرجاع لمسودة" kind="secondary" icon="rotate-ccw" loading={setStatus.isPending} onPress={() => setStatus.mutate("draft")} />
             ) : null}
             {canEdit && r.status === "draft" && (r.createdById === user?.id || isPM) ? (
+              <PrimaryButton label="تعديل" icon="edit-2" kind="secondary" onPress={() => router.push(`/projects/${projectId}/reports/${rId}/edit` as never)} />
+            ) : null}
+            {canEdit && r.status === "draft" && (r.createdById === user?.id || isPM) ? (
               <PrimaryButton label="حذف" kind="destructive" icon="trash-2" loading={del.isPending} onPress={() =>
                 Alert.alert("تأكيد", "حذف التقرير نهائياً؟", [
                   { text: "إلغاء", style: "cancel" },

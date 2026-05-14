@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 export default function IndexScreen() {
-  const { ready, token } = useAuth();
+  const { ready, token, user } = useAuth();
   const colors = useColors();
   if (!ready) {
     return (
@@ -13,5 +13,7 @@ export default function IndexScreen() {
       </View>
     );
   }
-  return <Redirect href={token ? "/(tabs)/home" : "/login"} />;
+  if (!token) return <Redirect href="/login" />;
+  if (user?.incompleteProfile) return <Redirect href="/pending-assignment" />;
+  return <Redirect href="/(tabs)/home" />;
 }

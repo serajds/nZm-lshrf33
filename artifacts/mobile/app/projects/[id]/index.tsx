@@ -60,6 +60,15 @@ export default function ProjectOverviewScreen() {
             {can("forms") && (
               <NavTile icon="clipboard" label="النماذج" onPress={() => router.push(`/projects/${projectId}/forms` as never)} colors={colors} />
             )}
+            {can("suspensions") && (
+              <NavTile icon="pause-circle" label="فترات التوقف" onPress={() => router.push(`/projects/${projectId}/suspensions` as never)} colors={colors} />
+            )}
+            {can("extensions") && (
+              <NavTile icon="calendar" label="التمديدات" onPress={() => router.push(`/projects/${projectId}/extensions` as never)} colors={colors} />
+            )}
+            {(perms?.role === "admin" || perms?.projectRole === "project_manager") && (
+              <NavTile icon="users" label="الأعضاء" onPress={() => router.push(`/projects/${projectId}/members` as never)} colors={colors} />
+            )}
           </View>
         </>
       )}
