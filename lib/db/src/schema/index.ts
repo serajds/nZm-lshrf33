@@ -16,3 +16,4 @@ export * from "./form_submissions";
 export * from "./skipped_days";
 export * from "./attendance_records";
 export * from "./push_subscriptions";
+export * from "./expo_push_tokens";

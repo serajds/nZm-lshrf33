@@ -59,7 +59,10 @@
     "@expo-google-fonts/cairo": "^0.4.2",
     "expo-camera": "~17.0.10",
     "expo-crypto": "~15.0.9",
+    "expo-device": "~8.0.10",
+    "expo-file-system": "~19.0.22",
     "expo-image-manipulator": "~14.0.8",
+    "expo-notifications": "~0.32.17",
     "expo-secure-store": "~15.0.8"
   }
 }

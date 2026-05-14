@@ -62,6 +62,14 @@
         {
           "locationWhenInUsePermission": "نحتاج إلى موقعك للتحقق من تواجدك داخل نطاق الموقع عند تسجيل الحضور."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#285a93",
+          "defaultChannel": "default"
+        }
       ]
     ],
     "extra": {
