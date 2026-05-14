@@ -3,6 +3,7 @@ export * from "./projects";
 export * from "./activities";
 export * from "./activity_groups";
 export * from "./reports";
+export * from "./report_comments";
 export * from "./project_files";
 export * from "./project_extensions";
 export * from "./project_suspensions";

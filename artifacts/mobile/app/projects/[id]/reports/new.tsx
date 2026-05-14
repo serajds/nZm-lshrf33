@@ -6,7 +6,10 @@ import { Card, PrimaryButton, Screen } from "@/components/Screen";
 import { useColors } from "@/hooks/useColors";
 import { ApiError, apiCreateReport } from "@/lib/api";
 
-const REPORT_TYPES = ["يومي", "أسبوعي", "شهري"];
+const REPORT_TYPES: { value: "weekly" | "monthly"; label: string }[] = [
+  { value: "weekly", label: "أسبوعي" },
+  { value: "monthly", label: "شهري" },
+];
 
 export default function NewReportScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -15,27 +18,19 @@ export default function NewReportScreen() {
   const qc = useQueryClient();
 
   const today = new Date().toISOString().slice(0, 10);
-  const [type, setType] = useState<string>("يومي");
+  const [type, setType] = useState<"weekly" | "monthly">("weekly");
   const [reportDate, setReportDate] = useState(today);
-  const [periodStart, setPeriodStart] = useState(today);
+  const [periodStart, setPeriodStart] = useState(shiftDays(today, -6));
   const [periodEnd, setPeriodEnd] = useState(today);
   const [workDescription, setWorkDescription] = useState("");
   const [technicalNotes, setTechnicalNotes] = useState("");
   const [recommendations, setRecommendations] = useState("");
   const [progress, setProgress] = useState("");
 
-  // Auto-fill period from reportDate when type changes (daily=same, weekly=7d, monthly=30d).
-  function shiftDays(iso: string, days: number): string {
-    const d = new Date(iso + "T00:00:00Z");
-    if (Number.isNaN(d.getTime())) return iso;
-    d.setUTCDate(d.getUTCDate() + days);
-    return d.toISOString().slice(0, 10);
-  }
-  function applyType(t: string) {
+  function applyType(t: "weekly" | "monthly") {
     setType(t);
-    if (t === "أسبوعي") { setPeriodStart(shiftDays(reportDate, -6)); setPeriodEnd(reportDate); }
-    else if (t === "شهري") { setPeriodStart(shiftDays(reportDate, -29)); setPeriodEnd(reportDate); }
-    else { setPeriodStart(reportDate); setPeriodEnd(reportDate); }
+    if (t === "weekly") { setPeriodStart(shiftDays(reportDate, -6)); setPeriodEnd(reportDate); }
+    else { setPeriodStart(shiftDays(reportDate, -29)); setPeriodEnd(reportDate); }
   }
 
   const create = useMutation({
@@ -64,18 +59,18 @@ export default function NewReportScreen() {
         <View style={styles.chipsRow}>
           {REPORT_TYPES.map(t => (
             <Text
-              key={t}
-              onPress={() => applyType(t)}
+              key={t.value}
+              onPress={() => applyType(t.value)}
               style={[
                 styles.chip,
                 {
-                  backgroundColor: type === t ? colors.primary : colors.secondary,
-                  color: type === t ? colors.primaryForeground : colors.foreground,
-                  borderColor: type === t ? colors.primary : colors.border,
+                  backgroundColor: type === t.value ? colors.primary : colors.secondary,
+                  color: type === t.value ? colors.primaryForeground : colors.foreground,
+                  borderColor: type === t.value ? colors.primary : colors.border,
                 },
               ]}
             >
-              {t}
+              {t.label}
             </Text>
           ))}
         </View>
@@ -111,6 +106,13 @@ export default function NewReportScreen() {
       />
     </Screen>
   );
+}
+
+function shiftDays(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  if (Number.isNaN(d.getTime())) return iso;
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 function Label({ children, colors }: { children: React.ReactNode; colors: ReturnType<typeof useColors> }) {
