@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { Redirect, router } from "expo-router";
@@ -120,12 +121,38 @@ export default function AttendanceScreen() {
     const res = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       cameraType: ImagePicker.CameraType.front,
-      quality: 0.5,
+      quality: 0.7,
       allowsEditing: false,
       exif: false,
     });
     if (res.canceled || !res.assets?.[0]?.uri) return null;
-    return res.assets[0].uri;
+
+    // Mandatory client-side downscale: cap longest edge at 1024px and
+    // re-encode as JPEG q=0.75. Keeps the multipart payload small enough
+    // to avoid proxy 413/403 issues and matches the web app's behavior.
+    try {
+      const asset = res.assets[0];
+      const w = asset.width ?? 0;
+      const h = asset.height ?? 0;
+      const longest = Math.max(w, h);
+      const actions: ImageManipulator.Action[] = [];
+      if (longest > 1024 && longest > 0) {
+        if (w >= h) actions.push({ resize: { width: 1024 } });
+        else actions.push({ resize: { height: 1024 } });
+      }
+      const processed = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        actions,
+        { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG },
+      );
+      return processed.uri;
+    } catch {
+      Alert.alert(
+        "تعذّرت معالجة الصورة",
+        "حدث خطأ أثناء تجهيز صورة السيلفي. حاول مرة أخرى.",
+      );
+      return null;
+    }
   }
 
   async function doCheck(type: "check_in" | "check_out") {
