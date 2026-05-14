@@ -129,6 +129,15 @@ router.delete(
     const role = req.user?.role;
     if (!userId) { res.status(401).json({ error: "غير مصرح" }); return; }
 
+    // Verify the report belongs to the path's project to prevent
+    // cross-project path mismatches.
+    const [report] = await db.select({ id: reportsTable.id, projectId: reportsTable.projectId })
+      .from(reportsTable).where(eq(reportsTable.id, reportId));
+    if (!report || report.projectId !== projectId) {
+      res.status(404).json({ error: "التقرير غير موجود" });
+      return;
+    }
+
     const [comment] = await db.select().from(reportCommentsTable)
       .where(and(eq(reportCommentsTable.id, id), eq(reportCommentsTable.reportId, reportId)));
     if (!comment) { res.status(404).json({ error: "التعليق غير موجود" }); return; }

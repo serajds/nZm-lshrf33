@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
+import NetInfo from "@react-native-community/netinfo";
 import { Redirect, router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
@@ -68,6 +69,20 @@ export default function AttendanceScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []),
   );
+
+  // Auto-flush as soon as connectivity returns, even without a re-focus.
+  React.useEffect(() => {
+    let prevConnected: boolean | null = null;
+    const unsub = NetInfo.addEventListener((state) => {
+      const connected = !!state.isConnected && state.isInternetReachable !== false;
+      if (connected && prevConnected === false) {
+        flushQueue().then(({ sent }) => { if (sent > 0) statusQuery.refetch(); }).catch(() => {});
+      }
+      prevConnected = connected;
+    });
+    return () => unsub();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const statusQuery = useQuery({
     queryKey: ["my-attendance-status", user?.id ?? null],
