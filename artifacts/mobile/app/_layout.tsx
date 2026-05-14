@@ -7,6 +7,8 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import * as Notifications from "expo-notifications";
+import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { I18nManager, Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -20,17 +22,29 @@ SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
-// Force RTL on first launch (no-op if already RTL).
 if (Platform.OS !== "web" && !I18nManager.isRTL) {
   try {
     I18nManager.allowRTL(true);
     I18nManager.forceRTL(true);
-  } catch {
-    /* swallow — best effort, takes effect on next reload */
-  }
+  } catch { /* swallow */ }
 }
 
 function RootLayoutNav() {
+  // Deep-link push notifications: when the user taps a notification, route
+  // them to the relevant screen if our payload tells us where to go.
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((resp) => {
+      const data = resp.notification.request.content.data as Record<string, unknown> | undefined;
+      if (!data) return;
+      try {
+        if (data.type === "report_approved" && data.projectId && data.reportId) {
+          router.push(`/projects/${Number(data.projectId)}/reports/${Number(data.reportId)}` as never);
+        }
+      } catch { /* ignore */ }
+    });
+    return () => sub.remove();
+  }, []);
+
   return (
     <Stack
       screenOptions={{
@@ -38,11 +52,7 @@ function RootLayoutNav() {
         headerBackTitle: "رجوع",
         contentStyle: { backgroundColor: "#f1f3f6" },
       }}
-    >
-      <Stack.Screen name="index" />
-      <Stack.Screen name="login" />
-      <Stack.Screen name="attendance" />
-    </Stack>
+    />
   );
 }
 

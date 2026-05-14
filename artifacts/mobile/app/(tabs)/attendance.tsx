@@ -4,8 +4,8 @@ import * as Haptics from "expo-haptics";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
-import { Redirect, router } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { Redirect, router, useFocusEffect } from "expo-router";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -23,11 +23,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import {
-  apiAttendanceCheck,
   apiMyAttendanceStatus,
-  ApiError,
   type MyAttendanceProjectStatus,
 } from "@/lib/api";
+import { flushQueue, newClientId, sendOrQueue, subscribeQueue } from "@/lib/offlineQueue";
 
 const ROLES_BLOCKED = new Set(["owner", "contractor"]);
 
@@ -54,8 +53,21 @@ export default function AttendanceScreen() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState<"check_in" | "check_out" | null>(null);
+  const [queueCount, setQueueCount] = useState(0);
 
   const blocked = !!user && ROLES_BLOCKED.has(user.role);
+
+  React.useEffect(() => subscribeQueue(setQueueCount), []);
+
+  // On focus / re-mount, opportunistically flush the offline queue.
+  useFocusEffect(
+    useCallback(() => {
+      flushQueue().then(({ sent }) => {
+        if (sent > 0) statusQuery.refetch();
+      }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []),
+  );
 
   const statusQuery = useQuery({
     queryKey: ["my-attendance-status", user?.id ?? null],
@@ -166,29 +178,34 @@ export default function AttendanceScreen() {
       const loc = await ensureLocation();
       if (!loc) { setBusy(null); return; }
 
-      await apiAttendanceCheck({
+      const outcome = await sendOrQueue({
+        clientId: newClientId(),
         projectId: selected.projectId,
         type,
         selfieUri,
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
         accuracy: loc.coords.accuracy ?? null,
+        capturedAt: Date.now(),
       });
-
-      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("تم", type === "check_in" ? "تم تسجيل الحضور بنجاح" : "تم تسجيل الانصراف بنجاح");
-      await statusQuery.refetch();
+      if (outcome.kind === "ok") {
+        if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("تم", type === "check_in" ? "تم تسجيل الحضور بنجاح" : "تم تسجيل الانصراف بنجاح");
+        await statusQuery.refetch();
+      } else if (outcome.kind === "queued") {
+        if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Alert.alert(
+          "تم الحفظ محلياً",
+          "لا يوجد اتصال بالإنترنت الآن. سيتم إرسال العملية تلقائياً عند عودة الاتصال.",
+        );
+      } else {
+        if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        const outOfRange = outcome.message.includes("نطاق") || outcome.message.includes("خارج");
+        Alert.alert(outOfRange ? "خارج نطاق الموقع" : "تعذّر التسجيل", outcome.message);
+      }
     } catch (e) {
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      let msg = "حدث خطأ أثناء تسجيل العملية";
-      let outOfRange = false;
-      if (e instanceof ApiError) {
-        msg = e.message || msg;
-        if (e.data && typeof e.data === "object" && "outOfRange" in e.data) {
-          outOfRange = !!(e.data as Record<string, unknown>).outOfRange;
-        }
-      }
-      Alert.alert(outOfRange ? "خارج نطاق الموقع" : "تعذّر التسجيل", msg);
+      Alert.alert("تعذّر التسجيل", e instanceof Error ? e.message : "حدث خطأ غير متوقع");
     } finally {
       setBusy(null);
     }
@@ -213,9 +230,14 @@ export default function AttendanceScreen() {
             {user?.fullName ?? ""}
           </Text>
         </View>
+        {queueCount > 0 ? (
+          <View style={[styles.iconBtn, { backgroundColor: colors.warning + "22", borderColor: colors.warning, borderWidth: 1 }]}>
+            <Text style={{ color: colors.warning, fontFamily: "Cairo_700Bold", fontSize: 12 }}>{queueCount}</Text>
+          </View>
+        ) : null}
         <TouchableOpacity
           onPress={handleLogout}
-          style={[styles.iconBtn, { backgroundColor: colors.secondary }]}
+          style={[styles.iconBtn, { backgroundColor: colors.secondary, marginStart: 8 }]}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           testID="logout-button"
         >

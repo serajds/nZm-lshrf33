@@ -372,6 +372,24 @@ router.patch("/projects/:projectId/reports/:id/status", requireProjectManager("p
     projectId,
   });
 
+  // Notify report author of approval (fire-and-forget).
+  if (status === "approved" && report.createdById && report.createdById !== req.user?.userId) {
+    import("../lib/expoPush").then(({ sendExpoPushToUser }) => {
+      sendExpoPushToUser(report.createdById!, {
+        title: "تم اعتماد تقريرك",
+        body: `تم اعتماد التقرير #${report.reportNumber}`,
+        data: { type: "report_approved", projectId, reportId: report.id },
+      }).catch(() => {});
+    }).catch(() => {});
+    import("../lib/push").then(({ sendPushToUser }) => {
+      sendPushToUser(report.createdById!, {
+        title: "تم اعتماد تقريرك",
+        body: `تم اعتماد التقرير #${report.reportNumber}`,
+        url: `/projects/${projectId}/reports/${report.id}`,
+      }).catch(() => {});
+    }).catch(() => {});
+  }
+
   res.json(report);
 });
 

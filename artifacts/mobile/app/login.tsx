@@ -38,7 +38,7 @@ export default function LoginScreen() {
     try {
       await login(phone, password);
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace("/attendance");
+      router.replace("/(tabs)/home");
     } catch (e) {
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       if (e instanceof ApiError) {

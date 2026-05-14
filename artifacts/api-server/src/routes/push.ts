@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { pushSubscriptionsTable } from "@workspace/db";
+import { pushSubscriptionsTable, expoPushTokensTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { getVapidPublicKey } from "../lib/push";
@@ -86,6 +86,45 @@ router.post("/push/unsubscribe", requireAuth, async (req: Request, res: Response
       eq(pushSubscriptionsTable.endpoint, endpoint),
       eq(pushSubscriptionsTable.userId, userId),
     ));
+  res.json({ ok: true });
+});
+
+/**
+ * Register (or refresh) an Expo push token for the current user.
+ * One device → one token. Reassigns ownership if the same token
+ * was previously seen for a different user (the device was re-signed-in).
+ */
+router.post("/push/expo/register", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = req.user!.userId;
+  const { token, platform, deviceName } = req.body ?? {};
+  if (typeof token !== "string" || !token.startsWith("ExponentPushToken[") && !token.startsWith("ExpoPushToken[")) {
+    res.status(400).json({ error: "expo push token غير صالح" });
+    return;
+  }
+  const plat = typeof platform === "string" ? platform.slice(0, 32) : null;
+  const dn = typeof deviceName === "string" ? deviceName.slice(0, 128) : null;
+
+  await db.execute(sql`
+    INSERT INTO expo_push_tokens (user_id, token, platform, device_name)
+    VALUES (${userId}, ${token}, ${plat}, ${dn})
+    ON CONFLICT (token) DO UPDATE SET
+      user_id = EXCLUDED.user_id,
+      platform = EXCLUDED.platform,
+      device_name = EXCLUDED.device_name,
+      last_used_at = now()
+  `);
+  res.json({ ok: true });
+});
+
+router.post("/push/expo/unregister", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = req.user!.userId;
+  const { token } = req.body ?? {};
+  if (typeof token !== "string") {
+    res.status(400).json({ error: "token مطلوب" });
+    return;
+  }
+  await db.delete(expoPushTokensTable)
+    .where(and(eq(expoPushTokensTable.token, token), eq(expoPushTokensTable.userId, userId)));
   res.json({ ok: true });
 });
 

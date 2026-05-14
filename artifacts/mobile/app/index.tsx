@@ -6,7 +6,6 @@ import { useColors } from "@/hooks/useColors";
 export default function IndexScreen() {
   const { ready, token } = useAuth();
   const colors = useColors();
-
   if (!ready) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}>
@@ -14,6 +13,5 @@ export default function IndexScreen() {
       </View>
     );
   }
-
-  return <Redirect href={token ? "/attendance" : "/login"} />;
+  return <Redirect href={token ? "/(tabs)/home" : "/login"} />;
 }

@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 import { apiLogin, setTokenGetter, type ApiUser } from "@/lib/api";
+import { registerForPushNotificationsAsync, unregisterCurrentToken } from "@/lib/expoPush";
 
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
@@ -18,16 +19,12 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// Module-level mirror of the current token. Updated synchronously alongside
-// every state change so the API layer always sees the freshest value, even
-// before React commits / runs effects.
 let _currentToken: string | null = null;
 setTokenGetter(() => _currentToken);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({ ready: false, user: null, token: null });
 
-  // Load persisted session on startup.
   useEffect(() => {
     (async () => {
       try {
@@ -38,6 +35,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const user = userJson ? (JSON.parse(userJson) as ApiUser) : null;
         _currentToken = token;
         setState({ ready: true, user, token });
+        if (token) {
+          // Re-register push token on launch — best-effort, never blocks.
+          registerForPushNotificationsAsync().catch(() => {});
+        }
       } catch {
         _currentToken = null;
         setState({ ready: true, user: null, token: null });
@@ -53,9 +54,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ]);
     _currentToken = res.token;
     setState({ ready: true, user: res.user, token: res.token });
+    registerForPushNotificationsAsync().catch(() => {});
   }, []);
 
   const logout = useCallback(async () => {
+    await unregisterCurrentToken().catch(() => {});
     await Promise.all([
       SecureStore.deleteItemAsync(TOKEN_KEY),
       SecureStore.deleteItemAsync(USER_KEY),
