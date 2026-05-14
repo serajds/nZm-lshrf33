@@ -37,8 +37,13 @@ function RootLayoutNav() {
       const data = resp.notification.request.content.data as Record<string, unknown> | undefined;
       if (!data) return;
       try {
-        if (data.type === "report_approved" && data.projectId && data.reportId) {
+        const t = data.type;
+        if ((t === "report_approved" || t === "report_comment") && data.projectId && data.reportId) {
           router.push(`/projects/${Number(data.projectId)}/reports/${Number(data.reportId)}` as never);
+        } else if (data.projectId && data.reportId) {
+          router.push(`/projects/${Number(data.projectId)}/reports/${Number(data.reportId)}` as never);
+        } else if (data.projectId) {
+          router.push(`/projects/${Number(data.projectId)}` as never);
         }
       } catch { /* ignore */ }
     });
