@@ -38,12 +38,13 @@ export default function LoginScreen() {
     try {
       await login(phone, password);
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace("/(tabs)/home");
+      router.replace("/");
     } catch (e) {
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       if (e instanceof ApiError) {
         if (e.code === "ACCOUNT_NOT_ACTIVATED") {
-          setError("حسابك لم يُفعَّل بعد من قِبل المسؤول. تواصل معه لتفعيل الحساب.");
+          router.replace("/pending-assignment");
+          return;
         } else {
           setError(e.message || "فشل تسجيل الدخول");
         }

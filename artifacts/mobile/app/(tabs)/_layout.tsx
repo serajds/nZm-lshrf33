@@ -16,6 +16,7 @@ export default function TabsLayout() {
     );
   }
   if (!token) return <Redirect href="/login" />;
+  if (user?.incompleteProfile) return <Redirect href="/pending-assignment" />;
 
   const isAdmin = user?.role === "admin";
   const fieldRole = user?.role !== "owner" && user?.role !== "contractor";

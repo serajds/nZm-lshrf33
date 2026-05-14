@@ -16,6 +16,7 @@ export interface ApiUser {
   phone: string;
   fullName: string;
   role: "admin" | "project_manager" | "engineer" | "owner" | "contractor";
+  incompleteProfile?: boolean;
 }
 
 export interface LoginResponse { user: ApiUser; token: string; }
@@ -58,6 +59,8 @@ export interface ApiReport {
   reportNumber: number;
   type: string;
   reportDate: string;
+  periodStart?: string | null;
+  periodEnd?: string | null;
   workDescription: string | null;
   progressPercentage: number | null;
   technicalNotes: string | null;
@@ -273,6 +276,55 @@ export const apiListUsers = () => request<ApiAdminUser[]>("/api/users");
 // Audit log (admin)
 export const apiAuditLog = (limit = 100) =>
   request<ApiAuditEntry[]>(`/api/audit-log?limit=${limit}`);
+
+// Project members (admin / PM)
+export interface ApiProjectMember {
+  id: number;
+  projectId: number;
+  userId: number;
+  userName: string;
+  userPhone: string;
+  userRole: string;
+  role: string;
+  companyNames: string[];
+  assignedGroupIds: number[];
+  isContractorLocked: boolean;
+}
+export const apiListProjectMembers = (projectId: number) =>
+  request<ApiProjectMember[]>(`/api/projects/${projectId}/members`);
+export const apiListEligibleUsers = (projectId: number) =>
+  request<ApiAdminUser[]>(`/api/projects/${projectId}/eligible-users`);
+export const apiAddProjectMember = (projectId: number, body: { userId: number; role: string; assignedGroupIds?: number[] }) =>
+  request<ApiProjectMember>(`/api/projects/${projectId}/members`, { method: "POST", body: JSON.stringify(body) });
+export const apiRemoveProjectMember = (projectId: number, memberId: number) =>
+  request<void>(`/api/projects/${projectId}/members/${memberId}`, { method: "DELETE" });
+
+// Suspensions
+export interface ApiSuspension {
+  id: number; projectId: number; type: string; title: string;
+  startDate: string; endDate: string; calendarDays: number;
+  reason: string | null; documentRef: string | null; approvedBy: string | null;
+  notes: string | null; datesShifted: boolean; createdAt: string;
+}
+export const apiListSuspensions = (projectId: number) =>
+  request<ApiSuspension[]>(`/api/projects/${projectId}/suspensions`);
+export const apiCreateSuspension = (projectId: number, body: Omit<ApiSuspension, "id" | "projectId" | "calendarDays" | "datesShifted" | "createdAt"> & { shiftDates?: boolean }) =>
+  request<ApiSuspension>(`/api/projects/${projectId}/suspensions`, { method: "POST", body: JSON.stringify(body) });
+export const apiDeleteSuspension = (projectId: number, id: number) =>
+  request<void>(`/api/projects/${projectId}/suspensions/${id}`, { method: "DELETE" });
+
+// Extensions
+export interface ApiExtension {
+  id: number; projectId: number; extensionDate: string; daysAdded: number;
+  reason: string | null; documentRef: string | null; approvedBy: string | null;
+  notes: string | null; newEndDate: string | null; createdAt: string;
+}
+export const apiListExtensions = (projectId: number) =>
+  request<ApiExtension[]>(`/api/projects/${projectId}/extensions`);
+export const apiCreateExtension = (projectId: number, body: { extensionDate: string; daysAdded: number; reason?: string | null; documentRef?: string | null; approvedBy?: string | null; notes?: string | null }) =>
+  request<ApiExtension>(`/api/projects/${projectId}/extensions`, { method: "POST", body: JSON.stringify(body) });
+export const apiDeleteExtension = (projectId: number, id: number) =>
+  request<void>(`/api/projects/${projectId}/extensions/${id}`, { method: "DELETE" });
 
 // Push
 export const apiRegisterExpoPushToken = (token: string, platform: string, deviceName: string) =>
