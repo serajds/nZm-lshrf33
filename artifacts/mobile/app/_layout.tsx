@@ -16,7 +16,8 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AuthProvider } from "@/context/AuthContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { startGeofenceReminder, stopGeofenceReminder } from "@/lib/geofenceReminder";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -27,6 +28,20 @@ if (Platform.OS !== "web" && !I18nManager.isRTL) {
     I18nManager.allowRTL(true);
     I18nManager.forceRTL(true);
   } catch { /* swallow */ }
+}
+
+function GeofenceReminderBoot() {
+  const { token, ready } = useAuth();
+  useEffect(() => {
+    if (!ready) return;
+    if (token) {
+      void startGeofenceReminder();
+    } else {
+      stopGeofenceReminder();
+    }
+    return () => stopGeofenceReminder();
+  }, [ready, token]);
+  return null;
 }
 
 function RootLayoutNav() {
@@ -91,6 +106,7 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
               <AuthProvider>
+                <GeofenceReminderBoot />
                 <RootLayoutNav />
               </AuthProvider>
             </KeyboardProvider>
