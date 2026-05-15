@@ -1,13 +1,18 @@
 import { Feather } from "@expo/vector-icons";
 import { Redirect, Tabs } from "expo-router";
 import React from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Platform, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 export default function TabsLayout() {
   const { ready, token, user } = useAuth();
   const colors = useColors();
+  const insets = useSafeAreaInsets();
+  // Reserve space for the Android system navigation bar / iOS home indicator
+  // so our tab buttons never sit underneath the OS gesture area.
+  const bottomInset = Math.max(insets.bottom, Platform.OS === "android" ? 12 : 0);
   if (!ready) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}>
@@ -30,11 +35,12 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: colors.card,
           borderTopColor: colors.border,
-          height: 60,
-          paddingBottom: 8,
+          height: 60 + bottomInset,
+          paddingBottom: 8 + bottomInset,
           paddingTop: 6,
         },
         tabBarLabelStyle: { fontFamily: "Cairo_600SemiBold", fontSize: 11 },
+        tabBarItemStyle: { paddingVertical: 2 },
       }}
     >
       <Tabs.Screen
