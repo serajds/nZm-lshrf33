@@ -41,6 +41,26 @@ app.use(cors());
 app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+// Mobile clients (React Native) cannot reliably send Origin/Referer headers,
+// which Replit's Autoscale edge requires for application/json POSTs. As a
+// workaround, the mobile app sends the same JSON payload but with
+// Content-Type: text/plain. Parse those bodies as JSON here so handlers
+// see req.body exactly the same way as a browser request.
+app.use(express.text({ type: "text/plain", limit: "10mb" }));
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  if (
+    typeof req.body === "string" &&
+    req.body.length > 0 &&
+    (req.headers["content-type"] || "").toLowerCase().startsWith("text/plain")
+  ) {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch {
+      // leave as string; route handlers will reject if they need JSON
+    }
+  }
+  next();
+});
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 

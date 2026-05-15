@@ -164,13 +164,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   const token = _tokenGetter();
   if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
-  if (init.body && typeof init.body === "string" && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  // Send JSON bodies as text/plain to bypass Replit Autoscale's edge CSRF
+  // check, which rejects application/json POSTs missing Origin/Referer
+  // (React Native strips those headers on Android). The server is configured
+  // to parse text/plain bodies as JSON.
+  if (init.body && typeof init.body === "string" && !headers.has("Content-Type")) headers.set("Content-Type", "text/plain");
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
-  // Some hosting/edge layers (e.g. Cloudflare WAF) require these headers to
-  // accept non-browser API calls. Always send them for parity with the web app.
   if (!headers.has("X-Requested-With")) headers.set("X-Requested-With", "XMLHttpRequest");
-  if (BASE_URL && !headers.has("Origin")) headers.set("Origin", BASE_URL);
-  if (BASE_URL && !headers.has("Referer")) headers.set("Referer", `${BASE_URL}/`);
 
   let res: Response;
   try { res = await fetch(url, { ...init, headers }); }
