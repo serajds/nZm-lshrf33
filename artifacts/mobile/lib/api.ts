@@ -166,6 +166,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
   if (init.body && typeof init.body === "string" && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
+  // Some hosting/edge layers (e.g. Cloudflare WAF) require this header to
+  // accept non-browser API calls. Always send it for parity with the web app.
+  if (!headers.has("X-Requested-With")) headers.set("X-Requested-With", "XMLHttpRequest");
 
   let res: Response;
   try { res = await fetch(url, { ...init, headers }); }
@@ -217,7 +220,10 @@ export async function apiAttendanceCheck(p: AttendanceCheckParams): Promise<unkn
   fd.append("clientId", p.clientId ?? Crypto.randomUUID());
 
   const path = `/api/attendance/projects/${p.projectId}/${p.type === "check_in" ? "check-in" : "check-out"}`;
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "X-Requested-With": "XMLHttpRequest",
+  };
   const token = _tokenGetter();
   if (token) headers.Authorization = `Bearer ${token}`;
 
