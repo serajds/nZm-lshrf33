@@ -1,9 +1,16 @@
 import * as Crypto from "expo-crypto";
 
-const RAW_DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? "";
-export const BASE_URL = RAW_DOMAIN
-  ? (RAW_DOMAIN.startsWith("http") ? RAW_DOMAIN : `https://${RAW_DOMAIN}`)
-  : "";
+// Production custom domain. Used as a hard fallback when EXPO_PUBLIC_DOMAIN
+// is missing or accidentally points to a Replit dev/preview host (which has
+// edge CSRF that React Native cannot satisfy). This guarantees release
+// builds and OTA updates always talk to the real backend.
+const PRODUCTION_DOMAIN = "portal.almadaco.ly";
+const RAW_DOMAIN_ENV = (process.env.EXPO_PUBLIC_DOMAIN ?? "").trim();
+const RAW_DOMAIN =
+  !RAW_DOMAIN_ENV || /\.replit\.(dev|app)$/i.test(RAW_DOMAIN_ENV) || /picard\./i.test(RAW_DOMAIN_ENV)
+    ? PRODUCTION_DOMAIN
+    : RAW_DOMAIN_ENV;
+export const BASE_URL = RAW_DOMAIN.startsWith("http") ? RAW_DOMAIN : `https://${RAW_DOMAIN}`;
 
 let _tokenGetter: () => string | null = () => null;
 export function setTokenGetter(g: () => string | null): void {
