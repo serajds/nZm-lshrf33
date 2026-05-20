@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -36,10 +37,28 @@ export default function Login() {
   usePageTitle("تسجيل الدخول");
   const { login, register, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<"login" | "register">("login");
+
+  // When the central 401 handler bounced us here, surface a friendly
+  // "your session expired" notice instead of letting the user wonder why
+  // they were logged out. The flag is one-shot.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("auth_session_expired") === "1") {
+        sessionStorage.removeItem("auth_session_expired");
+        toast({
+          title: "انتهت الجلسة",
+          description: "يرجى تسجيل الدخول مجددًا للمتابعة.",
+        });
+      }
+    } catch {
+      // sessionStorage may be unavailable — skip silently.
+    }
+  }, [toast]);
 
   // CRITICAL: every hook below MUST run on every render. Returning early
   // (or calling setLocation during render) above this line broke the

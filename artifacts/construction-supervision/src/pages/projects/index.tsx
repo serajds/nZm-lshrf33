@@ -39,9 +39,34 @@ import { useToast } from "@/hooks/use-toast";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
-function authFetchJson(url: string) {
+async function authFetchJson(url: string) {
   const token = localStorage.getItem("auth_token");
-  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.ok ? r.json() : []);
+  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  // Surface a renewed session token to the central saver so this manual
+  // fetch keeps the rolling session alive too.
+  const renewed = res.headers.get("X-Renewed-Token");
+  if (renewed && renewed !== token) {
+    try {
+      localStorage.setItem("auth_token", renewed);
+      window.dispatchEvent(new CustomEvent("auth-token-renewed", { detail: renewed }));
+    } catch { /* ignore */ }
+  }
+  if (res.status === 401) {
+    // Let the central handler clear credentials and redirect to /login,
+    // instead of silently rendering an empty list as if the user simply
+    // had no data.
+    try {
+      const here = window.location.pathname + window.location.search;
+      if (!here.endsWith("/login")) sessionStorage.setItem("auth_return_to", here);
+      sessionStorage.setItem("auth_session_expired", "1");
+    } catch { /* ignore */ }
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_user_cache");
+    window.location.assign((import.meta.env.BASE_URL.replace(/\/$/, "") || "") + "/login");
+    throw new Error("unauthorized");
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 
 interface CompanyOption {

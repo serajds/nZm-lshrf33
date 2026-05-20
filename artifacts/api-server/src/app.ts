@@ -34,7 +34,9 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// Expose the X-Renewed-Token response header so the browser's fetch wrapper
+// can read it and silently roll the user's session forward.
+app.use(cors({ exposedHeaders: ["X-Renewed-Token"] }));
 // Gzip-compress JSON & text responses. Cuts list payloads (activities,
 // members, files, reports) by 5-10x, which is the single biggest perceived
 // win on slow connections.

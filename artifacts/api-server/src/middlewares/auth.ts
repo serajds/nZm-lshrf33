@@ -1,8 +1,36 @@
 import { Request, Response, NextFunction } from "express";
-import { verifyToken, JwtPayload } from "../lib/auth";
+import {
+  verifyToken,
+  verifyTokenWithClaims,
+  signToken,
+  JWT_RENEWAL_THRESHOLD_SECONDS,
+  JwtPayload,
+} from "../lib/auth";
 import { db } from "@workspace/db";
 import { projectMembersTable, userCompaniesTable, projectsTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
+
+// Issue a fresh token when the presented one has less than half its lifetime
+// remaining, and return it in the X-Renewed-Token response header so the
+// client can transparently replace its stored token. This gives active users
+// a rolling session without ever forcing them through a hard re-login.
+function maybeRenewToken(token: string, res: Response): JwtPayload | null {
+  const claims = verifyTokenWithClaims(token);
+  if (!claims) return null;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const remaining = claims.exp - nowSec;
+  if (remaining > 0 && remaining < JWT_RENEWAL_THRESHOLD_SECONDS) {
+    try {
+      const fresh = signToken({ userId: claims.userId, phone: claims.phone, role: claims.role });
+      if (!res.headersSent) {
+        res.setHeader("X-Renewed-Token", fresh);
+      }
+    } catch {
+      // Renewal is best-effort — never let a signing failure break the request.
+    }
+  }
+  return { userId: claims.userId, phone: claims.phone, role: claims.role };
+}
 
 declare global {
   namespace Express {
@@ -21,7 +49,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
 
   const token = authHeader.slice(7);
-  const payload = verifyToken(token);
+  const payload = maybeRenewToken(token, res);
   if (!payload) {
     res.status(401).json({ error: "رمز الدخول غير صالح أو منتهي الصلاحية" });
     return;
