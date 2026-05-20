@@ -3,12 +3,17 @@ export * from "./generated/api.schemas";
 export {
   setBaseUrl,
   setAuthTokenGetter,
+  setAuthTokenSaver,
+  setUnauthorizedHandler,
+  processFetchResponse,
   customFetch,
   ApiError,
   ResponseParseError,
 } from "./custom-fetch";
 export type {
   AuthTokenGetter,
+  AuthTokenSaver,
+  UnauthorizedHandler,
   CustomFetchOptions,
   ErrorType,
   BodyType,

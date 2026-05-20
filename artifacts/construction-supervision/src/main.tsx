@@ -1,10 +1,24 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import { setAuthTokenGetter } from "@workspace/api-client-react";
+import { setAuthTokenGetter, setAuthTokenSaver } from "@workspace/api-client-react";
 import { registerSW } from "virtual:pwa-register";
 
 setAuthTokenGetter(() => localStorage.getItem("auth_token"));
+// When the server rolls our session forward via X-Renewed-Token, persist
+// the fresh token immediately so the next request (and the next page load)
+// uses it. AuthProvider also listens on the storage event to sync its
+// in-memory token state.
+setAuthTokenSaver((token) => {
+  try {
+    if (localStorage.getItem("auth_token") !== token) {
+      localStorage.setItem("auth_token", token);
+      window.dispatchEvent(new CustomEvent("auth-token-renewed", { detail: token }));
+    }
+  } catch {
+    // localStorage may be unavailable (private mode) — non-fatal.
+  }
+});
 
 const rootEl = document.getElementById("root")!;
 createRoot(rootEl).render(<App />);

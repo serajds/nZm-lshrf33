@@ -10,6 +10,7 @@ import {
   useListProjectMembers,
   useGetEligibleUsers,
 } from "@workspace/api-client-react";
+import { processFetchResponse } from "@workspace/api-client-react";
 import { useMyProjectPermissions } from "@/hooks/use-tab-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
@@ -50,12 +51,17 @@ interface ProjectExtension {
   documentRef: string | null;
 }
 
-function authFetch(url: string, opts?: RequestInit) {
+async function authFetch(url: string, opts?: RequestInit) {
   const token = localStorage.getItem("auth_token");
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
   if (opts?.body) headers["Content-Type"] = "application/json";
-  return fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> || {}) } });
+  const response = await fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> || {}) } });
+  // Funnel renewed tokens and 401s through the shared pipeline so this
+  // page participates in rolling session renewal AND the centralized
+  // "session expired" redirect instead of swallowing 401 as empty data.
+  await processFetchResponse(response);
+  return response;
 }
 
 interface SummaryWidget {
@@ -93,7 +99,7 @@ export default function ProjectDetails() {
   // by every project sub-page (overview, reports, activities, files…). A
   // 5-minute staleTime + previous-data fallback keeps tab-switching from
   // re-fetching it and from flashing an empty header on every navigation.
-  const { data: project, isLoading: isProjectLoading } = useGetProject(projectId, {
+  const { data: project, isLoading: isProjectLoading, error: projectError } = useGetProject(projectId, {
     query: {
       enabled: !!projectId,
       staleTime: 1000 * 60 * 5,
@@ -295,8 +301,31 @@ export default function ProjectDetails() {
         </div>
       </div>
     );
-  if (!project)
-    return <div className="flex h-40 items-center justify-center text-muted-foreground">المشروع غير موجود</div>;
+  if (!project) {
+    // Distinguish a real "this project does not exist / you have no access"
+    // (404 / 403) from a transient or auth-related failure. For 401, the
+    // central handler already redirected to /login, so we just keep the
+    // loading spinner up until the redirect happens.
+    const status = (projectError as { status?: number } | undefined)?.status;
+    if (status === 401) {
+      return (
+        <div className="flex h-[60vh] items-center justify-center">
+          <div className="text-center space-y-3">
+            <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-muted-foreground text-sm">جاري إعادة توجيهك إلى تسجيل الدخول...</p>
+          </div>
+        </div>
+      );
+    }
+    if (status === 404 || status === 403) {
+      return <div className="flex h-40 items-center justify-center text-muted-foreground">المشروع غير موجود</div>;
+    }
+    return (
+      <div className="flex h-40 items-center justify-center text-center text-muted-foreground">
+        تعذّر تحميل المشروع. حاول التحديث بعد قليل.
+      </div>
+    );
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {

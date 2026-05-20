@@ -1,9 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, ReactNode } from "react";
-import { useGetMe, useLogin, useLogout, useRegister } from "@workspace/api-client-react";
+import { useGetMe, useLogin, useLogout, useRegister, setUnauthorizedHandler } from "@workspace/api-client-react";
 import type { User, LoginBody, RegisterBody } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+
+const SESSION_EXPIRED_FLAG = "auth_session_expired";
 
 type AuthContextType = {
   user: User | null;
@@ -84,6 +86,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [error]);
 
+  // Keep the in-memory token in sync with the storage layer. The HTTP client
+  // dispatches `auth-token-renewed` whenever the server rolls the session
+  // forward via X-Renewed-Token; the standard `storage` event covers the
+  // multi-tab case where another tab logged in / out.
+  useEffect(() => {
+    const sync = () => {
+      const stored = localStorage.getItem("auth_token");
+      setToken((current) => (current === stored ? current : stored));
+    };
+    const onRenewed = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      if (typeof detail === "string") setToken(detail);
+    };
+    window.addEventListener("storage", sync);
+    window.addEventListener("auth-token-renewed", onRenewed);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("auth-token-renewed", onRenewed);
+    };
+  }, []);
+
+  // Central 401 handler: any time the API rejects us for being unauthorized,
+  // we clear local credentials, mark the session as expired so the login
+  // page can show a friendly message, and bounce to /login. This replaces
+  // the silent "empty list" / "project not found" states that used to appear
+  // when the JWT expired mid-session.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      const hadToken = !!localStorage.getItem("auth_token");
+      if (!hadToken) return;
+      try {
+        const here = window.location.pathname + window.location.search;
+        // Don't store /login itself as a return path.
+        if (!here.endsWith("/login")) {
+          sessionStorage.setItem("auth_return_to", here);
+        }
+        sessionStorage.setItem(SESSION_EXPIRED_FLAG, "1");
+      } catch {
+        // sessionStorage may be unavailable — non-fatal.
+      }
+      localStorage.removeItem("auth_token");
+      writeCachedUser(null);
+      setToken(null);
+      queryClient.clear();
+      setLocation("/login");
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [queryClient, setLocation]);
+
   // Only block the UI with a full-screen spinner on the very FIRST login
   // (no cached user yet). On every subsequent open we have a cached user,
   // so the app shell renders immediately while React Query revalidates in
@@ -118,7 +169,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       toast({
         title: "تم تسجيل الدخول بنجاح",
       });
-      setLocation("/");
+      // If a 401 bounced the user here from a deep link, send them back
+      // to where they were so they don't lose their place.
+      let returnTo = "/";
+      try {
+        const stored = sessionStorage.getItem("auth_return_to");
+        if (stored && !stored.endsWith("/login")) {
+          const base = (import.meta.env.BASE_URL || "/").replace(/\/+$/, "");
+          // setLocation is base-relative under WouterRouter; strip the prefix.
+          returnTo = base && stored.startsWith(base) ? stored.slice(base.length) || "/" : stored;
+        }
+      } catch {
+        // sessionStorage may be unavailable — fall through to "/".
+      } finally {
+        try { sessionStorage.removeItem("auth_return_to"); } catch { /* ignore */ }
+      }
+      setLocation(returnTo);
     } catch (err) {
       // The server returns 403 with code "ACCOUNT_NOT_ACTIVATED" when the
       // credentials are valid but the admin hasn't linked the user to a
