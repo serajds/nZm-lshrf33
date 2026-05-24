@@ -4,7 +4,7 @@ import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projec
 import { eq, and, count, desc } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
 import jwt from "jsonwebtoken";
-import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcOverrunDays, roundPercent } from "../lib/progress";
+import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcOverrunDays, isActivityDelayed, roundPercent } from "../lib/progress";
 
 const router: IRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
@@ -95,7 +95,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     const overrunDays = calcOverrunDays(today, project.expectedEndDate, computedActual);
     const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
     const netDelayDays = Math.max(0, delayDays - suspensionDays);
-    const activitiesDelayed = activities.filter(a => a.status === "delayed").length;
+    const activitiesDelayed = activities.filter(a => isActivityDelayed(a, today, false)).length;
 
     summary = {
       projectId: project.id,
