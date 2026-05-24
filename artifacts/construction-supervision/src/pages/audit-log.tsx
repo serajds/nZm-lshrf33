@@ -29,9 +29,15 @@ type AuditEntry = {
   createdAt: string;
 };
 
-function authFetch(url: string) {
+async function authFetch(url: string): Promise<AuditEntry[]> {
   const token = localStorage.getItem("auth_token");
-  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.json());
+  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 }
 
 const ACTION_LABELS: Record<string, string> = { create: "إنشاء", update: "تعديل", delete: "حذف" };
