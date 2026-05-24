@@ -18,6 +18,7 @@ type AuditEntry = {
   id: number;
   userId: number | null;
   userName: string | null;
+  userFullName: string | null;
   action: string;
   entityType: string;
   entityId: number | null;
@@ -148,7 +149,7 @@ export default function AuditLogPage() {
                               {new Date(log.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
                             </span>
                           </TableCell>
-                          <TableCell className="text-sm">{log.userName ?? "—"}</TableCell>
+                          <TableCell className="text-sm">{log.userFullName ?? log.userName ?? "—"}</TableCell>
                           <TableCell>
                             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${ACTION_COLORS[log.action] ?? "bg-gray-100 text-gray-700"}`}>
                               <Icon className="h-3 w-3" />
@@ -185,7 +186,7 @@ export default function AuditLogPage() {
                       </div>
                       <div className="text-sm font-medium truncate">{log.entityName ?? "—"}</div>
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{log.userName ?? "—"}</span>
+                        <span>{log.userFullName ?? log.userName ?? "—"}</span>
                         <span className="tabular-nums">
                           {new Date(log.createdAt).toLocaleDateString("en-GB")}{" "}
                           {new Date(log.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
