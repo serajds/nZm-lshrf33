@@ -18,6 +18,29 @@ export function roundPercent(n: number | null | undefined): number {
 }
 
 /**
+ * Single source of truth for "is this activity overdue?".
+ * An activity is delayed when it has a planned end date that has passed,
+ * and it is not yet complete (neither by status nor by actualProgress).
+ * Pass `noSchedule=true` for activities belonging to a project without a
+ * schedule — those are never counted as delayed.
+ */
+export function isActivityDelayed(
+  activity: { plannedEndDate: string | null; status: string; actualProgress: number },
+  today: Date = new Date(),
+  noSchedule: boolean = false,
+): boolean {
+  if (noSchedule) return false;
+  if (activity.status === "completed") return false;
+  if (activity.actualProgress >= 100) return false;
+  if (!activity.plannedEndDate) return false;
+  const plannedEnd = new Date(activity.plannedEndDate);
+  plannedEnd.setHours(0, 0, 0, 0);
+  const t = new Date(today.getTime());
+  t.setHours(0, 0, 0, 0);
+  return t > plannedEnd;
+}
+
+/**
  * S-curve approximation using a logistic function.
  * Maps elapsed fraction f ∈ [0,1] to progress ∈ [0,100] with slow start, fast middle, slow end.
  * f=0 → 0, f=0.5 → 50, f=1 → 100.

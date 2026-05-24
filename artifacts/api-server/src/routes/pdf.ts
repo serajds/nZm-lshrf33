@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable, projectSuspensionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
-import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcActivityPlannedProgress, roundPercent } from "../lib/progress";
+import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcActivityPlannedProgress, isActivityDelayed, roundPercent } from "../lib/progress";
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
@@ -271,7 +271,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     { label: "إجمالي البنود", value: String(activities.length) },
     { label: "مكتملة", value: String(activities.filter(a => a.status === "completed").length), color: C.success },
     { label: "قيد التنفيذ", value: String(activities.filter(a => a.status === "in_progress").length), color: C.accent },
-    { label: "متأخرة", value: String(activities.filter(a => a.status === "delayed").length), color: C.danger },
+    { label: "متأخرة", value: String(activities.filter(a => isActivityDelayed(a, new Date(), isNoSchedule)).length), color: C.danger },
     { label: "التقارير", value: String(reports.length) },
   ];
   const statW = CONTENT_W / statItems.length;

@@ -12,6 +12,7 @@ import {
   calcSPI,
   calcForecastCompletionDate,
   calcExpectedProgressAtEnd,
+  isActivityDelayed,
   roundPercent,
   type PlannedCurve,
 } from "../lib/progress";
@@ -166,15 +167,11 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
 
   const projectNameMap = new Map(allProjects.map(p => [p.id, p.name]));
   const noScheduleProjectIds = new Set(allProjects.filter(p => p.noSchedule === true).map(p => p.id));
-  const delayedActivitiesList = allActivities
-    .filter(a => {
-      if (a.actualProgress >= 100) return false;
-      if (noScheduleProjectIds.has(a.projectId)) return false;
-      if (!a.plannedEndDate) return false;
-      const plannedEnd = new Date(a.plannedEndDate);
-      plannedEnd.setHours(0, 0, 0, 0);
-      return today > plannedEnd;
-    })
+  const delayedActivitiesAll = allActivities.filter(a =>
+    isActivityDelayed(a, today, noScheduleProjectIds.has(a.projectId))
+  );
+  const delayedActivitiesCount = delayedActivitiesAll.length;
+  const delayedActivitiesList = delayedActivitiesAll
     .map(a => {
       const plannedEnd = new Date(a.plannedEndDate!);
       plannedEnd.setHours(0, 0, 0, 0);
@@ -245,7 +242,7 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
     totalReports: Number(reportCount?.count ?? 0),
     totalActivities: activityCounts.reduce((s, a) => s + Number(a.cnt), 0),
     completedActivities: activityCountByStatus("completed"),
-    delayedActivities: activityCountByStatus("delayed"),
+    delayedActivities: delayedActivitiesCount,
     inProgressActivities: activityCountByStatus("in_progress"),
     recentProjects,
     allProjects: projectsWithPlanned,
@@ -331,7 +328,7 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
     plannedProgress: roundPercent(plannedProgress),
     activitiesTotal: activities.length,
     activitiesCompleted: activities.filter(a => a.status === "completed").length,
-    activitiesDelayed: activities.filter(a => a.status === "delayed").length,
+    activitiesDelayed: activities.filter(a => isActivityDelayed(a, today, false)).length,
     daysElapsed,
     totalDays,
     daysRemaining,
