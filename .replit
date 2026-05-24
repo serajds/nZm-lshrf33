@@ -42,3 +42,19 @@ SETUP_SECRET = "edb6577074ff7337c566cf261642acddda784f0e4bc6c82d9ada22ba48df57c7
 VAPID_PUBLIC_KEY = "BACSqHGq4j2NZIuUekeKDo38_aLE-PFG13ZPcVH0OYJnKC430B0OQvRipmPsO7XcKiToXqQezQnNeVV5VugrMes"
 VAPID_PRIVATE_KEY = "-NbiHuJMMUXThgwLoPfupwgPI13AW8VQqQBoumLhmZM"
 VAPID_SUBJECT = "mailto:notify@construction-supervision.local"
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 18115
+externalPort = 80
+
+[[ports]]
+localPort = 22349
+externalPort = 3000
