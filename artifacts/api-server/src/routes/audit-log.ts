@@ -87,6 +87,7 @@ router.get("/audit-log", requireAdmin, async (req, res): Promise<void> => {
     id: auditLogTable.id,
     userId: auditLogTable.userId,
     userName: auditLogTable.userName,
+    userFullName: usersTable.fullName,
     action: auditLogTable.action,
     entityType: auditLogTable.entityType,
     entityId: auditLogTable.entityId,
@@ -95,6 +96,7 @@ router.get("/audit-log", requireAdmin, async (req, res): Promise<void> => {
     projectName: auditLogTable.projectName,
     createdAt: auditLogTable.createdAt,
   }).from(auditLogTable)
+    .leftJoin(usersTable, eq(usersTable.id, auditLogTable.userId))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(auditLogTable.createdAt))
     .limit(maxRows);
