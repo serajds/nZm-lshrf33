@@ -18,6 +18,47 @@ export function setTokenGetter(g: () => string | null): void {
 }
 export function getToken(): string | null { return _tokenGetter(); }
 
+// Rolling-session support. The server renews the bearer token when it has
+// less than half its lifetime left and returns the fresh one in the
+// X-Renewed-Token response header. We hand it to the saver so the client can
+// persist it transparently — without this, an active user's token would still
+// expire after its original 7-day TTL and they'd be kicked out.
+const RENEWED_TOKEN_HEADER = "X-Renewed-Token";
+
+let _tokenSaver: (token: string) => void = () => {};
+export function setTokenSaver(s: (token: string) => void): void {
+  _tokenSaver = s;
+}
+
+// Invoked whenever a response comes back 401 (token missing/invalid/expired).
+// Central place to wire "session expired" behaviour (clear credentials +
+// redirect to login) instead of leaving each screen stuck on an error.
+let _unauthorizedHandler: () => void = () => {};
+export function setUnauthorizedHandler(h: () => void): void {
+  _unauthorizedHandler = h;
+}
+
+// Run the renewed-token + unauthorized pipeline against any fetch Response,
+// so every request path (JSON, multipart upload, offline-queue flush)
+// participates in rolling renewal and the centralized 401 redirect.
+//
+// `tokenUsed` is the bearer token that was attached to *this* request. We only
+// act when it still matches the current token, which guards against two
+// hazards: (1) a stale in-flight request (old token) resolving after the user
+// re-logged in must not overwrite the fresh token nor force a logout, and
+// (2) a request with no session token (e.g. the login call itself returning
+// 401 for bad credentials) must not trigger the "session expired" flow.
+function processResponse(res: Response, tokenUsed: string | null): void {
+  if (!tokenUsed || tokenUsed !== _tokenGetter()) return;
+  const renewed = res.headers.get(RENEWED_TOKEN_HEADER);
+  if (renewed) {
+    try { _tokenSaver(renewed); } catch { /* best-effort */ }
+  }
+  if (res.status === 401) {
+    try { _unauthorizedHandler(); } catch { /* never break caller flow */ }
+  }
+}
+
 export interface ApiUser {
   id: number;
   phone: string;
@@ -183,6 +224,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   try { res = await fetch(url, { ...init, headers }); }
   catch { throw new ApiError("تعذّر الاتصال بالخادم. تأكد من اتصالك بالإنترنت.", 0, null); }
 
+  processResponse(res, token);
+
   const text = await res.text();
   let data: unknown = null;
   if (text) { try { data = JSON.parse(text); } catch { data = text; } }
@@ -243,6 +286,7 @@ export async function apiAttendanceCheck(p: AttendanceCheckParams): Promise<unkn
   let res: Response;
   try { res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers, body: fd as unknown as BodyInit }); }
   catch { throw new ApiError("تعذّر إرسال الطلب. تأكد من اتصالك بالإنترنت.", 0, null); }
+  processResponse(res, token);
   const text = await res.text();
   let data: unknown = null;
   if (text) { try { data = JSON.parse(text); } catch { data = text; } }

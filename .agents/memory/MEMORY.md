@@ -1,0 +1,1 @@
+- [Mobile rolling-session token handling](mobile-rolling-session.md) — Expo client has its own fetch layer; must mirror web's X-Renewed-Token saver + 401 handler, token-aware to avoid stale-response races.
