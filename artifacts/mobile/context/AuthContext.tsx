@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Alert } from "react-native";
+import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { apiLogin, setTokenGetter, type ApiUser } from "@/lib/api";
+import { apiLogin, setTokenGetter, setTokenSaver, setUnauthorizedHandler, type ApiUser } from "@/lib/api";
 import { registerForPushNotificationsAsync, unregisterCurrentToken } from "@/lib/expoPush";
 
 const TOKEN_KEY = "auth_token";
@@ -44,6 +46,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setState({ ready: true, user: null, token: null });
       }
     })();
+  }, []);
+
+  // Wire the rolling-session pipeline once. The saver persists a server-renewed
+  // token transparently; the unauthorized handler performs a clean logout +
+  // redirect when the session has genuinely expired.
+  useEffect(() => {
+    setTokenSaver((token) => {
+      _currentToken = token;
+      SecureStore.setItemAsync(TOKEN_KEY, token).catch(() => {});
+      setState((s) => (s.token === token ? s : { ...s, ready: true, token }));
+    });
+
+    setUnauthorizedHandler(() => {
+      // Guard against re-entry: the first 401 clears the token synchronously,
+      // so concurrent 401s (e.g. status query + queue flush) are no-ops.
+      if (_currentToken == null) return;
+      _currentToken = null;
+      Promise.all([
+        SecureStore.deleteItemAsync(TOKEN_KEY),
+        SecureStore.deleteItemAsync(USER_KEY),
+      ]).catch(() => {});
+      setState({ ready: true, user: null, token: null });
+      router.replace("/login");
+      Alert.alert(
+        "انتهت الجلسة",
+        "انتهت صلاحية جلستك. الرجاء تسجيل الدخول مرة أخرى للمتابعة.",
+      );
+    });
+
+    return () => {
+      setTokenSaver(() => {});
+      setUnauthorizedHandler(() => {});
+    };
   }, []);
 
   const login = useCallback(async (phone: string, password: string) => {

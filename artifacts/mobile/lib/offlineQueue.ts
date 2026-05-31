@@ -172,6 +172,15 @@ export async function flushQueue(): Promise<{ sent: number; stillQueued: number;
       await removeOne(item.clientId);
       sent++;
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        // Session expired: keep this item (and all remaining ones) queued and
+        // stop flushing — re-auth has already been triggered centrally, so
+        // continuing would just fire more doomed requests. Retry next cycle
+        // after the user logs back in.
+        await bumpAttempt(item.clientId);
+        stillQueued += items.length - items.indexOf(item);
+        break;
+      }
       if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 0) {
         // Permanent rejection (e.g. geofence) — drop it; don't loop forever.
         await removeOne(item.clientId);
