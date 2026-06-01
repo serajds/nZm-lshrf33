@@ -48,7 +48,13 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // workaround, the mobile app sends the same JSON payload but with
 // Content-Type: text/plain. Parse those bodies as JSON here so handlers
 // see req.body exactly the same way as a browser request.
-app.use(express.text({ type: "text/plain", limit: "10mb" }));
+//
+// Limit is 22mb (vs 10mb for JSON) because attendance selfies are uploaded
+// over this same text/plain path as base64, and base64 inflates the payload
+// by ~33%. This keeps parity with the 15MB raw-image cap enforced downstream
+// (15MB binary ≈ 20MB base64), so a valid selfie is never rejected by the
+// body parser before the route's own size/validation checks run.
+app.use(express.text({ type: "text/plain", limit: "22mb" }));
 app.use((req: Request, _res: Response, next: NextFunction) => {
   if (
     typeof req.body === "string" &&
