@@ -120,6 +120,18 @@ function authHeader(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/** Encode a Blob as bare base64 (no data: prefix), chunked to avoid blowing
+ *  the call stack on large images. */
+async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 export type SendOutcome =
   | { kind: "ok"; record: unknown; offline: false }
   | { kind: "queued"; reason: "offline" | "network-error" }
@@ -137,20 +149,38 @@ export async function sendOrQueue(entry: Omit<QueuedAttendance, "attempts" | "la
     return { kind: "queued", reason: "offline" };
   }
 
-  const fd = new FormData();
-  fd.append("selfie", entry.selfie, entry.selfieFilename);
-  fd.append("latitude", String(entry.latitude));
-  fd.append("longitude", String(entry.longitude));
-  if (entry.accuracy != null && Number.isFinite(entry.accuracy)) {
-    fd.append("accuracy", String(entry.accuracy));
+  // Send the selfie as base64 inside a JSON body with Content-Type: text/plain.
+  // This bypasses Replit's Autoscale edge CSRF check, which can reject a bare
+  // multipart POST whose Origin/Referer were stripped (notably when the PWA
+  // service worker replays an offline-queued upload) — returning an HTML 403
+  // that never reaches our server. The backend parses text/plain bodies as JSON.
+  let selfieBase64: string;
+  try {
+    selfieBase64 = await blobToBase64(entry.selfie);
+  } catch {
+    // The stored selfie blob couldn't be read — keep the entry queued so the
+    // user can retry rather than silently dropping the check-in.
+    await enqueueAttendance(entry);
+    return { kind: "queued", reason: "network-error" };
   }
-  fd.append("clientId", entry.clientId);
+
+  const body = JSON.stringify({
+    latitude: entry.latitude,
+    longitude: entry.longitude,
+    accuracy: entry.accuracy != null && Number.isFinite(entry.accuracy) ? entry.accuracy : undefined,
+    clientId: entry.clientId,
+    selfieBase64,
+  });
 
   const url = `${API_BASE}/attendance/projects/${entry.projectId}/${entry.type === "check_in" ? "check-in" : "check-out"}`;
 
   let response: Response;
   try {
-    response = await fetch(url, { method: "POST", body: fd, headers: authHeader() });
+    response = await fetch(url, {
+      method: "POST",
+      body,
+      headers: { ...authHeader(), "Content-Type": "text/plain" },
+    });
   } catch {
     // Network unreachable / DNS / TLS error / aborted by browser offline.
     await enqueueAttendance(entry);
@@ -163,15 +193,15 @@ export async function sendOrQueue(entry: Omit<QueuedAttendance, "attempts" | "la
   }
 
   // Reachable but server-side error. Surface to caller — do NOT queue,
-  // because re-sending will just produce the same error.
+  // because re-sending will just produce the same error. Only trust a JSON
+  // { error } body; never echo a raw proxy/edge HTML page back to the user.
   let message = "";
   const text = await response.text().catch(() => "");
   try {
     const body = JSON.parse(text);
     if (body?.error) message = String(body.error);
-  } catch { /* not json */ }
-  if (!message && text && text.length < 200) message = text;
-  if (!message) message = `HTTP ${response.status}${response.statusText ? " " + response.statusText : ""}`;
+  } catch { /* not json — likely an edge/proxy error page; ignore the body */ }
+  if (!message) message = `تعذّر إتمام العملية (${response.status}).`;
   return { kind: "error", status: response.status, message };
 }
 

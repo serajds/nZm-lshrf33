@@ -1,4 +1,5 @@
 import * as Crypto from "expo-crypto";
+import * as FileSystem from "expo-file-system/legacy";
 
 // Production custom domain. Used as a hard fallback when EXPO_PUBLIC_DOMAIN
 // is missing or accidentally points to a Replit dev/preview host (which has
@@ -264,27 +265,36 @@ export interface AttendanceCheckParams {
 }
 
 export async function apiAttendanceCheck(p: AttendanceCheckParams): Promise<unknown> {
-  const fd = new FormData();
-  fd.append("selfie", { uri: p.selfieUri, name: `selfie-${Date.now()}.jpg`, type: "image/jpeg" } as unknown as Blob);
-  fd.append("latitude", String(p.latitude));
-  fd.append("longitude", String(p.longitude));
-  if (p.accuracy != null && Number.isFinite(p.accuracy)) fd.append("accuracy", String(p.accuracy));
-  fd.append("clientId", p.clientId ?? Crypto.randomUUID());
+  // Send the selfie as base64 inside a JSON body with Content-Type: text/plain.
+  // This is the same edge-safe transport the rest of the mobile JSON calls use:
+  // Replit's Autoscale edge requires Origin/Referer for application/json (and
+  // can reject bare multipart uploads), but text/plain is always allowed
+  // through. The backend parses text/plain bodies as JSON.
+  let selfieBase64: string;
+  try {
+    selfieBase64 = await FileSystem.readAsStringAsync(p.selfieUri, { encoding: FileSystem.EncodingType.Base64 });
+  } catch {
+    throw new ApiError("تعذّر قراءة الصورة.", 0, null);
+  }
 
   const path = `/api/attendance/projects/${p.projectId}/${p.type === "check_in" ? "check-in" : "check-out"}`;
+  const body = JSON.stringify({
+    latitude: p.latitude,
+    longitude: p.longitude,
+    accuracy: p.accuracy != null && Number.isFinite(p.accuracy) ? p.accuracy : undefined,
+    clientId: p.clientId ?? Crypto.randomUUID(),
+    selfieBase64,
+  });
   const headers: Record<string, string> = {
     Accept: "application/json",
+    "Content-Type": "text/plain",
     "X-Requested-With": "XMLHttpRequest",
   };
-  if (BASE_URL) {
-    headers.Origin = BASE_URL;
-    headers.Referer = `${BASE_URL}/`;
-  }
   const token = _tokenGetter();
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let res: Response;
-  try { res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers, body: fd as unknown as BodyInit }); }
+  try { res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers, body }); }
   catch { throw new ApiError("تعذّر إرسال الطلب. تأكد من اتصالك بالإنترنت.", 0, null); }
   processResponse(res, token);
   const text = await res.text();

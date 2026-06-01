@@ -76,6 +76,78 @@ async function compressSelfie(filePath: string): Promise<{ size: number; filenam
   return { size: stats.size, filename: finalName };
 }
 
+// Accept the selfie either as a multipart "selfie" file OR as a base64 string
+// inside a JSON body sent with Content-Type: text/plain. The base64/text-plain
+// path exists because Replit's Autoscale edge CSRF check can reject a bare
+// multipart POST whose Origin/Referer were stripped (e.g. a PWA service worker
+// replaying an offline-queued upload), returning its own HTML 403 that never
+// reaches Express. text/plain is a CORS-safe content type the edge always
+// lets through; app.ts parses such bodies as JSON before this runs.
+async function decodeBase64Selfie(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const b64raw = (req.body && typeof req.body === "object") ? (req.body as Record<string, unknown>).selfieBase64 : undefined;
+  if (typeof b64raw !== "string" || b64raw.length === 0) {
+    // No image in the payload — defer to recordAttendance so an idempotent
+    // duplicate flush can short-circuit, and a genuinely missing selfie still
+    // yields the standard "صورة من الموقع مطلوبة" 400.
+    next();
+    return;
+  }
+  const commaIdx = b64raw.indexOf(",");
+  const payload = b64raw.startsWith("data:") && commaIdx !== -1 ? b64raw.slice(commaIdx + 1) : b64raw;
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(payload, "base64");
+  } catch {
+    res.status(400).json({ error: "صورة غير صالحة" });
+    return;
+  }
+  if (buf.length === 0 || buf.length > 15 * 1024 * 1024) {
+    res.status(400).json({ error: "صورة غير صالحة" });
+    return;
+  }
+  // Defense-in-depth: confirm the bytes are a decodable image (mirrors the
+  // multipart fileFilter MIME gate).
+  try {
+    const meta = await sharp(buf).metadata();
+    if (!meta.format) throw new Error("not-image");
+  } catch {
+    res.status(400).json({ error: "نوع الصورة غير مدعوم" });
+    return;
+  }
+  const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+  const filename = "att-" + uniqueSuffix + ".jpg";
+  const filePath = path.join(uploadsDir, filename);
+  try {
+    await fs.promises.writeFile(filePath, buf);
+  } catch {
+    res.status(500).json({ error: "تعذّر حفظ الصورة" });
+    return;
+  }
+  req.file = { path: filePath, filename, mimetype: "image/jpeg" } as unknown as Express.Multer.File;
+  next();
+}
+
+// Route the request to multer (multipart) or the base64 decoder (text/plain
+// JSON), and always surface a JSON error instead of multer's default HTML.
+function selfieUpload(req: Request, res: Response, next: NextFunction): void {
+  const ct = (req.headers["content-type"] || "").toLowerCase();
+  if (ct.startsWith("multipart/form-data")) {
+    upload.single("selfie")(req, res, (err: unknown) => {
+      if (err) {
+        const tooBig = err instanceof Error && "code" in err && (err as { code?: string }).code === "LIMIT_FILE_SIZE";
+        const msg = err instanceof Error && err.message === "INVALID_MIME"
+          ? "نوع الصورة غير مدعوم"
+          : tooBig ? "حجم الصورة كبير جداً" : "تعذّر رفع الصورة";
+        res.status(400).json({ error: msg });
+        return;
+      }
+      next();
+    });
+    return;
+  }
+  void decodeBase64Selfie(req, res, next);
+}
+
 const router: IRouter = Router();
 
 export async function userBelongsToProject(userId: number, projectId: number): Promise<boolean> {
@@ -238,7 +310,7 @@ router.post(
   "/attendance/projects/:projectId/check-in",
   requireProjectAccess("projectId"),
   requireTabEdit("attendance"),
-  upload.single("selfie"),
+  selfieUpload,
   async (req: Request, res: Response): Promise<void> => {
     await recordAttendance(req, res, "check_in");
   },
@@ -249,7 +321,7 @@ router.post(
   "/attendance/projects/:projectId/check-out",
   requireProjectAccess("projectId"),
   requireTabEdit("attendance"),
-  upload.single("selfie"),
+  selfieUpload,
   async (req: Request, res: Response): Promise<void> => {
     await recordAttendance(req, res, "check_out");
   },
