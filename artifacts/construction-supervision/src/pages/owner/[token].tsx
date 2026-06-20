@@ -274,7 +274,7 @@ export default function OwnerPortal() {
               </form>
 
               <div className="mt-10 pt-6 border-t border-gray-100 flex items-center justify-center text-gray-300 text-[12px]">
-                <a href="https://about.me/seraj" target="_blank" rel="noopener noreferrer" className="hover:text-emerald-500 transition-colors">Developed By : Eng. Seraj Elajtel</a>
+                <a href="https://about.me/seraj" target="_blank" rel="noopener noreferrer" className="hover:text-emerald-500 transition-colors">Developed By :: Eng. Seraj Elajtel</a>
               </div>
             </div>
           </div>

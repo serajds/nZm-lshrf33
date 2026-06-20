@@ -342,9 +342,9 @@ export default function Login() {
           )}
         </div>
 
-        <p className="mt-8 text-center text-xs text-slate-400">
-          Developed By : Eng. Seraj Elajtel
-        </p>
+        <a href="https://about.me/seraj" target="_blank" rel="noopener noreferrer" className="hover:text-emerald-500 transition-colors mt-8 text-center text-xs text-slate-400 block">
+          Developed By :: Eng. Seraj Elajtel
+        </a>
       </div>
     </div>
   );
