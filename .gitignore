@@ -55,3 +55,4 @@ backups/
 # Replit
 .cache/
 .local/
+.env
