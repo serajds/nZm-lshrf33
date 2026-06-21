@@ -6,7 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { UserCompany } from "./userCompany";
-import type { UserProjectMembership } from "./userProjectMembership";
 import type { UserRole } from "./userRole";
 
 export interface User {
@@ -15,8 +14,5 @@ export interface User {
   fullName: string;
   role: UserRole;
   companies?: UserCompany[];
-  projects?: UserProjectMembership[];
-  incompleteProfile?: boolean;
-  projectMembershipsCount?: number;
   createdAt: Date;
 }

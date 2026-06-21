@@ -23,8 +23,6 @@ export interface UpdateActivityBody {
   /** @nullable */
   actualProgress?: number | null;
   /** @nullable */
-  weight?: number | null;
-  /** @nullable */
   status?: UpdateActivityBodyStatus;
   /** @nullable */
   sortOrder?: number | null;

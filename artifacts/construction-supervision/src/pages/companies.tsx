@@ -1,5 +1,4 @@
 import { useState, useRef } from "react";
-import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -74,7 +73,6 @@ const companySchema = z.object({
 type CompanyFormValues = z.infer<typeof companySchema>;
 
 export default function Companies() {
-  usePageTitle("الشركات");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [deletingCompany, setDeletingCompany] = useState<Company | null>(null);
@@ -247,7 +245,7 @@ export default function Companies() {
                   onClick={() => fileInputRef.current?.click()}
                 >
                   {logoPreview ? (
-                    <img src={logoPreview} alt="شعار" loading="lazy" decoding="async" className="w-full h-full object-contain p-1" />
+                    <img src={logoPreview} alt="شعار" className="w-full h-full object-contain p-1" />
                   ) : (
                     <div className="text-center">
                       <Image className="h-8 w-8 mx-auto text-gray-400" />

@@ -1,17 +1,12 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState } from "react";
 import { useParams, useLocation } from "wouter";
-import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useGetProject,
   useGetProjectSummary,
   useGenerateOwnerLink,
   useListActivities,
-  useListProjectMembers,
-  useGetEligibleUsers,
 } from "@workspace/api-client-react";
-import { processFetchResponse } from "@workspace/api-client-react";
-import { useMyProjectPermissions } from "@/hooks/use-tab-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,27 +15,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Building2, MapPin, Calendar, ActivitySquare, CheckCircle2,
-  AlertTriangle, ArrowRight, Share2, Copy, Clock, PauseCircle, FileText,
-  Settings2, LayoutDashboard
+  AlertTriangle, ArrowRight, Share2, Copy, Clock, PauseCircle, FileText
 } from "lucide-react";
 import { ProjectNav } from "@/components/project-nav";
 import { ProjectMembers } from "@/components/project-members";
-import { ProjectQuickViewDialog } from "@/components/project-quick-view-dialog";
-import { AttendanceQuickActions } from "@/components/attendance-quick-actions";
-// PERFORMANCE (dev): leaflet + react-leaflet pull a large dependency tree
-// that Vite must transform on first navigation, blocking the project page
-// for several seconds. The map is rendered well below the fold and isn't
-// needed for the initial loading state, so load it lazily.
-const SiteGeofenceMap = lazy(() =>
-  import("@/components/site-geofence-map").then((m) => ({ default: m.SiteGeofenceMap }))
-);
-// PERFORMANCE: jspdf is only needed when the user clicks "تنزيل الملخص"
-// — defer loading until the click handler runs.
-import type { ActivityForReport } from "@/lib/report-pdf";
-import { useAuth } from "@/hooks/use-auth";
+import { previewExecutiveSummary, type ActivityForReport } from "@/lib/report-pdf";
 
 interface ProjectExtension {
   id: number;
@@ -51,34 +32,9 @@ interface ProjectExtension {
   documentRef: string | null;
 }
 
-async function authFetch(url: string, opts?: RequestInit) {
+function authFetch(url: string) {
   const token = localStorage.getItem("auth_token");
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (opts?.body) headers["Content-Type"] = "application/json";
-  const response = await fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> || {}) } });
-  // Funnel renewed tokens and 401s through the shared pipeline so this
-  // page participates in rolling session renewal AND the centralized
-  // "session expired" redirect instead of swallowing 401 as empty data.
-  await processFetchResponse(response);
-  return response;
-}
-
-interface SummaryWidget {
-  id: string;
-  label: string;
-  templateId: number | null;
-  fieldId: string | null;
-  value?: any;
-  fieldLabel?: string;
-  reportDate?: string;
-  submittedAt?: string;
-}
-
-interface FormTemplateOption {
-  id: number;
-  name: string;
-  fields: { id: string; label: string; type: string }[];
+  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
 }
 
 export default function ProjectDetails() {
@@ -86,78 +42,21 @@ export default function ProjectDetails() {
   const [, setLocation] = useLocation();
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
-  const { user } = useAuth();
-  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
   const queryClient = useQueryClient();
+
   const [ownerPassword, setOwnerPassword] = useState("");
   const [ownerSlug, setOwnerSlug] = useState("");
   const [ownerLink, setOwnerLink] = useState("");
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [showRegenerateForm, setShowRegenerateForm] = useState(false);
 
-  // The project record itself rarely changes during a session and is read
-  // by every project sub-page (overview, reports, activities, files…). A
-  // 5-minute staleTime + previous-data fallback keeps tab-switching from
-  // re-fetching it and from flashing an empty header on every navigation.
-  const { data: project, isLoading: isProjectLoading, error: projectError } = useGetProject(projectId, {
-    query: {
-      enabled: !!projectId,
-      staleTime: 1000 * 60 * 5,
-      placeholderData: (prev: any) => prev,
-    } as any,
+  const { data: project, isLoading: isProjectLoading } = useGetProject(projectId, {
+    query: { enabled: !!projectId }
   });
-  usePageTitle(project?.name ?? "تفاصيل المشروع");
-  // Project summary aggregates progress + activities + recent reports —
-  // it's the heaviest query on this page. Same treatment: keep the prior
-  // payload visible so the overview never blanks while revalidating.
   const { data: summary, isLoading: isSummaryLoading } = useGetProjectSummary(projectId, {
-    query: {
-      enabled: !!projectId,
-      staleTime: 1000 * 60 * 5,
-      placeholderData: (prev: any) => prev,
-    } as any,
+    query: { enabled: !!projectId }
   });
   const { data: activities = [] } = useListActivities(projectId, { query: { enabled: !!projectId } });
-
-  // PERFORMANCE: prime the cache for child components (ProjectNav,
-  // ProjectMembers, AttendanceQuickActions) at the same instant the page
-  // mounts. Otherwise these queries fire one-by-one as each child component
-  // wakes up — on a slow Vite dev server we measured a 4 second waterfall
-  // (extensions → form-templates → members → my-permissions → my-status).
-  // Calling the hooks here triggers the requests immediately, in parallel,
-  // and React Query dedupes when the children mount and call them again.
-  useMyProjectPermissions(projectId);
-  useListProjectMembers(projectId, { query: { enabled: !!projectId && !isContractor } });
-  // Prefetch eligible-users ONLY for admins. Project-level PMs also need
-  // this list, but membership-derived PM status isn't known until /members
-  // resolves, so we let ProjectMembers fire its own request in that case
-  // (one short hop rather than the four-step waterfall this page used to
-  // have). A global "project_manager" role does NOT imply PM-of-this-project,
-  // so we deliberately don't prefetch on global role alone — that would
-  // waste a request for PMs not assigned to this project.
-  useGetEligibleUsers(projectId, { query: { enabled: !!projectId && user?.role === "admin" } });
-  useQuery<unknown[]>({
-    queryKey: [`/api/projects/${projectId}/activity-groups`],
-    queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/activity-groups`);
-      if (!r.ok) return [];
-      return r.json();
-    },
-    enabled: !!projectId && !isContractor,
-    staleTime: 1000 * 60 * 5,
-  });
-  useQuery<unknown[]>({
-    queryKey: ["/api/attendance/my-status"],
-    queryFn: async () => {
-      const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-      const r = await authFetch(`${API_BASE}/attendance/my-status`);
-      if (!r.ok) return [];
-      return r.json();
-    },
-    enabled: !!user && !isContractor && user.role !== "owner",
-  });
-  // These three lists rarely change during a session; trust the cache for
-  // 5 minutes so navigating between project tabs doesn't re-hit the API.
   const { data: extensions = [] } = useQuery<ProjectExtension[]>({
     queryKey: [`/api/projects/${projectId}/extensions`],
     queryFn: async () => {
@@ -166,69 +65,12 @@ export default function ProjectDetails() {
       return r.json();
     },
     enabled: !!projectId,
-    staleTime: 1000 * 60 * 5,
   });
 
   const totalExtDays = extensions.reduce((s, e) => s + e.daysAdded, 0);
   const latestEndDate = extensions.length > 0
     ? extensions[extensions.length - 1].newEndDate
     : null;
-
-  const { data: widgets = [], refetch: refetchWidgets } = useQuery<SummaryWidget[]>({
-    queryKey: [`/api/projects/${projectId}/summary-widgets`],
-    queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/summary-widgets`);
-      if (!r.ok) return [];
-      return r.json();
-    },
-    enabled: !!projectId,
-    staleTime: 1000 * 60 * 5,
-  });
-
-  // IMPORTANT: share the same cache key as the forms tab so opening the
-  // project overview AFTER the forms tab (or vice-versa) doesn't re-fetch
-  // the same /form-templates endpoint a second time.
-  const { data: formTemplates = [] } = useQuery<FormTemplateOption[]>({
-    queryKey: [`/api/projects/${projectId}/form-templates`],
-    queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/form-templates`);
-      if (!r.ok) return [];
-      return r.json();
-    },
-    enabled: !!projectId,
-    staleTime: 1000 * 60 * 5,
-  });
-
-  const [widgetConfigOpen, setWidgetConfigOpen] = useState(false);
-  const [editWidgets, setEditWidgets] = useState<SummaryWidget[]>([]);
-  const isAdminOrPM = user?.role === "admin" || user?.role === "project_manager" || (user?.role === "engineer" && !isContractor);
-
-  useEffect(() => {
-    if (widgetConfigOpen) {
-      if (widgets.length > 0) {
-        setEditWidgets(widgets.map(w => ({ ...w })));
-      } else {
-        setEditWidgets([
-          { id: "w1", label: "", templateId: null, fieldId: null },
-          { id: "w2", label: "", templateId: null, fieldId: null },
-        ]);
-      }
-    }
-  }, [widgetConfigOpen]);
-
-  const handleSaveWidgets = async () => {
-    const r = await authFetch(`/api/projects/${projectId}/summary-widgets`, {
-      method: "PUT",
-      body: JSON.stringify({ widgets: editWidgets.map(w => ({ id: w.id, templateId: w.templateId, fieldId: w.fieldId })) }),
-    });
-    if (r.ok) {
-      toast({ title: "تم حفظ الأدوات" });
-      refetchWidgets();
-      setWidgetConfigOpen(false);
-    } else {
-      toast({ variant: "destructive", title: "فشل الحفظ" });
-    }
-  };
 
   const generateLink = useGenerateOwnerLink();
 
@@ -247,7 +89,6 @@ export default function ProjectDetails() {
       actualProgress: a.actualProgress ?? 0,
       status: a.status ?? "not_started",
     }));
-    const { previewExecutiveSummary } = await import("@/lib/report-pdf");
     previewExecutiveSummary({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -258,7 +99,7 @@ export default function ProjectDetails() {
       expectedEndDate: project.expectedEndDate,
       actualEndDate: (project as any).actualEndDate,
       status: project.status,
-      overallProgress: summary?.overallProgress ?? 0,
+      overallProgress: summary?.overallProgress ?? project.overallProgress ?? 0,
       plannedProgress: summary?.plannedProgress ?? 0,
       activities: actList,
       reportsCount: summary?.reportsCount ?? 0,
@@ -301,31 +142,8 @@ export default function ProjectDetails() {
         </div>
       </div>
     );
-  if (!project) {
-    // Distinguish a real "this project does not exist / you have no access"
-    // (404 / 403) from a transient or auth-related failure. For 401, the
-    // central handler already redirected to /login, so we just keep the
-    // loading spinner up until the redirect happens.
-    const status = (projectError as { status?: number } | undefined)?.status;
-    if (status === 401) {
-      return (
-        <div className="flex h-[60vh] items-center justify-center">
-          <div className="text-center space-y-3">
-            <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-muted-foreground text-sm">جاري إعادة توجيهك إلى تسجيل الدخول...</p>
-          </div>
-        </div>
-      );
-    }
-    if (status === 404 || status === 403) {
-      return <div className="flex h-40 items-center justify-center text-muted-foreground">المشروع غير موجود</div>;
-    }
-    return (
-      <div className="flex h-40 items-center justify-center text-center text-muted-foreground">
-        تعذّر تحميل المشروع. حاول التحديث بعد قليل.
-      </div>
-    );
-  }
+  if (!project)
+    return <div className="flex h-40 items-center justify-center text-muted-foreground">المشروع غير موجود</div>;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -339,11 +157,6 @@ export default function ProjectDetails() {
 
   return (
     <div className="space-y-5">
-      <ProjectQuickViewDialog
-        projectId={projectId}
-        widgets={widgets}
-        enabled={!!projectId}
-      />
       {/* ── Header ── */}
       <div className="flex flex-wrap items-start gap-3">
         <Button
@@ -366,7 +179,7 @@ export default function ProjectDetails() {
           </div>
         </div>
 
-        {!isContractor && <div className="shrink-0">
+        <div className="shrink-0">
           <Dialog open={isLinkDialogOpen} onOpenChange={(open) => {
             setIsLinkDialogOpen(open);
             if (open) {
@@ -466,22 +279,11 @@ export default function ProjectDetails() {
               </div>
             </DialogContent>
           </Dialog>
-        </div>}
+        </div>
       </div>
 
       {/* ── Project Navigation ── */}
       <ProjectNav projectId={project.id} />
-
-      {/* ── Quick attendance check-in/out (visible to non-owner staff) ── */}
-      <AttendanceQuickActions
-        projectId={project.id}
-        project={{
-          name: project.name,
-          siteLatitude: project.siteLatitude,
-          siteLongitude: project.siteLongitude,
-          siteRadiusMeters: project.siteRadiusMeters,
-        }}
-      />
 
       {/* ── Summary Content ── */}
       <div className="space-y-5">
@@ -494,65 +296,42 @@ export default function ProjectDetails() {
             <CardContent>
               <div className="flex items-end justify-between mb-3">
                 <div className="text-4xl font-bold tabular-nums">
-                  {(summary?.overallProgress ?? 0).toFixed(1)}%
+                  {summary?.overallProgress ?? 0}%
                 </div>
-                {!summary?.noSchedule && (
-                  <div className="text-sm text-muted-foreground">
-                    المخطط: {(summary?.plannedProgress ?? 0).toFixed(1)}%
-                  </div>
-                )}
+                <div className="text-sm text-muted-foreground">
+                  المخطط: {summary?.plannedProgress ?? 0}%
+                </div>
               </div>
               <div className="relative w-full h-2.5 bg-secondary rounded-full overflow-hidden">
-                {!summary?.noSchedule && (
-                  <div
-                    className="absolute top-0 right-0 h-full bg-primary/25 rounded-full"
-                    style={{ width: `${summary?.plannedProgress ?? 0}%` }}
-                  />
-                )}
+                <div
+                  className="absolute top-0 right-0 h-full bg-primary/25 rounded-full"
+                  style={{ width: `${summary?.plannedProgress ?? 0}%` }}
+                />
                 <div
                   className="absolute top-0 right-0 h-full bg-primary rounded-full"
                   style={{ width: `${summary?.overallProgress ?? 0}%` }}
                 />
               </div>
-              {summary?.noSchedule ? (
-                <div className="mt-3">
-                  <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                    <Clock className="h-4 w-4 shrink-0" />
-                    مشروع بدون جدول زمني معتمد — لا يُحسب الانحراف عن الخطة ولا تجاوز المدة
-                  </p>
-                </div>
-              ) : (
-                <div className="mt-3 space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground leading-relaxed border-r-2 border-muted pr-2">
-                    «الانحراف عن الخطة» مؤشر إنذار مبكر يقارن التقدم الفعلي بالمخطط، أما «تجاوز المدة التعاقدية» فهو القيمة الفعلية لتجاوز تاريخ الإنهاء التعاقدي.
-                  </p>
-                  <p className={`text-sm flex items-center gap-1.5 font-medium ${(summary?.delayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
-                    {(summary?.delayDays ?? 0) > 0 ? (
-                      <><AlertTriangle className="h-4 w-4 shrink-0" /> انحراف عن الخطة: {summary!.delayDays} يوم</>
-                    ) : (
-                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا يوجد انحراف عن الخطة</>
-                    )}
-                  </p>
-                  <p className="text-sm text-amber-600 flex items-center gap-1.5 font-medium">
-                    <PauseCircle className="h-4 w-4 shrink-0" />
-                    توقفات مشروعة: {summary?.suspensionDays ?? 0} يوم
-                  </p>
-                  <p className={`text-sm flex items-center gap-1.5 font-semibold ${(summary?.netDelayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
-                    {(summary?.netDelayDays ?? 0) > 0 ? (
-                      <><AlertTriangle className="h-4 w-4 shrink-0" /> صافي الانحراف: {summary!.netDelayDays} يوم</>
-                    ) : (
-                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا يوجد انحراف صافٍ</>
-                    )}
-                  </p>
-                  <p className={`text-sm flex items-center gap-1.5 font-semibold pt-1.5 border-t ${(summary?.overrunDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
-                    {(summary?.overrunDays ?? 0) > 0 ? (
-                      <><AlertTriangle className="h-4 w-4 shrink-0" /> تجاوز المدة التعاقدية: {summary!.overrunDays} يوم</>
-                    ) : (
-                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> ضمن المدة التعاقدية</>
-                    )}
-                  </p>
-                </div>
-              )}
+              <div className="mt-3 space-y-1.5">
+                <p className={`text-sm flex items-center gap-1.5 font-medium ${(summary?.delayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
+                  {(summary?.delayDays ?? 0) > 0 ? (
+                    <><AlertTriangle className="h-4 w-4 shrink-0" /> تأخير إجمالي: {summary!.delayDays} يوم</>
+                  ) : (
+                    <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا تأخير إجمالي</>
+                  )}
+                </p>
+                <p className="text-sm text-amber-600 flex items-center gap-1.5 font-medium">
+                  <PauseCircle className="h-4 w-4 shrink-0" />
+                  توقفات مشروعة: {summary?.suspensionDays ?? 0} يوم
+                </p>
+                <p className={`text-sm flex items-center gap-1.5 font-semibold ${(summary?.netDelayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
+                  {(summary?.netDelayDays ?? 0) > 0 ? (
+                    <><AlertTriangle className="h-4 w-4 shrink-0" /> صافي التأخير: {summary!.netDelayDays} يوم</>
+                  ) : (
+                    <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا تأخير صافي</>
+                  )}
+                </p>
+              </div>
             </CardContent>
           </Card>
 
@@ -562,29 +341,25 @@ export default function ProjectDetails() {
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-muted-foreground mb-1">البنود المكتملة</p>
+                <p className="text-xs text-muted-foreground mb-1">الأنشطة المكتملة</p>
                 <p className="text-xl font-bold tabular-nums">
                   {summary?.activitiesCompleted ?? 0}
                   <span className="text-sm font-normal text-muted-foreground"> / {summary?.activitiesTotal ?? 0}</span>
                 </p>
               </div>
-              {!summary?.noSchedule && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">بنود متأخرة</p>
-                  <p className="text-xl font-bold tabular-nums text-destructive">
-                    {summary?.activitiesDelayed ?? 0}
-                  </p>
-                </div>
-              )}
-              {!summary?.noSchedule && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">الأيام المنقضية</p>
-                  <p className="text-xl font-bold tabular-nums">
-                    {summary?.daysElapsed ?? 0}
-                    <span className="text-sm font-normal text-muted-foreground"> / {summary?.totalDays ?? 0}</span>
-                  </p>
-                </div>
-              )}
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">أنشطة متأخرة</p>
+                <p className="text-xl font-bold tabular-nums text-destructive">
+                  {summary?.activitiesDelayed ?? 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">الأيام المنقضية</p>
+                <p className="text-xl font-bold tabular-nums">
+                  {summary?.daysElapsed ?? 0}
+                  <span className="text-sm font-normal text-muted-foreground"> / {summary?.totalDays ?? 0}</span>
+                </p>
+              </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">تقارير / ملفات</p>
                 <p className="text-xl font-bold tabular-nums">
@@ -596,119 +371,6 @@ export default function ProjectDetails() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Summary Widgets */}
-        {(widgets.length > 0 || isAdminOrPM) && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <LayoutDashboard className="h-4 w-4" />
-                أدوات الملخص
-              </h3>
-              {isAdminOrPM && (
-                <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => setWidgetConfigOpen(true)}>
-                  <Settings2 className="h-3.5 w-3.5" />
-                  تخصيص
-                </Button>
-              )}
-            </div>
-            {widgets.length > 0 ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                {widgets.map((w) => (
-                  <Card key={w.id} className="border-2 border-dashed border-primary/20">
-                    <CardContent className="p-4">
-                      <p className="text-xs text-muted-foreground mb-2">{w.fieldLabel || w.label || "بدون عنوان"}</p>
-                      {w.value != null ? (
-                        <div className="space-y-1">
-                          {String(w.value).split("\n").map((line, i) => (
-                            <p key={i} className="text-sm font-semibold leading-relaxed">{line}</p>
-                          ))}
-                          {w.reportDate && (
-                            <p className="text-[10px] text-muted-foreground mt-2" dir="ltr">
-                              {w.reportDate}
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">لا توجد بيانات</p>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : isAdminOrPM ? (
-              <Card className="border-2 border-dashed border-muted-foreground/20">
-                <CardContent className="p-6 text-center">
-                  <p className="text-sm text-muted-foreground">اضغط "تخصيص" لإعداد أدوات الملخص</p>
-                </CardContent>
-              </Card>
-            ) : null}
-          </div>
-        )}
-
-        {/* Widget Config Dialog */}
-        <Dialog open={widgetConfigOpen} onOpenChange={setWidgetConfigOpen}>
-          <DialogContent className="sm:max-w-[600px]" dir="rtl">
-            <DialogHeader>
-              <DialogTitle>تخصيص أدوات الملخص</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-6 pt-2">
-              {editWidgets.map((w, idx) => {
-                const selectedTemplate = formTemplates.find(t => t.id === w.templateId);
-                const templateFields = (selectedTemplate?.fields as any[])?.filter((f: any) => f.type !== "section") || [];
-                return (
-                  <div key={w.id} className="space-y-3 p-4 border rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="outline" className="text-xs">أداة {idx + 1}</Badge>
-                    </div>
-                    <div>
-                      <Label>النموذج</Label>
-                      <Select
-                        value={w.templateId ? String(w.templateId) : ""}
-                        onValueChange={val => {
-                          const copy = [...editWidgets];
-                          copy[idx] = { ...copy[idx], templateId: val ? parseInt(val) : null, fieldId: null };
-                          setEditWidgets(copy);
-                        }}
-                      >
-                        <SelectTrigger className="mt-1"><SelectValue placeholder="اختر النموذج" /></SelectTrigger>
-                        <SelectContent>
-                          {formTemplates.map(t => (
-                            <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {w.templateId && (
-                      <div>
-                        <Label>الحقل</Label>
-                        <Select
-                          value={w.fieldId || ""}
-                          onValueChange={val => {
-                            const copy = [...editWidgets];
-                            copy[idx] = { ...copy[idx], fieldId: val || null };
-                            setEditWidgets(copy);
-                          }}
-                        >
-                          <SelectTrigger className="mt-1"><SelectValue placeholder="اختر الحقل" /></SelectTrigger>
-                          <SelectContent>
-                            {templateFields.map((f: any) => (
-                              <SelectItem key={f.id} value={f.id}>{f.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setWidgetConfigOpen(false)}>إلغاء</Button>
-                <Button onClick={handleSaveWidgets}>حفظ</Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
 
         {/* Contract Details */}
         <Card>
@@ -722,17 +384,17 @@ export default function ProjectDetails() {
                 { icon: Building2, label: "المقاول المنفذ", value: project.contractor },
                 { icon: ActivitySquare, label: "الجهة المشرفة", value: project.supervisorEntity },
                 { icon: MapPin, label: "الموقع", value: project.location },
-                ...(project.startDate ? [{
+                {
                   icon: Calendar, label: "تاريخ البداية",
                   value: fmtDate(project.startDate),
                   ltr: true,
-                }] : []),
-                ...(!(project.noSchedule) && project.expectedEndDate ? [{
+                },
+                {
                   icon: Calendar, label: totalExtDays > 0 ? `النهاية المتوقعة (تشمل ${totalExtDays} يوم تمديد)` : "النهاية المتوقعة",
                   value: fmtDate(project.expectedEndDate),
                   ltr: true,
                   highlight: totalExtDays > 0,
-                }] : []),
+                },
                 ...(project.actualEndDate ? [{
                   icon: Clock, label: "النهاية الفعلية",
                   value: fmtDate(project.actualEndDate),
@@ -753,29 +415,8 @@ export default function ProjectDetails() {
           </CardContent>
         </Card>
 
-        {/* Project Site Location (read-only map with geofence circle) */}
-        {project.siteLatitude != null && project.siteLongitude != null && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <MapPin className="h-4 w-4" />
-                موقع المشروع والنطاق المسموح
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Suspense fallback={<div className="h-64 flex items-center justify-center text-xs text-muted-foreground">جاري تحميل الخريطة...</div>}>
-                <SiteGeofenceMap
-                  lat={project.siteLatitude}
-                  lng={project.siteLongitude}
-                  radius={project.siteRadiusMeters ?? 200}
-                  className="h-64"
-                />
-              </Suspense>
-            </CardContent>
-          </Card>
-        )}
-
-        {!isContractor && <ProjectMembers projectId={project.id} />}
+        {/* Team Members */}
+        <ProjectMembers projectId={project.id} />
       </div>
     </div>
   );

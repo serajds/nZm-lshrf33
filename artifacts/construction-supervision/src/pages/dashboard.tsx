@@ -1,38 +1,21 @@
-import { useGetDashboardSummary, useCreateBackup, useListBackups, useDeleteBackup } from "@workspace/api-client-react";
-import { useAuth } from "@/hooks/use-auth";
-import { usePageTitle } from "@/hooks/use-page-title";
+import { useGetDashboardSummary } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fmtDate } from "@/lib/utils";
 import {
   Building2, ActivitySquare, AlertTriangle, CheckCircle2,
-  FileText, TrendingUp, PauseCircle, BarChart3, Clock, ChevronLeft,
-  HardDrive, Download, Trash2, Loader2, Database, X
+  FileText, TrendingUp, PauseCircle, BarChart3, Clock, ChevronLeft
 } from "lucide-react";
-import { Link, useLocation } from "wouter";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  getDefaultProjectId,
-  setDefaultProjectId,
-  clearDefaultProjectId,
-} from "@/lib/user-prefs";
-import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from "recharts";
-import { useState, memo } from "react";
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; ring: string }> = {
   active:    { label: "نشط",    color: "text-blue-600",   bg: "bg-blue-100",    ring: "ring-blue-400" },
   completed: { label: "مكتمل",  color: "text-emerald-600",bg: "bg-emerald-100", ring: "ring-emerald-400" },
-  delayed:   { label: "منحرف عن الخطة",  color: "text-red-600",    bg: "bg-red-100",     ring: "ring-red-400" },
+  delayed:   { label: "متأخر",  color: "text-red-600",    bg: "bg-red-100",     ring: "ring-red-400" },
   suspended: { label: "متوقف",  color: "text-orange-600", bg: "bg-orange-100",  ring: "ring-orange-400" },
 };
 
@@ -80,7 +63,7 @@ interface KpiCardProps {
   gradient: string;
   sub?: string;
 }
-const KpiCard = memo(function KpiCard({ label, value, icon: Icon, gradient, sub }: KpiCardProps) {
+function KpiCard({ label, value, icon: Icon, gradient, sub }: KpiCardProps) {
   return (
     <Card className="overflow-hidden border-0 shadow-md">
       <CardContent className="p-0">
@@ -97,7 +80,7 @@ const KpiCard = memo(function KpiCard({ label, value, icon: Icon, gradient, sub 
       </CardContent>
     </Card>
   );
-});
+}
 
 const CustomDonutLabel = ({ viewBox, total }: { viewBox?: { cx: number; cy: number }; total: number }) => {
   const cx = viewBox?.cx ?? 0;
@@ -114,48 +97,13 @@ const CustomDonutLabel = ({ viewBox, total }: { viewBox?: { cx: number; cy: numb
   );
 };
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export default function Dashboard() {
-  usePageTitle("لوحة التحكم");
-  const { user } = useAuth();
-  const [, setLocation] = useLocation();
-  const { toast } = useToast();
-  // Dashboard summary aggregates data across every project + activity in
-  // the system, so it's the single most expensive endpoint we have. We
-  // keep the previously-fetched payload visible on subsequent visits so
-  // navigating BACK to the dashboard never blanks the screen, and we
-  // trust the cache for 5 minutes before considering it stale (the
-  // global 2-minute default was too aggressive — every tab-switch was
-  // tripping a re-fetch + full-screen spinner).
-  const { data: summary, isLoading } = useGetDashboardSummary({
-    query: { staleTime: 1000 * 60 * 5, placeholderData: (prev: any) => prev } as any,
-  });
-  const [defaultProjectId, setDefaultProjectIdState] = useState<string | null>(
-    () => getDefaultProjectId(user?.id),
-  );
-  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
-  const getProjectLink = (projectId: number) => `/projects/${projectId}`;
-  const isAdmin = user?.role === "admin";
-  const [showBackupPanel, setShowBackupPanel] = useState(false);
-  const createBackup = useCreateBackup();
-  const { data: backupListData, refetch: refetchBackups } = useListBackups({ query: { enabled: showBackupPanel && isAdmin } });
-  const deleteBackup = useDeleteBackup();
+  const { data: summary, isLoading } = useGetDashboardSummary();
 
   const today = new Date();
   const dateStr = today.toLocaleDateString("ar-u-nu-latn", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
-  // Only block the screen on the VERY first load (no cached payload yet).
-  // On every subsequent visit, `summary` is populated from the previous
-  // fetch via placeholderData so we render the dashboard immediately and
-  // let React Query revalidate silently in the background. Without this,
-  // every navigation back to /dashboard was wiping the page for a full
-  // round-trip and felt like the app froze.
-  if (isLoading && !summary) {
+  if (isLoading) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
         <div className="text-center space-y-3">
@@ -169,27 +117,42 @@ export default function Dashboard() {
   const pieData = [
     { name: "نشط",   value: summary?.activeProjects    ?? 0, color: PIE_COLORS.active },
     { name: "مكتمل", value: summary?.completedProjects ?? 0, color: PIE_COLORS.completed },
-    { name: "منحرف عن الخطة", value: summary?.delayedProjects   ?? 0, color: PIE_COLORS.delayed },
+    { name: "متأخر", value: summary?.delayedProjects   ?? 0, color: PIE_COLORS.delayed },
     { name: "متوقف", value: summary?.suspendedProjects ?? 0, color: PIE_COLORS.suspended },
   ].filter(d => d.value > 0);
 
   const totalProjects = summary?.totalProjects ?? 0;
 
-  const allProjects = summary?.allProjects ?? [];
-  const recentReports = summary?.recentReports ?? [];
+  type Project = {
+    id: number;
+    name: string;
+    overallProgress: number;
+    plannedProgress: number;
+    status: string;
+    daysRemaining: number;
+    ownerEntity: string;
+    startDate: string;
+    expectedEndDate: string;
+  };
+  const allProjects: Project[] = (summary as any)?.allProjects ?? [];
+  const recentReports = (summary as any)?.recentReports ?? [];
 
   const barData = allProjects.slice(0, 8).map(p => ({
-    name: (p.name ?? "").length > 18 ? (p.name ?? "").slice(0, 18) + "…" : (p.name ?? ""),
-    فعلي: p.overallProgress ?? 0,
-    مخطط: p.plannedProgress ?? 0,
+    name: p.name.length > 18 ? p.name.slice(0, 18) + "…" : p.name,
+    فعلي: p.overallProgress,
+    مخطط: p.plannedProgress,
   }));
 
-  const totalActivities   = summary?.totalActivities     ?? 0;
-  const completedActs     = summary?.completedActivities  ?? 0;
-  const delayedActs       = summary?.delayedActivities    ?? 0;
-  const inProgressActs    = summary?.inProgressActivities ?? 0;
+  const totalActivities   = (summary as any)?.totalActivities     ?? 0;
+  const completedActs     = (summary as any)?.completedActivities  ?? 0;
+  const delayedActs       = (summary as any)?.delayedActivities    ?? 0;
+  const inProgressActs    = (summary as any)?.inProgressActivities ?? 0;
 
-  const delayedActivitiesList = summary?.delayedActivitiesList ?? [];
+  type DelayedActivity = {
+    id: number; name: string; projectId: number; projectName: string;
+    plannedEndDate: string; actualProgress: number; delayDays: number;
+  };
+  const delayedActivitiesList: DelayedActivity[] = (summary as any)?.delayedActivitiesList ?? [];
 
   const actPct = (n: number) => totalActivities > 0 ? Math.round(n / totalActivities * 100) : 0;
 
@@ -206,87 +169,10 @@ export default function Dashboard() {
             <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{dateStr}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          {allProjects.length > 0 && (
-            <Select
-              value={defaultProjectId ?? ""}
-              onValueChange={(v) => {
-                if (!v || user?.id == null) return;
-                setDefaultProjectId(user.id, v);
-                setDefaultProjectIdState(v);
-                const proj = allProjects.find((p) => String(p.id) === v);
-                toast({
-                  title: "تم تعيين المشروع الافتراضي",
-                  description: proj?.name
-                    ? `سيتم فتح "${proj.name}" تلقائياً عند تشغيل التطبيق`
-                    : "سيتم فتح المشروع تلقائياً عند تشغيل التطبيق",
-                });
-                setLocation(`/projects/${v}`);
-              }}
-            >
-              <SelectTrigger
-                className="h-8 text-xs sm:text-sm rounded-lg bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary font-medium w-[180px] sm:w-[220px] shrink-0"
-                aria-label="فتح مشروع مباشرة"
-              >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Building2 className="h-4 w-4 shrink-0" />
-                  <SelectValue placeholder="فتح مشروع مباشرة..." />
-                </div>
-              </SelectTrigger>
-              <SelectContent align="end" className="max-h-[60vh]">
-                {allProjects.map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {isAdmin && (
-            <button
-              onClick={() => { setShowBackupPanel(true); refetchBackups(); }}
-              className="flex items-center gap-1.5 text-xs sm:text-sm px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-medium transition-colors shrink-0"
-            >
-              <Database className="h-4 w-4" />
-              <span className="hidden sm:inline">نسخة احتياطية</span>
-            </button>
-          )}
-          <Link href="/projects" className="flex items-center gap-1 text-xs sm:text-sm text-primary hover:text-primary/80 font-medium transition-colors shrink-0">
-            <span className="hidden sm:inline">عرض جميع</span> المشاريع <ChevronLeft className="h-4 w-4" />
-          </Link>
-        </div>
+        <Link href="/projects" className="flex items-center gap-1 text-xs sm:text-sm text-primary hover:text-primary/80 font-medium transition-colors shrink-0">
+          <span className="hidden sm:inline">عرض جميع</span> المشاريع <ChevronLeft className="h-4 w-4" />
+        </Link>
       </div>
-
-      {/* ── Default Project Banner ── */}
-      {defaultProjectId && (() => {
-        const proj = allProjects.find((p) => String(p.id) === defaultProjectId);
-        return (
-          <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg border border-primary/20 bg-primary/5 text-xs sm:text-sm">
-            <Building2 className="h-4 w-4 text-primary shrink-0" />
-            <span className="text-foreground">
-              عند فتح التطبيق سيتم الانتقال تلقائياً إلى:{" "}
-              <span className="font-semibold text-primary">
-                {proj?.name ?? `مشروع #${defaultProjectId}`}
-              </span>
-            </span>
-            <button
-              onClick={() => {
-                if (user?.id == null) return;
-                clearDefaultProjectId(user.id);
-                setDefaultProjectIdState(null);
-                toast({
-                  title: "تم إلغاء التحديد التلقائي",
-                  description: "سيُفتح التطبيق على لوحة التحكم كالمعتاد",
-                });
-              }}
-              className="mr-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
-            >
-              <X className="h-3.5 w-3.5" />
-              إلغاء
-            </button>
-          </div>
-        );
-      })()}
 
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -299,13 +185,13 @@ export default function Dashboard() {
         />
         <KpiCard
           label="متوسط الإنجاز"
-          value={`${(summary?.averageProgress ?? 0).toFixed(1)}%`}
+          value={`${summary?.averageProgress ?? 0}%`}
           icon={TrendingUp}
           gradient="bg-gradient-to-br from-indigo-600 to-purple-700"
           sub="عبر جميع المشاريع"
         />
         <KpiCard
-          label="مشاريع منحرفة عن الخطة"
+          label="مشاريع متأخرة"
           value={summary?.delayedProjects ?? 0}
           icon={AlertTriangle}
           gradient={
@@ -313,7 +199,7 @@ export default function Dashboard() {
               ? "bg-gradient-to-br from-red-500 to-rose-700"
               : "bg-gradient-to-br from-emerald-500 to-green-700"
           }
-          sub={(summary?.delayedProjects ?? 0) === 0 ? "لا يوجد انحراف عن الخطة" : "تحتاج متابعة"}
+          sub={(summary?.delayedProjects ?? 0) === 0 ? "لا يوجد تأخير" : "تحتاج متابعة"}
         />
         <KpiCard
           label="التقارير المرفوعة"
@@ -329,8 +215,8 @@ export default function Dashboard() {
         {[
           { label: "مكتملة",    value: summary?.completedProjects ?? 0, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
           { label: "متوقفة",    value: summary?.suspendedProjects ?? 0, icon: PauseCircle,  color: "text-orange-600", bg: "bg-orange-50",  border: "border-orange-200" },
-          { label: "بنود الأعمال",   value: totalActivities,                  icon: ActivitySquare,color: "text-blue-600", bg: "bg-blue-50",    border: "border-blue-200" },
-          { label: "بنود مكتملة", value: completedActs,                icon: BarChart3,   color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" },
+          { label: "الأنشطة",   value: totalActivities,                  icon: ActivitySquare,color: "text-blue-600", bg: "bg-blue-50",    border: "border-blue-200" },
+          { label: "أنشطة مكتملة", value: completedActs,                icon: BarChart3,   color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" },
         ].map(s => (
           <Card key={s.label} className={`border ${s.border} shadow-sm`}>
             <CardContent className="p-3 flex items-center gap-3">
@@ -431,7 +317,7 @@ export default function Dashboard() {
         <Card className="shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              ملخص بنود الأعمال — {totalActivities} بند إجمالاً
+              ملخص الأنشطة — {totalActivities} نشاط إجمالاً
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -439,7 +325,7 @@ export default function Dashboard() {
               {[
                 { label: "مكتملة",    val: completedActs,  pct: actPct(completedActs),  color: "bg-emerald-500", textColor: "text-emerald-600" },
                 { label: "جارية",     val: inProgressActs, pct: actPct(inProgressActs), color: "bg-blue-500",    textColor: "text-blue-600" },
-                { label: "منحرفة عن الخطة",    val: delayedActs,    pct: actPct(delayedActs),    color: "bg-red-500",     textColor: "text-red-600" },
+                { label: "متأخرة",    val: delayedActs,    pct: actPct(delayedActs),    color: "bg-red-500",     textColor: "text-red-600" },
               ].map(a => (
                 <div key={a.label} className="text-center">
                   <div className={`text-2xl font-extrabold tabular-nums ${a.textColor}`}>{a.val}</div>
@@ -463,9 +349,9 @@ export default function Dashboard() {
             </div>
             <div>
               <CardTitle className="text-sm font-semibold text-red-700">
-                بنود تجاوزت المدة — {delayedActivitiesList.length} بند
+                تنبيهات التأخر — {delayedActivitiesList.length} نشاط متأخر
               </CardTitle>
-              <p className="text-xs text-red-500/80 mt-0.5">بنود تجاوزت موعد انتهائها المخطط</p>
+              <p className="text-xs text-red-500/80 mt-0.5">أنشطة تجاوزت موعد انتهائها المخطط</p>
             </div>
           </CardHeader>
           <CardContent>
@@ -480,10 +366,10 @@ export default function Dashboard() {
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="text-left">
                         <span className="text-xs text-muted-foreground">الإنجاز</span>
-                        <p className="text-sm font-bold tabular-nums">{(a.actualProgress ?? 0).toFixed(1)}%</p>
+                        <p className="text-sm font-bold tabular-nums">{a.actualProgress}%</p>
                       </div>
                       <span className="inline-flex items-center gap-1 rounded-full px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-semibold bg-red-100 text-red-700 border border-red-200 whitespace-nowrap">
-                        <Clock className="h-3 w-3" /> تجاوز {a.delayDays} يوم
+                        <Clock className="h-3 w-3" /> متأخر {a.delayDays} يوم
                       </span>
                     </div>
                   </div>
@@ -524,28 +410,26 @@ export default function Dashboard() {
                     {allProjects.map((p, i) => (
                       <tr key={p.id} className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${i % 2 === 1 ? "bg-muted/10" : ""}`}>
                         <td className="px-4 py-3">
-                          <Link href={getProjectLink(p.id!)} className="font-medium hover:text-primary transition-colors line-clamp-1">
+                          <Link href={`/projects/${p.id}`} className="font-medium hover:text-primary transition-colors line-clamp-1">
                             {p.name}
                           </Link>
                           <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.ownerEntity}</p>
                         </td>
                         <td className="px-3 py-3 hidden sm:table-cell">
-                          <StatusBadge status={p.status ?? "active"} />
+                          <StatusBadge status={p.status} />
                         </td>
                         <td className="px-3 py-3 min-w-[120px]">
                           <div className="flex items-center gap-2">
                             <div className="flex-1">
-                              <ProgressBar value={p.overallProgress ?? 0} planned={p.plannedProgress ?? 0} />
+                              <ProgressBar value={p.overallProgress} planned={p.plannedProgress} />
                             </div>
-                            <span className="text-xs font-bold tabular-nums w-12 text-left">{(p.overallProgress ?? 0).toFixed(1)}%</span>
+                            <span className="text-xs font-bold tabular-nums w-10 text-left">{p.overallProgress}%</span>
                           </div>
                         </td>
                         <td className="px-3 py-3 hidden md:table-cell">
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Clock className="h-3.5 w-3.5 shrink-0" />
-                            {p.noSchedule ? (
-                              <span className="text-muted-foreground">بدون جدول</span>
-                            ) : (p.daysRemaining ?? 0) > 0 ? `${p.daysRemaining} يوم` : <span className="text-red-500 font-medium">منتهي</span>}
+                            {p.daysRemaining > 0 ? `${p.daysRemaining} يوم` : <span className="text-red-500 font-medium">منتهي</span>}
                           </div>
                         </td>
                       </tr>
@@ -567,7 +451,7 @@ export default function Dashboard() {
               <p className="text-sm text-muted-foreground text-center py-6">لا توجد تقارير</p>
             ) : (
               <div className="space-y-3">
-                {recentReports.map((r) => (
+                {recentReports.map((r: any) => (
                   <Link key={r.id} href={`/projects/${r.projectId}/reports`} className="block group">
                     <div className="flex items-start justify-between gap-2 p-3 rounded-lg border hover:border-primary/40 hover:bg-muted/30 transition-all">
                       <div className="flex items-start gap-2.5 min-w-0">
@@ -592,117 +476,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
-
-      {showBackupPanel && isAdmin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowBackupPanel(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-emerald-100">
-                  <Database className="h-5 w-5 text-emerald-600" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold">النسخ الاحتياطية</h2>
-                  <p className="text-xs text-muted-foreground">إدارة النسخ الاحتياطية لقاعدة البيانات</p>
-                </div>
-              </div>
-              <button onClick={() => setShowBackupPanel(false)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-                <X className="h-5 w-5 text-gray-500" />
-              </button>
-            </div>
-
-            <div className="p-5 border-b">
-              <button
-                onClick={() => {
-                  createBackup.mutate(undefined, {
-                    onSuccess: () => { refetchBackups(); },
-                  });
-                }}
-                disabled={createBackup.isPending}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 font-medium transition-colors"
-              >
-                {createBackup.isPending ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> جاري إنشاء النسخة...</>
-                ) : (
-                  <><HardDrive className="h-4 w-4" /> إنشاء نسخة احتياطية جديدة</>
-                )}
-              </button>
-              {createBackup.isSuccess && (
-                <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-sm text-emerald-700">
-                  تم إنشاء النسخة الاحتياطية بنجاح
-                </div>
-              )}
-              {createBackup.isError && (
-                <div className="mt-3 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-                  فشل إنشاء النسخة الاحتياطية
-                </div>
-              )}
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-5">
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3">النسخ المحفوظة</h3>
-              {(backupListData?.backups?.length ?? 0) === 0 ? (
-                <div className="text-center py-8 text-sm text-muted-foreground">
-                  <HardDrive className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                  لا توجد نسخ احتياطية
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {backupListData!.backups!.map((b: any) => (
-                    <div key={b.filename} className="flex items-center justify-between p-3 rounded-lg border hover:border-emerald-200 transition-colors">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{b.filename}</p>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(b.createdAt).toLocaleDateString("ar-u-nu-latn", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                          <span className="text-xs text-muted-foreground">{formatFileSize(b.size)}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => {
-                            const token = localStorage.getItem("auth_token");
-                            fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/backup/download/${b.filename}`, {
-                              headers: { Authorization: `Bearer ${token}` },
-                            })
-                              .then(r => r.blob())
-                              .then(blob => {
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement("a");
-                                a.href = url;
-                                a.download = b.filename;
-                                a.click();
-                                URL.revokeObjectURL(url);
-                              });
-                          }}
-                          className="p-2 rounded-lg hover:bg-emerald-50 text-emerald-600 transition-colors"
-                          title="تحميل"
-                        >
-                          <Download className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm("هل أنت متأكد من حذف هذه النسخة الاحتياطية؟")) {
-                              deleteBackup.mutate({ filename: b.filename }, {
-                                onSuccess: () => { refetchBackups(); },
-                              });
-                            }
-                          }}
-                          className="p-2 rounded-lg hover:bg-red-50 text-red-500 transition-colors"
-                          title="حذف"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

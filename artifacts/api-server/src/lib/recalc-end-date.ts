@@ -18,9 +18,6 @@ function addDaysToDateStr(dateStr: string, days: number): string {
 }
 
 export async function recalcExpectedEndDate(projectId: number) {
-  const [project] = await db.select({ noSchedule: projectsTable.noSchedule }).from(projectsTable).where(eq(projectsTable.id, projectId));
-  if (project?.noSchedule) return;
-
   const baseEnd = await getActivitiesBaseEndDate(projectId);
 
   if (!baseEnd) return;

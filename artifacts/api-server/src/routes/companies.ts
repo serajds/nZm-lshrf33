@@ -1,12 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { companiesTable } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { requireAuth, requireAdminOrPM } from "../middlewares/auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { promises as fsp } from "fs";
 import { uploadToCloud, deleteFromCloud } from "../lib/fileStorage";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
@@ -34,22 +33,9 @@ const upload = multer({
 
 const router: IRouter = Router();
 
-router.get("/companies", requireAuth, async (req, res): Promise<void> => {
-  const role = req.user?.role;
-  const userId = req.user?.userId;
-
-  if (role === "admin") {
-    const companies = await db.select().from(companiesTable).orderBy(companiesTable.name);
-    res.json(companies);
-  } else if (role === "project_manager") {
-    const companies = await db.select().from(companiesTable)
-      .where(eq(companiesTable.createdById, userId!))
-      .orderBy(companiesTable.name);
-    res.json(companies);
-  } else {
-    const companies = await db.select().from(companiesTable).orderBy(companiesTable.name);
-    res.json(companies);
-  }
+router.get("/companies", requireAuth, async (_req, res): Promise<void> => {
+  const companies = await db.select().from(companiesTable).orderBy(companiesTable.name);
+  res.json(companies);
 });
 
 router.get("/companies/:id", requireAuth, async (req, res): Promise<void> => {
@@ -88,7 +74,6 @@ router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, r
     phone: phone || null,
     email: email || null,
     address: address || null,
-    createdById: req.user?.userId ?? null,
   }).returning();
 
   res.status(201).json(company);
@@ -97,14 +82,6 @@ router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, r
 router.patch("/companies/:id", requireAdminOrPM, upload.single("logo"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
-
-  if (req.user?.role === "project_manager") {
-    const [existing] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
-    if (!existing || existing.createdById !== req.user.userId) {
-      res.status(403).json({ error: "لا يمكنك تعديل شركة لم تقم بإنشائها" });
-      return;
-    }
-  }
 
   const updateData: Record<string, unknown> = {};
   const body = req.body;
@@ -147,16 +124,13 @@ router.delete("/companies/:id", requireAdminOrPM, async (req, res): Promise<void
     return;
   }
 
-  if (req.user?.role === "project_manager" && company.createdById !== req.user.userId) {
-    res.status(403).json({ error: "لا يمكنك حذف شركة لم تقم بإنشائها" });
-    return;
-  }
-
   if (company.logoUrl) {
     const filename = company.logoUrl.split("/").pop();
     if (filename) {
       const filePath = path.join(uploadsDir, filename);
-      await fsp.unlink(filePath).catch(() => {});
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
       await deleteFromCloud(filename);
     }
   }

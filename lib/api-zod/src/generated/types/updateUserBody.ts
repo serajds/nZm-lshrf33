@@ -16,5 +16,4 @@ export interface UpdateUserBody {
   /** @nullable */
   password?: string | null;
   companyIds?: number[];
-  projectIds?: number[];
 }

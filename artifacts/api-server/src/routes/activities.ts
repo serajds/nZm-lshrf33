@@ -2,10 +2,8 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { activitiesTable, projectsTable, activityGroupsTable, projectMembersTable, memberGroupAssignmentsTable } from "@workspace/db";
 import { eq, and, avg, max } from "drizzle-orm";
-import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { requireTabEdit } from "../middlewares/tab-access";
+import { requireProjectAccess } from "../middlewares/auth";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
-import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
 import multer from "multer";
 import * as XLSX from "xlsx";
 
@@ -36,21 +34,12 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const router: IRouter = Router();
 
 async function syncProjectProgress(projectId: number) {
-  const acts = await db
-    .select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight })
+  const [result] = await db
+    .select({ avgProgress: avg(activitiesTable.actualProgress) })
     .from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId));
 
-  let totalWeight = 0;
-  let weightedSum = 0;
-  for (const a of acts) {
-    const w = a.weight && a.weight > 0 ? a.weight : 1;
-    totalWeight += w;
-    weightedSum += (a.actualProgress ?? 0) * w;
-  }
-  const computed = totalWeight > 0
-    ? roundPercent(weightedSum / totalWeight)
-    : 0;
+  const computed = result?.avgProgress ? Math.round(Number(result.avgProgress)) : 0;
 
   await db
     .update(projectsTable)
@@ -69,25 +58,17 @@ router.get("/projects/:projectId/activities", requireProjectAccess("projectId"),
   res.json(activities);
 });
 
-router.post("/projects/:projectId/activities", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
+router.post("/projects/:projectId/activities", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
   const {
     name, plannedStartDate, plannedEndDate, actualStartDate, actualEndDate,
-    plannedProgress, actualProgress, weight, status, sortOrder, groupId
+    plannedProgress, actualProgress, status, sortOrder, groupId
   } = req.body;
 
-  if (!name) {
-    res.status(400).json({ error: "اسم البند مطلوب" });
-    return;
-  }
-
-  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
-  const isNoSchedule = project?.noSchedule === true;
-
-  if (!isNoSchedule && (!plannedStartDate || !plannedEndDate)) {
-    res.status(400).json({ error: "تاريخ البداية والنهاية المخططة مطلوبة" });
+  if (!name || !plannedStartDate || !plannedEndDate) {
+    res.status(400).json({ error: "الاسم وتاريخ البداية والنهاية المخططة مطلوبة" });
     return;
   }
 
@@ -100,25 +81,15 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     }
   }
 
-  const autoPlannedProgress = calcActivityPlannedProgress({
-    plannedStartDate: plannedStartDate || null,
-    plannedEndDate: plannedEndDate || null,
-  });
-
   const [activity] = await db.insert(activitiesTable).values({
     projectId,
     name,
-    plannedStartDate: plannedStartDate || null,
-    plannedEndDate: plannedEndDate || null,
+    plannedStartDate,
+    plannedEndDate,
     actualStartDate: actualStartDate ?? null,
     actualEndDate: actualEndDate ?? null,
-    plannedProgress: roundPercent(autoPlannedProgress),
+    plannedProgress: plannedProgress ?? 0,
     actualProgress: actualProgress ?? 0,
-    weight: (() => {
-      const w = Number(weight);
-      if (!Number.isFinite(w) || w <= 0) return 1;
-      return Math.min(100, w);
-    })(),
     status: status ?? "not_started",
     groupId: groupId ?? null,
     sortOrder: sortOrder ?? 0,
@@ -133,7 +104,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
   res.status(201).json(activity);
 });
 
-router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
+router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
@@ -143,40 +114,20 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   if (user?.role !== "admin") {
     const allowed = await checkGroupPermission(user?.userId, projectId, id);
     if (!allowed) {
-      res.status(403).json({ error: "ليس لديك صلاحية تعديل هذا البند" });
+      res.status(403).json({ error: "ليس لديك صلاحية تعديل هذا النشاط" });
       return;
     }
   }
-
-  const [proj] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
-  const projNoSchedule = proj?.noSchedule === true;
 
   const updateData: Record<string, unknown> = {};
   const body = req.body;
   if (body.name !== undefined) updateData.name = body.name;
-  if (body.plannedStartDate !== undefined) {
-    const val = body.plannedStartDate || null;
-    if (!projNoSchedule && !val) {
-      res.status(400).json({ error: "تاريخ البداية المخططة مطلوب" });
-      return;
-    }
-    updateData.plannedStartDate = val;
-  }
-  if (body.plannedEndDate !== undefined) {
-    const val = body.plannedEndDate || null;
-    if (!projNoSchedule && !val) {
-      res.status(400).json({ error: "تاريخ النهاية المخططة مطلوب" });
-      return;
-    }
-    updateData.plannedEndDate = val;
-  }
+  if (body.plannedStartDate !== undefined) updateData.plannedStartDate = body.plannedStartDate;
+  if (body.plannedEndDate !== undefined) updateData.plannedEndDate = body.plannedEndDate;
   if (body.actualStartDate !== undefined) updateData.actualStartDate = body.actualStartDate;
   if (body.actualEndDate !== undefined) updateData.actualEndDate = body.actualEndDate;
+  if (body.plannedProgress !== undefined) updateData.plannedProgress = body.plannedProgress;
   if (body.actualProgress !== undefined) updateData.actualProgress = body.actualProgress;
-  if (body.weight !== undefined) {
-    const w = Number(body.weight);
-    if (Number.isFinite(w) && w > 0) updateData.weight = Math.min(100, w);
-  }
   if (body.status !== undefined) updateData.status = body.status;
   if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder;
   if (body.groupId !== undefined) {
@@ -194,33 +145,6 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });
     return;
-  }
-
-  const todayStr = new Date().toISOString().split("T")[0];
-  const [existing] = await db.select().from(activitiesTable)
-    .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
-
-  if (existing) {
-    if (body.actualProgress !== undefined) {
-      const newProgress = Number(body.actualProgress);
-      if (newProgress > 0 && !existing.actualStartDate && !updateData.actualStartDate) {
-        updateData.actualStartDate = todayStr;
-      }
-      if (newProgress >= 100 && !existing.actualEndDate && !updateData.actualEndDate) {
-        updateData.actualEndDate = todayStr;
-        if (!updateData.status) updateData.status = "completed";
-      }
-      if (newProgress > 0 && newProgress < 100) {
-        if (!updateData.status && existing.status === "not_started") updateData.status = "in_progress";
-      }
-    }
-
-    const finalStart = (updateData.plannedStartDate as string | null | undefined) ?? existing.plannedStartDate;
-    const finalEnd = (updateData.plannedEndDate as string | null | undefined) ?? existing.plannedEndDate;
-    updateData.plannedProgress = roundPercent(calcActivityPlannedProgress({
-      plannedStartDate: finalStart ?? null,
-      plannedEndDate: finalEnd ?? null,
-    }));
   }
 
   const [activity] = await db.update(activitiesTable)
@@ -242,7 +166,7 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   res.json(activity);
 });
 
-router.post("/projects/:projectId/activities/import", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), upload.single("file"), async (req, res): Promise<void> => {
+router.post("/projects/:projectId/activities/import", requireProjectAccess("projectId"), upload.single("file"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -379,7 +303,7 @@ function parseExcelDate(val: string): string | null {
   return null;
 }
 
-router.delete("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
@@ -389,7 +313,7 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
   if (user?.role !== "admin") {
     const allowed = await checkGroupPermission(user?.userId, projectId, id);
     if (!allowed) {
-      res.status(403).json({ error: "ليس لديك صلاحية حذف هذا البند" });
+      res.status(403).json({ error: "ليس لديك صلاحية حذف هذا النشاط" });
       return;
     }
   }
@@ -412,25 +336,20 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
   res.sendStatus(204);
 });
 
-router.put("/projects/:projectId/activities/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
+router.put("/projects/:projectId/activities/reorder", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
   const { items } = req.body;
   if (!Array.isArray(items)) {
     res.status(400).json({ error: "items مطلوب" });
     return;
   }
-  // Run all updates in parallel inside one transaction. Previously
-  // each row was awaited serially → reordering 50 items took 50 round
-  // trips. Now it's a single batched commit.
-  await db.transaction(async (tx) => {
-    await Promise.all(items.map((item: any) => {
-      const updateData: Record<string, unknown> = { sortOrder: item.sortOrder };
-      if (item.groupId !== undefined) updateData.groupId = item.groupId === null ? null : item.groupId;
-      return tx.update(activitiesTable)
-        .set(updateData)
-        .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
-    }));
-  });
+  for (const item of items) {
+    const updateData: Record<string, unknown> = { sortOrder: item.sortOrder };
+    if (item.groupId !== undefined) updateData.groupId = item.groupId === null ? null : item.groupId;
+    await db.update(activitiesTable)
+      .set(updateData)
+      .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
+  }
   res.json({ success: true });
 });
 

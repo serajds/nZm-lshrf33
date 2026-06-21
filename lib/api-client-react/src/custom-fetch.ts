@@ -7,12 +7,9 @@ export type ErrorType<T = unknown> = ApiError<T>;
 export type BodyType<T> = T;
 
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
-export type AuthTokenSaver = (token: string) => Promise<void> | void;
-export type UnauthorizedHandler = (response: Response) => void;
 
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
-const RENEWED_TOKEN_HEADER = "X-Renewed-Token";
 
 // ---------------------------------------------------------------------------
 // Module-level configuration
@@ -20,8 +17,6 @@ const RENEWED_TOKEN_HEADER = "X-Renewed-Token";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
-let _authTokenSaver: AuthTokenSaver | null = null;
-let _unauthorizedHandler: UnauthorizedHandler | null = null;
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -47,59 +42,6 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
-}
-
-/**
- * Register a saver that is invoked whenever the server returns a renewed
- * bearer token (via the `X-Renewed-Token` response header). Use this on the
- * web to mirror the new token into localStorage so it survives reloads.
- *
- * Pass `null` to clear the saver.
- */
-export function setAuthTokenSaver(saver: AuthTokenSaver | null): void {
-  _authTokenSaver = saver;
-}
-
-/**
- * Register a handler invoked when any response comes back with HTTP 401.
- * This is the central place to wire "session expired" behaviour (clear
- * stored credentials, redirect to the login screen, show a toast, …) so
- * individual screens no longer have to render fake-empty states when the
- * token is no longer valid.
- *
- * Pass `null` to clear the handler.
- */
-export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
-  _unauthorizedHandler = handler;
-}
-
-/**
- * Run the same renewed-token + unauthorized-handler pipeline that
- * `customFetch` runs internally, but against a `Response` produced by a
- * manual `fetch` call.  Use this from one-off query functions that cannot
- * (yet) be migrated to `customFetch` so they still participate in rolling
- * session renewal and the centralized 401 redirect instead of swallowing
- * auth failures as empty data.
- */
-export async function processFetchResponse(response: Response): Promise<void> {
-  if (_authTokenSaver) {
-    const renewed = response.headers.get(RENEWED_TOKEN_HEADER);
-    if (renewed) {
-      try {
-        await _authTokenSaver(renewed);
-      } catch {
-        // Persisting the renewed token is best-effort; never fail the call.
-      }
-    }
-  }
-
-  if (response.status === 401 && _unauthorizedHandler) {
-    try {
-      _unauthorizedHandler(response);
-    } catch {
-      // Handler errors must not break the caller's error flow.
-    }
-  }
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -419,28 +361,6 @@ export async function customFetch<T = unknown>(
   const requestInfo = { method, url: resolveUrl(input) };
 
   const response = await fetch(input, { ...init, method, headers });
-
-  // Pick up any rolling-session token the server may have issued and hand it
-  // to the saver before we throw on errors, so even a non-2xx response can
-  // refresh the stored credential.
-  if (_authTokenSaver) {
-    const renewed = response.headers.get(RENEWED_TOKEN_HEADER);
-    if (renewed) {
-      try {
-        await _authTokenSaver(renewed);
-      } catch {
-        // Persisting the renewed token is best-effort; never fail the call.
-      }
-    }
-  }
-
-  if (response.status === 401 && _unauthorizedHandler) {
-    try {
-      _unauthorizedHandler(response);
-    } catch {
-      // Handler errors must not break the caller's error flow.
-    }
-  }
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

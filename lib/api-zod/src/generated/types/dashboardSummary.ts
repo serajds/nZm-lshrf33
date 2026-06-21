@@ -5,9 +5,6 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
-import type { DashboardSummaryAllProjectsItem } from "./dashboardSummaryAllProjectsItem";
-import type { DashboardSummaryDelayedActivitiesListItem } from "./dashboardSummaryDelayedActivitiesListItem";
-import type { DashboardSummaryRecentReportsItem } from "./dashboardSummaryRecentReportsItem";
 import type { Project } from "./project";
 
 export interface DashboardSummary {
@@ -15,15 +12,7 @@ export interface DashboardSummary {
   activeProjects: number;
   completedProjects: number;
   delayedProjects: number;
-  suspendedProjects: number;
   averageProgress: number;
   totalReports: number;
-  totalActivities: number;
-  completedActivities: number;
-  delayedActivities: number;
-  inProgressActivities: number;
   recentProjects: Project[];
-  allProjects: DashboardSummaryAllProjectsItem[];
-  recentReports: DashboardSummaryRecentReportsItem[];
-  delayedActivitiesList: DashboardSummaryDelayedActivitiesListItem[];
 }

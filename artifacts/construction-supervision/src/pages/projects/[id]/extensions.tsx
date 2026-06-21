@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
-import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGetProject } from "@workspace/api-client-react";
-import { useTabAccess } from "@/hooks/use-tab-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,14 +70,11 @@ export default function ProjectExtensions() {
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  usePageTitle("التمديدات");
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
-  const { canEdit, isHidden } = useTabAccess(projectId, "extensions", { redirectIfHidden: true });
-  const isViewer = !canEdit;
 
   const queryKey = [`/api/projects/${projectId}/extensions`];
 
@@ -205,7 +200,6 @@ export default function ProjectExtensions() {
               كل تمديد يُحسب من تاريخ نهاية التمديد السابق أو من التاريخ الأصلي إذا لم يوجد
             </p>
           </div>
-          {!isViewer && (
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
             if (!open) form.reset();
@@ -269,6 +263,13 @@ export default function ProjectExtensions() {
                         <FormMessage />
                       </FormItem>
                     )} />
+                    <FormField control={form.control} name="approvedBy" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>الجهة الموافِقة</FormLabel>
+                        <FormControl><Input placeholder="مثال: وزارة العدل" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
                   </div>
                   <FormField control={form.control} name="notes" render={({ field }) => (
                     <FormItem>
@@ -287,7 +288,6 @@ export default function ProjectExtensions() {
               </Form>
             </DialogContent>
           </Dialog>
-          )}
         </CardHeader>
 
         <CardContent className="p-0 overflow-x-auto">
@@ -300,13 +300,14 @@ export default function ProjectExtensions() {
                 <TableHead className="text-right">تاريخ الإنهاء الجديد</TableHead>
                 <TableHead className="text-right">السبب</TableHead>
                 <TableHead className="text-right">رقم الخطاب</TableHead>
+                <TableHead className="text-right">الجهة الموافِقة</TableHead>
                 <TableHead className="text-left"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
                       <span className="text-sm">جاري تحميل التمديدات...</span>
@@ -315,7 +316,7 @@ export default function ProjectExtensions() {
                 </TableRow>
               ) : extensions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                     <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
                     لا توجد تمديدات مسجّلة — المشروع يسير وفق الجدول الأصلي
                   </TableCell>
@@ -337,15 +338,16 @@ export default function ProjectExtensions() {
                     <TableCell className="text-sm font-mono">
                       {ext.documentRef ?? <span className="text-muted-foreground">—</span>}
                     </TableCell>
+                    <TableCell className="text-sm">
+                      {ext.approvedBy ?? <span className="text-muted-foreground">—</span>}
+                    </TableCell>
                     <TableCell>
-                      {!isViewer && (
                       <Button
                         variant="ghost" size="icon" className="h-7 w-7"
                         onClick={() => setDeletingId(ext.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5 text-destructive" />
                       </Button>
-                      )}
                     </TableCell>
                   </TableRow>
                 ))

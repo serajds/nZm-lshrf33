@@ -2,10 +2,8 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectExtensionsTable, projectsTable } from "@workspace/db";
 import { eq, desc, and, asc } from "drizzle-orm";
-import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { requireTabEdit } from "../middlewares/tab-access";
+import { requireProjectAccess } from "../middlewares/auth";
 import { recalcExpectedEndDate, getActivitiesBaseEndDate } from "../lib/recalc-end-date";
-import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
 
 const router: IRouter = Router();
 
@@ -28,7 +26,7 @@ async function recomputeExtensionChain(projectId: number, baseEndDate: string) {
   }
 }
 
-router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
 
   const extensions = await db.select()
@@ -39,7 +37,7 @@ router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"),
   res.json(extensions);
 });
 
-router.post("/projects/:projectId/extensions", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("extensions"), async (req, res): Promise<void> => {
+router.post("/projects/:projectId/extensions", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
 
   const { extensionDate, daysAdded, reason, documentRef, approvedBy, notes } = req.body;
@@ -68,37 +66,17 @@ router.post("/projects/:projectId/extensions", requireProjectAccess("projectId")
   }).returning();
 
   const baseEnd = await getActivitiesBaseEndDate(projectId) ?? project.expectedEndDate;
-  if (baseEnd) {
-    await recomputeExtensionChain(projectId, baseEnd);
-    await recalcExpectedEndDate(projectId);
-  }
+  await recomputeExtensionChain(projectId, baseEnd);
+  await recalcExpectedEndDate(projectId);
 
   const [updatedExtension] = await db.select()
     .from(projectExtensionsTable)
     .where(eq(projectExtensionsTable.id, extension.id));
 
-  (async () => {
-    try {
-      const actorId = req.user?.userId;
-      const recipients = await getProjectSupervisorIds(projectId, actorId);
-      if (recipients.length === 0) return;
-      await sendPushToUsers(recipients, {
-        title: `تمديد جديد • ${project.name}`,
-        body: `+${Number(daysAdded)} يوم • تاريخ التمديد ${extensionDate}`,
-        url: `/projects/${projectId}/extensions`,
-        tag: `extension-${projectId}`,
-        data: { kind: "extension", projectId, extensionId: extension.id },
-      });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn("[push] extension dispatch failed:", err);
-    }
-  })();
-
   res.status(201).json(updatedExtension);
 });
 
-router.delete("/projects/:projectId/extensions/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("extensions"), async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/extensions/:id", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
   const id = parseInt(req.params.id as string, 10);
 
@@ -114,9 +92,7 @@ router.delete("/projects/:projectId/extensions/:id", requireProjectAccess("proje
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   if (project) {
     const baseEnd = await getActivitiesBaseEndDate(projectId) ?? project.expectedEndDate;
-    if (baseEnd) {
-      await recomputeExtensionChain(projectId, baseEnd);
-    }
+    await recomputeExtensionChain(projectId, baseEnd);
   }
   await recalcExpectedEndDate(projectId);
 

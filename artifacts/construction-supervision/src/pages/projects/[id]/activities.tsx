@@ -1,6 +1,5 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
-import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   useListActivities, 
@@ -9,9 +8,9 @@ import {
   useDeleteActivity,
   useGetProject,
   getListActivitiesQueryKey,
+  useGetMyProjectPermissions,
 } from "@workspace/api-client-react";
-import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
-import type { Activity, ProjectSuspension, UpdateActivityBodyStatus } from "@workspace/api-client-react";
+import type { Activity, ProjectSuspension } from "@workspace/api-client-react";
 import {
   DndContext,
   closestCenter,
@@ -66,7 +65,6 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
 
 import { 
   Plus, Edit2, Trash2, ArrowRight, ChevronDown, ChevronLeft,
@@ -112,32 +110,18 @@ const STATUS_OPTIONS = [
   { value: "delayed",      label: "متأخر",          icon: AlertTriangle, cls: "text-destructive" },
 ] as const;
 
-const createActivitySchema = (isNoSchedule: boolean) => z.object({
-  name: z.string().min(1, "اسم البند مطلوب"),
-  plannedStartDate: isNoSchedule ? z.string().optional().default("") : z.string().min(1, "تاريخ البداية المخطط مطلوب"),
-  plannedEndDate: isNoSchedule ? z.string().optional().default("") : z.string().min(1, "تاريخ النهاية المخطط مطلوب"),
+const activitySchema = z.object({
+  name: z.string().min(1, "اسم النشاط مطلوب"),
+  plannedStartDate: z.string().min(1, "تاريخ البداية المخطط مطلوب"),
+  plannedEndDate: z.string().min(1, "تاريخ النهاية المخطط مطلوب"),
   actualStartDate: z.string().optional().nullable(),
   actualEndDate: z.string().optional().nullable(),
+  plannedProgress: z.coerce.number().min(0).max(100),
   actualProgress: z.coerce.number().min(0).max(100),
-  weight: z.coerce.number().min(0.01, "الوزن يجب أن يكون أكبر من صفر").max(100, "الوزن لا يتجاوز 100").default(1),
   status: z.enum(["not_started", "in_progress", "completed", "delayed"]).default("not_started"),
   sortOrder: z.coerce.number().default(0),
 });
 
-function calcPlannedProgress(a: { plannedStartDate?: string | null; plannedEndDate?: string | null }): number {
-  if (!a.plannedStartDate || !a.plannedEndDate) return 0;
-  const start = new Date(a.plannedStartDate).getTime();
-  const end = new Date(a.plannedEndDate).getTime();
-  const now = new Date().getTime();
-  const duration = end - start;
-  if (duration <= 0) return now >= end ? 100 : 0;
-  const elapsed = now - start;
-  if (elapsed <= 0) return 0;
-  if (elapsed >= duration) return 100;
-  return Math.round((elapsed / duration) * 100);
-}
-
-const activitySchema = createActivitySchema(false);
 type ActivityFormValues = z.infer<typeof activitySchema>;
 
 function StatusBadge({ status }: { status: string }) {
@@ -160,9 +144,6 @@ type DelayInfo =
   | { kind: "late_start"; days: number; label: string };
 
 function calcActivityDelay(a: Activity): DelayInfo {
-  if (!a.plannedStartDate || !a.plannedEndDate) {
-    return { kind: "on_time", days: 0, label: "—" };
-  }
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const plannedEnd = new Date(a.plannedEndDate); plannedEnd.setHours(0, 0, 0, 0);
   const plannedStart = new Date(a.plannedStartDate); plannedStart.setHours(0, 0, 0, 0);
@@ -309,10 +290,7 @@ export default function ProjectActivities() {
   const [, setLocation] = useLocation();
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
-  const { user } = useAuth();
-  const isContractorBase = user?.role === "contractor" || user?.isContractorCompanyUser === true;
   const queryClient = useQueryClient();
-  usePageTitle("بنود الأعمال");
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -340,17 +318,14 @@ export default function ProjectActivities() {
     enabled: !!projectId,
   });
 
-  const { data: myPermissions } = useMyProjectPermissions(projectId);
-  const { canEdit: canEditActivities, isHidden } = useTabAccess(projectId, "activities", { redirectIfHidden: true });
-  const canEditAll = canEditActivities && (myPermissions?.canEditAll ?? true);
+  const { data: myPermissions } = useGetMyProjectPermissions(projectId, { query: { enabled: !!projectId } });
+  const canEditAll = myPermissions?.canEditAll ?? true;
   const assignedGroupIds = myPermissions?.assignedGroupIds ?? [];
-  const isViewer = !canEditActivities;
   const canEditActivity = useCallback((a: Activity) => {
-    if (isViewer) return false;
     if (canEditAll) return true;
     if (assignedGroupIds.length === 0) return true;
     return a.groupId != null && assignedGroupIds.includes(a.groupId);
-  }, [canEditAll, assignedGroupIds, isViewer]);
+  }, [canEditAll, assignedGroupIds]);
 
   const createGroup = useMutation({
     mutationFn: async (data: { name: string; color: string }) => {
@@ -417,7 +392,7 @@ export default function ProjectActivities() {
       });
       invalidate();
     } catch {
-      toast({ variant: "destructive", title: "فشل نقل البند" });
+      toast({ variant: "destructive", title: "فشل نقل النشاط" });
     } finally {
       setUpdatingId(null);
     }
@@ -481,16 +456,12 @@ export default function ProjectActivities() {
   const updateActivity = useUpdateActivity();
   const deleteActivity = useDeleteActivity();
 
-  const isNoSchedule = project?.noSchedule === true;
-  const currentSchema = useMemo(() => createActivitySchema(isNoSchedule), [isNoSchedule]);
-
   const form = useForm<ActivityFormValues>({
-    resolver: zodResolver(currentSchema),
+    resolver: zodResolver(activitySchema),
     defaultValues: {
       name: "", plannedStartDate: "", plannedEndDate: "",
       actualStartDate: "", actualEndDate: "",
-      actualProgress: 0,
-      weight: 1,
+      plannedProgress: 0, actualProgress: 0,
       status: "not_started", sortOrder: 0,
     }
   });
@@ -513,7 +484,7 @@ export default function ProjectActivities() {
         a.plannedEndDate?.split("T")[0] || "",
         a.actualStartDate?.split("T")[0] || "",
         a.actualEndDate?.split("T")[0] || "",
-        calcPlannedProgress(a),
+        a.plannedProgress ?? 0,
         a.actualProgress ?? 0,
         statusLabels[a.status] || a.status,
       ]),
@@ -579,12 +550,12 @@ export default function ProjectActivities() {
     setEditingId(a.id);
     form.reset({
       name: a.name,
-      plannedStartDate: a.plannedStartDate ? new Date(a.plannedStartDate).toISOString().split('T')[0] : "",
-      plannedEndDate: a.plannedEndDate ? new Date(a.plannedEndDate).toISOString().split('T')[0] : "",
+      plannedStartDate: new Date(a.plannedStartDate).toISOString().split('T')[0],
+      plannedEndDate: new Date(a.plannedEndDate).toISOString().split('T')[0],
       actualStartDate: a.actualStartDate ? new Date(a.actualStartDate).toISOString().split('T')[0] : "",
       actualEndDate: a.actualEndDate ? new Date(a.actualEndDate).toISOString().split('T')[0] : "",
+      plannedProgress: a.plannedProgress,
       actualProgress: a.actualProgress,
-      weight: a.weight ?? 1,
       status: a.status as ActivityFormValues["status"],
       sortOrder: a.sortOrder ?? 0,
     });
@@ -596,7 +567,7 @@ export default function ProjectActivities() {
     try {
       await deleteActivity.mutateAsync({ projectId, id: deletingId });
       invalidate();
-      toast({ title: "تم حذف البند" });
+      toast({ title: "تم حذف النشاط" });
     } catch {
       toast({ variant: "destructive", title: "فشل الحذف" });
     } finally {
@@ -612,7 +583,7 @@ export default function ProjectActivities() {
       const extra: Record<string, unknown> = {};
       if (newStatus === "completed") extra.actualProgress = 100;
       if (newStatus === "not_started") extra.actualProgress = 0;
-      await updateActivity.mutateAsync({ projectId, id: a.id, data: { status: newStatus as UpdateActivityBodyStatus, ...extra } });
+      await updateActivity.mutateAsync({ projectId, id: a.id, data: { status: newStatus, ...extra } });
       invalidate();
       toast({ title: "تم تحديث الحالة" });
     } catch {
@@ -676,7 +647,7 @@ export default function ProjectActivities() {
 
   const ganttData = (activities ?? []).map((a) => ({
     name: a.name.length > 14 ? a.name.slice(0, 14) + "…" : a.name,
-    "المخطط": calcPlannedProgress(a),
+    "المخطط": a.plannedProgress,
     "الفعلي": a.actualProgress,
   }));
 
@@ -708,7 +679,7 @@ export default function ProjectActivities() {
         {/* ── Gantt Chart ── */}
         {(activities ?? []).length > 0 && (() => {
           const today = new Date(); today.setHours(0, 0, 0, 0);
-          const spanMs = ganttEnd.getTime() - ganttStart.getTime() || 86400000;
+          const spanMs = ganttEnd.getTime() - ganttStart.getTime();
           const toPct = (d: Date) => Math.max(0, Math.min(100, (d.getTime() - ganttStart.getTime()) / spanMs * 100));
           const todayPct = toPct(today);
           const NAME_W = 176; // px — fixed name column
@@ -754,12 +725,6 @@ export default function ProjectActivities() {
                     )}
                     <span className="flex items-center gap-1.5">
                       <span className="inline-block w-px h-3 bg-red-500" style={{ borderLeft: "2px dashed #ef4444" }} /> اليوم
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="inline-block h-3 rounded-sm bg-emerald-500" style={{ width: 3 }} /> بدأ بدون نسبة
-                    </span>
-                    <span className="flex items-center gap-1.5 text-amber-600">
-                      <AlertTriangle className="w-3 h-3" /> تواريخ ناقصة
                     </span>
                   </div>
                 </div>
@@ -859,144 +824,51 @@ export default function ProjectActivities() {
 
                             {/* Bars */}
                             <div className="absolute inset-0 z-10 flex flex-col justify-center gap-1.5 px-0">
-                              {(() => {
-                                const hasPlanned = !!(a.plannedStartDate && a.plannedEndDate);
-                                const hasAnyStart = !!(a.actualStartDate || a.plannedStartDate);
-                                const hasActualSignal = (a.actualProgress > 0 || !!a.actualStartDate) && hasAnyStart;
-                                const orphanProgress = a.actualProgress > 0 && !hasAnyStart;
-
-                                // ── Case 1: لا توجد أي تواريخ ولا أي إشارة قابلة للرسم ──
-                                if (!hasPlanned && !hasActualSignal && !orphanProgress) {
-                                  return (
-                                    <div className="relative h-4 flex items-center" title="ينقص هذا البند تواريخ مخططة">
-                                      <div
-                                        className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0"
-                                        style={{ borderTop: "1.5px dashed rgba(148,163,184,0.6)" }}
-                                      />
-                                      <span className="absolute right-1 top-1/2 -translate-y-1/2 text-amber-500 bg-background rounded-full p-0.5">
-                                        <AlertTriangle className="w-3 h-3" />
-                                      </span>
-                                    </div>
-                                  );
-                                }
-
-                                // ── Case 2: نسبة إنجاز بدون أي تواريخ — تنبيه + النسبة ──
-                                if (orphanProgress) {
+                              {/* Planned bar */}
+                              <div className="relative h-4">
+                                {(() => {
+                                  const sl = toPct(new Date(a.plannedStartDate));
+                                  const el = toPct(new Date(a.plannedEndDate));
+                                  const w = Math.max(0.5, el - sl);
                                   return (
                                     <div
-                                      className="relative h-4 flex items-center justify-end pr-2 gap-1.5"
-                                      title={`نسبة إنجاز ${a.actualProgress}% بدون تواريخ مسجلة`}
-                                    >
-                                      <div
-                                        className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0"
-                                        style={{ borderTop: "1.5px dashed rgba(148,163,184,0.6)" }}
-                                      />
-                                      <span className="relative z-10 text-[10px] font-bold text-foreground bg-background px-1.5 rounded border border-amber-300">
-                                        {a.actualProgress}%
-                                      </span>
-                                      <span className="relative z-10 text-amber-500 bg-background rounded-full p-0.5">
-                                        <AlertTriangle className="w-3 h-3" />
-                                      </span>
-                                    </div>
+                                      className="absolute h-full rounded-full bg-blue-400/70"
+                                      style={{ right: `${sl}%`, width: `${w}%` }}
+                                      title={`مخطط: ${fmtDate(a.plannedStartDate)} → ${fmtDate(a.plannedEndDate)}`}
+                                    />
                                   );
-                                }
+                                })()}
+                              </div>
 
-                                return (
-                                  <>
-                                    {/* Planned bar */}
-                                    <div className="relative h-4">
-                                      {hasPlanned ? (() => {
-                                        const sl = toPct(new Date(a.plannedStartDate!));
-                                        const el = toPct(new Date(a.plannedEndDate!));
-                                        const w = Math.max(0.5, el - sl);
-                                        return (
-                                          <div
-                                            className="absolute h-full rounded-full bg-blue-400/70"
-                                            style={{ right: `${sl}%`, width: `${w}%` }}
-                                            title={`مخطط: ${fmtDate(a.plannedStartDate!)} → ${fmtDate(a.plannedEndDate!)}`}
-                                          />
-                                        );
-                                      })() : (
-                                        <div
-                                          className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0"
-                                          style={{ borderTop: "1.5px dashed rgba(148,163,184,0.5)" }}
-                                          title="لا يوجد جدول مخطط لهذا البند"
-                                        />
-                                      )}
-                                    </div>
-
-                                    {/* Actual bar */}
-                                    {hasActualSignal && (
-                                      <div className="relative h-4">
-                                        {(() => {
-                                          const ongoing = !a.actualEndDate && a.status !== "completed";
-                                          const startIso = a.actualStartDate ?? a.plannedStartDate!;
-                                          const startPct = toPct(new Date(startIso));
-                                          const startLabel = a.actualStartDate
-                                            ? fmtDate(a.actualStartDate)
-                                            : `(مخطط) ${fmtDate(a.plannedStartDate!)}`;
-
-                                          // Marker: بدأ النشاط بدون نسبة مسجلة
-                                          if (a.actualProgress === 0 && a.actualStartDate) {
-                                            return (
-                                              <div
-                                                className="absolute h-full"
-                                                style={{ right: `calc(${startPct}% - 1.5px)`, width: 3 }}
-                                                title={`بدأ في ${fmtDate(a.actualStartDate)} — بدون إنجاز مسجَّل بعد`}
-                                              >
-                                                <div
-                                                  className="h-full w-full rounded-sm"
-                                                  style={{ backgroundColor: barColor, opacity: 0.85 }}
-                                                />
-                                              </div>
-                                            );
-                                          }
-
-                                          // حساب نقطة النهاية
-                                          let endPct: number;
-                                          let endLabel: string;
-                                          if (a.actualEndDate) {
-                                            endPct = toPct(new Date(a.actualEndDate));
-                                            endLabel = fmtDate(a.actualEndDate);
-                                          } else if (ongoing) {
-                                            endPct = todayPct;
-                                            endLabel = "جارٍ حتى اليوم";
-                                          } else if (hasPlanned) {
-                                            const ps = toPct(new Date(a.plannedStartDate!));
-                                            const pe = toPct(new Date(a.plannedEndDate!));
-                                            const plannedW = Math.max(0.5, pe - ps);
-                                            endPct = startPct + plannedW * a.actualProgress / 100;
-                                            endLabel = "—";
-                                          } else {
-                                            endPct = startPct;
-                                            endLabel = "—";
-                                          }
-
-                                          const w = Math.max(0.5, endPct - startPct);
-                                          return (
-                                            <div
-                                              className="absolute h-full rounded-full flex items-center overflow-hidden"
-                                              style={{
-                                                right: `${startPct}%`,
-                                                width: `${w}%`,
-                                                backgroundColor: barColor,
-                                                ...(ongoing ? { borderLeft: "3px solid white" } : {}),
-                                              }}
-                                              title={`فعلي: ${startLabel} → ${endLabel} (${a.actualProgress}%)`}
-                                            >
-                                              {w > 8 && (
-                                                <span className="text-[9px] font-bold text-white px-1.5 truncate">
-                                                  {a.actualProgress}%
-                                                </span>
-                                              )}
-                                            </div>
-                                          );
-                                        })()}
+                              {/* Actual bar */}
+                              {a.actualStartDate && actualEnd && (
+                                <div className="relative h-4">
+                                  {(() => {
+                                    const sl = toPct(new Date(a.actualStartDate));
+                                    const el = toPct(new Date(actualEnd));
+                                    const w = Math.max(0.5, el - sl);
+                                    const ongoing = !a.actualEndDate && a.status !== "completed";
+                                    return (
+                                      <div
+                                        className="absolute h-full rounded-full flex items-center overflow-hidden"
+                                        style={{
+                                          right: `${sl}%`,
+                                          width: `${w}%`,
+                                          backgroundColor: barColor,
+                                          ...(ongoing ? { borderLeft: "3px solid white" } : {}),
+                                        }}
+                                        title={`فعلي: ${fmtDate(a.actualStartDate)} → ${a.actualEndDate ? fmtDate(a.actualEndDate) : "جارٍ"} (${a.actualProgress}%)`}
+                                      >
+                                        {w > 8 && (
+                                          <span className="text-[9px] font-bold text-white px-1.5 truncate">
+                                            {a.actualProgress}%
+                                          </span>
+                                        )}
                                       </div>
-                                    )}
-                                  </>
-                                );
-                              })()}
+                                    );
+                                  })()}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1010,7 +882,7 @@ export default function ProjectActivities() {
           );
         })()}
 
-        {!isContractorBase && (
+        {/* Progress Comparison Chart */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">الإنجاز المخطط مقابل الفعلي</CardTitle>
@@ -1033,19 +905,17 @@ export default function ProjectActivities() {
             </div>
           </CardContent>
         </Card>
-        )}
 
-        {!isContractorBase && (
+        {/* Activities Table with Quick Actions */}
         <Card>
           <CardHeader className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-base">بنود الأعمال</CardTitle>
+                <CardTitle className="text-base">الأنشطة</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">انقر على الحالة أو نسبة الإنجاز لتحديثها مباشرةً</p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-            {!isViewer && (
             <Dialog open={isGroupDialogOpen} onOpenChange={setIsGroupDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm">
@@ -1085,11 +955,9 @@ export default function ProjectActivities() {
                 </div>
               </DialogContent>
             </Dialog>
-            )}
             <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm" onClick={exportActivities} disabled={!activities || activities.length === 0}>
               <Download className="h-4 w-4" /> <span className="hidden xs:inline">تصدير</span> <span className="hidden sm:inline">Excel</span>
             </Button>
-            {!isViewer && (
             <Dialog open={isImportOpen} onOpenChange={(open) => {
               setIsImportOpen(open);
               if (!open) setImportFile(null);
@@ -1144,26 +1012,24 @@ export default function ProjectActivities() {
                 </div>
               </DialogContent>
             </Dialog>
-            )}
-            {!isViewer && (
             <Dialog open={isDialogOpen} onOpenChange={(open) => {
               setIsDialogOpen(open);
               if (!open) { form.reset(); setEditingId(null); }
             }}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1.5 text-xs sm:text-sm mr-auto">
-                  <Plus className="h-4 w-4" /> إضافة بند
+                  <Plus className="h-4 w-4" /> إضافة نشاط
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[600px]" dir="rtl">
                 <DialogHeader>
-                  <DialogTitle>{editingId ? "تعديل بند" : "بند جديد"}</DialogTitle>
+                  <DialogTitle>{editingId ? "تعديل نشاط" : "نشاط جديد"}</DialogTitle>
                 </DialogHeader>
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
                     <FormField control={form.control} name="name" render={({ field }) => (
                       <FormItem>
-                        <FormLabel>اسم البند</FormLabel>
+                        <FormLabel>اسم النشاط</FormLabel>
                         <FormControl><Input {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1171,14 +1037,14 @@ export default function ProjectActivities() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <FormField control={form.control} name="plannedStartDate" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>بداية مخططة {isNoSchedule && <span className="text-xs text-muted-foreground font-normal">(اختياري)</span>}</FormLabel>
+                          <FormLabel>بداية مخططة</FormLabel>
                           <FormControl><Input type="date" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
                       <FormField control={form.control} name="plannedEndDate" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>نهاية مخططة {isNoSchedule && <span className="text-xs text-muted-foreground font-normal">(اختياري)</span>}</FormLabel>
+                          <FormLabel>نهاية مخططة</FormLabel>
                           <FormControl><Input type="date" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1197,18 +1063,17 @@ export default function ProjectActivities() {
                           <FormMessage />
                         </FormItem>
                       )} />
-                      <FormField control={form.control} name="actualProgress" render={({ field }) => (
+                      <FormField control={form.control} name="plannedProgress" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>الإنجاز الفعلي (%)</FormLabel>
+                          <FormLabel>الإنجاز المخطط (%)</FormLabel>
                           <FormControl><Input type="number" min={0} max={100} {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
-                      <FormField control={form.control} name="weight" render={({ field }) => (
+                      <FormField control={form.control} name="actualProgress" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>الوزن النسبي</FormLabel>
-                          <FormControl><Input type="number" min={0} step="0.1" {...field} /></FormControl>
-                          <p className="text-xs text-muted-foreground">يستخدم لحساب نسبة المشروع الإجمالية. الافتراضي 1.</p>
+                          <FormLabel>الإنجاز الفعلي (%)</FormLabel>
+                          <FormControl><Input type="number" min={0} max={100} {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
@@ -1244,7 +1109,6 @@ export default function ProjectActivities() {
                 </Form>
               </DialogContent>
             </Dialog>
-            )}
             </div>
           </CardHeader>
 
@@ -1266,15 +1130,14 @@ export default function ProjectActivities() {
 
               const renderActivityRow = (a: Activity) => {
                 const isBusy = updatingId === a.id;
-                const planned = calcPlannedProgress(a);
-                const deviation = a.actualProgress - planned;
+                const deviation = a.actualProgress - a.plannedProgress;
                 const delayInfo = calcActivityDelay(a);
                 const editable = canEditActivity(a);
                 return (
                   <SortableActivityRow key={a.id} id={a.id}>
                     <TableCell className="font-medium max-w-[200px]">
                       <div className="flex items-center gap-1">
-                        {!isViewer && <DragHandle />}
+                        <DragHandle />
                         <span className="block truncate" title={a.name}>{a.name}</span>
                       </div>
                     </TableCell>
@@ -1295,7 +1158,7 @@ export default function ProjectActivities() {
                     </TableCell>
                     <TableCell className="w-[160px]">
                       <div className="space-y-1">
-                        <ProgressBar value={planned} color="hsl(var(--muted-foreground)/0.4)" />
+                        <ProgressBar value={a.plannedProgress} color="hsl(var(--muted-foreground)/0.4)" />
                         <ProgressBar value={a.actualProgress} color="hsl(var(--primary))" />
                         <div className={`text-xs flex items-center gap-0.5 justify-end ${deviation < 0 ? 'text-destructive' : deviation > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
                           {deviation < 0 ? <TrendingDown className="h-3 w-3" /> : deviation > 0 ? <TrendingUp className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
@@ -1339,11 +1202,11 @@ export default function ProjectActivities() {
                       <div className="flex items-center justify-center gap-1">
                         {editable ? (
                           <>
-                            <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 5%" onClick={() => quickIncrement(a, -5)} disabled={a.actualProgress === 0}>
-                              <span className="text-xs font-bold text-muted-foreground">-5</span>
+                            <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 10%" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
+                              <span className="text-xs font-bold text-muted-foreground">-10</span>
                             </Button>
-                            <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 5%" onClick={() => quickIncrement(a, 5)} disabled={a.actualProgress === 100}>
-                              <span className="text-xs font-bold text-primary">+5</span>
+                            <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 10%" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
+                              <span className="text-xs font-bold text-primary">+10</span>
                             </Button>
                             {groups.length > 0 && (
                               <DropdownMenu>
@@ -1352,7 +1215,7 @@ export default function ProjectActivities() {
                                     <FolderPlus className="h-3.5 w-3.5 text-muted-foreground" />
                                   </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start">
+                                <DropdownMenuContent align="start" dir="rtl">
                                   <DropdownMenuLabel className="text-xs text-muted-foreground">نقل إلى مجموعة</DropdownMenuLabel>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem onClick={() => assignToGroup(a.id, null)}>
@@ -1388,7 +1251,7 @@ export default function ProjectActivities() {
                   <Table className="min-w-[720px]">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-right w-[220px]">البند</TableHead>
+                        <TableHead className="text-right w-[220px]">النشاط</TableHead>
                         <TableHead className="text-right w-[190px]">الفترة المخططة</TableHead>
                         <TableHead className="text-center w-[140px]">التأخر / التقدم</TableHead>
                         <TableHead className="text-center w-[160px]">الإنجاز (مخطط/فعلي)</TableHead>
@@ -1402,13 +1265,13 @@ export default function ProjectActivities() {
                           <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                             <div className="flex flex-col items-center gap-2">
                               <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
-                              <span className="text-sm">جاري تحميل بنود الأعمال...</span>
+                              <span className="text-sm">جاري تحميل الأنشطة...</span>
                             </div>
                           </TableCell>
                         </TableRow>
                       ) : allActs.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد بنود — أضف أول بند</TableCell>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</TableCell>
                         </TableRow>
                       ) : groups.length === 0 ? (
                         <SortableContext items={allActs.map(a => a.id)} strategy={verticalListSortingStrategy}>
@@ -1419,26 +1282,19 @@ export default function ProjectActivities() {
                           {sortedGroups.map(g => {
                             const groupActs = groupMap.get(g.id) ?? [];
                             const isCollapsed = collapsedGroups.has(g.id);
-                            const groupProgress = (() => {
-                              if (groupActs.length === 0) return 0;
-                              let s = 0, w = 0;
-                              for (const a of groupActs) {
-                                const ww = (a as any).weight && (a as any).weight > 0 ? (a as any).weight : 1;
-                                s += (a.actualProgress ?? 0) * ww;
-                                w += ww;
-                              }
-                              return w > 0 ? Math.round((s / w) * 10) / 10 : 0;
-                            })();
+                            const groupProgress = groupActs.length > 0
+                              ? Math.round(groupActs.reduce((s, a) => s + a.actualProgress, 0) / groupActs.length)
+                              : 0;
                             return (
                               <React.Fragment key={g.id}>
                                 <SortableGroupRow id={`group-${g.id}`}>
                                   <TableCell colSpan={4} onClick={() => toggleGroupCollapse(g.id)}>
                                     <div className="flex items-center gap-2">
-                                      {!isViewer && <DragHandle />}
+                                      <DragHandle />
                                       {isCollapsed ? <ChevronLeft className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                                       <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                                       <span className="font-semibold text-sm">{g.name}</span>
-                                      <span className="text-xs text-muted-foreground">({groupActs.length} بند)</span>
+                                      <span className="text-xs text-muted-foreground">({groupActs.length} نشاط)</span>
                                       <span className="text-xs text-muted-foreground mr-2">{groupProgress}%</span>
                                     </div>
                                   </TableCell>
@@ -1447,7 +1303,6 @@ export default function ProjectActivities() {
                                       <div className="flex-1 max-w-[80px]">
                                         <ProgressBar value={groupProgress} color={g.color} />
                                       </div>
-                                      {!isViewer && (
                                       <Button
                                         variant="ghost"
                                         size="icon"
@@ -1456,7 +1311,6 @@ export default function ProjectActivities() {
                                       >
                                         <X className="h-3 w-3 text-muted-foreground" />
                                       </Button>
-                                      )}
                                     </div>
                                   </TableCell>
                                 </SortableGroupRow>
@@ -1476,7 +1330,7 @@ export default function ProjectActivities() {
                                       <div className="flex items-center gap-2">
                                         {isCollapsed ? <ChevronLeft className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                                         <span className="font-semibold text-sm text-muted-foreground">بدون مجموعة</span>
-                                        <span className="text-xs text-muted-foreground">({ungrouped.length} بند)</span>
+                                        <span className="text-xs text-muted-foreground">({ungrouped.length} نشاط)</span>
                                       </div>
                                     </TableCell>
                                   </TableRow>
@@ -1499,10 +1353,10 @@ export default function ProjectActivities() {
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
-                <span className="text-sm text-muted-foreground">جاري تحميل بنود الأعمال...</span>
+                <span className="text-sm text-muted-foreground">جاري تحميل الأنشطة...</span>
               </div>
             ) : (activities ?? []).length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">لا يوجد بنود — أضف أول بند</div>
+              <div className="text-center py-8 text-muted-foreground">لا يوجد أنشطة — أضف أول نشاط</div>
             ) : (() => {
               const allActs = activities ?? [];
               const sortedGroups = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -1517,8 +1371,7 @@ export default function ProjectActivities() {
 
               const renderMobileCard = (a: Activity) => {
                 const isBusy = updatingId === a.id;
-                const planned = calcPlannedProgress(a);
-                const deviation = a.actualProgress - planned;
+                const deviation = a.actualProgress - a.plannedProgress;
                 const delayInfo = calcActivityDelay(a);
                 const editable = canEditActivity(a);
                 return (
@@ -1533,7 +1386,7 @@ export default function ProjectActivities() {
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">مخطط {planned}%</span>
+                        <span className="text-muted-foreground">مخطط {a.plannedProgress}%</span>
                         <span className="text-muted-foreground">فعلي {a.actualProgress}%</span>
                         <span className={deviation < 0 ? 'text-destructive font-medium' : deviation > 0 ? 'text-emerald-600 font-medium' : 'text-muted-foreground'}>
                           {deviation > 0 ? '+' : ''}{deviation}%
@@ -1543,12 +1396,31 @@ export default function ProjectActivities() {
                     </div>
                     {editable ? (
                       <div className="flex items-center gap-1 pt-1 border-t">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="gap-1 h-7 text-xs">
+                              تغيير الحالة <ChevronDown className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuLabel className="text-xs text-muted-foreground">تغيير الحالة</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {STATUS_OPTIONS.map(opt => {
+                              const Icon = opt.icon;
+                              return (
+                                <DropdownMenuItem key={opt.value} className={`gap-2 ${opt.cls} ${a.status === opt.value ? 'font-bold bg-accent' : ''}`} onClick={() => quickUpdateStatus(a, opt.value)}>
+                                  <Icon className="h-4 w-4" /> {opt.label}
+                                </DropdownMenuItem>
+                              );
+                            })}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <div className="flex items-center gap-1 mr-auto">
-                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, -5)} disabled={a.actualProgress === 0}>
-                            <span className="text-xs font-bold text-muted-foreground">-5</span>
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, -10)} disabled={a.actualProgress === 0}>
+                            <span className="text-xs font-bold text-muted-foreground">-10</span>
                           </Button>
-                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, 5)} disabled={a.actualProgress === 100}>
-                            <span className="text-xs font-bold text-primary">+5</span>
+                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => quickIncrement(a, 10)} disabled={a.actualProgress === 100}>
+                            <span className="text-xs font-bold text-primary">+10</span>
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
                             <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1574,16 +1446,9 @@ export default function ProjectActivities() {
                   {sortedGroups.map((g, gi) => {
                     const groupActs = groupMap.get(g.id) ?? [];
                     const isCollapsed = collapsedGroups.has(g.id);
-                    const groupProgress = (() => {
-                      if (groupActs.length === 0) return 0;
-                      let s = 0, w = 0;
-                      for (const a of groupActs) {
-                        const ww = (a as any).weight && (a as any).weight > 0 ? (a as any).weight : 1;
-                        s += (a.actualProgress ?? 0) * ww;
-                        w += ww;
-                      }
-                      return w > 0 ? Math.round((s / w) * 10) / 10 : 0;
-                    })();
+                    const groupProgress = groupActs.length > 0
+                      ? Math.round(groupActs.reduce((s, a) => s + a.actualProgress, 0) / groupActs.length)
+                      : 0;
                     const moveGroup = (dir: -1 | 1) => {
                       const newIdx = gi + dir;
                       if (newIdx < 0 || newIdx >= sortedGroups.length) return;
@@ -1619,7 +1484,7 @@ export default function ProjectActivities() {
                             {isCollapsed ? <ChevronLeft className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                             <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                             <span className="font-semibold text-sm flex-1 text-right truncate">{g.name}</span>
-                            <span className="text-xs text-muted-foreground shrink-0">{groupActs.length} بند</span>
+                            <span className="text-xs text-muted-foreground shrink-0">{groupActs.length} نشاط</span>
                             <span className="text-xs font-medium shrink-0">{groupProgress}%</span>
                           </button>
                         </div>
@@ -1643,7 +1508,7 @@ export default function ProjectActivities() {
                         >
                           {isCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                           <span className="font-semibold text-sm flex-1 text-right text-muted-foreground">بدون مجموعة</span>
-                          <span className="text-xs text-muted-foreground">{ungrouped.length} بند</span>
+                          <span className="text-xs text-muted-foreground">{ungrouped.length} نشاط</span>
                         </button>
                         {!isCollapsed && (
                           <div className="space-y-2 mb-3">
@@ -1658,15 +1523,14 @@ export default function ProjectActivities() {
             })()}
           </CardContent>
         </Card>
-        )}
       </div>
 
-      {!isContractorBase && (
+      {/* Delete Confirm */}
       <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
             <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
-            <AlertDialogDescription>هل أنت متأكد من حذف هذا البند؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
+            <AlertDialogDescription>هل أنت متأكد من حذف هذا النشاط؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row-reverse gap-2">
             <AlertDialogCancel>إلغاء</AlertDialogCancel>
@@ -1676,7 +1540,6 @@ export default function ProjectActivities() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      )}
     </div>
   );
 }

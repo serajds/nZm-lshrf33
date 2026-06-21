@@ -1,10 +1,10 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectExtensionsTable, projectSuspensionsTable, companiesTable } from "@workspace/db";
-import { eq, and, count, desc } from "drizzle-orm";
+import { eq, count, desc } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
 import jwt from "jsonwebtoken";
-import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcOverrunDays, isActivityDelayed, roundPercent } from "../lib/progress";
+import { calcPlannedProgressForProject, calcDelayDays } from "../lib/progress";
 
 const router: IRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
@@ -14,14 +14,8 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     .where(eq(activitiesTable.projectId, project.id))
     .orderBy(activitiesTable.sortOrder);
 
-  // The owner portal renders each report's activities table inline (and on
-  // its print preview), so we MUST include `activitiesSnapshot` on every
-  // row — that's the timeline as it was when the report was created. If
-  // we ever switch to a slimmed projection here (the way the engineer-side
-  // list endpoint does), the owner page will silently start showing the
-  // CURRENT activities for old reports. Keep the full select.
   const reports = await db.select().from(reportsTable)
-    .where(and(eq(reportsTable.projectId, project.id), eq(reportsTable.status, "approved")))
+    .where(eq(reportsTable.projectId, project.id))
     .orderBy(desc(reportsTable.reportDate));
 
   const extensions = await db.select().from(projectExtensionsTable)
@@ -32,90 +26,41 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     .where(eq(projectSuspensionsTable.projectId, project.id))
     .orderBy(projectSuspensionsTable.startDate);
 
-  const isNoSchedule = project.noSchedule === true;
-  const [filesCountResult] = await db.select({ count: count() }).from(projectFilesTable).where(eq(projectFilesTable.projectId, project.id));
+  const today = new Date();
+  const startDate = new Date(project.startDate);
+  const endDate = new Date(project.expectedEndDate);
+  const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+  const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+  const rawDaysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const daysRemaining = Math.max(0, rawDaysRemaining);
+  const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays);
+  const calendarDelayDays = rawDaysRemaining < 0 ? Math.abs(rawDaysRemaining) : 0;
+  const progressDelayDays = calcDelayDays(plannedProgress, project.overallProgress, totalDays);
+  const delayDays = Math.max(calendarDelayDays, progressDelayDays);
+  const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
+  const netDelayDays = Math.max(0, delayDays - suspensionDays);
+
   const activitiesCompleted = activities.filter(a => a.status === "completed").length;
+  const activitiesDelayed = activities.filter(a => a.status === "delayed").length;
 
-  interface OwnerSummary {
-    projectId: number;
-    noSchedule: boolean;
-    overallProgress: number;
-    plannedProgress: number;
-    activitiesTotal: number;
-    activitiesCompleted: number;
-    activitiesDelayed: number;
-    daysElapsed: number;
-    totalDays: number;
-    daysRemaining: number;
-    delayDays: number;
-    suspensionDays: number;
-    netDelayDays: number;
-    overrunDays: number;
-    reportsCount: number;
-    filesCount: number | bigint;
-  }
+  const [filesCountResult] = await db.select({ count: count() }).from(projectFilesTable).where(eq(projectFilesTable.projectId, project.id));
 
-  let summary: OwnerSummary;
-
-  const computedActual = activities.length > 0
-    ? roundPercent(calcActualProgressForProject(activities))
-    : roundPercent(project.overallProgress ?? 0);
-
-  if (isNoSchedule) {
-    summary = {
-      projectId: project.id,
-      noSchedule: true,
-      overallProgress: computedActual,
-      plannedProgress: 0,
-      activitiesTotal: activities.length,
-      activitiesCompleted,
-      activitiesDelayed: 0,
-      daysElapsed: 0,
-      totalDays: 0,
-      daysRemaining: 0,
-      delayDays: 0,
-      suspensionDays: 0,
-      netDelayDays: 0,
-      overrunDays: 0,
-      reportsCount: reports.length,
-      filesCount: filesCountResult?.count ?? 0,
-    };
-  } else {
-    const today = new Date();
-    const startDate = new Date(project.startDate ?? Date.now());
-    const endDate = new Date(project.expectedEndDate ?? Date.now());
-    const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const rawDaysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const daysRemaining = Math.max(0, rawDaysRemaining);
-    const plannedProgress = roundPercent(calcPlannedProgressForProject(activities, daysElapsed, totalDays));
-    // انحراف عن الخطة (planned vs actual progress only)
-    const delayDays = calcDelayDays(plannedProgress, computedActual, totalDays);
-    // تجاوز المدة (calendar overrun past expectedEndDate while not complete)
-    const overrunDays = calcOverrunDays(today, project.expectedEndDate, computedActual);
-    const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
-    const netDelayDays = Math.max(0, delayDays - suspensionDays);
-    const activitiesDelayed = activities.filter(a => isActivityDelayed(a, today, false)).length;
-
-    summary = {
-      projectId: project.id,
-      noSchedule: false,
-      overallProgress: computedActual,
-      plannedProgress,
-      activitiesTotal: activities.length,
-      activitiesCompleted,
-      activitiesDelayed,
-      daysElapsed,
-      totalDays,
-      daysRemaining,
-      delayDays,
-      suspensionDays,
-      netDelayDays,
-      overrunDays,
-      reportsCount: reports.length,
-      filesCount: filesCountResult?.count ?? 0,
-    };
-  }
+  const summary = {
+    projectId: project.id,
+    overallProgress: project.overallProgress,
+    plannedProgress,
+    activitiesTotal: activities.length,
+    activitiesCompleted,
+    activitiesDelayed,
+    daysElapsed,
+    totalDays,
+    daysRemaining,
+    delayDays,
+    suspensionDays,
+    netDelayDays,
+    reportsCount: reports.length,
+    filesCount: filesCountResult?.count ?? 0,
+  };
 
   const companyLogos: Record<string, { name: string; logoUrl: string | null }> = {};
   const companyIds = [project.ownerCompanyId, project.contractorCompanyId, project.supervisorCompanyId].filter(Boolean) as number[];

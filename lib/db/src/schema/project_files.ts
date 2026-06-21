@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -13,9 +13,7 @@ export const projectFilesTable = pgTable("project_files", {
   mimeType: text("mime_type").notNull(),
   description: text("description"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index("project_files_project_idx").on(t.projectId, t.category),
-]);
+});
 
 export const insertProjectFileSchema = createInsertSchema(projectFilesTable).omit({ id: true, uploadedAt: true });
 export type InsertProjectFile = z.infer<typeof insertProjectFileSchema>;

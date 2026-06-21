@@ -12,6 +12,4 @@ export type ProjectMemberRole =
 export const ProjectMemberRole = {
   project_manager: "project_manager",
   engineer: "engineer",
-  contractor: "contractor",
-  viewer: "viewer",
 } as const;

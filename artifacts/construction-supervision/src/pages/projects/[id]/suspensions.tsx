@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
-import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGetProject } from "@workspace/api-client-react";
-import { useTabAccess } from "@/hooks/use-tab-access";
 import type { ProjectSuspension } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -95,14 +93,11 @@ export default function ProjectSuspensions() {
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  usePageTitle("التوقفات");
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
-  const { canEdit, isHidden } = useTabAccess(projectId, "suspensions", { redirectIfHidden: true });
-  const isViewer = !canEdit;
 
   const queryKey = [`/api/projects/${projectId}/suspensions`];
 
@@ -134,7 +129,7 @@ export default function ProjectSuspensions() {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       if (data?.activitiesShifted) {
-        toast({ title: "تم إضافة التوقف وترحيل الجدول الزمني", description: "تم تأجيل تواريخ البنود اللاحقة وتاريخ نهاية المشروع" });
+        toast({ title: "تم إضافة التوقف وترحيل الجدول الزمني", description: "تم تأجيل تواريخ الأنشطة اللاحقة وتاريخ نهاية المشروع" });
       } else {
         toast({ title: "تم إضافة التوقف بنجاح", description: "لم يتم ترحيل الجدول الزمني" });
       }
@@ -266,7 +261,6 @@ export default function ProjectSuspensions() {
               أيام التوقف تُخصم من التأخير الإجمالي لحساب صافي التأخير الفعلي
             </p>
           </div>
-          {!isViewer && (
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
             if (!open) form.reset();
@@ -361,7 +355,7 @@ export default function ProjectSuspensions() {
                               ترحيل الجدول الزمني
                             </FormLabel>
                             <p className="text-xs text-muted-foreground">
-                              تأجيل تواريخ البنود اللاحقة وتاريخ نهاية المشروع بعدد أيام التوقف
+                              تأجيل تواريخ الأنشطة اللاحقة وتاريخ نهاية المشروع بعدد أيام التوقف
                             </p>
                           </div>
                         </div>
@@ -376,6 +370,23 @@ export default function ProjectSuspensions() {
                       <FormMessage />
                     </FormItem>
                   )} />
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField control={form.control} name="documentRef" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>رقم الوثيقة / الخطاب</FormLabel>
+                        <FormControl><Input placeholder="مثال: خ/5001/2025" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="approvedBy" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>الجهة الموثِّقة</FormLabel>
+                        <FormControl><Input placeholder="مثال: وزارة العدل" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </div>
 
                   <FormField control={form.control} name="notes" render={({ field }) => (
                     <FormItem>
@@ -395,7 +406,6 @@ export default function ProjectSuspensions() {
               </Form>
             </DialogContent>
           </Dialog>
-          )}
         </CardHeader>
 
         <CardContent className="p-0 overflow-x-auto">
@@ -409,13 +419,15 @@ export default function ProjectSuspensions() {
                 <TableHead className="text-right">إلى</TableHead>
                 <TableHead className="text-center">الأيام</TableHead>
                 <TableHead className="text-center">الترحيل</TableHead>
+                <TableHead className="text-right">الوثيقة</TableHead>
+                <TableHead className="text-right">الجهة الموثِّقة</TableHead>
                 <TableHead className="text-left"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
                       <span className="text-sm">جاري تحميل التوقفات...</span>
@@ -424,7 +436,7 @@ export default function ProjectSuspensions() {
                 </TableRow>
               ) : suspensions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
                     <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
                     لا توجد توقفات مسجّلة — كل التأخير يُحسب على المقاول
                   </TableCell>
@@ -451,15 +463,19 @@ export default function ProjectSuspensions() {
                         <span className="text-xs text-muted-foreground">لا</span>
                       )}
                     </TableCell>
+                    <TableCell className="text-sm font-mono">
+                      {s.documentRef ?? <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {s.approvedBy ?? <span className="text-muted-foreground">—</span>}
+                    </TableCell>
                     <TableCell>
-                      {!isViewer && (
                       <Button
                         variant="ghost" size="icon" className="h-7 w-7"
                         onClick={() => setDeletingId(s.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5 text-destructive" />
                       </Button>
-                      )}
                     </TableCell>
                   </TableRow>
                 ))

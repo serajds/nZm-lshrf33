@@ -10,11 +10,6 @@ export interface CompanyLogo {
   logoUrl: string | null;
 }
 
-export interface ReportImageGroupForPdf {
-  category: string;
-  urls: string[];
-}
-
 export interface ReportPdfData {
   projectName: string;
   ownerEntity?: string | null;
@@ -30,7 +25,6 @@ export interface ReportPdfData {
   technicalNotes?: string | null;
   recommendations?: string | null;
   imageUrls?: string[];
-  imageGroups?: ReportImageGroupForPdf[] | null;
   reportId: number;
   reportNumber?: number;
   activities?: ActivityForReport[];
@@ -95,9 +89,7 @@ function buildPrintHTML(data: ReportPdfData): string {
 
   const totalDuration = daysBetween(data.startDate, data.expectedEndDate);
   const elapsed = daysBetween(data.startDate, data.reportDate);
-  const remainingRaw = daysBetween(data.reportDate, data.expectedEndDate);
-  const overrunDays = remainingRaw != null && remainingRaw < 0 && pct < 100 ? -remainingRaw : 0;
-  const remaining = remainingRaw != null ? Math.max(0, remainingRaw) : null;
+  const remaining = daysBetween(data.reportDate, data.expectedEndDate);
   const elapsedPct = totalDuration && elapsed != null ? Math.min(100, Math.round((elapsed / totalDuration) * 100)) : null;
 
   const acts = data.activities ?? [];
@@ -115,11 +107,11 @@ function buildPrintHTML(data: ReportPdfData): string {
 
   const activitiesHTML = acts.length > 0 ? `
     <div class="section avoid-break">
-      <div class="section-title blue-title">📋 حالة بنود الأعمال</div>
+      <div class="section-title blue-title">📋 حالة الأنشطة</div>
       <table class="tbl">
         <thead>
           <tr>
-            <th class="th" style="text-align:right;width:40%">البند</th>
+            <th class="th" style="text-align:right;width:40%">النشاط</th>
             <th class="th tc" style="width:12%">مخطط %</th>
             <th class="th tc" style="width:12%">فعلي %</th>
             <th class="th tc" style="width:16%">الحالة</th>
@@ -131,8 +123,8 @@ function buildPrintHTML(data: ReportPdfData): string {
             const barW = Math.min(100, Math.max(0, a.actualProgress));
             return `<tr style="background:${i % 2 === 0 ? "#fff" : "#f8fafc"}">
               <td class="td">${esc(a.name)}</td>
-              <td class="td tc">${(a.plannedProgress ?? 0).toFixed(1)}%</td>
-              <td class="td tc" style="font-weight:700">${(a.actualProgress ?? 0).toFixed(1)}%</td>
+              <td class="td tc">${a.plannedProgress}%</td>
+              <td class="td tc" style="font-weight:700">${a.actualProgress}%</td>
               <td class="td tc">
                 <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;background:${statusBg(a.status)};color:${statusColor(a.status)};border:1px solid ${statusColor(a.status)}">
                   ${statusLabel(a.status)}
@@ -159,40 +151,18 @@ function buildPrintHTML(data: ReportPdfData): string {
       <p class="body-text">${esc(data.recommendations)}</p>
     </div>` : "";
 
-  const renderImageGrid = (urls: string[], total: number, startIdx: number): string => `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      ${urls.map((url, i) => { const safe = escAttr(url); return safe ? `
-        <div class="avoid-break" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#f8fafc">
-          <img src="${safe}" style="width:100%;height:200px;object-fit:cover;display:block" onerror="this.parentNode.style.display='none'" />
-          <div style="font-size:11px;color:#64748b;text-align:center;padding:6px;background:#f1f5f9">صورة ${startIdx + i + 1} من ${total}</div>
-        </div>` : ""; }).join("")}
-    </div>`;
-
-  const groups = (data.imageGroups ?? []).filter(g => g && Array.isArray(g.urls) && g.urls.length > 0);
-  let imagesHTML = "";
-  if (groups.length > 0) {
-    let runningIdx = 0;
-    const totalImages = groups.reduce((s, g) => s + g.urls.length, 0);
-    const sectionsHTML = groups.map((g, gi) => {
-      const html = `
-        <div class="avoid-break" style="${gi > 0 ? "margin-top:18px;" : ""}break-after:avoid;page-break-after:avoid">
-          <div class="section-title blue-title" style="border:none;padding:0 0 10px 0;margin-bottom:14px;border-bottom:2px solid #bfdbfe">📷 ${esc(g.category)} (${g.urls.length} صورة)</div>
-        </div>
-        ${renderImageGrid(g.urls, totalImages, runningIdx)}`;
-      runningIdx += g.urls.length;
-      return html;
-    }).join("");
-    imagesHTML = `<div style="break-before:page;page-break-before:always">${sectionsHTML}</div>`;
-  } else {
-    const images = data.imageUrls ?? [];
-    if (images.length > 0) {
-      imagesHTML = `
-        <div style="break-before:page;page-break-before:always">
-          <div class="section-title blue-title avoid-break" style="border:none;padding:0 0 10px 0;margin-bottom:16px;border-bottom:2px solid #bfdbfe">📷 صور الموقع (${images.length} صورة)</div>
-          ${renderImageGrid(images, images.length, 0)}
-        </div>`;
-    }
-  }
+  const images = data.imageUrls ?? [];
+  const imagesHTML = images.length > 0 ? `
+    <div style="break-before:page;page-break-before:always">
+      <div class="section-title blue-title avoid-break" style="border:none;padding:0 0 10px 0;margin-bottom:16px;border-bottom:2px solid #bfdbfe">📷 صور الموقع (${images.length} صورة)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        ${images.map((url, i) => { const safe = escAttr(url); return safe ? `
+          <div class="avoid-break" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#f8fafc">
+            <img src="${safe}" style="width:100%;height:200px;object-fit:cover;display:block" onerror="this.parentNode.style.display='none'" />
+            <div style="font-size:11px;color:#64748b;text-align:center;padding:6px;background:#f1f5f9">صورة ${i + 1} من ${images.length}</div>
+          </div>` : ""; }).join("")}
+      </div>
+    </div>` : "";
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -364,17 +334,18 @@ function buildPrintHTML(data: ReportPdfData): string {
   .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; }
 
   /* ── TOOLBAR ── */
-  .toolbar { position: sticky; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e293b, #334155); padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
-  .btn-print { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .toolbar { position: fixed; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e293b, #334155); padding: 12px 24px; display: flex; justify-content: center; gap: 14px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+  .btn-print { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 32px; font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer; }
   .btn-print:hover { background: #1d4ed8; }
-  .btn-close { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-  .btn-close:hover { background: rgba(255,255,255,0.25); }
+  .btn-close { background: #64748b; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; }
+  .btn-close:hover { background: #475569; }
 
   @media print {
     .toolbar { display: none !important; }
+    body { padding-top: 0 !important; }
   }
   @media screen {
-    body { max-width: 210mm; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+    body { padding-top: 56px; max-width: 210mm; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
   }
 </style>
 </head>
@@ -436,8 +407,7 @@ ${(() => {
 <div class="dual-box avoid-break">
   <div class="dual-head">
     <span class="dual-title">مقارنة الإنجاز</span>
-    ${deviation != null ? `<span class="dev-badge ${deviation >= 0 ? "dev-ok" : "dev-warn"}">${deviation >= 0 ? "+" : ""}${deviation}% ${deviation >= 0 ? "متقدم عن الخطة" : "خلف الخطة"}</span>` : ""}
-    ${overrunDays > 0 ? `<span class="dev-badge dev-warn">تجاوز المدة: ${overrunDays} يوم</span>` : ""}
+    ${deviation != null ? `<span class="dev-badge ${deviation >= 0 ? "dev-ok" : "dev-warn"}">${deviation >= 0 ? "+" : ""}${deviation}% ${deviation >= 0 ? "متقدم" : "متأخر"}</span>` : ""}
   </div>
   <div class="dp-row">
     <span class="dp-lbl">الفعلي</span>
@@ -465,10 +435,7 @@ ${(() => {
     <div class="stat-icon" style="background:#fefce8;color:#ca8a04">⏱️</div>
     <div><div class="stat-lbl">الأيام المنقضية</div><div class="stat-val">${elapsed} <span class="stat-unit">يوم (${elapsedPct ?? 0}%)</span></div></div>
   </div>` : ""}
-  ${overrunDays > 0 ? `<div class="stat">
-    <div class="stat-icon" style="background:#fef2f2;color:#dc2626">⚠️</div>
-    <div><div class="stat-lbl">تجاوز المدة التعاقدية</div><div class="stat-val">${overrunDays} <span class="stat-unit">يوم</span></div></div>
-  </div>` : remaining != null ? `<div class="stat">
+  ${remaining != null ? `<div class="stat">
     <div class="stat-icon" style="background:${remaining < 180 ? "#fef2f2" : "#f0f9ff"};color:${remaining < 180 ? "#dc2626" : "#0284c7"}">⏳</div>
     <div><div class="stat-lbl">الأيام المتبقية</div><div class="stat-val">${remaining} <span class="stat-unit">يوم</span></div></div>
   </div>` : ""}
@@ -490,7 +457,7 @@ ${data.startDate && data.expectedEndDate ? `<div class="tl-box avoid-break">
 
 <!-- ACTIVITY SUMMARY -->
 ${acts.length > 0 ? `<div class="act-box avoid-break">
-  <div class="act-title">ملخص حالة بنود الأعمال (${acts.length} بند)</div>
+  <div class="act-title">ملخص حالة الأنشطة (${acts.length} نشاط)</div>
   <div class="act-grid">
     <div class="act-item">
       <div class="act-num" style="color:#16a34a">${completedCount}</div>
@@ -591,16 +558,7 @@ function buildExecutiveSummaryHTML(data: ExecutiveSummaryData): string {
   const totalDays = daysBetween(data.startDate, data.expectedEndDate);
   const elapsed = daysBetween(data.startDate, new Date().toISOString());
   const remaining = totalDays != null && elapsed != null ? Math.max(0, totalDays - elapsed) : null;
-  const overrunDays = data.expectedEndDate && data.overallProgress < 100
-    ? (() => {
-        const t = new Date();
-        const e = new Date(data.expectedEndDate);
-        const tu = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
-        const eu = Date.UTC(e.getUTCFullYear(), e.getUTCMonth(), e.getUTCDate());
-        return Math.max(0, Math.floor((tu - eu) / 86400000));
-      })()
-    : 0;
-  const scheduleDeviation = deviation < 0 ? Math.abs(deviation) : 0;
+  const delayDays = data.expectedEndDate ? Math.max(0, Math.ceil((new Date().getTime() - new Date(data.expectedEndDate).getTime()) / 86400000)) : 0;
 
   const completed = data.activities.filter(a => a.status === "completed").length;
   const inProgress = data.activities.filter(a => a.status === "in_progress").length;
@@ -627,12 +585,9 @@ function buildExecutiveSummaryHTML(data: ExecutiveSummaryData): string {
 body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;line-height:1.7}
 @media print{@page{size:A4 portrait;margin:15mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none!important}}
 .container{max-width:750px;margin:0 auto;padding:20px}
-.toolbar{position:sticky;top:0;left:0;right:0;background:rgba(15,23,42,.95);backdrop-filter:blur(8px);padding:10px 16px;display:flex;gap:10px;z-index:999;justify-content:center;align-items:center;box-shadow:0 4px 16px rgba(0,0,0,0.3)}
-.toolbar button{color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap}
-.toolbar button:first-child{background:#2563eb}
-.toolbar button:first-child:hover{background:#1d4ed8}
-.toolbar button:last-child{background:rgba(255,255,255,.15)}
-.toolbar button:last-child:hover{background:rgba(255,255,255,.25)}
+.toolbar{position:fixed;top:0;left:0;right:0;background:rgba(15,23,42,.92);backdrop-filter:blur(8px);padding:10px 20px;display:flex;gap:12px;z-index:999;justify-content:center}
+.toolbar button{background:rgba(255,255,255,.15);color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px}
+.toolbar button:hover{background:rgba(255,255,255,.25)}
 .header{text-align:center;margin-bottom:24px;padding:20px 0;border-bottom:3px solid #1e3a5f}
 .header h1{font-size:22px;font-weight:800;color:#1e3a5f;margin-bottom:4px}
 .header p{font-size:13px;color:#64748b}
@@ -659,6 +614,7 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
   <button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
   <button onclick="window.close()">✕ إغلاق</button>
 </div>
+<div style="height:50px" class="no-print"></div>
 <div class="container">
   ${logosHtml}
   <div class="header">
@@ -685,18 +641,18 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
     <div class="section-title">📊 مؤشرات الأداء الرئيسية</div>
     <div class="metric-grid">
       <div class="metric" style="border-color:#10b981">
-        <div class="value" style="color:#10b981">${data.overallProgress.toFixed(1)}%</div>
+        <div class="value" style="color:#10b981">${data.overallProgress.toFixed(0)}%</div>
         <div class="label">الإنجاز الفعلي</div>
         <div class="progress-bar"><div class="progress-fill" style="width:${data.overallProgress}%;background:#10b981"></div></div>
       </div>
       <div class="metric" style="border-color:#3b82f6">
-        <div class="value" style="color:#3b82f6">${data.plannedProgress.toFixed(1)}%</div>
+        <div class="value" style="color:#3b82f6">${data.plannedProgress.toFixed(0)}%</div>
         <div class="label">الإنجاز المخطط</div>
         <div class="progress-bar"><div class="progress-fill" style="width:${data.plannedProgress}%;background:#3b82f6"></div></div>
       </div>
       <div class="metric" style="border-color:${deviation >= 0 ? '#10b981' : '#ef4444'}">
         <div class="value" style="color:${deviation >= 0 ? '#10b981' : '#ef4444'}">${deviation > 0 ? '+' : ''}${deviation.toFixed(1)}%</div>
-        <div class="label">${deviation >= 0 ? 'متقدم عن الخطة' : 'انحراف عن الخطة'}</div>
+        <div class="label">${deviation >= 0 ? 'متقدم عن الخطة' : 'متأخر عن الخطة'}</div>
       </div>
     </div>
     <div class="metric-grid">
@@ -705,12 +661,8 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
         <div class="label">إجمالي أيام المشروع</div>
       </div>
       <div class="metric">
-        <div class="value" style="color:${overrunDays > 0 ? '#ef4444' : '#3b82f6'}">${overrunDays > 0 ? overrunDays : (remaining ?? '—')}</div>
-        <div class="label">${overrunDays > 0 ? 'تجاوز المدة التعاقدية (يوم)' : 'أيام متبقية'}</div>
-      </div>
-      <div class="metric">
-        <div class="value" style="color:${scheduleDeviation > 0 ? '#ef4444' : '#10b981'}">${scheduleDeviation > 0 ? scheduleDeviation.toFixed(1) + '%' : '—'}</div>
-        <div class="label">${scheduleDeviation > 0 ? 'فجوة الانحراف عن الخطة' : 'لا يوجد انحراف عن الخطة'}</div>
+        <div class="value" style="color:${delayDays > 0 ? '#ef4444' : '#3b82f6'}">${delayDays > 0 ? delayDays : (remaining ?? '—')}</div>
+        <div class="label">${delayDays > 0 ? 'أيام التأخير' : 'أيام متبقية'}</div>
       </div>
       <div class="metric">
         <div class="value" style="color:#1e3a5f">${data.reportsCount}</div>
@@ -722,7 +674,7 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
   </div>
 
   <div class="section">
-    <div class="section-title">📈 ملخص بنود الأعمال (${total} بند)</div>
+    <div class="section-title">📈 ملخص الأنشطة (${total} نشاط)</div>
     <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
       <div class="metric" style="border-color:#10b981;padding:10px">
         <div class="value" style="color:#10b981;font-size:22px">${completed}</div>
@@ -743,15 +695,15 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
     </div>
 
     ${total > 0 ? `<table class="activity-table">
-      <thead><tr><th>#</th><th>اسم البند</th><th>المخطط</th><th>الفعلي</th><th>الفرق</th><th>الحالة</th></tr></thead>
+      <thead><tr><th>#</th><th>اسم النشاط</th><th>المخطط</th><th>الفعلي</th><th>الفرق</th><th>الحالة</th></tr></thead>
       <tbody>${data.activities.map((a, i) => {
         const diff = a.actualProgress - a.plannedProgress;
         return `<tr>
           <td style="text-align:center;color:#94a3b8">${i + 1}</td>
           <td>${esc(a.name)}</td>
-          <td style="text-align:center">${(a.plannedProgress ?? 0).toFixed(1)}%</td>
-          <td style="text-align:center">${(a.actualProgress ?? 0).toFixed(1)}%</td>
-          <td style="text-align:center;color:${diff >= 0 ? '#10b981' : '#ef4444'};font-weight:600">${diff > 0 ? '+' : ''}${diff.toFixed(1)}%</td>
+          <td style="text-align:center">${a.plannedProgress}%</td>
+          <td style="text-align:center">${a.actualProgress}%</td>
+          <td style="text-align:center;color:${diff >= 0 ? '#10b981' : '#ef4444'};font-weight:600">${diff > 0 ? '+' : ''}${diff.toFixed(0)}%</td>
           <td style="text-align:center"><span class="status-badge" style="color:${statusColor(a.status)};background:${statusBg(a.status)}">${statusLabel(a.status)}</span></td>
         </tr>`;
       }).join("")}</tbody>
@@ -767,424 +719,6 @@ body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;col
 
 export function previewExecutiveSummary(data: ExecutiveSummaryData): void {
   const html = buildExecutiveSummaryHTML(data);
-  const win = window.open("", "_blank", "width=900,height=780,scrollbars=yes");
-  if (!win) {
-    alert("يرجى السماح بالنوافذ المنبثقة لاستخدام خاصية المعاينة");
-    return;
-  }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-}
-
-/* ────────────────── Attendance employee report ────────────────── */
-
-export type AttendanceSessionStatus = "closed" | "open" | "auto_closed";
-
-export interface AttendanceReportSession {
-  checkInRecordId: number;
-  checkOutRecordId: number | null;
-  checkInAt: string;
-  checkOutAt: string | null;
-  durationMinutes: number | null;
-  status: AttendanceSessionStatus;
-}
-
-export interface AttendanceReportDay {
-  date: string;
-  sessions: AttendanceReportSession[];
-  totalMinutes: number;
-  flags: { incomplete: boolean; longDay: boolean };
-}
-
-export interface AttendanceReportSummary {
-  totalMinutes: number;
-  workDays: number;
-  averageDailyMinutes: number;
-  incompleteDays: number;
-  longDays: number;
-}
-
-export interface AttendanceReportData {
-  projectName: string;
-  ownerEntity?: string | null;
-  contractor?: string | null;
-  supervisorEntity?: string | null;
-  location?: string | null;
-  employeeName: string;
-  employeeRole?: string | null;
-  employeePhone?: string | null;
-  dateFrom?: string | null;
-  dateTo?: string | null;
-  days: AttendanceReportDay[];
-  summary: AttendanceReportSummary;
-  autoCloseHours: number;
-  longDayHours: number;
-  companyLogos?: {
-    owner?: CompanyLogo;
-    contractor?: CompanyLogo;
-    supervisor?: CompanyLogo;
-  };
-  apiBase?: string;
-}
-
-const ATTENDANCE_ROLE_LABEL: Record<string, string> = {
-  admin: "مدير النظام",
-  project_manager: "مدير المشروع",
-  engineer: "مهندس",
-  contractor: "مقاول",
-  owner: "صاحب المشروع",
-};
-
-function fmtLibyaTimeForReport(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Tripoli",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(d);
-}
-
-function fmtDurationHHMM(mins: number | null | undefined): string {
-  if (mins == null || !isFinite(mins)) return "—";
-  const m = Math.max(0, Math.round(mins));
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
-function fmtDurationHTML(mins: number | null | undefined): string {
-  if (mins == null || !isFinite(mins)) return "—";
-  return `${fmtDurationHHMM(mins)} <span class="stat-unit">س:د</span>`;
-}
-
-function buildAttendanceReportHTML(data: AttendanceReportData): string {
-  const roleLbl = data.employeeRole ? (ATTENDANCE_ROLE_LABEL[data.employeeRole] ?? data.employeeRole) : "";
-
-  const summary = data.summary;
-  const totalMins = summary.totalMinutes;
-  const workDays = summary.workDays;
-  const incompleteDays = summary.incompleteDays;
-  const longDays = summary.longDays;
-  const avgMins = summary.averageDailyMinutes;
-
-  const metaRows = [
-    data.ownerEntity ? ["جهة المالك", data.ownerEntity] : null,
-    data.contractor ? ["المقاول", data.contractor] : null,
-    data.supervisorEntity ? ["جهة الإشراف", data.supervisorEntity] : null,
-    data.location ? ["الموقع", data.location] : null,
-  ].filter(Boolean) as string[][];
-
-  const logosHTML = (() => {
-    const logos = data.companyLogos;
-    const base = data.apiBase || "";
-    if (!logos || (!logos.owner?.logoUrl && !logos.contractor?.logoUrl && !logos.supervisor?.logoUrl)) return "";
-    const entries: Array<{ role: string; name: string; src: string }> = [];
-    if (logos.owner) entries.push({ role: "جهة المالك", name: logos.owner.name, src: logos.owner.logoUrl ? escAttr(base + logos.owner.logoUrl) : "" });
-    if (logos.contractor) entries.push({ role: "المقاول", name: logos.contractor.name, src: logos.contractor.logoUrl ? escAttr(base + logos.contractor.logoUrl) : "" });
-    if (logos.supervisor) entries.push({ role: "جهة الإشراف", name: logos.supervisor.name, src: logos.supervisor.logoUrl ? escAttr(base + logos.supervisor.logoUrl) : "" });
-    const html = entries.map(e => `<div class="logo-item">
-      <div class="logo-role">${e.role}</div>
-      <div class="logo-img-box">${e.src ? `<img src="${e.src}" onerror="this.style.display='none'" />` : ""}</div>
-      <div class="logo-name">${esc(e.name)}</div>
-    </div>`).join("");
-    return `<div class="logos-strip avoid-break">${html}</div>`;
-  })();
-
-  const rowsHTML = data.days.length === 0
-    ? `<tr><td class="td tc" colspan="7" style="color:#94a3b8;padding:24px 10px">لا توجد سجلات لهذه الفترة.</td></tr>`
-    : data.days.flatMap((d, di) => {
-        const bg = di % 2 === 0 ? "#fff" : "#f8fafc";
-        const sessions = d.sessions.length === 0 ? [null] : d.sessions;
-        const flagsHTML = `
-          ${d.flags.incomplete ? `<span class="badge badge-red">غير مكتمل</span>` : ""}
-          ${d.flags.longDay ? `<span class="badge badge-amber">يوم طويل</span>` : ""}
-          ${d.sessions.some(s => s?.status === "auto_closed") ? `<span class="badge badge-slate">إغلاق تلقائي</span>` : ""}
-        `.trim();
-        return sessions.map((s, idx) => {
-          const isFirst = idx === 0;
-          const rowSpan = sessions.length;
-          let statusBadge = "";
-          if (s?.status === "auto_closed") statusBadge = `<span class="badge badge-amber">إغلاق تلقائي</span>`;
-          else if (s?.status === "open") statusBadge = `<span class="badge badge-red">مفتوحة</span>`;
-          return `<tr style="background:${bg}">
-            ${isFirst ? `<td class="td tc" rowspan="${rowSpan}" style="font-weight:700;vertical-align:middle">${esc(fmtDate(d.date))}</td>` : ""}
-            <td class="td tc">${s ? `#${idx + 1}` : "—"}</td>
-            <td class="td tc">${esc(fmtLibyaTimeForReport(s?.checkInAt ?? null))}</td>
-            <td class="td tc">${esc(fmtLibyaTimeForReport(s?.checkOutAt ?? null))} ${statusBadge}</td>
-            <td class="td tc">${s ? esc(fmtDurationHHMM(s.durationMinutes)) : "—"}</td>
-            ${isFirst ? `<td class="td tc" rowspan="${rowSpan}" style="font-weight:700;vertical-align:middle">${esc(fmtDurationHHMM(d.totalMinutes))}</td>` : ""}
-            ${isFirst ? `<td class="td tc" rowspan="${rowSpan}" style="vertical-align:middle">${flagsHTML || "—"}</td>` : ""}
-          </tr>`;
-        });
-      }).join("");
-
-  return `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>تقرير حضور — ${esc(data.employeeName)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
-<style>
-  @page { size: A4 portrait; margin: 12mm 14mm 14mm 14mm; }
-  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    font-family: 'Noto Kufi Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
-    color: #1e293b;
-    direction: rtl;
-    text-align: right;
-    background: #fff;
-    overflow-x: hidden;
-    overflow-wrap: break-word;
-    word-wrap: break-word;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  .avoid-break { break-inside: avoid; page-break-inside: avoid; }
-
-  .logos-strip {
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    gap: 32px;
-    flex-wrap: wrap;
-    padding: 18px 24px;
-    margin-bottom: 12px;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 10px;
-    background: #fff;
-  }
-  .logo-item { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; min-width: 0; max-width: 200px; }
-  .logo-img-box {
-    width: 80px; height: 80px;
-    border-radius: 12px;
-    border: 1.5px solid #e2e8f0;
-    background: #f8fafc;
-    display: flex; align-items: center; justify-content: center;
-    overflow: hidden; padding: 4px;
-    flex-shrink: 0;
-  }
-  .logo-img-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
-  .logo-role { font-size: 10px; font-weight: 700; color: #64748b; }
-  .logo-name { font-size: 12px; font-weight: 700; color: #1e293b; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-  .header {
-    background: linear-gradient(135deg, #1e293b, #334155, #475569);
-    color: #fff;
-    padding: 24px 28px 20px;
-    border-radius: 10px;
-    margin-bottom: 16px;
-    position: relative;
-    overflow: hidden;
-  }
-  .header::before {
-    content: ''; position: absolute;
-    top: -50px; left: -50px;
-    width: 150px; height: 150px;
-    background: rgba(255,255,255,0.04);
-    border-radius: 50%;
-  }
-  .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; position: relative; z-index: 1; }
-  .header-info { flex: 1; min-width: 0; }
-  .header-sys { font-size: 10px; text-transform: uppercase; letter-spacing: 3px; color: rgba(255,255,255,0.45); margin-bottom: 6px; }
-  .header-name { font-size: 22px; font-weight: 800; line-height: 1.3; margin-bottom: 12px; overflow-wrap: anywhere; }
-  .header-pills { display: flex; flex-wrap: wrap; gap: 6px; }
-  .pill { display: inline-block; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 3px 12px; font-size: 11px; color: rgba(255,255,255,0.8); max-width: 100%; overflow-wrap: anywhere; }
-  .header-badge { background: rgba(255,255,255,0.12); border: 1.5px solid rgba(255,255,255,0.25); border-radius: 12px; padding: 12px 20px; text-align: center; min-width: 90px; flex-shrink: 0; }
-  .badge-lbl { font-size: 9px; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
-  .badge-val { font-size: 16px; font-weight: 800; white-space: nowrap; }
-
-  .info-strip { display: flex; flex-wrap: wrap; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
-  .info-cell { flex: 1 1 25%; min-width: 0; text-align: center; padding: 12px 8px; border-left: 1px solid #e2e8f0; }
-  .info-cell:first-child { border-left: none; }
-  .info-lbl { font-size: 10px; color: #64748b; font-weight: 600; margin-bottom: 3px; }
-  .info-val { font-size: 14px; font-weight: 800; color: #1e293b; overflow-wrap: anywhere; }
-
-  .stats-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
-  .stat { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; min-width: 0; }
-  .stat-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
-  .stat > div:not(.stat-icon) { min-width: 0; flex: 1; }
-  .stat-lbl { font-size: 11px; color: #64748b; font-weight: 600; }
-  .stat-val { font-size: 16px; font-weight: 800; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stat-unit { font-size: 11px; font-weight: 600; color: #94a3b8; }
-
-  .section { border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; background: #fafbfc; }
-  .section-title { font-size: 15px; font-weight: 700; color: #334155; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
-  .blue-title { color: #1e40af; border-bottom-color: #bfdbfe; }
-
-  .tbl-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .th { background: #f1f5f9; padding: 10px 12px; font-size: 12px; font-weight: 700; color: #475569; border-bottom: 2px solid #cbd5e1; text-align: center; }
-  .tc { text-align: center !important; }
-  .td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; }
-
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; line-height: 1.4; }
-  .badge-red { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
-  .badge-amber { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
-  .badge-slate { background: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; }
-
-  .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: 11px; color: #94a3b8; }
-
-  .toolbar { position: sticky; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e293b, #334155); padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
-  .btn-print { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-  .btn-print:hover { background: #1d4ed8; }
-  .btn-close { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-  .btn-close:hover { background: rgba(255,255,255,0.25); }
-
-  @media print { .toolbar { display: none !important; } }
-  @media screen { body { max-width: 210mm; margin: 0 auto; padding-left: 16px; padding-right: 16px; } }
-
-  /* Mobile / narrow screens — keep layout readable on phones without affecting print or desktop preview. */
-  @media screen and (max-width: 640px) {
-    body { padding-left: 10px; padding-right: 10px; font-size: 13px; }
-    .toolbar { padding: 8px 10px; gap: 8px; }
-    .btn-print { padding: 9px 14px; font-size: 13px; }
-    .btn-close { padding: 9px 12px; font-size: 13px; }
-
-    .logos-strip { gap: 18px; padding: 14px 12px; }
-    .logo-item { max-width: 130px; }
-    .logo-img-box { width: 64px; height: 64px; }
-    .logo-name { font-size: 11px; white-space: normal; line-height: 1.3; }
-
-    .header { padding: 16px 16px 14px; }
-    .header-row { flex-direction: column; align-items: stretch; gap: 12px; }
-    .header-name { font-size: 18px; margin-bottom: 10px; }
-    .header-badge { align-self: flex-start; padding: 8px 14px; min-width: 0; }
-    .badge-lbl { font-size: 9px; }
-    .badge-val { font-size: 14px; }
-    .pill { font-size: 10px; padding: 3px 10px; }
-
-    .info-cell { flex: 1 1 50%; border-left: none; border-bottom: 1px solid #e2e8f0; }
-    .info-cell:nth-child(2n) { border-left: 1px solid #e2e8f0; }
-    .info-cell:nth-last-child(-n+2) { border-bottom: none; }
-    .info-val { font-size: 13px; }
-
-    .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-    .stat { padding: 12px 12px; gap: 10px; }
-    .stat-icon { width: 36px; height: 36px; }
-    .stat-icon svg { width: 18px; height: 18px; }
-    .stat-val { font-size: 15px; }
-
-    .section { padding: 14px 12px; }
-    .th, .td { padding: 8px 6px; font-size: 12px; }
-
-    .footer { font-size: 10px; }
-  }
-</style>
-</head>
-<body>
-
-<div class="toolbar">
-  <button class="btn-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
-  <button class="btn-close" onclick="window.close()">✕ إغلاق</button>
-</div>
-
-${logosHTML}
-
-<!-- HEADER -->
-<div class="header avoid-break">
-  <div class="header-row">
-    <div class="header-info">
-      <div class="header-sys">إدارة الإشراف والمتابعة</div>
-      <div class="header-name">${esc(data.projectName)}</div>
-      <div class="header-pills">
-        ${metaRows.map(([l, v]) => `<span class="pill">${l}: ${esc(v)}</span>`).join("")}
-      </div>
-    </div>
-    <div class="header-badge">
-      <div class="badge-lbl">نوع التقرير</div>
-      <div class="badge-val">حضور موظف</div>
-    </div>
-  </div>
-</div>
-
-<!-- INFO STRIP -->
-<div class="info-strip avoid-break">
-  <div class="info-cell"><div class="info-lbl">الموظف</div><div class="info-val">${esc(data.employeeName)}</div></div>
-  ${roleLbl ? `<div class="info-cell"><div class="info-lbl">الدور</div><div class="info-val">${esc(roleLbl)}</div></div>` : ""}
-  <div class="info-cell"><div class="info-lbl">من تاريخ</div><div class="info-val">${esc(fmtDate(data.dateFrom))}</div></div>
-  <div class="info-cell"><div class="info-lbl">إلى تاريخ</div><div class="info-val">${esc(fmtDate(data.dateTo))}</div></div>
-</div>
-
-<!-- STATS -->
-<div class="stats-row avoid-break">
-  <div class="stat">
-    <div class="stat-icon" style="background:#fefce8;color:#ca8a04">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-    </div>
-    <div><div class="stat-lbl">إجمالي الساعات</div><div class="stat-val">${fmtDurationHTML(totalMins)}</div></div>
-  </div>
-  <div class="stat">
-    <div class="stat-icon" style="background:#eff6ff;color:#2563eb">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg>
-    </div>
-    <div><div class="stat-lbl">عدد أيام العمل</div><div class="stat-val">${workDays} <span class="stat-unit">يوم</span></div></div>
-  </div>
-  <div class="stat">
-    <div class="stat-icon" style="background:#f0fdf4;color:#16a34a">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12 10 17 19 8"/></svg>
-    </div>
-    <div><div class="stat-lbl">متوسط اليوم</div><div class="stat-val">${fmtDurationHTML(avgMins)}</div></div>
-  </div>
-  <div class="stat">
-    <div class="stat-icon" style="background:${incompleteDays > 0 ? "#fef2f2" : "#f8fafc"};color:${incompleteDays > 0 ? "#dc2626" : "#94a3b8"}">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-    </div>
-    <div><div class="stat-lbl">أيام غير مكتملة</div><div class="stat-val">${incompleteDays} <span class="stat-unit">يوم</span></div></div>
-  </div>
-  <div class="stat">
-    <div class="stat-icon" style="background:${longDays > 0 ? "#fffbeb" : "#f8fafc"};color:${longDays > 0 ? "#b45309" : "#94a3b8"}">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>
-    </div>
-    <div><div class="stat-lbl">أيام طويلة (≥ ${data.longDayHours} س)</div><div class="stat-val">${longDays} <span class="stat-unit">يوم</span></div></div>
-  </div>
-</div>
-
-<!-- DETAILS TABLE -->
-<div class="section avoid-break">
-  <div class="section-title blue-title">سجل الحضور والانصراف اليومي</div>
-  <div class="tbl-wrap">
-    <table class="tbl">
-      <thead>
-        <tr>
-          <th class="th" style="width:18%">التاريخ</th>
-          <th class="th" style="width:8%">جلسة</th>
-          <th class="th" style="width:14%">حضور</th>
-          <th class="th" style="width:18%">انصراف</th>
-          <th class="th" style="width:12%">المدة</th>
-          <th class="th" style="width:12%">إجمالي اليوم</th>
-          <th class="th" style="width:18%">حالة</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rowsHTML}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<!-- FOOTER -->
-<div class="footer avoid-break">
-  <span>تم إنشاؤه آلياً بواسطة إدارة الإشراف والمتابعة — ${fmtDate(new Date().toISOString())}</span>
-  <span style="font-weight:700;color:#64748b">توقيت ليبيا (GMT+2)</span>
-</div>
-
-</body>
-</html>`;
-}
-
-export function previewAttendanceReport(data: AttendanceReportData): void {
-  const html = buildAttendanceReportHTML(data);
   const win = window.open("", "_blank", "width=900,height=780,scrollbars=yes");
   if (!win) {
     alert("يرجى السماح بالنوافذ المنبثقة لاستخدام خاصية المعاينة");

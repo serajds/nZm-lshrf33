@@ -25,15 +25,7 @@ export interface UpdateProjectBody {
   /** @nullable */
   actualEndDate?: Date | null;
   /** @nullable */
-  noSchedule?: boolean | null;
-  /** @nullable */
   status?: UpdateProjectBodyStatus;
   /** @nullable */
   overallProgress?: number | null;
-  /** @nullable */
-  siteLatitude?: number | null;
-  /** @nullable */
-  siteLongitude?: number | null;
-  /** @nullable */
-  siteRadiusMeters?: number | null;
 }

@@ -17,8 +17,6 @@ export type ReportActivitiesSnapshotItem = {
   actualEndDate?: string | null;
   plannedProgress?: number;
   actualProgress?: number;
-  /** Activity weight (cost/volume share) used for the report's weighted progress. */
-  weight?: number;
   status?: string;
   sortOrder?: number;
 };

@@ -5,8 +5,6 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
-import type { UpdateReportBodyActivitiesSnapshotItem } from "./updateReportBodyActivitiesSnapshotItem";
-import type { UpdateReportBodyImageGroupsItem } from "./updateReportBodyImageGroupsItem";
 import type { UpdateReportBodyType } from "./updateReportBodyType";
 
 export interface UpdateReportBody {
@@ -27,17 +25,4 @@ export interface UpdateReportBody {
   /** @nullable */
   recommendations?: string | null;
   imageUrls?: string[];
-  /** @nullable */
-  imageGroups?: UpdateReportBodyImageGroupsItem[] | null;
-  /**
-   * Partial-merge update for the report's activities snapshot. Each item
-must carry the snapshot row `id`; only `actualProgress` and `status`
-are applied. Unknown ids are ignored; rows omitted from the payload
-are kept unchanged. When provided WITHOUT an explicit
-`progressPercentage`, the server recomputes the report's overall
-progress as a weighted average using each row's stored `weight`.
-
-   * @nullable
-   */
-  activitiesSnapshot?: UpdateReportBodyActivitiesSnapshotItem[] | null;
 }

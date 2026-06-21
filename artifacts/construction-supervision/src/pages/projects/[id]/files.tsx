@@ -1,13 +1,11 @@
 import { useState, useRef, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
-import { usePageTitle } from "@/hooks/use-page-title";
 import { 
   useListFiles,
   useDeleteFile,
   useGetProject,
   getListFilesQueryKey 
 } from "@workspace/api-client-react";
-import { useTabAccess } from "@/hooks/use-tab-access";
 import type { ProjectFile } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
@@ -57,7 +55,6 @@ export default function ProjectFiles() {
   const projectId = parseInt(params.id || "0", 10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  usePageTitle("الملفات");
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [previewFile, setPreviewFile] = useState<ProjectFile | null>(null);
@@ -72,8 +69,6 @@ export default function ProjectFiles() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
-  const { canEdit, isHidden } = useTabAccess(projectId, "files", { redirectIfHidden: true });
-  const isViewer = !canEdit;
   
   const { data: allFiles, isLoading } = useListFiles(projectId, {}, { query: { enabled: !!projectId } });
   
@@ -274,7 +269,6 @@ export default function ProjectFiles() {
             <span>{formatFileSize(totalSize)}</span>
           </div>
         )}
-        {!isViewer && (
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           setIsDialogOpen(open);
           if (!open) { 
@@ -378,7 +372,6 @@ export default function ProjectFiles() {
             </form>
           </DialogContent>
         </Dialog>
-        )}
       </div>
 
       {isLoading ? (
@@ -447,11 +440,9 @@ export default function ProjectFiles() {
                   <Button variant="outline" size="sm" className="flex-1 gap-1.5 h-8 text-xs" onClick={() => handleDownload(file)}>
                     <Download className="h-3.5 w-3.5" /> تحميل
                   </Button>
-                  {!isViewer && (
                   <Button variant="outline" size="sm" className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => setDeletingId(file.id)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
-                  )}
                 </div>
               </Card>
             );
@@ -467,8 +458,6 @@ export default function ProjectFiles() {
                 <img 
                   src={getFileUrl(previewFile)} 
                   alt={previewFile.originalName} 
-                  loading="lazy"
-                  decoding="async"
                   className="max-w-full max-h-[70vh] object-contain"
                 />
               </div>

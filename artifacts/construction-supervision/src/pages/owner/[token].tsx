@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "wouter";
-import { usePageTitle } from "@/hooks/use-page-title";
 import { useVerifyOwnerAccess } from "@workspace/api-client-react";
-import type { OwnerProjectView, Activity, Report, ProjectExtension, ProjectSuspension, ReportActivitiesSnapshotItem } from "@workspace/api-client-react";
+import type { OwnerProjectView, Activity, Report, ProjectExtension, ProjectSuspension } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -18,9 +17,7 @@ import {
   Building2, MapPin, HardHat, Lock, Eye,
   CheckCircle2, AlertTriangle, Calendar, ArrowBigRightDash, Clock, PauseCircle, Printer,
   BarChart3, Activity as ActivityIcon, TrendingUp, TrendingDown, FileText,
-  CalendarDays, Gauge, Timer, ShieldCheck, CircleDot, ChevronLeft, ChevronRight, X, ZoomIn,
-  GanttChart, FlaskConical, Download, File, FileSpreadsheet, FileImage, FileArchive, Loader2,
-  Folder, FolderOpen, ArrowUp
+  CalendarDays, Gauge, Timer, ShieldCheck, CircleDot, ChevronLeft, ChevronRight, X, ZoomIn
 } from "lucide-react";
 import { previewReport, type ActivityForReport } from "@/lib/report-pdf";
 
@@ -31,7 +28,6 @@ import {
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
 export default function OwnerPortal() {
-  usePageTitle("بوابة المالك");
   const params = useParams();
   const token = params.token ?? "";
   const { toast } = useToast();
@@ -42,15 +38,6 @@ export default function OwnerPortal() {
   const [isRestoring, setIsRestoring] = useState(true);
   const [projectInfo, setProjectInfo] = useState<{ projectName: string; hasPassword?: boolean; companyLogos: Record<string, { name: string; logoUrl: string | null }> } | null>(null);
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
-  const [testResultsFiles, setTestResultsFiles] = useState<any[]>([]);
-  const [testResultsFolders, setTestResultsFolders] = useState<any[]>([]);
-  const [testResultsLoading, setTestResultsLoading] = useState(false);
-  const [testResultsFolderLinked, setTestResultsFolderLinked] = useState<boolean | null>(null);
-  const [testResultsError, setTestResultsError] = useState<string | null>(null);
-  const [testResultsIsRoot, setTestResultsIsRoot] = useState(true);
-  const [testResultsFolderPath, setTestResultsFolderPath] = useState<{ id: string; name: string }[]>([]);
-  const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState(0);
   const verifyAccess = useVerifyOwnerAccess();
 
   useEffect(() => {
@@ -72,7 +59,6 @@ export default function OwnerPortal() {
       }
       setOwnerData(data as OwnerProjectView);
     } catch {
-    } finally {
       setIsRestoring(false);
     }
   };
@@ -288,7 +274,7 @@ export default function OwnerPortal() {
   const latestExt = extensions.length > 0 ? extensions[extensions.length - 1] : null;
   const totalSuspDays = (suspensions as ProjectSuspension[]).reduce((s: number, x: ProjectSuspension) => s + x.calendarDays, 0);
 
-  const sm = summary;
+  const sm = summary as any;
   const progressDiff = (sm.overallProgress ?? 0) - (sm.plannedProgress ?? 0);
 
   const ownerJwt = sessionStorage.getItem(`owner_jwt_${token}`) ?? "";
@@ -298,156 +284,18 @@ export default function OwnerPortal() {
   const lightboxPrev = () => setLightbox(prev => prev ? { ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length } : null);
   const lightboxNext = () => setLightbox(prev => prev ? { ...prev, index: (prev.index + 1) % prev.images.length } : null);
 
-  const fetchTestResults = async (subfolderId?: string) => {
-    const jwt = sessionStorage.getItem(`owner_jwt_${token}`);
-    if (!jwt) return;
-    setTestResultsLoading(true);
-    setTestResultsError(null);
-    try {
-      const url = subfolderId
-        ? `${API_BASE}/owner/${token}/test-results?subfolderId=${subfolderId}`
-        : `${API_BASE}/owner/${token}/test-results`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${jwt}` },
-      });
-      if (res.status === 401) {
-        setTestResultsError("انتهت صلاحية الجلسة، يرجى تحديث الصفحة");
-        return;
-      }
-      if (res.status === 404) {
-        const data = await res.json();
-        setTestResultsError(data.error || "مجلد OneDrive غير موجود");
-        return;
-      }
-      if (!res.ok) {
-        setTestResultsError("حدث خطأ أثناء جلب الملفات");
-        return;
-      }
-      const data = await res.json();
-      setTestResultsFiles(data.files || []);
-      setTestResultsFolders(data.folders || []);
-      setTestResultsFolderLinked(data.folderLinked);
-      setTestResultsIsRoot(data.isRoot !== false);
-    } catch {
-      setTestResultsError("تعذر الاتصال بالخادم");
-    } finally {
-      setTestResultsLoading(false);
-    }
-  };
-
-  const navigateToSubfolder = (folderId: string, folderName: string) => {
-    setTestResultsFolderPath(prev => [...prev, { id: folderId, name: folderName }]);
-    fetchTestResults(folderId);
-  };
-
-  const navigateToRoot = () => {
-    setTestResultsFolderPath([]);
-    fetchTestResults();
-  };
-
-  const navigateToPathIndex = (index: number) => {
-    const newPath = testResultsFolderPath.slice(0, index + 1);
-    setTestResultsFolderPath(newPath);
-    fetchTestResults(newPath[newPath.length - 1].id);
-  };
-
-  const navigateBack = () => {
-    if (testResultsFolderPath.length <= 1) {
-      navigateToRoot();
-    } else {
-      const newPath = testResultsFolderPath.slice(0, -1);
-      setTestResultsFolderPath(newPath);
-      fetchTestResults(newPath[newPath.length - 1].id);
-    }
-  };
-
-  const handleDownloadFile = async (fileId: string, fileName: string, fileSize: number) => {
-    const jwt = sessionStorage.getItem(`owner_jwt_${token}`);
-    if (!jwt || downloadingFileId) return;
-    setDownloadingFileId(fileId);
-    setDownloadProgress(0);
-    try {
-      const res = await fetch(`${API_BASE}/owner/${token}/test-results/download/${fileId}`, {
-        headers: { Authorization: `Bearer ${jwt}` },
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        alert(data?.error || "حدث خطأ أثناء تحميل الملف");
-        return;
-      }
-      const contentLength = res.headers.get("Content-Length");
-      const total = contentLength ? parseInt(contentLength, 10) : fileSize;
-      const reader = res.body?.getReader();
-      if (!reader) {
-        const blob = await res.blob();
-        triggerBlobDownload(blob, fileName);
-        return;
-      }
-      const chunks: BlobPart[] = [];
-      let received = 0;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value as unknown as BlobPart);
-        received += value.length;
-        if (total > 0) {
-          setDownloadProgress(Math.min(Math.round((received / total) * 100), 100));
-        }
-      }
-      const blob = new Blob(chunks);
-      triggerBlobDownload(blob, fileName);
-    } catch {
-      alert("تعذر تحميل الملف");
-    } finally {
-      setDownloadingFileId(null);
-      setDownloadProgress(0);
-    }
-  };
-
-  const triggerBlobDownload = (blob: Blob, fileName: string) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const getFileIcon = (mimeType: string) => {
-    if (mimeType.startsWith("image/")) return <FileImage className="h-5 w-5 text-pink-500" />;
-    if (mimeType.includes("spreadsheet") || mimeType.includes("excel") || mimeType.includes("csv")) return <FileSpreadsheet className="h-5 w-5 text-green-600" />;
-    if (mimeType.includes("pdf")) return <FileText className="h-5 w-5 text-red-500" />;
-    if (mimeType.includes("zip") || mimeType.includes("rar") || mimeType.includes("archive")) return <FileArchive className="h-5 w-5 text-yellow-600" />;
-    return <File className="h-5 w-5 text-gray-500" />;
-  };
-
   const handlePreview = (report: Report) => {
     const apiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
     const imageUrls = (report.imageUrls ?? []).map((url) =>
       url.includes("?") ? url : `${url}?token=${ownerJwt}`
     );
-    // Owner backend (`buildOwnerProjectData` in api-server/src/routes/owner.ts)
-    // returns reports with `activitiesSnapshot` already populated, so the
-    // snapshot is on the row we already have. Prefer it so the print preview
-    // shows the timeline as it was when the report was created; fall back to
-    // current `activities` only for legacy reports created before snapshots
-    // existed (`activitiesSnapshot` is null).
-    const snapshotActivities = report.activitiesSnapshot ?? null;
-    const sourceActivities: Array<ReportActivitiesSnapshotItem | Activity> =
-      snapshotActivities ?? (activities as Activity[]);
-    const activityList: ActivityForReport[] = sourceActivities.map((a) => ({
-      name: a.name ?? "",
+    const snapshotActivities = (report as any).activitiesSnapshot as any[] | null;
+    const sourceActivities = snapshotActivities ?? (activities as Activity[]);
+    const activityList: ActivityForReport[] = sourceActivities.map((a: any) => ({
+      name: a.name,
       plannedProgress: a.plannedProgress ?? 0,
       actualProgress: a.actualProgress ?? 0,
-      status: (a.status as ActivityForReport["status"]) ?? "not_started",
+      status: a.status ?? "not_started",
     }));
     previewReport({
       projectName: project.name,
@@ -572,12 +420,12 @@ export default function OwnerPortal() {
                 <Gauge className="h-4 w-4" />
                 <span className="text-xs font-medium">الإنجاز الفعلي</span>
               </div>
-              <div className="text-3xl font-black text-emerald-600">{(sm.overallProgress ?? 0).toFixed(1)}%</div>
+              <div className="text-3xl font-black text-emerald-600">{sm.overallProgress}%</div>
               <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden" dir="ltr">
                 <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${sm.overallProgress}%` }} />
               </div>
               <div className="flex justify-between mt-1.5 text-xs text-muted-foreground">
-                <span>المخطط: {(sm.plannedProgress ?? 0).toFixed(1)}%</span>
+                <span>المخطط: {sm.plannedProgress?.toFixed(0)}%</span>
                 <span className={progressDiff >= 0 ? 'text-emerald-600' : 'text-red-500'}>
                   {progressDiff > 0 ? '+' : ''}{progressDiff.toFixed(1)}%
                 </span>
@@ -594,18 +442,10 @@ export default function OwnerPortal() {
               </div>
               {sm.delayDays > 0 ? (
                 <>
-                  <div className="text-3xl font-black text-red-600">{sm.delayDays} <span className="text-sm font-normal">يوم انحراف</span></div>
+                  <div className="text-3xl font-black text-red-600">{sm.delayDays} <span className="text-sm font-normal">يوم تأخير</span></div>
                   {sm.suspensionDays > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">صافي الانحراف: {sm.netDelayDays} يوم (بعد خصم {sm.suspensionDays} يوم توقف)</p>
+                    <p className="text-xs text-muted-foreground mt-1">صافي التأخير: {sm.netDelayDays} يوم (بعد خصم {sm.suspensionDays} يوم توقف)</p>
                   )}
-                  {(sm.overrunDays ?? 0) > 0 && (
-                    <p className="text-xs font-semibold text-red-600 mt-1">تجاوز المدة التعاقدية: {sm.overrunDays} يوم</p>
-                  )}
-                </>
-              ) : (sm.overrunDays ?? 0) > 0 ? (
-                <>
-                  <div className="text-3xl font-black text-red-600">{sm.overrunDays} <span className="text-sm font-normal">يوم تجاوز للمدة</span></div>
-                  <p className="text-xs text-muted-foreground mt-1">بعد الموعد التعاقدي للإنهاء</p>
                 </>
               ) : (
                 <>
@@ -621,7 +461,7 @@ export default function OwnerPortal() {
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <ActivityIcon className="h-4 w-4" />
-                <span className="text-xs font-medium">بنود الأعمال</span>
+                <span className="text-xs font-medium">الأنشطة</span>
               </div>
               <div className="text-3xl font-black">{sm.activitiesCompleted}<span className="text-lg font-normal text-muted-foreground"> / {sm.activitiesTotal}</span></div>
               <div className="flex gap-2 mt-2 text-xs">
@@ -685,7 +525,7 @@ export default function OwnerPortal() {
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-3">
                 <BarChart3 className="h-4 w-4" />
-                <span className="text-sm font-medium">توزيع حالات بنود الأعمال</span>
+                <span className="text-sm font-medium">توزيع حالات الأنشطة</span>
               </div>
               {pieData.length > 0 ? (
                 <div className="flex items-center gap-4">
@@ -723,7 +563,7 @@ export default function OwnerPortal() {
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-8 text-sm text-muted-foreground">لا توجد بنود أعمال</div>
+                <div className="text-center py-8 text-sm text-muted-foreground">لا توجد أنشطة</div>
               )}
             </CardContent>
           </Card>
@@ -747,7 +587,7 @@ export default function OwnerPortal() {
                 <div>
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-muted-foreground">الإنجاز الفعلي</span>
-                    <span className="font-medium">{(sm.overallProgress ?? 0).toFixed(1)}%</span>
+                    <span className="font-medium">{sm.overallProgress}%</span>
                   </div>
                   <div className="h-2.5 rounded-full bg-muted overflow-hidden" dir="ltr">
                     <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${sm.overallProgress}%` }} />
@@ -755,7 +595,7 @@ export default function OwnerPortal() {
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">البنود المكتملة</span>
+                    <span className="text-muted-foreground">الأنشطة المكتملة</span>
                     <span className="font-medium">{sm.activitiesTotal > 0 ? Math.round((sm.activitiesCompleted / sm.activitiesTotal) * 100) : 0}%</span>
                   </div>
                   <div className="h-2.5 rounded-full bg-muted overflow-hidden" dir="ltr">
@@ -780,21 +620,21 @@ export default function OwnerPortal() {
           </Card>
         </div>
 
-        <Tabs defaultValue="gantt" className="w-full mb-8" dir="rtl">
-          <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-6 gap-2 bg-transparent p-0 mb-6">
-            <TabsTrigger value="gantt" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-teal-500 data-[state=active]:bg-teal-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-teal-50/60 hover:border-teal-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
-              <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
-                <GanttChart className="h-5 w-5 text-teal-600" />
-              </div>
-              <span className="text-xs font-semibold">الجدول الزمني</span>
-              <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-teal-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
-            </TabsTrigger>
+        <Tabs defaultValue="progress" className="w-full mb-8" dir="rtl">
+          <TabsList className="w-full h-auto grid grid-cols-3 md:grid-cols-5 gap-2 bg-transparent p-0 mb-6">
             <TabsTrigger value="progress" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-blue-500 data-[state=active]:bg-blue-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-blue-50/60 hover:border-blue-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
               <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
                 <BarChart3 className="h-5 w-5 text-blue-600" />
               </div>
               <span className="text-xs font-semibold">سير العمل</span>
               <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-blue-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
+            </TabsTrigger>
+            <TabsTrigger value="activities" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-emerald-500 data-[state=active]:bg-emerald-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-emerald-50/60 hover:border-emerald-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
+              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
+                <ActivityIcon className="h-5 w-5 text-emerald-600" />
+              </div>
+              <span className="text-xs font-semibold">الأنشطة</span>
+              <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-emerald-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
             </TabsTrigger>
             <TabsTrigger value="reports" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-indigo-500 data-[state=active]:bg-indigo-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-indigo-50/60 hover:border-indigo-200 hover:shadow hover:-translate-y-0.5 cursor-pointer">
               <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
@@ -819,14 +659,6 @@ export default function OwnerPortal() {
               <span className="text-xs font-semibold">التوقفات</span>
               {(suspensions as ProjectSuspension[]).length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-violet-500 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{(suspensions as ProjectSuspension[]).length}</Badge>}
               <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-violet-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
-            </TabsTrigger>
-            <TabsTrigger value="test-results" className="group/tab flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 border-transparent bg-card shadow-sm data-[state=active]:border-emerald-500 data-[state=active]:bg-emerald-50 data-[state=active]:shadow-md transition-all h-auto relative pb-5 hover:bg-emerald-50/60 hover:border-emerald-200 hover:shadow hover:-translate-y-0.5 cursor-pointer" onClick={() => fetchTestResults()}>
-              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center group-hover/tab:scale-110 transition-transform">
-                <FileArchive className="h-5 w-5 text-emerald-600" />
-              </div>
-              <span className="text-xs font-semibold">مستندات المشروع</span>
-              {testResultsFiles.length > 0 && <Badge className="absolute -top-1.5 -start-1.5 bg-emerald-600 text-white text-[10px] px-1.5 py-0 min-w-[20px] justify-center">{testResultsFiles.length}</Badge>}
-              <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-emerald-500 opacity-0 group-data-[state=active]/tab:opacity-100 transition-opacity" />
             </TabsTrigger>
           </TabsList>
 
@@ -874,7 +706,7 @@ export default function OwnerPortal() {
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <ActivityIcon className="h-5 w-5 text-primary" />
-                    توزيع حالة بنود الأعمال
+                    توزيع حالة الأنشطة
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -902,7 +734,7 @@ export default function OwnerPortal() {
                       </div>
                     </>
                   ) : (
-                    <div className="text-center py-10 text-muted-foreground text-sm">لا توجد بنود أعمال</div>
+                    <div className="text-center py-10 text-muted-foreground text-sm">لا توجد أنشطة</div>
                   )}
                 </CardContent>
               </Card>
@@ -918,11 +750,11 @@ export default function OwnerPortal() {
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="text-center p-4 rounded-lg bg-blue-50 border border-blue-100">
-                    <div className="text-3xl font-black text-blue-600">{(sm.plannedProgress ?? 0).toFixed(1)}%</div>
+                    <div className="text-3xl font-black text-blue-600">{sm.plannedProgress?.toFixed(0) ?? 0}%</div>
                     <div className="text-sm text-blue-600/80 mt-1">الإنجاز المخطط</div>
                   </div>
                   <div className="text-center p-4 rounded-lg bg-emerald-50 border border-emerald-100">
-                    <div className="text-3xl font-black text-emerald-600">{(sm.overallProgress ?? 0).toFixed(1)}%</div>
+                    <div className="text-3xl font-black text-emerald-600">{sm.overallProgress ?? 0}%</div>
                     <div className="text-sm text-emerald-600/80 mt-1">الإنجاز الفعلي</div>
                   </div>
                   <div className={`text-center p-4 rounded-lg ${progressDiff >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
@@ -934,6 +766,62 @@ export default function OwnerPortal() {
                     </div>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="activities">
+            <Card className="shadow-md border-0">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <ActivityIcon className="h-5 w-5 text-primary" />
+                  جدول الأنشطة التفصيلي
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                <Table className="min-w-[700px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-right w-8">#</TableHead>
+                      <TableHead className="text-right">النشاط</TableHead>
+                      <TableHead className="text-center">الحالة</TableHead>
+                      <TableHead className="text-center">المخطط</TableHead>
+                      <TableHead className="text-center">الفعلي</TableHead>
+                      <TableHead className="text-center">الانحراف</TableHead>
+                      <TableHead className="text-center w-40">مؤشر الأداء</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {activities.map((a: Activity, i: number) => {
+                      const dev = a.actualProgress - a.plannedProgress;
+                      const devColor = dev < -10 ? 'text-red-600' : dev < 0 ? 'text-amber-600' : dev > 0 ? 'text-emerald-600' : 'text-muted-foreground';
+                      const barColor = dev < -10 ? 'bg-red-500' : dev < 0 ? 'bg-amber-500' : 'bg-emerald-500';
+                      const statusBadge = (() => {
+                        switch (a.status) {
+                          case 'completed': return <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">مكتمل</Badge>;
+                          case 'active': return <Badge className="bg-blue-100 text-blue-700 text-[10px]">نشط</Badge>;
+                          case 'delayed': return <Badge className="bg-red-100 text-red-700 text-[10px]">متأخر</Badge>;
+                          default: return <Badge variant="outline" className="text-[10px]">لم يبدأ</Badge>;
+                        }
+                      })();
+                      return (
+                        <TableRow key={a.id} className="hover:bg-muted/50">
+                          <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
+                          <TableCell className="font-medium text-sm">{a.name}</TableCell>
+                          <TableCell className="text-center">{statusBadge}</TableCell>
+                          <TableCell className="text-center text-sm" dir="ltr">{a.plannedProgress}%</TableCell>
+                          <TableCell className="text-center text-sm" dir="ltr">{a.actualProgress}%</TableCell>
+                          <TableCell className={`text-center text-sm font-bold ${devColor}`} dir="ltr">{dev > 0 ? '+' : ''}{dev}%</TableCell>
+                          <TableCell>
+                            <div className="h-2 rounded-full bg-muted overflow-hidden" dir="ltr">
+                              <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${Math.min(100, a.actualProgress)}%` }} />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           </TabsContent>
@@ -979,7 +867,7 @@ export default function OwnerPortal() {
                       <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-xs font-medium text-muted-foreground">نسبة الإنجاز الكلي حتى إعداد التقرير</span>
+                            <span className="text-xs font-medium text-muted-foreground">نسبة الإنجاز للفترة</span>
                             <span className="text-sm font-bold text-primary">{report.progressPercentage}%</span>
                           </div>
                           <div className="h-2 bg-muted rounded-full overflow-hidden" dir="ltr">
@@ -1004,16 +892,12 @@ export default function OwnerPortal() {
                       )}
 
                       {(() => {
-                        const rawActivities = (report.activitiesSnapshot as any[] | null) ?? activities;
-                        const reportActivities = rawActivities.map((act: any) => ({
-                          ...act,
-                          plannedProgress: act.plannedProgress ?? 0,
-                        }));
+                        const reportActivities = (report.activitiesSnapshot as any[] | null) ?? activities;
                         if (reportActivities.length === 0) return null;
                         return (
                           <div className="pt-3 border-t">
                             <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
-                              <ActivityIcon className="h-4 w-4 text-blue-500" /> بنود الأعمال ({reportActivities.length})
+                              <ActivityIcon className="h-4 w-4 text-blue-500" /> الأنشطة ({reportActivities.length})
                               {!report.activitiesSnapshot && (
                                 <span className="text-[10px] text-muted-foreground font-normal">(بيانات حالية)</span>
                               )}
@@ -1022,7 +906,7 @@ export default function OwnerPortal() {
                               <Table className="min-w-[500px]">
                                 <TableHeader>
                                   <TableRow className="bg-muted/40">
-                                    <TableHead className="text-right text-xs py-2">البند</TableHead>
+                                    <TableHead className="text-right text-xs py-2">النشاط</TableHead>
                                     <TableHead className="text-center text-xs py-2 w-24">المخطط %</TableHead>
                                     <TableHead className="text-center text-xs py-2 w-24">الفعلي %</TableHead>
                                     <TableHead className="text-center text-xs py-2 w-28">الحالة</TableHead>
@@ -1179,6 +1063,7 @@ export default function OwnerPortal() {
                             <TableHead className="text-right">تاريخ الإنهاء الجديد</TableHead>
                             <TableHead className="text-right">السبب</TableHead>
                             <TableHead className="text-right">رقم الخطاب</TableHead>
+                            <TableHead className="text-right">الجهة الموافِقة</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1197,6 +1082,9 @@ export default function OwnerPortal() {
                               </TableCell>
                               <TableCell className="text-sm font-mono">
                                 {ext.documentRef ?? <span className="text-muted-foreground">—</span>}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {ext.approvedBy ?? <span className="text-muted-foreground">—</span>}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -1294,586 +1182,6 @@ export default function OwnerPortal() {
                 </>
               )}
             </div>
-          </TabsContent>
-
-          <TabsContent value="gantt">
-            <Card className="shadow-md border-0">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <GanttChart className="h-5 w-5 text-teal-600" />
-                  الجدول الزمني للمشروع
-                </CardTitle>
-                <CardDescription>عرض الجدول الزمني لبنود الأعمال مع التواريخ المخططة والفعلية</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {(() => {
-                  const activitiesAll = activities as Activity[];
-                  if (activitiesAll.length === 0) {
-                    return (
-                      <div className="py-16 text-center">
-                        <GanttChart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                        <h3 className="text-lg font-semibold mb-1">لا توجد بيانات للجدول الزمني</h3>
-                        <p className="text-sm text-muted-foreground">لا توجد بنود أعمال لعرض الجدول الزمني</p>
-                      </div>
-                    );
-                  }
-
-                  const allDates = activitiesAll.flatMap((a: Activity) => {
-                    const dates: number[] = [];
-                    if (a.plannedStartDate) { const t = new Date(a.plannedStartDate).getTime(); if (Number.isFinite(t)) dates.push(t); }
-                    if (a.plannedEndDate)   { const t = new Date(a.plannedEndDate).getTime();   if (Number.isFinite(t)) dates.push(t); }
-                    if (a.actualStartDate)  { const t = new Date(a.actualStartDate).getTime();  if (Number.isFinite(t)) dates.push(t); }
-                    if (a.actualEndDate)    { const t = new Date(a.actualEndDate).getTime();    if (Number.isFinite(t)) dates.push(t); }
-                    return dates;
-                  }).filter(Number.isFinite);
-
-                  if (allDates.length === 0) {
-                    return (
-                      <div className="py-16 text-center">
-                        <GanttChart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                        <h3 className="text-lg font-semibold mb-1">لا توجد بيانات صالحة</h3>
-                        <p className="text-sm text-muted-foreground">التواريخ المسجلة لبنود الأعمال غير صالحة للعرض</p>
-                      </div>
-                    );
-                  }
-
-                  const minMs = Math.min(...allDates);
-                  const maxMs = Math.max(...allDates);
-                  const rangeMs = Math.max(maxMs - minMs, 86400000);
-                  const minDate = new Date(minMs);
-                  const maxDate = new Date(minMs + rangeMs);
-                  const today = new Date();
-                  const todayPos = Math.max(0, Math.min(100, ((today.getTime() - minMs) / rangeMs) * 100));
-                  const showToday = today.getTime() >= minMs && today.getTime() <= minMs + rangeMs;
-
-                  const months: { label: string; left: number; width: number }[] = [];
-                  const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-                  while (cursor.getTime() <= minMs + rangeMs) {
-                    const mStart = Math.max(cursor.getTime(), minMs);
-                    const nextMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-                    const mEnd = Math.min(nextMonth.getTime(), minMs + rangeMs);
-                    const left = ((mStart - minMs) / rangeMs) * 100;
-                    const width = ((mEnd - mStart) / rangeMs) * 100;
-                    if (width > 0) {
-                      const monthNames = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
-                      months.push({ label: `${monthNames[cursor.getMonth()]} ${cursor.getFullYear()}`, left, width });
-                    }
-                    cursor.setMonth(cursor.getMonth() + 1);
-                  }
-
-                  const getBarStyle = (start: string, end: string) => {
-                    const s = new Date(start).getTime();
-                    const e = new Date(end).getTime();
-                    if (!Number.isFinite(s) || !Number.isFinite(e)) return { right: "0%", width: "0%" };
-                    const right = ((s - minMs) / rangeMs) * 100;
-                    const width = ((e - s) / rangeMs) * 100;
-                    return { right: `${Math.max(0, right)}%`, width: `${Math.max(0.5, width)}%` };
-                  };
-
-                  return (
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-4 text-xs justify-end mb-2">
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-4 h-2.5 rounded-sm bg-blue-400 inline-block" /> المخطط
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-4 h-2.5 rounded-sm bg-emerald-500 inline-block" /> الفعلي
-                        </span>
-                        {showToday && (
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-0.5 h-3 bg-red-500 inline-block" /> اليوم
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="overflow-x-auto">
-                        <div className="min-w-[700px]">
-                          <div className="relative h-8 border-b border-border mb-1">
-                            {months.map((m, i) => (
-                              <div
-                                key={i}
-                                className="absolute top-0 h-full flex items-center justify-center text-[10px] font-medium text-muted-foreground border-e border-border/50 px-1 truncate"
-                                style={{ right: `${m.left}%`, width: `${m.width}%` }}
-                              >
-                                {m.width > 5 ? m.label : ""}
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="space-y-0">
-                            {activitiesAll.map((a: Activity, i: number) => {
-                              const hasPlanned = !!(a.plannedStartDate && a.plannedEndDate);
-                              const hasAnyStart = !!(a.actualStartDate || a.plannedStartDate);
-                              const hasActualSignal = (a.actualProgress > 0 || !!a.actualStartDate) && hasAnyStart;
-                              const orphanProgress = a.actualProgress > 0 && !hasAnyStart;
-                              const isDelayed = a.status === "delayed";
-                              const isCompleted = a.status === "completed";
-                              const ongoing = !a.actualEndDate && a.status !== "completed";
-                              const showTwoBars = hasPlanned && hasActualSignal;
-
-                              // pct helper
-                              const toPctMs = (d: string) => {
-                                const t = new Date(d).getTime();
-                                if (!Number.isFinite(t)) return null;
-                                return ((t - minMs) / rangeMs) * 100;
-                              };
-
-                              const renderBars = () => {
-                                // Case 1: لا توجد أي بيانات قابلة للرسم
-                                if (!hasPlanned && !hasActualSignal && !orphanProgress) {
-                                  return (
-                                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center" title="ينقص هذا البند تواريخ مخططة">
-                                      <div className="w-full h-0" style={{ borderTop: "1.5px dashed rgba(148,163,184,0.6)" }} />
-                                      <span className="absolute right-2 text-amber-500 bg-background rounded-full p-0.5">
-                                        <AlertTriangle className="w-3 h-3" />
-                                      </span>
-                                    </div>
-                                  );
-                                }
-
-                                // Case 2: نسبة بدون أي تواريخ
-                                if (orphanProgress) {
-                                  return (
-                                    <div
-                                      className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-end pr-2 gap-1.5"
-                                      title={`نسبة إنجاز ${a.actualProgress}% بدون تواريخ مسجلة`}
-                                    >
-                                      <div className="absolute inset-x-0 h-0" style={{ borderTop: "1.5px dashed rgba(148,163,184,0.6)" }} />
-                                      <span className="relative z-10 text-[10px] font-bold text-foreground bg-background px-1.5 rounded border border-amber-300">
-                                        {a.actualProgress}%
-                                      </span>
-                                      <span className="relative z-10 text-amber-500 bg-background rounded-full p-0.5">
-                                        <AlertTriangle className="w-3 h-3" />
-                                      </span>
-                                    </div>
-                                  );
-                                }
-
-                                const plannedTop = showTwoBars ? "6px" : "12px";
-                                const actualTop = showTwoBars ? "28px" : "12px";
-                                const barH = showTwoBars ? "14px" : "16px";
-
-                                return (
-                                  <>
-                                    {/* Planned bar */}
-                                    {hasPlanned ? (
-                                      <div
-                                        className="absolute rounded-sm bg-blue-400/80 shadow-sm"
-                                        style={{ ...getBarStyle(a.plannedStartDate!, a.plannedEndDate!), top: plannedTop, height: barH }}
-                                        title={`المخطط: ${fmtDate(a.plannedStartDate!)} → ${fmtDate(a.plannedEndDate!)}`}
-                                      />
-                                    ) : (
-                                      <div
-                                        className="absolute inset-x-0 h-0"
-                                        style={{ top: `calc(${plannedTop} + ${parseInt(barH)/2}px)`, borderTop: "1.5px dashed rgba(148,163,184,0.5)" }}
-                                        title="لا يوجد جدول مخطط لهذا البند"
-                                      />
-                                    )}
-
-                                    {/* Actual bar */}
-                                    {hasActualSignal && (() => {
-                                      const startIso = a.actualStartDate ?? a.plannedStartDate!;
-                                      const startPct = toPctMs(startIso);
-                                      if (startPct == null) return null;
-
-                                      // Marker: بدأ بدون نسبة
-                                      if (a.actualProgress === 0 && a.actualStartDate) {
-                                        return (
-                                          <div
-                                            className={`absolute rounded-sm shadow-sm ${isDelayed ? "bg-red-500/80" : "bg-emerald-500/80"}`}
-                                            style={{
-                                              right: `calc(${Math.max(0, startPct)}% - 1.5px)`,
-                                              width: 3,
-                                              top: actualTop,
-                                              height: barH,
-                                            }}
-                                            title={`بدأ في ${fmtDate(a.actualStartDate)} — بدون إنجاز مسجَّل بعد`}
-                                          />
-                                        );
-                                      }
-
-                                      // حساب نقطة النهاية
-                                      let endPct: number;
-                                      let endLabel: string;
-                                      if (a.actualEndDate) {
-                                        const ep = toPctMs(a.actualEndDate);
-                                        endPct = ep ?? startPct;
-                                        endLabel = fmtDate(a.actualEndDate);
-                                      } else if (ongoing) {
-                                        endPct = todayPos;
-                                        endLabel = "جارٍ حتى اليوم";
-                                      } else if (hasPlanned) {
-                                        const ps = toPctMs(a.plannedStartDate!);
-                                        const pe = toPctMs(a.plannedEndDate!);
-                                        if (ps == null || pe == null) return null;
-                                        const plannedW = Math.max(0.5, pe - ps);
-                                        endPct = startPct + plannedW * a.actualProgress / 100;
-                                        endLabel = "—";
-                                      } else {
-                                        endPct = startPct;
-                                        endLabel = "—";
-                                      }
-
-                                      const w = Math.max(0.5, endPct - startPct);
-                                      const startLabel = a.actualStartDate
-                                        ? fmtDate(a.actualStartDate)
-                                        : `(مخطط) ${fmtDate(a.plannedStartDate!)}`;
-
-                                      return (
-                                        <div
-                                          className={`absolute rounded-sm shadow-sm ${isDelayed ? "bg-red-500/80" : "bg-emerald-500/80"}`}
-                                          style={{
-                                            right: `${Math.max(0, startPct)}%`,
-                                            width: `${w}%`,
-                                            top: actualTop,
-                                            height: barH,
-                                          }}
-                                          title={`الفعلي: ${startLabel} → ${endLabel} (${a.actualProgress}%)`}
-                                        >
-                                          {ongoing && (
-                                            <div className="absolute inset-y-0 start-0 w-2 bg-gradient-to-r from-white/60 to-transparent rounded-s-sm" />
-                                          )}
-                                        </div>
-                                      );
-                                    })()}
-                                  </>
-                                );
-                              };
-
-                              return (
-                                <div
-                                  key={a.id}
-                                  className={`group relative flex items-center border-b border-border/30 ${i % 2 === 0 ? "bg-muted/20" : ""} hover:bg-muted/40 transition-colors`}
-                                  style={{ height: showTwoBars ? "52px" : "40px" }}
-                                >
-                                  <div
-                                    className="flex-shrink-0 flex items-center gap-1.5 border-e border-border/50 h-full px-2"
-                                    style={{ width: "200px" }}
-                                  >
-                                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isCompleted ? "bg-emerald-500" : isDelayed ? "bg-red-500" : a.status === "in_progress" ? "bg-blue-500" : "bg-gray-300"}`} />
-                                    <span className="text-xs font-medium truncate" title={a.name}>
-                                      {a.name}
-                                    </span>
-                                  </div>
-
-                                  <div className="flex-1 relative h-full">
-                                    {showToday && (
-                                      <div
-                                        className="absolute top-0 bottom-0 w-px bg-red-500 z-10 pointer-events-none"
-                                        style={{ right: `${todayPos}%` }}
-                                      />
-                                    )}
-
-                                    {renderBars()}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          <div className="flex justify-between text-[10px] text-muted-foreground mt-1 px-1">
-                            <span className="tabular-nums">{fmtDate(minDate.toISOString())}</span>
-                            <span className="tabular-nums">{fmtDate(maxDate.toISOString())}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 pt-4 border-t">
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                          <div className="p-3 rounded-lg bg-muted/50">
-                            <div className="text-2xl font-bold text-teal-600">{activitiesAll.length}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">إجمالي البنود</div>
-                          </div>
-                          <div className="p-3 rounded-lg bg-muted/50">
-                            <div className="text-2xl font-bold text-emerald-600">
-                              {activitiesAll.filter((a: Activity) => a.status === "completed").length}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-0.5">مكتملة</div>
-                          </div>
-                          <div className="p-3 rounded-lg bg-muted/50">
-                            <div className="text-2xl font-bold text-blue-600">
-                              {activitiesAll.filter((a: Activity) => a.status === "in_progress").length}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-0.5">قيد التنفيذ</div>
-                          </div>
-                          <div className="p-3 rounded-lg bg-muted/50">
-                            <div className="text-2xl font-bold text-red-600">
-                              {activitiesAll.filter((a: Activity) => a.status === "delayed").length}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-0.5">متأخرة</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4">
-                        <Table className="min-w-[600px]">
-                          <TableHeader>
-                            <TableRow className="bg-muted/40">
-                              <TableHead className="text-right w-8">#</TableHead>
-                              <TableHead className="text-right">البند</TableHead>
-                              <TableHead className="text-center">البدء المخطط</TableHead>
-                              <TableHead className="text-center">الانتهاء المخطط</TableHead>
-                              <TableHead className="text-center">المدة (أيام)</TableHead>
-                              <TableHead className="text-center">الإنجاز</TableHead>
-                              <TableHead className="text-center">الحالة</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {activitiesAll.map((a: Activity, i: number) => {
-                              const dur = Math.ceil((new Date(a.plannedEndDate!).getTime() - new Date(a.plannedStartDate!).getTime()) / (1000 * 60 * 60 * 24));
-                              return (
-                                <TableRow key={a.id} className="hover:bg-muted/50">
-                                  <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
-                                  <TableCell className="font-medium text-sm">{a.name}</TableCell>
-                                  <TableCell className="text-center text-sm tabular-nums" dir="ltr">{fmtDate(a.plannedStartDate!)}</TableCell>
-                                  <TableCell className="text-center text-sm tabular-nums" dir="ltr">{fmtDate(a.plannedEndDate!)}</TableCell>
-                                  <TableCell className="text-center text-sm tabular-nums">{dur}</TableCell>
-                                  <TableCell className="text-center">
-                                    <div className="flex items-center gap-1.5 justify-center">
-                                      <div className="h-2 w-16 rounded-full bg-muted overflow-hidden" dir="ltr">
-                                        <div className={`h-full rounded-full transition-all ${a.status === "delayed" ? "bg-red-500" : a.status === "completed" ? "bg-emerald-500" : "bg-blue-500"}`} style={{ width: `${Math.min(100, a.actualProgress)}%` }} />
-                                      </div>
-                                      <span className="text-xs tabular-nums font-medium">{a.actualProgress}%</span>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="text-center">
-                                    {a.status === "completed" ? (
-                                      <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">مكتمل</Badge>
-                                    ) : a.status === "in_progress" ? (
-                                      <Badge className="bg-blue-100 text-blue-700 text-[10px]">قيد التنفيذ</Badge>
-                                    ) : a.status === "delayed" ? (
-                                      <Badge className="bg-red-100 text-red-700 text-[10px]">متأخر</Badge>
-                                    ) : (
-                                      <Badge variant="outline" className="text-[10px]">لم يبدأ</Badge>
-                                    )}
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="test-results" className="space-y-4">
-            <Card className="shadow-md border-0">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-emerald-500/10">
-                    <FileArchive className="h-5 w-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base">مستندات المشروع</CardTitle>
-                    <CardDescription className="text-xs">مزامنة مباشرة مع OneDrive - سحابة المشروع</CardDescription>
-                  </div>
-                  <Button variant="outline" size="sm" className="mr-auto" onClick={() => { setTestResultsFolderPath([]); fetchTestResults(); }} disabled={testResultsLoading}>
-                    {testResultsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "تحديث"}
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {testResultsLoading ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-3">
-                    <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-                    <p className="text-sm text-muted-foreground">جاري تحميل الملفات...</p>
-                  </div>
-                ) : testResultsError ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-                    <div className="p-3 rounded-full bg-red-50">
-                      <AlertTriangle className="h-8 w-8 text-red-500" />
-                    </div>
-                    <p className="text-sm font-medium text-red-600">{testResultsError}</p>
-                    <Button variant="outline" size="sm" onClick={() => fetchTestResults()} className="mt-2">إعادة المحاولة</Button>
-                  </div>
-                ) : testResultsFolderLinked === false ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-                    <div className="p-3 rounded-full bg-muted">
-                      <FileArchive className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                    <p className="text-sm font-medium">لم يتم ربط مجلد مستندات المشروع</p>
-                    <p className="text-xs text-muted-foreground">يرجى التواصل مع مدير المشروع لربط مجلد OneDrive</p>
-                  </div>
-                ) : testResultsFiles.length === 0 && testResultsFolders.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-                    <div className="p-3 rounded-full bg-muted">
-                      <File className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                    <p className="text-sm font-medium">لا توجد ملفات حالياً</p>
-                    <p className="text-xs text-muted-foreground">سيتم عرض الملفات تلقائياً عند إضافتها للمجلد</p>
-                    {testResultsFolderPath.length > 0 && (
-                      <Button variant="outline" size="sm" onClick={navigateBack} className="mt-2 gap-1.5">
-                        <ArrowUp className="h-4 w-4" />
-                        رجوع
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    {testResultsFolderPath.length > 0 && (
-                      <div className="flex items-center gap-1.5 mb-4 text-xs flex-wrap">
-                        <button type="button" onClick={navigateToRoot} className="flex items-center gap-1 text-emerald-600 hover:text-emerald-700 hover:underline font-medium">
-                          <FolderOpen className="h-3.5 w-3.5" />
-                          الرئيسي
-                        </button>
-                        {testResultsFolderPath.map((p, i) => (
-                          <span key={p.id} className="flex items-center gap-1">
-                            <ChevronLeft className="h-3 w-3 text-muted-foreground" />
-                            {i === testResultsFolderPath.length - 1 ? (
-                              <span className="font-medium text-foreground">{p.name}</span>
-                            ) : (
-                              <button type="button" onClick={() => navigateToPathIndex(i)} className="text-emerald-600 hover:text-emerald-700 hover:underline">
-                                {p.name}
-                              </button>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {testResultsFolders.length > 0 && (
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
-                        {testResultsFolderPath.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={navigateBack}
-                            className="flex items-center gap-2.5 p-3 rounded-lg border border-dashed hover:bg-muted/50 transition-colors text-right"
-                          >
-                            <ArrowUp className="h-5 w-5 text-muted-foreground shrink-0" />
-                            <span className="text-sm text-muted-foreground">..</span>
-                          </button>
-                        )}
-                        {testResultsFolders.map((folder) => (
-                          <button
-                            key={folder.id}
-                            type="button"
-                            onClick={() => navigateToSubfolder(folder.id, folder.name)}
-                            className="flex items-center gap-2.5 p-3 rounded-lg border hover:bg-amber-50/60 hover:border-amber-200 transition-colors text-right group"
-                          >
-                            <Folder className="h-5 w-5 text-amber-500 shrink-0 group-hover:scale-110 transition-transform" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{folder.name}</p>
-                              <p className="text-[10px] text-muted-foreground">{folder.childCount} عنصر</p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {testResultsFolderPath.length > 0 && testResultsFolders.length === 0 && (
-                      <button
-                        type="button"
-                        onClick={navigateBack}
-                        className="flex items-center gap-2 mb-4 text-sm text-emerald-600 hover:text-emerald-700 hover:underline"
-                      >
-                        <ArrowUp className="h-4 w-4" />
-                        رجوع للمجلد السابق
-                      </button>
-                    )}
-
-                    {testResultsFiles.length > 0 && (
-                      <>
-                        {testResultsFolders.length > 0 && (
-                          <p className="text-xs font-medium text-muted-foreground mb-2">الملفات ({testResultsFiles.length})</p>
-                        )}
-                        <div className="hidden md:block">
-                          <Table>
-                            <TableHeader>
-                              <TableRow className="bg-muted/40">
-                                <TableHead className="text-right">الملف</TableHead>
-                                <TableHead className="text-right">الحجم</TableHead>
-                                <TableHead className="text-center w-[100px]">تحميل</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {testResultsFiles.map((file) => (
-                                <React.Fragment key={file.id}>
-                                  <TableRow>
-                                    <TableCell>
-                                      <div className="flex items-center gap-2">
-                                        {getFileIcon(file.mimeType)}
-                                        <span className="text-sm font-medium truncate max-w-[300px]">{file.name}</span>
-                                      </div>
-                                    </TableCell>
-                                    <TableCell className="text-sm text-muted-foreground" dir="ltr">{formatFileSize(file.size)}</TableCell>
-                                    <TableCell className="text-center">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 gap-1.5"
-                                        onClick={() => handleDownloadFile(file.id, file.name, file.size)}
-                                        disabled={downloadingFileId === file.id}
-                                      >
-                                        {downloadingFileId === file.id ? (
-                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                          <Download className="h-4 w-4" />
-                                        )}
-                                        <span className="text-xs">{downloadingFileId === file.id ? `${downloadProgress}%` : "تحميل"}</span>
-                                      </Button>
-                                    </TableCell>
-                                  </TableRow>
-                                  {downloadingFileId === file.id && (
-                                    <TableRow>
-                                      <TableCell colSpan={3} className="p-0 border-0">
-                                        <div className="h-1 bg-emerald-100 w-full overflow-hidden">
-                                          <div
-                                            className="h-full bg-emerald-500 transition-all duration-300 ease-out"
-                                            style={{ width: `${downloadProgress}%` }}
-                                          />
-                                        </div>
-                                      </TableCell>
-                                    </TableRow>
-                                  )}
-                                </React.Fragment>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-
-                        <div className="md:hidden space-y-3">
-                          {testResultsFiles.map((file) => (
-                            <div key={file.id} className="relative flex items-center gap-3 p-3 rounded-lg border bg-card overflow-hidden">
-                              <div className="shrink-0">{getFileIcon(file.mimeType)}</div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">{file.name}</p>
-                                <p className="text-xs text-muted-foreground mt-0.5" dir="ltr">{formatFileSize(file.size)}</p>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50 gap-1"
-                                onClick={() => handleDownloadFile(file.id, file.name, file.size)}
-                                disabled={downloadingFileId === file.id}
-                              >
-                                {downloadingFileId === file.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Download className="h-4 w-4" />
-                                )}
-                                <span className="text-xs">{downloadingFileId === file.id ? `${downloadProgress}%` : "تحميل"}</span>
-                              </Button>
-                              {downloadingFileId === file.id && (
-                                <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-100 rounded-b-lg overflow-hidden">
-                                  <div
-                                    className="h-full bg-emerald-500 transition-all duration-300 ease-out"
-                                    style={{ width: `${downloadProgress}%` }}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-              </CardContent>
-            </Card>
           </TabsContent>
         </Tabs>
 

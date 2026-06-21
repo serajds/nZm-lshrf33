@@ -12,18 +12,6 @@ export interface ActivityDeviation {
   plannedProgress: number;
   actualProgress: number;
   deviation: number;
-  /** Activity weight used in the project-level weighted average. */
-  weight?: number;
-  /** Contribution of this activity's deviation to overall project deviation (= deviation × weight / totalWeight). */
-  weightedImpact?: number;
-  /**
-   * Deprecated alias for overrunDays (kept for backward compatibility)
-   * @nullable
-   */
+  /** @nullable */
   delayDays?: number | null;
-  /**
-   * Days past activity plannedEndDate while not completed
-   * @nullable
-   */
-  overrunDays?: number | null;
 }
