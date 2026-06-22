@@ -1,0 +1,1738 @@
+import { useState, useEffect, useMemo } from "react";
+import { useParams, useLocation } from "wouter";
+import { usePageTitle } from "@/hooks/use-page-title";
+import { 
+  useListReports, 
+  useCreateReport, 
+  useUpdateReport, 
+  useUpdateReportStatus,
+  useDeleteReport,
+  useGetProject,
+  useListActivities,
+  useGetReportAuditLog,
+  getGetReportAuditLogQueryKey,
+  getReport,
+  getListReportsQueryKey,
+  getGetReportQueryKey,
+} from "@workspace/api-client-react";
+import type { ReportAuditLogEntry } from "@workspace/api-client-react";
+import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
+import type { Report, Activity, CreateReportBody, UpdateReportBody, ReportActivitiesSnapshotItem, UpdateReportBodyActivitiesSnapshotItem } from "@workspace/api-client-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { fmtDate } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { ProjectNav } from "@/components/project-nav";
+import { 
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
+} from "@/components/ui/dialog";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, AlertCircle, Star, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
+import { Progress } from "@/components/ui/progress";
+import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
+
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
+
+function authFetchJson(url: string) {
+  const token = localStorage.getItem("auth_token");
+  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.ok ? r.json() : {});
+}
+
+const imageGroupSchema = z.object({
+  category: z.string().min(1),
+  urls: z.array(z.string()).default([]),
+});
+
+const reportSchema = z.object({
+  type: z.enum(["weekly", "monthly"]),
+  reportDate: z.string().min(1, "تاريخ التقرير مطلوب"),
+  periodStart: z.string().min(1, "بداية الفترة مطلوبة"),
+  periodEnd: z.string().min(1, "نهاية الفترة مطلوبة"),
+  workDescription: z.string().min(1, "وصف الأعمال مطلوب"),
+  progressPercentage: z.coerce.number().min(0).max(100),
+  technicalNotes: z.string().optional().nullable(),
+  recommendations: z.string().optional().nullable(),
+  imageGroups: z.array(imageGroupSchema).default([]),
+});
+
+type ReportFormValues = z.infer<typeof reportSchema>;
+type ImageGroup = z.infer<typeof imageGroupSchema>;
+
+const DEFAULT_CATEGORY = "صور عامة";
+const PRESET_CATEGORIES: string[] = [
+  "صور عامة",
+  "الأعمال الإنشائية",
+  "الأعمال الكهربائية",
+  "الأعمال الميكانيكية",
+  "أعمال السباكة",
+  "أعمال الواجهات",
+  "التشطيبات",
+];
+
+function AddImageGroupButton({
+  onAdd,
+  suggestions = [],
+}: {
+  onAdd: (cat: string) => void;
+  suggestions?: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const handleCustom = () => {
+    const v = customName.trim();
+    if (!v) return;
+    onAdd(v);
+    setOpen(false);
+    setCustomName("");
+  };
+  const handlePick = (cat: string) => {
+    onAdd(cat);
+    setOpen(false);
+    setCustomName("");
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="gap-2">
+          <FolderPlus className="h-4 w-4" /> إضافة قسم جديد
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-2" align="end" dir="rtl">
+        <div className="space-y-2">
+          {suggestions.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-xs text-muted-foreground px-2">اقتراحات:</div>
+              <div className="flex flex-wrap gap-1.5 px-1 max-h-40 overflow-y-auto">
+                {suggestions.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => handlePick(s)}
+                    className="text-xs px-2.5 py-1 rounded-md border bg-background hover:bg-accent hover:border-primary/40 transition-colors"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <div className="border-t my-1" />
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <div className="text-xs text-muted-foreground px-2">اسم القسم:</div>
+            <div className="flex items-center gap-2 px-1">
+              <Input
+                placeholder="مثال: الأعمال الكهربائية"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCustom(); } }}
+                className="h-8 text-sm"
+                autoFocus
+              />
+              <Button type="button" size="sm" className="shrink-0 h-8" onClick={handleCustom} disabled={!customName.trim()}>
+                إضافة
+              </Button>
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ReportActivityLog({ projectId, reportId }: { projectId: number; reportId: number }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading, isError } = useGetReportAuditLog(projectId, reportId, {
+    query: {
+      queryKey: getGetReportAuditLogQueryKey(projectId, reportId),
+      enabled: open,
+      staleTime: 1000 * 30,
+    },
+  });
+
+  const entries: ReportAuditLogEntry[] = data ?? [];
+
+  const actionLabel = (entry: ReportAuditLogEntry) => {
+    if (entry.action === "create") return "إنشاء التقرير";
+    if (entry.action === "delete") return "حذف التقرير";
+    // update — try to enrich from entityName which may include
+    // status-change context like "(اعتماد)" or "(إرجاع لمسودة)".
+    const name = entry.entityName ?? "";
+    if (/اعتماد/.test(name)) return "اعتماد التقرير";
+    if (/إرجاع لمسودة/.test(name)) return "إرجاع التقرير إلى مسودة";
+    return "تعديل التقرير";
+  };
+
+  const actionStyle = (action: string) => {
+    if (action === "create") return "bg-emerald-100 text-emerald-800 border-emerald-300";
+    if (action === "delete") return "bg-red-100 text-red-800 border-red-300";
+    return "bg-blue-100 text-blue-800 border-blue-300";
+  };
+
+  const fmtDateTime = (iso: string) => {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleString("ar-SA-u-nu-latn", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit",
+    });
+  };
+
+  return (
+    <div className="pt-3 border-t print:hidden">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="w-full flex items-center justify-between gap-2 text-right hover:bg-accent/40 rounded-md px-2 py-2 transition-colors"
+            aria-expanded={open}
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <History className="h-4 w-4 text-muted-foreground" />
+              سجل النشاط
+              {entries.length > 0 && open && (
+                <span className="text-xs text-muted-foreground font-normal">({entries.length})</span>
+              )}
+            </span>
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="mt-2 px-2">
+            {isLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-3">
+                <Loader2 className="h-4 w-4 animate-spin" /> جاري تحميل السجل...
+              </div>
+            ) : isError ? (
+              <p className="text-sm text-destructive py-2">تعذّر تحميل سجل النشاط.</p>
+            ) : entries.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">
+                لا توجد عمليات مسجَّلة لهذا التقرير.
+              </p>
+            ) : (
+              <ol className="relative border-r-2 border-muted pr-4 space-y-3 py-1">
+                {entries.map((entry) => {
+                  const actor = entry.userFullName || entry.userName || "غير معروف";
+                  return (
+                    <li key={entry.id} className="relative">
+                      <span
+                        className="absolute -right-[22px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background"
+                        aria-hidden
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={`text-xs font-medium ${actionStyle(entry.action)}`}
+                        >
+                          {actionLabel(entry)}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {fmtDateTime(entry.createdAt)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5 text-sm text-foreground">
+                        <UserCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>{actor}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  );
+}
+
+export default function ProjectReports() {
+  const params = useParams();
+  const [, setLocation] = useLocation();
+  const projectId = parseInt(params.id || "0", 10);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  usePageTitle("التقارير");
+
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  type GroupUploadState = { loaded: number; total: number; doneCount: number; totalCount: number };
+  const [uploadProgress, setUploadProgress] = useState<Record<number, GroupUploadState>>({});
+  const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
+  const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
+  const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
+  const isAnyUploading = Object.keys(uploadProgress).length > 0;
+
+  // Editable copy of the report's activities snapshot. Populated when
+  // opening an existing report's edit dialog (see `handleEdit`). Edits
+  // here only touch the report's snapshot — never the master activities
+  // table. See task #45.
+  const [snapshotRows, setSnapshotRows] = useState<ReportActivitiesSnapshotItem[]>([]);
+  const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
+  // When true, the user wants to type a manual overall %. Otherwise the
+  // overall % is auto-recomputed from the snapshot rows using the
+  // weighted-average formula.
+  const [manualOverrideProgress, setManualOverrideProgress] = useState(false);
+
+  const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
+  const { data: myPermissions } = useMyProjectPermissions(projectId);
+  const { canEdit: canEditReports, isHidden } = useTabAccess(projectId, "reports", { redirectIfHidden: true });
+  const isViewer = !canEditReports;
+  const canApprove = myPermissions?.projectRole === "admin" || myPermissions?.projectRole === "project_manager";
+
+  const { data: companyLogos } = useQuery<Record<string, CompanyLogo>>({
+    queryKey: ["project-company-logos", projectId],
+    queryFn: () => authFetchJson(`${API_BASE}/projects/${projectId}/company-logos`),
+    enabled: !!projectId,
+  });
+  
+  // `placeholderData` keeps the previous list rendered while a new
+  // filter request is in flight, so changing the type / date filters
+  // doesn't blank the screen for a round-trip. `staleTime` of 2 minutes
+  // matches the global default but is set explicitly here for clarity
+  // alongside the placeholder behaviour.
+  const { data: reports, isLoading } = useListReports(projectId, {
+    type: typeFilter && typeFilter !== "all" ? typeFilter : undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+  }, { query: { enabled: !!projectId, placeholderData: (prev: any) => prev } as any });
+
+  const { data: allReportsForCategories } = useListReports(
+    projectId,
+    {},
+    { query: { enabled: !!projectId, staleTime: 1000 * 60 * 5 } as any },
+  );
+
+  const { data: activities } = useListActivities(projectId, { query: { enabled: !!projectId } });
+  
+  const createReport = useCreateReport();
+  const updateReport = useUpdateReport();
+  const updateReportStatus = useUpdateReportStatus();
+  const deleteReport = useDeleteReport();
+
+  const handleApprove = (reportId: number, nextStatus: "draft" | "approved") => {
+    updateReportStatus.mutate(
+      { projectId, id: reportId, data: { status: nextStatus } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId, { type: typeFilter && typeFilter !== "all" ? typeFilter : undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }) });
+          queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
+          queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, reportId) });
+          queryClient.invalidateQueries({ queryKey: getGetReportAuditLogQueryKey(projectId, reportId) });
+          toast({ title: nextStatus === "approved" ? "تم اعتماد التقرير" : "أُعيد التقرير إلى المسودة" });
+        },
+        onError: () => toast({ title: "تعذّر تغيير الحالة", variant: "destructive" }),
+      }
+    );
+  };
+
+  const calcAutoProgress = () => {
+    const acts = (activities ?? []) as Activity[];
+    if (acts.length === 0) return null;
+    const weightOf = (a: any) => {
+      const w = Number(a?.weight);
+      return Number.isFinite(w) && w > 0 ? w : 1;
+    };
+    const totalWeight = acts.reduce((s, a) => s + weightOf(a), 0);
+    if (totalWeight === 0) return null;
+    const weighted = acts.reduce((s, a) => s + (a.actualProgress ?? 0) * weightOf(a), 0);
+    return Math.round((weighted / totalWeight) * 10) / 10;
+  };
+
+  const form = useForm<ReportFormValues>({
+    resolver: zodResolver(reportSchema),
+    defaultValues: {
+      type: "weekly",
+      reportDate: new Date().toISOString().split('T')[0],
+      periodStart: "",
+      periodEnd: "",
+      workDescription: "",
+      progressPercentage: 0,
+      technicalNotes: "",
+      recommendations: "",
+      imageGroups: [{ category: DEFAULT_CATEGORY, urls: [] }],
+    }
+  });
+
+  const watchedType = form.watch("type");
+  const watchedPeriodStart = form.watch("periodStart");
+  const watchedImageGroups = form.watch("imageGroups");
+
+  const projectCategoryHistory = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const r of allReportsForCategories ?? []) {
+      const groups = (r.imageGroups as ImageGroup[] | null | undefined) ?? null;
+      if (!groups) continue;
+      for (const g of groups) {
+        const cat = (g?.category ?? "").trim();
+        if (!cat) continue;
+        const key = cat.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        ordered.push(cat);
+      }
+    }
+    return ordered;
+  }, [allReportsForCategories]);
+
+  const categorySuggestions = useMemo(() => {
+    const usedKeys = new Set(
+      (watchedImageGroups ?? [])
+        .map(g => (g.category ?? "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const cat of [...PRESET_CATEGORIES, ...projectCategoryHistory]) {
+      const key = cat.trim().toLowerCase();
+      if (!key || seen.has(key) || usedKeys.has(key)) continue;
+      seen.add(key);
+      out.push(cat);
+    }
+    return out;
+  }, [projectCategoryHistory, watchedImageGroups]);
+
+  useEffect(() => {
+    if (editingId || !watchedPeriodStart) return;
+    const startDate = new Date(watchedPeriodStart);
+    if (isNaN(startDate.getTime())) return;
+    const endDate = new Date(startDate);
+    if (watchedType === "monthly") {
+      endDate.setMonth(endDate.getMonth() + 1);
+      endDate.setDate(endDate.getDate() - 1);
+    } else {
+      endDate.setDate(endDate.getDate() + 6);
+    }
+    form.setValue("periodEnd", endDate.toISOString().split("T")[0]);
+  }, [watchedType, watchedPeriodStart, editingId]);
+
+  const handleEdit = async (r: Report) => {
+    setEditingId(r.id);
+    const existingGroups = (r.imageGroups as ImageGroup[] | null | undefined) ?? null;
+    const initialGroups: ImageGroup[] = existingGroups && existingGroups.length > 0
+      ? existingGroups.map(g => ({ category: g.category, urls: g.urls ?? [] }))
+      : [{ category: DEFAULT_CATEGORY, urls: r.imageUrls ?? [] }];
+    form.reset({
+      type: r.type as ReportFormValues["type"],
+      reportDate: new Date(r.reportDate).toISOString().split('T')[0],
+      periodStart: new Date(r.periodStart).toISOString().split('T')[0],
+      periodEnd: new Date(r.periodEnd).toISOString().split('T')[0],
+      workDescription: r.workDescription,
+      progressPercentage: r.progressPercentage,
+      technicalNotes: r.technicalNotes ?? "",
+      recommendations: r.recommendations ?? "",
+      imageGroups: initialGroups,
+    });
+    setOpenGroupIdx(0);
+    setSnapshotRows([]);
+    setManualOverrideProgress(false);
+    setIsDialogOpen(true);
+
+    // The list endpoint strips `activitiesSnapshot` to keep payloads small,
+    // so fetch the full report (cached) to populate the editable timeline.
+    setIsLoadingSnapshot(true);
+    try {
+      const full = await queryClient.fetchQuery({
+        queryKey: getGetReportQueryKey(projectId, r.id),
+        queryFn: ({ signal }) => getReport(projectId, r.id, { signal }),
+        staleTime: 1000 * 60 * 5,
+      }) as Report;
+      const snap = (full.activitiesSnapshot ?? []) as ReportActivitiesSnapshotItem[];
+      const sorted = [...snap].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      setSnapshotRows(sorted);
+    } catch {
+      toast({ title: "تعذّر تحميل بنود التقرير", variant: "destructive" });
+    } finally {
+      setIsLoadingSnapshot(false);
+    }
+  };
+
+  const snapshotWeightedProgress = useMemo(() => {
+    if (snapshotRows.length === 0) return null;
+    let totalWeight = 0;
+    let weighted = 0;
+    for (const row of snapshotRows) {
+      const w = typeof row.weight === "number" && row.weight > 0 ? row.weight : 1;
+      totalWeight += w;
+      weighted += (row.actualProgress ?? 0) * w;
+    }
+    if (totalWeight === 0) return null;
+    return Math.round((weighted / totalWeight) * 10) / 10;
+  }, [snapshotRows]);
+
+  // Keep the form's overall % synced with the live weighted average as
+  // long as the user hasn't toggled manual override. This way the field
+  // (and any consumers that read the form value at submit time) reflects
+  // what the user actually sees in the table.
+  useEffect(() => {
+    if (!editingId) return;
+    if (manualOverrideProgress) return;
+    if (snapshotWeightedProgress == null) return;
+    if (form.getValues("progressPercentage") !== snapshotWeightedProgress) {
+      form.setValue("progressPercentage", snapshotWeightedProgress, { shouldDirty: true });
+    }
+  }, [snapshotWeightedProgress, manualOverrideProgress, editingId]);
+
+  const updateSnapshotRow = (id: number, patch: Partial<ReportActivitiesSnapshotItem>) => {
+    setSnapshotRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const STATUS_LABELS: Record<string, string> = {
+    not_started: "لم يبدأ",
+    in_progress: "جارٍ",
+    completed: "منجز",
+    delayed: "متأخر",
+  };
+
+  const handleDelete = async () => {
+    if (!deletingId) return;
+    try {
+      await deleteReport.mutateAsync({ projectId, id: deletingId });
+      queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
+      queryClient.removeQueries({ queryKey: getGetReportQueryKey(projectId, deletingId) });
+      toast({ title: "تم حذف التقرير" });
+    } catch {
+      toast({ variant: "destructive", title: "فشل الحذف" });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handlePreview = async (report: Report) => {
+    if (!project) return;
+    // The list endpoint strips the heavy `activitiesSnapshot` column to keep
+    // payloads small, so the row we got from `useListReports` doesn't carry
+    // the timeline that was captured when this report was created. Fetch the
+    // single report (which includes the snapshot) and cache it so future
+    // previews don't re-hit the network.
+    setPreviewLoadingId(report.id);
+    let fullReport: Report = report;
+    try {
+      fullReport = await queryClient.fetchQuery({
+        queryKey: getGetReportQueryKey(projectId, report.id),
+        queryFn: ({ signal }) => getReport(projectId, report.id, { signal }),
+        staleTime: 1000 * 60 * 5,
+      }) as Report;
+    } catch {
+      toast({ title: "تعذّر تحميل تفاصيل التقرير", variant: "destructive" });
+      setPreviewLoadingId(null);
+      return;
+    } finally {
+      setPreviewLoadingId(null);
+    }
+    const token = localStorage.getItem("auth_token");
+    const withToken = (url: string) => (url.includes("?") ? url : `${url}?token=${token}`);
+    const imageUrls = (fullReport.imageUrls ?? []).map(withToken);
+    const rawGroups = (fullReport.imageGroups as ImageGroup[] | null | undefined) ?? null;
+    const imageGroups = rawGroups && rawGroups.length > 0
+      ? rawGroups.map(g => ({ category: g.category, urls: (g.urls ?? []).map(withToken) }))
+      : null;
+    // Prefer the saved snapshot — that's the timeline as it was when the
+    // report was created. Only fall back to current activities for legacy
+    // reports created before snapshots were stored.
+    const snapshotActivities = fullReport.activitiesSnapshot ?? null;
+    const sourceActivities: Array<ReportActivitiesSnapshotItem | Activity> =
+      snapshotActivities ?? (activities ?? []);
+    const activityList: ActivityForReport[] = sourceActivities.map((a) => ({
+      name: a.name ?? "",
+      plannedProgress: a.plannedProgress ?? 0,
+      actualProgress: a.actualProgress ?? 0,
+      status: (a.status as ActivityForReport["status"]) ?? "not_started",
+    }));
+    const apiBase = API_BASE.replace("/api", "");
+    previewReport({
+      projectName: project.name,
+      ownerEntity: project.ownerEntity,
+      contractor: project.contractor,
+      supervisorEntity: project.supervisorEntity,
+      location: project.location,
+      reportType: fullReport.type,
+      reportDate: fullReport.reportDate,
+      periodStart: fullReport.periodStart,
+      periodEnd: fullReport.periodEnd,
+      progressPercentage: fullReport.progressPercentage,
+      workDescription: fullReport.workDescription,
+      technicalNotes: fullReport.technicalNotes,
+      recommendations: fullReport.recommendations,
+      imageUrls,
+      imageGroups,
+      reportId: fullReport.id,
+      reportNumber: fullReport.reportNumber,
+      activities: activityList,
+      contractValue: (project as any).contractValue ?? null,
+      startDate: (project as any).startDate ?? null,
+      expectedEndDate: (project as any).expectedEndDate ?? null,
+      plannedProgress: (project as any).plannedProgress ?? null,
+      companyLogos: companyLogos as any,
+      apiBase,
+    });
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, groupIndex: number) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const fileList = Array.from(files);
+    e.target.value = "";
+    const token = localStorage.getItem("auth_token");
+    const totalBytes = fileList.reduce((s, f) => s + f.size, 0);
+
+    // Track per-file loaded bytes so the aggregated progress for this
+    // group reflects every file in the batch. Uploads from different
+    // groups run independently — a slow upload in one tab never blocks
+    // adding photos to another tab.
+    const perFileLoaded = new Array(fileList.length).fill(0);
+    setUploadProgress(prev => ({
+      ...prev,
+      [groupIndex]: {
+        loaded: (prev[groupIndex]?.loaded ?? 0),
+        total: (prev[groupIndex]?.total ?? 0) + totalBytes,
+        doneCount: (prev[groupIndex]?.doneCount ?? 0),
+        totalCount: (prev[groupIndex]?.totalCount ?? 0) + fileList.length,
+      },
+    }));
+
+    const uploadOne = (file: File, idx: number): Promise<string | null> =>
+      new Promise<string | null>((resolve) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("description", "صورة تقرير");
+        const xhr = new XMLHttpRequest();
+        // Dedicated report-uploads endpoint that's gated by the "reports"
+        // tab permission. Engineers who can edit reports but don't have
+        // edit access to the "files" tab were getting a 403 from the old
+        // /files endpoint.
+        xhr.open("POST", `/api/projects/${projectId}/reports/uploads`);
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.upload.onprogress = (ev) => {
+          if (!ev.lengthComputable) return;
+          const delta = ev.loaded - perFileLoaded[idx];
+          perFileLoaded[idx] = ev.loaded;
+          setUploadProgress(prev => {
+            const cur = prev[groupIndex];
+            if (!cur) return prev;
+            return { ...prev, [groupIndex]: { ...cur, loaded: cur.loaded + delta } };
+          });
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText) as { fileUrl?: string };
+              resolve(data.fileUrl ?? null);
+            } catch {
+              resolve(null);
+            }
+          } else {
+            toast({ variant: "destructive", title: `فشل رفع ${file.name}` });
+            resolve(null);
+          }
+        };
+        xhr.onerror = () => {
+          toast({ variant: "destructive", title: `خطأ في رفع ${file.name}` });
+          resolve(null);
+        };
+        xhr.send(formData);
+      }).then((url) => {
+        // Push each finished URL into the form immediately so the user
+        // sees thumbnails appear as files complete instead of waiting
+        // for the whole batch.
+        if (url) {
+          const groups = [...(form.getValues("imageGroups") ?? [])];
+          if (groups[groupIndex]) {
+            groups[groupIndex] = {
+              ...groups[groupIndex],
+              urls: [...(groups[groupIndex].urls ?? []), url],
+            };
+            form.setValue("imageGroups", groups, { shouldDirty: true });
+          }
+        }
+        setUploadProgress(prev => {
+          const cur = prev[groupIndex];
+          if (!cur) return prev;
+          return { ...prev, [groupIndex]: { ...cur, doneCount: cur.doneCount + 1 } };
+        });
+        return url;
+      });
+
+    await Promise.all(fileList.map((f, i) => uploadOne(f, i)));
+
+    // Clear this group's progress once everything for this batch finished.
+    // If another batch was queued in the meantime its own state entry
+    // will already exist with the additional totals; we only clear when
+    // the counters caught up with the totals.
+    setUploadProgress(prev => {
+      const cur = prev[groupIndex];
+      if (!cur) return prev;
+      if (cur.doneCount >= cur.totalCount) {
+        const { [groupIndex]: _drop, ...rest } = prev;
+        return rest;
+      }
+      return prev;
+    });
+  };
+
+  const onSubmit = async (values: ReportFormValues) => {
+    try {
+      const cleanedGroups = (values.imageGroups ?? [])
+        .map(g => ({ category: g.category.trim(), urls: g.urls ?? [] }))
+        .filter(g => g.category.length > 0 && g.urls.length > 0);
+      const flatImageUrls = Array.from(new Set(cleanedGroups.flatMap(g => g.urls)));
+      const { imageGroups: _omit, ...rest } = values;
+      const groupsForApi = cleanedGroups.length > 0 ? cleanedGroups : null;
+      if (editingId) {
+        // Only send snapshot rows that actually have an id (defensive — the
+        // generated type marks `id` as required, and rows without one
+        // wouldn't match anything server-side anyway).
+        const snapshotPayload: UpdateReportBodyActivitiesSnapshotItem[] = snapshotRows
+          .filter((r): r is ReportActivitiesSnapshotItem & { id: number } => typeof r.id === "number")
+          .map(r => ({
+            id: r.id,
+            actualProgress: r.actualProgress ?? 0,
+            status: r.status ?? "not_started",
+          }));
+        const updateBody: UpdateReportBody = {
+          ...rest,
+          imageUrls: flatImageUrls,
+          imageGroups: groupsForApi,
+        };
+        if (snapshotPayload.length > 0) {
+          updateBody.activitiesSnapshot = snapshotPayload;
+          // When the user is letting the system auto-compute, drop the
+          // explicit % so the server's recompute path wins. Otherwise
+          // keep the manual value (rest already includes it).
+          if (!manualOverrideProgress) {
+            delete (updateBody as { progressPercentage?: number | null }).progressPercentage;
+          }
+        }
+        await updateReport.mutateAsync({ projectId, id: editingId, data: updateBody });
+        queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, editingId) });
+        queryClient.invalidateQueries({ queryKey: getGetReportAuditLogQueryKey(projectId, editingId) });
+        toast({ title: "تم التحديث" });
+      } else {
+        const createBody: CreateReportBody = {
+          ...rest,
+          imageUrls: flatImageUrls,
+          imageGroups: groupsForApi,
+        };
+        await createReport.mutateAsync({ projectId, data: createBody });
+        toast({ title: "تمت الإضافة" });
+      }
+      queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
+      setIsDialogOpen(false);
+      form.reset();
+      setEditingId(null);
+    } catch {
+      toast({ variant: "destructive", title: "فشل الحفظ" });
+    }
+  };
+
+  const addImageGroup = (category: string) => {
+    const cat = category.trim();
+    if (!cat) return;
+    const current = form.getValues("imageGroups") ?? [];
+    if (current.some(g => g.category === cat)) {
+      toast({ variant: "destructive", title: "هذا القسم موجود مسبقاً" });
+      return;
+    }
+    form.setValue("imageGroups", [...current, { category: cat, urls: [] }], { shouldDirty: true });
+  };
+
+  const removeImageGroup = (groupIndex: number) => {
+    const current = form.getValues("imageGroups") ?? [];
+    const updated = current.filter((_, i) => i !== groupIndex);
+    form.setValue("imageGroups", updated.length > 0 ? updated : [{ category: DEFAULT_CATEGORY, urls: [] }], { shouldDirty: true });
+  };
+
+  const removeImageFromGroup = (groupIndex: number, imageIndex: number) => {
+    const current = [...(form.getValues("imageGroups") ?? [])];
+    if (!current[groupIndex]) return;
+    current[groupIndex] = {
+      ...current[groupIndex],
+      urls: current[groupIndex].urls.filter((_, i) => i !== imageIndex),
+    };
+    form.setValue("imageGroups", current, { shouldDirty: true });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
+          <ArrowRight className="h-5 w-5" />
+        </Button>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">التقارير</p>
+        </div>
+      </div>
+
+      <ProjectNav projectId={projectId} />
+
+      <div className="bg-card p-3 sm:p-4 rounded-lg border shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
+          <div className="w-full sm:w-40">
+            <Select value={typeFilter ?? "all"} onValueChange={(v) => setTypeFilter(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="نوع التقرير" />
+              </SelectTrigger>
+              <SelectContent dir="rtl">
+                <SelectItem value="all">الكل</SelectItem>
+                <SelectItem value="weekly">أسبوعي</SelectItem>
+                <SelectItem value="monthly">شهري</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">من</span>
+            <Input type="date" className="flex-1 min-w-0 text-sm" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <span className="text-xs text-muted-foreground whitespace-nowrap">إلى</span>
+            <Input type="date" className="flex-1 min-w-0 text-sm" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            {(dateFrom || dateTo) && (
+              <Button variant="ghost" size="sm" className="h-8 px-2 text-xs shrink-0" onClick={() => { setDateFrom(""); setDateTo(""); }}>مسح</Button>
+            )}
+          </div>
+        </div>
+        
+        {!isViewer && (
+        <Dialog open={isDialogOpen} onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          setOpenGroupIdx(0);
+          if (!open) {
+            form.reset();
+            setEditingId(null);
+            setSnapshotRows([]);
+            setManualOverrideProgress(false);
+          }
+        }}>
+          <DialogTrigger asChild>
+            <Button className="gap-2" onClick={() => {
+              if (!editingId) {
+                const auto = calcAutoProgress();
+                if (auto !== null) form.setValue("progressPercentage", auto);
+
+                const allReports = reports ?? [];
+                let latestDate: Date | null = null;
+                for (const r of allReports) {
+                  const s = new Date(r.periodStart);
+                  const e = new Date(r.periodEnd);
+                  const maxDate = s > e ? s : e;
+                  if (!latestDate || maxDate > latestDate) latestDate = maxDate;
+                }
+                if (latestDate) {
+                  const nextStart = new Date(latestDate);
+                  nextStart.setDate(nextStart.getDate() + 1);
+                  const startStr = nextStart.toISOString().split("T")[0];
+                  form.setValue("periodStart", startStr);
+
+                  const currentType = form.getValues("type");
+                  const endDate = new Date(nextStart);
+                  if (currentType === "monthly") {
+                    endDate.setMonth(endDate.getMonth() + 1);
+                    endDate.setDate(endDate.getDate() - 1);
+                  } else {
+                    endDate.setDate(endDate.getDate() + 6);
+                  }
+                  form.setValue("periodEnd", endDate.toISOString().split("T")[0]);
+                }
+              }
+            }}>
+              <Plus className="h-4 w-4" /> إضافة تقرير
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[750px] max-h-[90vh] overflow-hidden p-0" dir="rtl">
+            <div className="bg-gradient-to-br from-indigo-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+              <DialogHeader>
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-500/10 rounded-xl">
+                    <FileText className="h-6 w-6 text-indigo-600" />
+                  </div>
+                  <div>
+                    <DialogTitle className="text-xl">{editingId ? "تعديل التقرير" : "إضافة تقرير جديد"}</DialogTitle>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {editingId ? "تحديث بيانات التقرير ونسب الإنجاز والملاحظات." : "أدخل تفاصيل الإنجاز الفنية والنسب للتقرير الجديد."}
+                    </p>
+                  </div>
+                </div>
+              </DialogHeader>
+            </div>
+
+            <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-4 space-y-8">
+                  
+                  {/* Section 1: Basic Info */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-indigo-600/80 uppercase tracking-wide flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                      معلومات التقرير
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>نوع التقرير</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger dir="rtl"><SelectValue /></SelectTrigger>
+                          </FormControl>
+                          <SelectContent dir="rtl">
+                            <SelectItem value="weekly">أسبوعي</SelectItem>
+                            <SelectItem value="monthly">شهري</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="reportDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>تاريخ التقرير</FormLabel>
+                        <FormControl><Input type="date" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="periodStart"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>بداية الفترة</FormLabel>
+                        <FormControl><Input type="date" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="periodEnd"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>نهاية الفترة</FormLabel>
+                        <FormControl><Input type="date" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="progressPercentage"
+                    render={({ field }) => {
+                      const autoVal = calcAutoProgress();
+                      // When editing an existing report with a loaded
+                      // snapshot, the overall % is derived from the table
+                      // below using the weighted-average formula. The user
+                      // can still force a manual value via the override
+                      // toggle. When creating a new report (no editingId)
+                      // we fall back to the existing project-activities
+                      // auto-suggest button.
+                      const hasSnapshot = !!editingId && snapshotRows.length > 0;
+                      const isDerivedReadOnly = hasSnapshot && !manualOverrideProgress;
+                      return (
+                        <FormItem className="sm:col-span-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
+                            <FormLabel className="mb-0">نسبة الإنجاز حتى تاريخه (%)</FormLabel>
+                            {hasSnapshot ? (
+                              <button
+                                type="button"
+                                onClick={() => setManualOverrideProgress(v => !v)}
+                                className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium bg-primary/8 hover:bg-primary/15 rounded-md px-2.5 py-1 transition-colors border border-primary/20"
+                              >
+                                <Calculator className="h-3.5 w-3.5" />
+                                {manualOverrideProgress ? "العودة للحساب التلقائي" : "تجاوز يدوي"}
+                              </button>
+                            ) : autoVal !== null && (
+                              <button
+                                type="button"
+                                onClick={() => field.onChange(autoVal)}
+                                className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium bg-primary/8 hover:bg-primary/15 rounded-md px-2.5 py-1 transition-colors border border-primary/20"
+                              >
+                                <Calculator className="h-3.5 w-3.5" />
+                                احتساب تلقائي ({autoVal}%)
+                              </button>
+                            )}
+                          </div>
+                          <FormControl>
+                            <div className="relative">
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={0.1}
+                                {...field}
+                                disabled={isDerivedReadOnly}
+                                className="pl-8"
+                              />
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium pointer-events-none">%</span>
+                            </div>
+                          </FormControl>
+                          {hasSnapshot ? (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {isDerivedReadOnly
+                                ? `محتسب تلقائياً من المتوسط الموزون لبنود التقرير (${snapshotRows.length} بند)`
+                                : "وضع يدوي: لن تتم إعادة حساب النسبة من البنود عند الحفظ"}
+                            </p>
+                          ) : autoVal !== null && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              محتسب من المتوسط الموزون لجميع بنود المشروع ({(activities ?? []).length} بند)
+                            </p>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
+                  />
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-border/50 w-full" />
+
+                  {/* Section 2: Text Fields */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-indigo-600/80 uppercase tracking-wide flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                      التفاصيل والملاحظات
+                    </h3>
+                    
+                    <div className="p-4 sm:p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
+                      <FormField
+                        control={form.control}
+                        name="workDescription"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-base text-foreground/90 flex items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                              وصف الأعمال المنجزة خلال الفترة
+                            </FormLabel>
+                            <FormControl><Textarea className="min-h-28 text-base bg-background shadow-inner" placeholder="اكتب وصفاً مفصلاً للأعمال التي تم إنجازها..." {...field} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="technicalNotes"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-base text-foreground/90 flex items-center gap-2">
+                              <AlertCircle className="h-4 w-4 text-amber-500" />
+                              الملاحظات الفنية والعوائق (اختياري)
+                            </FormLabel>
+                            <FormControl><Textarea className="min-h-24 bg-background" placeholder="أي ملاحظات، صعوبات، أو تأخيرات..." {...field} value={field.value ?? ''} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="recommendations"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-base text-foreground/90 flex items-center gap-2">
+                              <Star className="h-4 w-4 text-indigo-500" />
+                              التوصيات والمقترحات (اختياري)
+                            </FormLabel>
+                            <FormControl><Textarea className="min-h-24 bg-background" placeholder="ما هي خطوات العمل القادمة المقترحة؟" {...field} value={field.value ?? ''} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                {/* Editable activities snapshot (edit mode only). */}
+                {!!editingId && (
+                  <>
+                    <div className="h-px bg-border/50 w-full" />
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-semibold text-indigo-600/80 uppercase tracking-wide flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                        نسب إنجاز البنود
+                      </h3>
+                      <div className="border rounded-2xl overflow-hidden shadow-sm">
+                        <div className="bg-gradient-to-r from-muted/50 to-muted/20 px-4 py-3 flex items-center justify-between flex-wrap gap-2 border-b border-border/50">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-semibold">تحديث حالة البنود</h3>
+                            {snapshotRows.length > 0 && (
+                              <span className="text-xs text-muted-foreground bg-background px-2 py-0.5 rounded-full border shadow-sm">({snapshotRows.length} بند)</span>
+                            )}
+                          </div>
+                          {snapshotWeightedProgress != null && (
+                            <Badge variant="outline" className="font-mono bg-background shadow-sm border-primary/20 text-primary">
+                              متوسط الإنجاز الكلي: {snapshotWeightedProgress}%
+                            </Badge>
+                          )}
+                        </div>
+                        {isLoadingSnapshot ? (
+                          <div className="p-8"><LoadingSpinner text="جاري تحميل البنود..." /></div>
+                        ) : snapshotRows.length === 0 ? (
+                          <div className="p-8 text-center text-muted-foreground flex flex-col items-center gap-2">
+                            <AlertCircle className="h-8 w-8 text-muted-foreground/30" />
+                            <p className="text-sm">لا توجد بنود محفوظة في هذا التقرير</p>
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto bg-card">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted/10 text-xs text-muted-foreground/80 font-medium">
+                                <tr>
+                                  <th className="text-right px-4 py-3 font-semibold">البند</th>
+                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap">الوزن</th>
+                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap">المخطط %</th>
+                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap w-32">الفعلي %</th>
+                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap w-36">الحالة</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border/40">
+                                {snapshotRows.map(row => {
+                                  const rowId = row.id;
+                                  if (typeof rowId !== "number") return null;
+                                  return (
+                                    <tr key={rowId} className="hover:bg-muted/10 transition-colors">
+                                      <td className="px-4 py-3 align-middle">
+                                        <span className="font-medium text-foreground/90">{row.name ?? "—"}</span>
+                                      </td>
+                                      <td className="px-4 py-3 text-center font-mono text-xs text-muted-foreground/70">
+                                        {typeof row.weight === "number" ? row.weight : 1}
+                                      </td>
+                                      <td className="px-4 py-3 text-center font-mono text-xs text-muted-foreground/70">
+                                        {typeof row.plannedProgress === "number" ? Math.round(row.plannedProgress * 10) / 10 : 0}%
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          max={100}
+                                          step={0.1}
+                                          value={row.actualProgress ?? 0}
+                                          onChange={e => {
+                                            const v = e.target.value === "" ? 0 : Number(e.target.value);
+                                            const clamped = Math.min(100, Math.max(0, Number.isFinite(v) ? v : 0));
+                                            updateSnapshotRow(rowId, { actualProgress: clamped });
+                                          }}
+                                          className="h-9 text-center font-mono text-sm bg-background border-input/60 shadow-inner"
+                                        />
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <Select
+                                          value={row.status ?? "not_started"}
+                                          onValueChange={(v) => updateSnapshotRow(rowId, { status: v })}
+                                        >
+                                          <SelectTrigger dir="rtl" className="h-9 text-xs bg-background">
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent dir="rtl">
+                                            {Object.entries(STATUS_LABELS).map(([v, label]) => (
+                                              <SelectItem key={v} value={v}>{label}</SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+
+                {/* Image Groups Section */}
+                <div className="h-px bg-border/50 w-full" />
+
+                {/* Section 4: Attachments */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-indigo-600/80 uppercase tracking-wide flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                    مرفقات التقرير
+                  </h3>
+                  
+                  <FormField
+                    control={form.control}
+                    name="imageGroups"
+                    render={({ field }) => {
+                      const groups = field.value ?? [];
+                      const totalImages = groups.reduce((s, g) => s + (g.urls?.length ?? 0), 0);
+                      return (
+                        <FormItem>
+                          <FormLabel className="flex items-center gap-2 text-base text-foreground/90">
+                            <ImagePlus className="h-4 w-4 text-emerald-500" /> صور الموقع التوثيقية (اختياري)
+                            {totalImages > 0 && (
+                              <span className="text-xs text-muted-foreground font-normal bg-muted px-2 py-0.5 rounded-full">— {totalImages} صورة في {groups.filter(g => g.urls.length > 0).length} قسم</span>
+                            )}
+                          </FormLabel>
+                          <div className="space-y-3 mt-3">
+                            {groups.map((group, gIdx) => {
+                              const groupProgress = uploadProgress[gIdx];
+                              const isThisUploading = !!groupProgress;
+                              const progressPct = groupProgress && groupProgress.total > 0
+                                ? Math.min(100, Math.round((groupProgress.loaded / groupProgress.total) * 100))
+                                : 0;
+                              const isOpen = openGroupIdx === gIdx;
+                              const isEmpty = group.urls.length === 0;
+                              const canDelete = isEmpty && groups.length > 1 && !isThisUploading;
+                              return (
+                                <Collapsible
+                                  key={gIdx}
+                                  open={isOpen}
+                                  onOpenChange={(o) => setOpenGroupIdx(o ? gIdx : null)}
+                                  className="border rounded-2xl bg-muted/10 overflow-hidden shadow-sm"
+                                >
+                                  <div className="flex items-center justify-between gap-2 flex-wrap p-4 hover:bg-muted/20 transition-colors">
+                                    <CollapsibleTrigger asChild>
+                                      <button type="button" className="flex items-center gap-2 flex-1 min-w-0 text-right">
+                                        <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                                        <span className="text-sm font-semibold text-foreground truncate">{group.category}</span>
+                                        <Badge variant="outline" className="text-xs text-muted-foreground shrink-0 bg-background">{group.urls.length} صورة</Badge>
+                                      </button>
+                                    </CollapsibleTrigger>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <label className="cursor-pointer">
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          multiple
+                                          className="hidden"
+                                          onChange={(e) => { setOpenGroupIdx(gIdx); handleImageUpload(e, gIdx); }}
+                                        />
+                                        <span className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 hover:border-primary/30 font-medium transition-all shadow-sm">
+                                          {isThisUploading ? (
+                                            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> إضافة المزيد</>
+                                          ) : (
+                                            <><ImagePlus className="h-3.5 w-3.5" /> إضافة صور للقسم</>
+                                          )}
+                                        </span>
+                                      </label>
+                                      {canDelete && (
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10"
+                                          title="حذف هذا القسم الفارغ"
+                                          onClick={() => removeImageGroup(gIdx)}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                      {!isEmpty && groups.length > 1 && (
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 rounded-lg text-muted-foreground/40 cursor-not-allowed"
+                                          title="احذف الصور أولاً ثم يمكنك حذف القسم"
+                                          disabled
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {isThisUploading && (
+                                    <div className="px-4 pb-4 -mt-1">
+                                      <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1.5">
+                                        <span className="flex items-center gap-1.5 font-medium">
+                                          <Loader2 className="h-3.5 w-3.5 text-primary animate-spin" />
+                                          جاري رفع {groupProgress.doneCount} / {groupProgress.totalCount}
+                                        </span>
+                                        <span className="font-mono text-primary font-semibold">{progressPct}%</span>
+                                      </div>
+                                      <Progress value={progressPct} className="h-2 bg-primary/10" />
+                                    </div>
+                                  )}
+                                  <CollapsibleContent>
+                                    <div className="px-4 pb-4">
+                                      {isEmpty ? (
+                                        <div className="text-center p-6 border-2 border-dashed rounded-xl bg-background/50 text-muted-foreground/60 flex flex-col items-center gap-2">
+                                          <ImagePlus className="h-8 w-8 opacity-50" />
+                                          <p className="text-xs font-medium">اسحب وأفلت الصور هنا أو انقر على "إضافة صور للقسم"</p>
+                                        </div>
+                                      ) : (
+                                        <div className="flex flex-wrap gap-3">
+                                          {group.urls.map((url, idx) => (
+                                            <div key={idx} className="relative group w-24 h-24 rounded-xl overflow-hidden border-2 border-transparent hover:border-primary/50 shadow-sm transition-all">
+                                              <img
+                                                src={url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`}
+                                                alt={`صورة ${idx + 1}`}
+                                                loading="lazy"
+                                                decoding="async"
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() => removeImageFromGroup(gIdx, idx)}
+                                                className="absolute top-1 right-1 bg-background/80 backdrop-blur-sm text-destructive hover:bg-destructive hover:text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-md"
+                                              >
+                                                <X className="h-3.5 w-3.5" />
+                                              </button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </CollapsibleContent>
+                                </Collapsible>
+                              );
+                            })}
+
+                            <div className="pt-2">
+                              <AddImageGroupButton
+                                suggestions={categorySuggestions}
+                                onAdd={(cat) => {
+                                  addImageGroup(cat);
+                                  setOpenGroupIdx((form.getValues("imageGroups") ?? []).length - 1);
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </FormItem>
+                      );
+                    }}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+                  <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
+                  <Button
+                    type="submit"
+                    className="w-full sm:w-auto shadow-md"
+                    disabled={createReport.isPending || updateReport.isPending || isAnyUploading}
+                    title={isAnyUploading ? "يرجى الانتظار حتى اكتمال رفع الصور" : undefined}
+                  >
+                    {isAnyUploading ? <><Loader2 className="h-4 w-4 ml-2 animate-spin" /> جاري الرفع...</> : editingId ? "حفظ وتحديث التقرير" : "إنشاء التقرير"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+            </div>
+          </DialogContent>
+        </Dialog>
+        )}
+      </div>
+
+      {(() => {
+        const reportsList = reports ?? [];
+        const selectedReport = reportsList.find((r) => r.id === selectedReportId) ?? null;
+
+        const countImages = (report: Report) => {
+          const groups = (report.imageGroups as ImageGroup[] | null | undefined) ?? null;
+          if (groups && groups.length > 0) {
+            return groups.reduce((s, g) => s + (g.urls?.length ?? 0), 0);
+          }
+          return report.imageUrls?.length ?? 0;
+        };
+
+        const renderActions = (report: Report, size: "row" | "panel" = "row") => {
+          const btnClass = size === "panel"
+            ? "gap-1.5 h-9 text-sm"
+            : "gap-1 h-8 text-xs sm:text-sm sm:gap-1.5";
+          return (
+            <div
+              className="flex flex-wrap gap-1.5 sm:gap-2"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                className={`text-violet-600 hover:bg-violet-50 hover:text-violet-700 border-violet-200 ${btnClass}`}
+                onClick={() => handlePreview(report)}
+                disabled={previewLoadingId === report.id}
+                title="معاينة وطباعة"
+              >
+                {previewLoadingId === report.id ? (
+                  <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                ) : (
+                  <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                )}{" "}
+                <span className="hidden sm:inline">معاينة و</span>طباعة
+              </Button>
+              {canApprove && (
+                report.status === "draft" ? (
+                  <Button
+                    variant="outline" size="sm"
+                    className={`text-emerald-700 border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 ${btnClass}`}
+                    onClick={() => handleApprove(report.id, "approved")}
+                    disabled={updateReportStatus.isPending}
+                    title="اعتماد التقرير وإظهاره في تقارير المالك"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> اعتماد
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline" size="sm"
+                    className={`text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800 ${btnClass}`}
+                    onClick={() => handleApprove(report.id, "draft")}
+                    disabled={updateReportStatus.isPending}
+                    title="إرجاع التقرير إلى المسودة (يُخفى من تقارير المالك)"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> إرجاع لمسودة
+                  </Button>
+                )
+              )}
+              {!isViewer && (
+                <>
+                  <Button variant="outline" size="sm" className={btnClass} onClick={() => handleEdit(report)}>
+                    <Edit2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> تعديل
+                  </Button>
+                  <Button
+                    variant="outline" size="sm"
+                    className={`text-destructive hover:bg-destructive hover:text-white ${btnClass}`}
+                    onClick={() => setDeletingId(report.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> حذف
+                  </Button>
+                </>
+              )}
+            </div>
+          );
+        };
+
+        const renderDetailsBody = (report: Report) => {
+          const reportGroups = (report.imageGroups as ImageGroup[] | null | undefined) ?? null;
+          const hasGroups = reportGroups && reportGroups.length > 0 && reportGroups.some(g => (g.urls?.length ?? 0) > 0);
+          const hasImages = (report.imageUrls && report.imageUrls.length > 0) || hasGroups;
+          const totalImages = hasGroups
+            ? reportGroups!.reduce((s, g) => s + (g.urls?.length ?? 0), 0)
+            : (report.imageUrls?.length ?? 0);
+          const displayGroups: ImageGroup[] = hasGroups
+            ? reportGroups!.filter(g => (g.urls?.length ?? 0) > 0)
+            : [{ category: "صور الموقع", urls: report.imageUrls ?? [] }];
+          let runningCounter = 0;
+          return (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <div className="text-xs text-muted-foreground mb-0.5">النوع</div>
+                  <div className="font-medium">{report.type === "weekly" ? "أسبوعي" : "شهري"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-0.5">الحالة</div>
+                  <div>
+                    {report.status === "draft" ? (
+                      <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">مسودة</Badge>
+                    ) : (
+                      <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100">معتمد</Badge>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-0.5">تاريخ التقرير</div>
+                  <div className="font-mono">{fmtDate(report.reportDate)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-0.5">الإنجاز التراكمي</div>
+                  <Badge className="bg-primary text-white">{report.progressPercentage}%</Badge>
+                </div>
+                <div className="col-span-2 sm:col-span-4">
+                  <div className="text-xs text-muted-foreground mb-0.5">الفترة</div>
+                  <div className="font-mono text-sm">
+                    {fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t">
+                <h4 className="text-sm font-semibold mb-1 text-foreground">وصف الأعمال</h4>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{report.workDescription}</p>
+              </div>
+
+              {(report.technicalNotes || report.recommendations) && (
+                <div className="grid md:grid-cols-2 gap-4 pt-3 border-t">
+                  {report.technicalNotes && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-destructive flex items-center gap-1 mb-1">
+                        <AlertTriangle className="h-4 w-4" /> الملاحظات الفنية
+                      </h4>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{report.technicalNotes}</p>
+                    </div>
+                  )}
+                  {report.recommendations && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-emerald-600 flex items-center gap-1 mb-1">
+                        <CheckCircle2 className="h-4 w-4" /> التوصيات
+                      </h4>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{report.recommendations}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {hasImages && (
+                <div className="pt-3 border-t space-y-4">
+                  {displayGroups.map((group, gi) => (
+                    <div key={gi}>
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                        <ImagePlus className="h-4 w-4 text-muted-foreground" />
+                        {group.category}
+                        <span className="text-xs text-muted-foreground font-normal">({group.urls.length} صورة)</span>
+                      </h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        {group.urls.map((url, idx) => {
+                          const authUrl = url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`;
+                          runningCounter += 1;
+                          const positionLabel = `${runningCounter}/${totalImages}`;
+                          return (
+                            <a
+                              key={idx}
+                              href={authUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="group relative aspect-video rounded-lg overflow-hidden border-2 border-muted hover:border-primary/40 transition-all shadow-sm hover:shadow-md block"
+                            >
+                              <img
+                                src={authUrl}
+                                alt={`صورة ${idx + 1}`}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                              <div className="absolute bottom-1.5 right-1.5 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">
+                                {positionLabel}
+                              </div>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        return (
+          <>
+            {isLoading ? (
+              <LoadingSpinner text="جاري تحميل التقارير..." />
+            ) : reportsList.length === 0 ? (
+              <Card className="border-dashed">
+                <EmptyState
+                  icon={<FileText className="h-7 w-7 text-muted-foreground/60" />}
+                  title="لا توجد تقارير"
+                  description="لم يتم إضافة أي تقارير لهذا المشروع بعد"
+                />
+              </Card>
+            ) : (
+              <>
+                {/* Desktop: table view */}
+                <Card className="hidden md:block overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/60 text-muted-foreground">
+                        <tr className="text-right">
+                          <th className="px-3 py-2 font-medium">#</th>
+                          <th className="px-3 py-2 font-medium">النوع</th>
+                          <th className="px-3 py-2 font-medium">الحالة</th>
+                          <th className="px-3 py-2 font-medium">التاريخ</th>
+                          <th className="px-3 py-2 font-medium">الفترة</th>
+                          <th className="px-3 py-2 font-medium">الإنجاز</th>
+                          <th className="px-3 py-2 font-medium">الصور</th>
+                          <th className="px-3 py-2 font-medium text-center">الإجراءات</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportsList.map((report) => {
+                          const imgCount = countImages(report);
+                          return (
+                            <tr
+                              key={report.id}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`فتح تفاصيل التقرير رقم ${report.reportNumber}`}
+                              className="border-t hover:bg-accent/40 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                              onClick={() => setSelectedReportId(report.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelectedReportId(report.id);
+                                }
+                              }}
+                            >
+                              <td className="px-3 py-2.5 font-bold whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1.5">
+                                  <FileText className={`h-4 w-4 ${report.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
+                                  #{report.reportNumber}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5 whitespace-nowrap">
+                                <Badge variant="outline" className="bg-background">
+                                  {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                                </Badge>
+                              </td>
+                              <td className="px-3 py-2.5 whitespace-nowrap">
+                                {report.status === "draft" ? (
+                                  <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">مسودة</Badge>
+                                ) : (
+                                  <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100">معتمد</Badge>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap">{fmtDate(report.reportDate)}</td>
+                              <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap text-muted-foreground">
+                                {fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}
+                              </td>
+                              <td className="px-3 py-2.5 whitespace-nowrap">
+                                <Badge className="bg-primary text-white">{report.progressPercentage}%</Badge>
+                              </td>
+                              <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
+                                <span className="inline-flex items-center gap-1">
+                                  <ImagePlus className="h-3.5 w-3.5" />
+                                  {imgCount}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-left">
+                                {renderActions(report)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                {/* Mobile: compact cards */}
+                <div className="grid gap-3 md:hidden">
+                  {reportsList.map((report) => {
+                    const imgCount = countImages(report);
+                    return (
+                      <Card
+                        key={report.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`فتح تفاصيل التقرير رقم ${report.reportNumber}`}
+                        className="overflow-hidden cursor-pointer hover:bg-accent/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => setSelectedReportId(report.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedReportId(report.id);
+                          }
+                        }}
+                      >
+                        <CardContent className="p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileText className={`h-5 w-5 shrink-0 ${report.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
+                              <span className="font-bold">#{report.reportNumber}</span>
+                              <Badge variant="outline" className="bg-background text-xs">
+                                {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                              </Badge>
+                              {report.status === "draft" ? (
+                                <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100 text-xs">مسودة</Badge>
+                              ) : (
+                                <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 text-xs">معتمد</Badge>
+                              )}
+                            </div>
+                            <Badge className="bg-primary shrink-0 text-white">{report.progressPercentage}%</Badge>
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span className="font-mono">{fmtDate(report.reportDate)}</span>
+                            <span className="font-mono">
+                              {fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <ImagePlus className="h-3.5 w-3.5" /> {imgCount}
+                            </span>
+                          </div>
+                          <div className="pt-1">
+                            {renderActions(report)}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            <Sheet
+              open={!!selectedReport}
+              onOpenChange={(open) => { if (!open) setSelectedReportId(null); }}
+            >
+              <SheetContent
+                side="left"
+                className="w-full sm:max-w-2xl overflow-y-auto"
+                dir="rtl"
+              >
+                {selectedReport && (
+                  <>
+                    <SheetHeader className="text-right space-y-3 pr-10">
+                      <SheetTitle className="flex items-center gap-2 flex-wrap">
+                        <FileText className={`h-5 w-5 ${selectedReport.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
+                        تقرير #{selectedReport.reportNumber}
+                        <Badge variant="outline" className="bg-background font-normal">
+                          {selectedReport.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                        </Badge>
+                      </SheetTitle>
+                      <div>{renderActions(selectedReport, "panel")}</div>
+                    </SheetHeader>
+                    <div className="mt-5">
+                      {renderDetailsBody(selectedReport)}
+                      <ReportActivityLog projectId={projectId} reportId={selectedReport.id} />
+                    </div>
+                  </>
+                )}
+              </SheetContent>
+            </Sheet>
+          </>
+        );
+      })()}
+      <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+            <AlertDialogDescription>هل أنت متأكد من حذف هذا التقرير؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2">
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              حذف
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
