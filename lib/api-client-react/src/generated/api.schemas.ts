@@ -31,14 +31,18 @@ export interface Activity {
   id: number;
   projectId: number;
   name: string;
-  plannedStartDate: string;
-  plannedEndDate: string;
+  /** @nullable */
+  plannedStartDate?: string | null;
+  /** @nullable */
+  plannedEndDate?: string | null;
   /** @nullable */
   actualStartDate?: string | null;
   /** @nullable */
   actualEndDate?: string | null;
   plannedProgress: number;
   actualProgress: number;
+  /** Relative weight (cost share / volume share). Default 1. */
+  weight: number;
   status: ActivityStatus;
   sortOrder: number;
   /** @nullable */
@@ -64,11 +68,28 @@ export const UserRole = {
   project_manager: "project_manager",
   engineer: "engineer",
   owner: "owner",
+  contractor: "contractor",
 } as const;
 
 export interface UserCompany {
   companyId: number;
   companyName: string;
+}
+
+export type UserProjectMembershipRole =
+  (typeof UserProjectMembershipRole)[keyof typeof UserProjectMembershipRole];
+
+export const UserProjectMembershipRole = {
+  project_manager: "project_manager",
+  engineer: "engineer",
+  contractor: "contractor",
+  viewer: "viewer",
+} as const;
+
+export interface UserProjectMembership {
+  projectId: number;
+  projectName: string;
+  role: UserProjectMembershipRole;
 }
 
 export interface User {
@@ -77,12 +98,25 @@ export interface User {
   fullName: string;
   role: UserRole;
   companies?: UserCompany[];
+  projects?: UserProjectMembership[];
+  incompleteProfile?: boolean;
+  projectMembershipsCount?: number;
   createdAt: string;
 }
 
 export interface LoginResponse {
   user: User;
   token: string;
+}
+
+export interface RegisterResponse {
+  user: User;
+}
+
+export interface RegisterBody {
+  fullName: string;
+  phone: string;
+  password: string;
 }
 
 export type CreateUserBodyRole =
@@ -93,6 +127,7 @@ export const CreateUserBodyRole = {
   project_manager: "project_manager",
   engineer: "engineer",
   owner: "owner",
+  contractor: "contractor",
 } as const;
 
 export interface CreateUserBody {
@@ -101,6 +136,7 @@ export interface CreateUserBody {
   fullName: string;
   role: CreateUserBodyRole;
   companyIds?: number[];
+  projectIds?: number[];
 }
 
 export type ProjectMemberRole =
@@ -109,6 +145,8 @@ export type ProjectMemberRole =
 export const ProjectMemberRole = {
   project_manager: "project_manager",
   engineer: "engineer",
+  contractor: "contractor",
+  viewer: "viewer",
 } as const;
 
 export interface ProjectMember {
@@ -130,6 +168,8 @@ export type AddProjectMemberBodyRole =
 export const AddProjectMemberBodyRole = {
   project_manager: "project_manager",
   engineer: "engineer",
+  contractor: "contractor",
+  viewer: "viewer",
 } as const;
 
 export interface AddProjectMemberBody {
@@ -144,6 +184,8 @@ export type UpdateProjectMemberBodyRole =
 export const UpdateProjectMemberBodyRole = {
   project_manager: "project_manager",
   engineer: "engineer",
+  contractor: "contractor",
+  viewer: "viewer",
 } as const;
 
 export interface UpdateProjectMemberBody {
@@ -151,11 +193,42 @@ export interface UpdateProjectMemberBody {
   assignedGroupIds?: number[];
 }
 
+export type TabAccess = (typeof TabAccess)[keyof typeof TabAccess];
+
+export const TabAccess = {
+  hidden: "hidden",
+  view: "view",
+  edit: "edit",
+} as const;
+
+export interface TabPermissionsMap {
+  overview?: TabAccess;
+  activities?: TabAccess;
+  extensions?: TabAccess;
+  suspensions?: TabAccess;
+  reports?: TabAccess;
+  forms?: TabAccess;
+  attendance?: TabAccess;
+  files?: TabAccess;
+  deviation?: TabAccess;
+}
+
 export interface ProjectPermissions {
   role: string;
   projectRole?: string;
   assignedGroupIds?: number[];
   canEditAll: boolean;
+  isViewer?: boolean;
+  tabPermissions?: TabPermissionsMap;
+}
+
+export interface MemberTabPermissions {
+  memberId: number;
+  projectId: number;
+  userId: number;
+  role: string;
+  overrides?: TabPermissionsMap | null;
+  effective: TabPermissionsMap;
 }
 
 export interface UpdateUserBody {
@@ -168,6 +241,7 @@ export interface UpdateUserBody {
   /** @nullable */
   password?: string | null;
   companyIds?: number[];
+  projectIds?: number[];
 }
 
 export type ProjectStatus = (typeof ProjectStatus)[keyof typeof ProjectStatus];
@@ -186,14 +260,25 @@ export interface Project {
   ownerEntity: string;
   supervisorEntity: string;
   contractor: string;
-  startDate: string;
-  expectedEndDate: string;
+  /** @nullable */
+  startDate?: string | null;
+  /** @nullable */
+  expectedEndDate?: string | null;
   /** @nullable */
   actualEndDate?: string | null;
   status: ProjectStatus;
   overallProgress: number;
+  noSchedule: boolean;
   /** @nullable */
   ownerAccessToken?: string | null;
+  /** @nullable */
+  siteLatitude?: number | null;
+  /** @nullable */
+  siteLongitude?: number | null;
+  /** @nullable */
+  siteRadiusMeters?: number | null;
+  attendanceAutoCloseHours: number;
+  attendanceLongDayHours: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -214,8 +299,11 @@ export interface CreateProjectBody {
   ownerEntity: string;
   supervisorEntity: string;
   contractor: string;
-  startDate: string;
-  expectedEndDate: string;
+  /** @nullable */
+  startDate?: string | null;
+  /** @nullable */
+  expectedEndDate?: string | null;
+  noSchedule?: boolean;
   status?: CreateProjectBodyStatus;
 }
 
@@ -251,9 +339,17 @@ export interface UpdateProjectBody {
   /** @nullable */
   actualEndDate?: string | null;
   /** @nullable */
+  noSchedule?: boolean | null;
+  /** @nullable */
   status?: UpdateProjectBodyStatus;
   /** @nullable */
   overallProgress?: number | null;
+  /** @nullable */
+  siteLatitude?: number | null;
+  /** @nullable */
+  siteLongitude?: number | null;
+  /** @nullable */
+  siteRadiusMeters?: number | null;
 }
 
 export type CreateActivityBodyStatus =
@@ -268,14 +364,17 @@ export const CreateActivityBodyStatus = {
 
 export interface CreateActivityBody {
   name: string;
-  plannedStartDate: string;
-  plannedEndDate: string;
+  /** @nullable */
+  plannedStartDate?: string | null;
+  /** @nullable */
+  plannedEndDate?: string | null;
   /** @nullable */
   actualStartDate?: string | null;
   /** @nullable */
   actualEndDate?: string | null;
   plannedProgress?: number;
   actualProgress?: number;
+  weight?: number;
   status?: CreateActivityBodyStatus;
   sortOrder?: number;
   /** @nullable */
@@ -312,6 +411,8 @@ export interface UpdateActivityBody {
   /** @nullable */
   actualProgress?: number | null;
   /** @nullable */
+  weight?: number | null;
+  /** @nullable */
   status?: UpdateActivityBodyStatus;
   /** @nullable */
   sortOrder?: number | null;
@@ -326,6 +427,11 @@ export const ReportType = {
   monthly: "monthly",
 } as const;
 
+export type ReportImageGroupsItem = {
+  category: string;
+  urls: string[];
+};
+
 export type ReportActivitiesSnapshotItem = {
   id?: number;
   name?: string;
@@ -337,9 +443,18 @@ export type ReportActivitiesSnapshotItem = {
   actualEndDate?: string | null;
   plannedProgress?: number;
   actualProgress?: number;
+  /** Activity weight (cost/volume share) used for the report's weighted progress. */
+  weight?: number;
   status?: string;
   sortOrder?: number;
 };
+
+export type ReportStatus = (typeof ReportStatus)[keyof typeof ReportStatus];
+
+export const ReportStatus = {
+  draft: "draft",
+  approved: "approved",
+} as const;
 
 export interface Report {
   id: number;
@@ -357,7 +472,14 @@ export interface Report {
   recommendations?: string | null;
   imageUrls: string[];
   /** @nullable */
+  imageGroups?: ReportImageGroupsItem[] | null;
+  /** @nullable */
   activitiesSnapshot?: ReportActivitiesSnapshotItem[] | null;
+  status: ReportStatus;
+  /** @nullable */
+  approvedAt?: string | null;
+  /** @nullable */
+  approvedById?: number | null;
   /** @nullable */
   createdById?: number | null;
   createdAt: string;
@@ -372,6 +494,11 @@ export const CreateReportBodyType = {
   monthly: "monthly",
 } as const;
 
+export type CreateReportBodyImageGroupsItem = {
+  category: string;
+  urls: string[];
+};
+
 export interface CreateReportBody {
   type: CreateReportBodyType;
   reportDate: string;
@@ -384,6 +511,43 @@ export interface CreateReportBody {
   /** @nullable */
   recommendations?: string | null;
   imageUrls?: string[];
+  /** @nullable */
+  imageGroups?: CreateReportBodyImageGroupsItem[] | null;
+}
+
+export type ReportAuditLogEntryAction =
+  (typeof ReportAuditLogEntryAction)[keyof typeof ReportAuditLogEntryAction];
+
+export const ReportAuditLogEntryAction = {
+  create: "create",
+  update: "update",
+  delete: "delete",
+} as const;
+
+export interface ReportAuditLogEntry {
+  id: number;
+  action: ReportAuditLogEntryAction;
+  /** @nullable */
+  entityName?: string | null;
+  /** @nullable */
+  userId?: number | null;
+  /** @nullable */
+  userName?: string | null;
+  /** @nullable */
+  userFullName?: string | null;
+  createdAt: string;
+}
+
+export type UpdateReportStatusBodyStatus =
+  (typeof UpdateReportStatusBodyStatus)[keyof typeof UpdateReportStatusBodyStatus];
+
+export const UpdateReportStatusBodyStatus = {
+  draft: "draft",
+  approved: "approved",
+} as const;
+
+export interface UpdateReportStatusBody {
+  status: UpdateReportStatusBodyStatus;
 }
 
 /**
@@ -397,6 +561,17 @@ export const UpdateReportBodyType = {
   weekly: "weekly",
   monthly: "monthly",
 } as const;
+
+export type UpdateReportBodyImageGroupsItem = {
+  category: string;
+  urls: string[];
+};
+
+export type UpdateReportBodyActivitiesSnapshotItem = {
+  id: number;
+  actualProgress?: number;
+  status?: string;
+};
 
 export interface UpdateReportBody {
   /** @nullable */
@@ -416,6 +591,19 @@ export interface UpdateReportBody {
   /** @nullable */
   recommendations?: string | null;
   imageUrls?: string[];
+  /** @nullable */
+  imageGroups?: UpdateReportBodyImageGroupsItem[] | null;
+  /**
+   * Partial-merge update for the report's activities snapshot. Each item
+must carry the snapshot row `id`; only `actualProgress` and `status`
+are applied. Unknown ids are ignored; rows omitted from the payload
+are kept unchanged. When provided WITHOUT an explicit
+`progressPercentage`, the server recomputes the report's overall
+progress as a weighted average using each row's stored `weight`.
+
+   * @nullable
+   */
+  activitiesSnapshot?: UpdateReportBodyActivitiesSnapshotItem[] | null;
 }
 
 export type ProjectFileCategory =
@@ -459,8 +647,13 @@ export interface ProjectSummary {
   totalDays: number;
   daysRemaining: number;
   delayDays: number;
+  suspensionDays: number;
+  netDelayDays: number;
+  /** Days passed after expectedEndDate while progress < 100% */
+  overrunDays?: number;
   reportsCount: number;
   filesCount: number;
+  noSchedule?: boolean;
 }
 
 export interface OwnerProjectView {
@@ -480,14 +673,59 @@ export interface OwnerLinkResponse {
   url: string;
 }
 
+export type DashboardSummaryAllProjectsItem = {
+  id?: number;
+  name?: string;
+  overallProgress?: number;
+  plannedProgress?: number;
+  status?: string;
+  daysRemaining?: number;
+  /** @nullable */
+  ownerEntity?: string | null;
+  /** @nullable */
+  startDate?: string | null;
+  /** @nullable */
+  expectedEndDate?: string | null;
+  noSchedule?: boolean;
+  /** Days passed after expectedEndDate while progress < 100% */
+  overrunDays?: number;
+};
+
+export type DashboardSummaryRecentReportsItem = {
+  id?: number;
+  projectId?: number;
+  type?: string;
+  reportDate?: string;
+  progressPercentage?: number;
+};
+
+export type DashboardSummaryDelayedActivitiesListItem = {
+  id?: number;
+  name?: string;
+  projectId?: number;
+  projectName?: string;
+  /** @nullable */
+  plannedEndDate?: string | null;
+  actualProgress?: number;
+  delayDays?: number;
+};
+
 export interface DashboardSummary {
   totalProjects: number;
   activeProjects: number;
   completedProjects: number;
   delayedProjects: number;
+  suspendedProjects: number;
   averageProgress: number;
   totalReports: number;
+  totalActivities: number;
+  completedActivities: number;
+  delayedActivities: number;
+  inProgressActivities: number;
   recentProjects: Project[];
+  allProjects: DashboardSummaryAllProjectsItem[];
+  recentReports: DashboardSummaryRecentReportsItem[];
+  delayedActivitiesList: DashboardSummaryDelayedActivitiesListItem[];
 }
 
 export type DeviationAnalysisStatus =
@@ -500,22 +738,387 @@ export const DeviationAnalysisStatus = {
   ahead: "ahead",
 } as const;
 
+/**
+ * Health of the critical path based on the count of activities deviating > 10%.
+ */
+export type DeviationAnalysisCriticalPathStatus =
+  (typeof DeviationAnalysisCriticalPathStatus)[keyof typeof DeviationAnalysisCriticalPathStatus];
+
+export const DeviationAnalysisCriticalPathStatus = {
+  healthy: "healthy",
+  at_risk: "at_risk",
+  critical: "critical",
+} as const;
+
+export type DeviationAnalysisSuspensionsBreakdownItemType =
+  (typeof DeviationAnalysisSuspensionsBreakdownItemType)[keyof typeof DeviationAnalysisSuspensionsBreakdownItemType];
+
+export const DeviationAnalysisSuspensionsBreakdownItemType = {
+  official_holiday: "official_holiday",
+  force_majeure: "force_majeure",
+  contractor_delay: "contractor_delay",
+} as const;
+
+export type DeviationAnalysisSuspensionsBreakdownItem = {
+  type: DeviationAnalysisSuspensionsBreakdownItemType;
+  days: number;
+  count: number;
+};
+
+export type DeviationAnalysisRecommendationsItemSeverity =
+  (typeof DeviationAnalysisRecommendationsItemSeverity)[keyof typeof DeviationAnalysisRecommendationsItemSeverity];
+
+export const DeviationAnalysisRecommendationsItemSeverity = {
+  info: "info",
+  warning: "warning",
+  critical: "critical",
+} as const;
+
+export type DeviationAnalysisRecommendationsItem = {
+  severity: DeviationAnalysisRecommendationsItemSeverity;
+  title: string;
+  description: string;
+};
+
 export interface ActivityDeviation {
   activityId: number;
   activityName: string;
   plannedProgress: number;
   actualProgress: number;
   deviation: number;
-  /** @nullable */
+  /** Activity weight used in the project-level weighted average. */
+  weight?: number;
+  /** Contribution of this activity's deviation to overall project deviation (= deviation × weight / totalWeight). */
+  weightedImpact?: number;
+  /**
+   * Deprecated alias for overrunDays (kept for backward compatibility)
+   * @nullable
+   */
   delayDays?: number | null;
+  /**
+   * Days past activity plannedEndDate while not completed
+   * @nullable
+   */
+  overrunDays?: number | null;
 }
 
 export interface DeviationAnalysis {
   projectId: number;
   timeDeviation: number;
   progressDeviation: number;
+  /** Weighted planned progress for the project at today's date. */
+  plannedProgress?: number;
+  /** Weighted actual progress (overall project progress). */
+  actualProgress?: number;
   status: DeviationAnalysisStatus;
+  /** Health of the critical path based on the count of activities deviating > 10%. */
+  criticalPathStatus?: DeviationAnalysisCriticalPathStatus;
+  suspensionDays?: number;
+  grossDelayDays?: number;
+  netDelayDays?: number;
+  /** Days passed after expectedEndDate while progress < 100% */
+  overrunDays?: number;
+  /**
+   * Schedule Performance Index = actual / planned (>1 ahead, <1 behind).
+   * @nullable
+   */
+  spi?: number | null;
+  /**
+   * Forecast completion date if the current pace continues.
+   * @nullable
+   */
+  forecastCompletionDate?: string | null;
+  /** Expected progress percentage at the contractual end date if the current pace continues. */
+  expectedProgressAtEnd?: number;
+  /** @nullable */
+  contractEndDate?: string | null;
+  /** Days between forecastCompletionDate and contractEndDate (positive = late). */
+  forecastDelayDays?: number;
+  /** Breakdown of suspension days by cause type. */
+  suspensionsBreakdown?: DeviationAnalysisSuspensionsBreakdownItem[];
+  /** Auto-generated recommendations based on the project state. */
+  recommendations?: DeviationAnalysisRecommendationsItem[];
   activitiesAnalysis: ActivityDeviation[];
+  noSchedule?: boolean;
+}
+
+export interface DeviationTimelinePoint {
+  date: string;
+  plannedProgress: number;
+  actualProgress: number;
+  deviation: number;
+}
+
+export type DeviationTimelineSuspensionsBreakdownItemType =
+  (typeof DeviationTimelineSuspensionsBreakdownItemType)[keyof typeof DeviationTimelineSuspensionsBreakdownItemType];
+
+export const DeviationTimelineSuspensionsBreakdownItemType = {
+  official_holiday: "official_holiday",
+  force_majeure: "force_majeure",
+  contractor_delay: "contractor_delay",
+} as const;
+
+export type DeviationTimelineSuspensionsBreakdownItem = {
+  type: DeviationTimelineSuspensionsBreakdownItemType;
+  days: number;
+  count: number;
+};
+
+export interface DeviationTimeline {
+  projectId: number;
+  noSchedule?: boolean;
+  points: DeviationTimelinePoint[];
+  /** Breakdown of suspension days by cause type for this project. */
+  suspensionsBreakdown: DeviationTimelineSuspensionsBreakdownItem[];
+}
+
+export interface AttendanceCheckBody {
+  selfie: Blob;
+  latitude: number;
+  longitude: number;
+  /** @nullable */
+  accuracy?: number | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+/**
+ * @nullable
+ */
+export type UpdateAttendanceRecordBodyType =
+  | (typeof UpdateAttendanceRecordBodyType)[keyof typeof UpdateAttendanceRecordBodyType]
+  | null;
+
+export const UpdateAttendanceRecordBodyType = {
+  check_in: "check_in",
+  check_out: "check_out",
+} as const;
+
+export interface UpdateAttendanceRecordBody {
+  reason: string;
+  /** @nullable */
+  type?: UpdateAttendanceRecordBodyType;
+  /** @nullable */
+  recordedAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface DeleteAttendanceRecordBody {
+  reason: string;
+}
+
+export type AttendanceRecordType =
+  (typeof AttendanceRecordType)[keyof typeof AttendanceRecordType];
+
+export const AttendanceRecordType = {
+  check_in: "check_in",
+  check_out: "check_out",
+} as const;
+
+export interface AttendanceRecord {
+  id: number;
+  projectId: number;
+  userId: number;
+  type: AttendanceRecordType;
+  recordedAt: string;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+  /** @nullable */
+  accuracyMeters?: number | null;
+  /** @nullable */
+  distanceMeters?: number | null;
+  outOfRange: boolean;
+  /** @nullable */
+  selfieFilename?: string | null;
+  /** @nullable */
+  selfieUrl?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type AttendanceRecordWithUserType =
+  (typeof AttendanceRecordWithUserType)[keyof typeof AttendanceRecordWithUserType];
+
+export const AttendanceRecordWithUserType = {
+  check_in: "check_in",
+  check_out: "check_out",
+} as const;
+
+export interface AttendanceRecordWithUser {
+  id: number;
+  userId: number;
+  /** @nullable */
+  fullName?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  type: AttendanceRecordWithUserType;
+  recordedAt: string;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+  /** @nullable */
+  accuracyMeters?: number | null;
+  /** @nullable */
+  distanceMeters?: number | null;
+  outOfRange: boolean;
+  /** @nullable */
+  selfieUrl?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  editedAt?: string | null;
+  /** @nullable */
+  editedByUserId?: number | null;
+  /** @nullable */
+  editReason?: string | null;
+}
+
+export interface MyAttendanceProjectStatus {
+  projectId: number;
+  projectName: string;
+  hasSiteLocation: boolean;
+  /** @nullable */
+  siteLatitude?: number | null;
+  /** @nullable */
+  siteLongitude?: number | null;
+  /** @nullable */
+  siteRadiusMeters?: number | null;
+  currentlyCheckedIn: boolean;
+  lastRecord?: AttendanceRecord | null;
+}
+
+export type MyAttendanceHistoryItemType =
+  (typeof MyAttendanceHistoryItemType)[keyof typeof MyAttendanceHistoryItemType];
+
+export const MyAttendanceHistoryItemType = {
+  check_in: "check_in",
+  check_out: "check_out",
+} as const;
+
+export interface MyAttendanceHistoryItem {
+  id: number;
+  projectId: number;
+  /** @nullable */
+  projectName?: string | null;
+  userId: number;
+  type: MyAttendanceHistoryItemType;
+  recordedAt: string;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+  /** @nullable */
+  accuracyMeters?: number | null;
+  /** @nullable */
+  distanceMeters?: number | null;
+  outOfRange: boolean;
+  /** @nullable */
+  selfieUrl?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface ActiveAttendanceMember {
+  recordId: number;
+  userId: number;
+  fullName: string;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  userRole?: string | null;
+  checkedInAt: string;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+  /** @nullable */
+  accuracyMeters?: number | null;
+  /** @nullable */
+  distanceMeters?: number | null;
+  outOfRange: boolean;
+  /** @nullable */
+  selfieUrl?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface ActiveAttendanceResponse {
+  activeCount: number;
+  members: ActiveAttendanceMember[];
+}
+
+export type AttendanceReportSessionStatus =
+  (typeof AttendanceReportSessionStatus)[keyof typeof AttendanceReportSessionStatus];
+
+export const AttendanceReportSessionStatus = {
+  closed: "closed",
+  open: "open",
+  auto_closed: "auto_closed",
+} as const;
+
+export interface AttendanceReportSession {
+  checkInRecordId: number;
+  /** @nullable */
+  checkOutRecordId?: number | null;
+  checkInAt: string;
+  /** @nullable */
+  checkOutAt?: string | null;
+  /** @nullable */
+  durationMinutes?: number | null;
+  status: AttendanceReportSessionStatus;
+}
+
+export type EmployeeAttendanceDayFlags = {
+  incomplete: boolean;
+  longDay: boolean;
+};
+
+export interface EmployeeAttendanceDay {
+  date: string;
+  sessions: AttendanceReportSession[];
+  totalMinutes: number;
+  flags: EmployeeAttendanceDayFlags;
+}
+
+export type EmployeeAttendanceReportProject = {
+  id: number;
+  name: string;
+  attendanceAutoCloseHours?: number;
+  attendanceLongDayHours?: number;
+};
+
+export type EmployeeAttendanceReportEmployee = {
+  id: number;
+  fullName: string;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  role?: string | null;
+};
+
+export type EmployeeAttendanceReportSummary = {
+  totalMinutes: number;
+  workDays: number;
+  averageDailyMinutes: number;
+  incompleteDays: number;
+  longDays: number;
+};
+
+export interface EmployeeAttendanceReport {
+  project: EmployeeAttendanceReportProject;
+  employee: EmployeeAttendanceReportEmployee;
+  /** @nullable */
+  dateFrom?: string | null;
+  /** @nullable */
+  dateTo?: string | null;
+  autoCloseHours: number;
+  longDayHours: number;
+  days: EmployeeAttendanceDay[];
+  summary: EmployeeAttendanceReportSummary;
 }
 
 export type ListProjectsParams = {
@@ -575,7 +1178,110 @@ export type UpdateMemberGroups200 = {
   groupIds?: number[];
 };
 
+export type UpdateMemberTabPermissionsBody = {
+  tabPermissions: TabPermissionsMap | null;
+};
+
+export type GetIncompleteUsersCount200 = {
+  count: number;
+};
+
 export type GetOwnerProjectByToken200 = {
   exists: boolean;
   projectName: string;
+};
+
+export type CreateBackup200Stats = { [key: string]: unknown };
+
+export type CreateBackup200 = {
+  success?: boolean;
+  filename?: string;
+  size?: number;
+  createdAt?: string;
+  stats?: CreateBackup200Stats;
+};
+
+export type ListBackups200BackupsItem = {
+  filename?: string;
+  size?: number;
+  createdAt?: string;
+};
+
+export type ListBackups200 = {
+  backups?: ListBackups200BackupsItem[];
+};
+
+export type DeleteBackup200 = {
+  success?: boolean;
+};
+
+export type GetProjectDeviationParams = {
+  /**
+   * Planned-progress curve model used for the calculation.
+   */
+  curve?: GetProjectDeviationCurve;
+};
+
+export type GetProjectDeviationCurve =
+  (typeof GetProjectDeviationCurve)[keyof typeof GetProjectDeviationCurve];
+
+export const GetProjectDeviationCurve = {
+  linear: "linear",
+  scurve: "scurve",
+} as const;
+
+export type GetProjectDeviationTimelineParams = {
+  /**
+   * Planned-progress curve model used for the historical points.
+   */
+  curve?: GetProjectDeviationTimelineCurve;
+};
+
+export type GetProjectDeviationTimelineCurve =
+  (typeof GetProjectDeviationTimelineCurve)[keyof typeof GetProjectDeviationTimelineCurve];
+
+export const GetProjectDeviationTimelineCurve = {
+  linear: "linear",
+  scurve: "scurve",
+} as const;
+
+export type GetMyAttendanceHistoryParams = {
+  /**
+   * @nullable
+   */
+  limit?: number | null;
+  /**
+   * @nullable
+   */
+  projectId?: number | null;
+};
+
+export type ListAttendanceRecordsParams = {
+  /**
+   * @nullable
+   */
+  dateFrom?: string | null;
+  /**
+   * @nullable
+   */
+  dateTo?: string | null;
+  /**
+   * @nullable
+   */
+  userId?: number | null;
+  /**
+   * @nullable
+   */
+  limit?: number | null;
+};
+
+export type GetEmployeeAttendanceReportParams = {
+  /**
+   * @nullable
+   */
+  dateFrom?: string | null;
+  /**
+   * @nullable
+   */
+  dateTo?: string | null;
 };

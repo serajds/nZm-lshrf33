@@ -5,10 +5,13 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { TabPermissionsMap } from "./tabPermissionsMap";
 
 export interface ProjectPermissions {
   role: string;
   projectRole?: string;
   assignedGroupIds?: number[];
   canEditAll: boolean;
+  isViewer?: boolean;
+  tabPermissions?: TabPermissionsMap;
 }

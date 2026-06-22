@@ -13,7 +13,10 @@ export interface CreateProjectBody {
   ownerEntity: string;
   supervisorEntity: string;
   contractor: string;
-  startDate: Date;
-  expectedEndDate: Date;
+  /** @nullable */
+  startDate?: Date | null;
+  /** @nullable */
+  expectedEndDate?: Date | null;
+  noSchedule?: boolean;
   status?: CreateProjectBodyStatus;
 }

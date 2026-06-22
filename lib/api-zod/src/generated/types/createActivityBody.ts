@@ -9,14 +9,17 @@ import type { CreateActivityBodyStatus } from "./createActivityBodyStatus";
 
 export interface CreateActivityBody {
   name: string;
-  plannedStartDate: Date;
-  plannedEndDate: Date;
+  /** @nullable */
+  plannedStartDate?: Date | null;
+  /** @nullable */
+  plannedEndDate?: Date | null;
   /** @nullable */
   actualStartDate?: Date | null;
   /** @nullable */
   actualEndDate?: Date | null;
   plannedProgress?: number;
   actualProgress?: number;
+  weight?: number;
   status?: CreateActivityBodyStatus;
   sortOrder?: number;
   /** @nullable */

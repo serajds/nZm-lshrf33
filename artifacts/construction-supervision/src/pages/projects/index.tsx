@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useListProjects, useCreateProject, useUpdateProject, useDeleteProject, getListProjectsQueryKey } from "@workspace/api-client-react";
+import { usePageTitle } from "@/hooks/use-page-title";
+import { useListProjects, useCreateProject, useUpdateProject, useDeleteProject, getListProjectsQueryKey, getGetProjectQueryKey, getGetProjectSummaryQueryKey, getProject, getProjectSummary } from "@workspace/api-client-react";
 import type { Project } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +30,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2 } from "lucide-react";
+import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2, CalendarOff, Folder, FolderOpen, ChevronRight, ArrowUp, Loader2, FlaskConical, X, FileText } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -37,9 +39,34 @@ import { useToast } from "@/hooks/use-toast";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
-function authFetchJson(url: string) {
+async function authFetchJson(url: string) {
   const token = localStorage.getItem("auth_token");
-  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.ok ? r.json() : []);
+  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  // Surface a renewed session token to the central saver so this manual
+  // fetch keeps the rolling session alive too.
+  const renewed = res.headers.get("X-Renewed-Token");
+  if (renewed && renewed !== token) {
+    try {
+      localStorage.setItem("auth_token", renewed);
+      window.dispatchEvent(new CustomEvent("auth-token-renewed", { detail: renewed }));
+    } catch { /* ignore */ }
+  }
+  if (res.status === 401) {
+    // Let the central handler clear credentials and redirect to /login,
+    // instead of silently rendering an empty list as if the user simply
+    // had no data.
+    try {
+      const here = window.location.pathname + window.location.search;
+      if (!here.endsWith("/login")) sessionStorage.setItem("auth_return_to", here);
+      sessionStorage.setItem("auth_session_expired", "1");
+    } catch { /* ignore */ }
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_user_cache");
+    window.location.assign((import.meta.env.BASE_URL.replace(/\/$/, "") || "") + "/login");
+    throw new Error("unauthorized");
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 
 interface CompanyOption {
@@ -55,13 +82,31 @@ const projectSchema = z.object({
   ownerEntity: z.string().min(1, "الجهة المالكة مطلوبة"),
   supervisorEntity: z.string().min(1, "الجهة المشرفة مطلوبة"),
   contractor: z.string().min(1, "المقاول مطلوب"),
-  startDate: z.string().min(1, "تاريخ البداية مطلوب"),
-  expectedEndDate: z.string().min(1, "تاريخ النهاية المتوقع مطلوب"),
+  noSchedule: z.boolean().default(false),
+  startDate: z.string().optional().default(""),
+  expectedEndDate: z.string().optional().default(""),
   status: z.enum(["active", "completed", "delayed", "suspended"]).default("active"),
   ownerCompanyId: z.string().optional(),
   contractorCompanyId: z.string().optional(),
   supervisorCompanyId: z.string().optional(),
-}).refine((data) => !data.startDate || !data.expectedEndDate || data.expectedEndDate >= data.startDate, {
+  onedriveTestResultsFolderId: z.string().optional(),
+}).refine((data) => {
+  if (data.noSchedule) return true;
+  return !!data.startDate && data.startDate.length > 0;
+}, {
+  message: "تاريخ البداية مطلوب",
+  path: ["startDate"],
+}).refine((data) => {
+  if (data.noSchedule) return true;
+  return !!data.expectedEndDate && data.expectedEndDate.length > 0;
+}, {
+  message: "تاريخ النهاية المتوقع مطلوب",
+  path: ["expectedEndDate"],
+}).refine((data) => {
+  if (data.noSchedule) return true;
+  if (!data.startDate || !data.expectedEndDate) return true;
+  return data.expectedEndDate >= data.startDate;
+}, {
   message: "تاريخ النهاية يجب أن يكون بعد تاريخ البداية",
   path: ["expectedEndDate"],
 });
@@ -69,18 +114,29 @@ const projectSchema = z.object({
 type ProjectFormValues = z.infer<typeof projectSchema>;
 
 export default function Projects() {
+  usePageTitle("المشاريع");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [folderBrowserOpen, setFolderBrowserOpen] = useState(false);
+  const [folderBrowserItems, setFolderBrowserItems] = useState<any[]>([]);
+  const [folderBrowserLoading, setFolderBrowserLoading] = useState(false);
+  const [folderBrowserParentId, setFolderBrowserParentId] = useState<string | null>(null);
+  const [folderBrowserCurrentId, setFolderBrowserCurrentId] = useState<string>("root");
+  const [folderBrowserPath, setFolderBrowserPath] = useState<{id: string; name: string}[]>([]);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // Companies barely change during a working session — trust the cache for
+  // 10 minutes so opening / re-opening the projects screen doesn't trip a
+  // network round-trip just to populate the dialog dropdowns.
   const { data: companies = [] } = useQuery<CompanyOption[]>({
     queryKey: ["companies"],
     queryFn: () => authFetchJson(`${API_BASE}/companies`),
+    staleTime: 1000 * 60 * 10,
   });
 
   const ownerCompanies = companies.filter(c => c.type === "owner");
@@ -94,11 +150,43 @@ export default function Projects() {
 
   const { user } = useAuth();
   const canManageProjects = user?.role === "admin" || user?.role === "project_manager";
+  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
+  const getProjectLink = (projectId: number) => `/projects/${projectId}`;
 
-  const { data: projects, isLoading } = useListProjects({
-    search: debouncedSearch || undefined,
-    status: statusFilter && statusFilter !== "all" ? statusFilter : undefined,
-  });
+  // Prefetch a project's core data the moment the user hovers/touches its
+  // card. By the time the click navigates to the details screen, the data
+  // is usually already in the React Query cache, making the transition
+  // feel instant. Throttled by `staleTime` so it never fires twice in a row.
+  const prefetchProject = (projectId: number) => {
+    queryClient.prefetchQuery({
+      queryKey: getGetProjectQueryKey(projectId),
+      queryFn: ({ signal }) => getProject(projectId, { signal }),
+      staleTime: 1000 * 60 * 5,
+    });
+    queryClient.prefetchQuery({
+      queryKey: getGetProjectSummaryQueryKey(projectId),
+      queryFn: ({ signal }) => getProjectSummary(projectId, { signal }),
+      staleTime: 1000 * 60 * 5,
+    });
+  };
+
+  // `placeholderData` keeps the previous list visible while a new search
+  // / filter request is in flight, so typing in the search box (or
+  // changing the status filter) no longer wipes the cards to a spinner
+  // for every keystroke. `staleTime` of 5 min prevents revisits to the
+  // page from re-fetching when the underlying data hasn't changed.
+  const { data: projects, isLoading } = useListProjects(
+    {
+      search: debouncedSearch || undefined,
+      status: statusFilter && statusFilter !== "all" ? statusFilter : undefined,
+    },
+    {
+      query: {
+        staleTime: 1000 * 60 * 5,
+        placeholderData: (prev: any) => prev,
+      } as any,
+    },
+  );
 
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
@@ -112,6 +200,7 @@ export default function Projects() {
       ownerEntity: "",
       supervisorEntity: "",
       contractor: "",
+      noSchedule: false,
       startDate: new Date().toISOString().split('T')[0],
       expectedEndDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
       status: "active",
@@ -120,6 +209,60 @@ export default function Projects() {
       supervisorCompanyId: "",
     }
   });
+
+  const watchNoSchedule = form.watch("noSchedule");
+
+  const browseFolders = async (folderId?: string) => {
+    setFolderBrowserLoading(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const url = folderId
+        ? `${API_BASE}/onedrive/browse?folderId=${folderId}`
+        : `${API_BASE}/onedrive/browse`;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("failed");
+      const data = await res.json();
+      setFolderBrowserItems(data.items || []);
+      setFolderBrowserParentId(data.parentId);
+      setFolderBrowserCurrentId(data.currentFolderId);
+    } catch {
+      toast({ title: "حدث خطأ أثناء تصفح OneDrive", variant: "destructive" });
+    } finally {
+      setFolderBrowserLoading(false);
+    }
+  };
+
+  const openFolderBrowser = () => {
+    setFolderBrowserPath([]);
+    setFolderBrowserItems([]);
+    setFolderBrowserParentId(null);
+    setFolderBrowserCurrentId("root");
+    setFolderBrowserOpen(true);
+    browseFolders();
+  };
+
+  const navigateToFolder = (folderId: string, folderName: string) => {
+    setFolderBrowserPath(prev => [...prev, { id: folderId, name: folderName }]);
+    browseFolders(folderId);
+  };
+
+  const navigateUp = () => {
+    if (folderBrowserPath.length <= 1) {
+      setFolderBrowserPath([]);
+      browseFolders();
+    } else {
+      const newPath = folderBrowserPath.slice(0, -1);
+      setFolderBrowserPath(newPath);
+      browseFolders(newPath[newPath.length - 1].id);
+    }
+  };
+
+  const selectFolder = (folderId: string) => {
+    form.setValue("onedriveTestResultsFolderId", folderId);
+    setFolderBrowserOpen(false);
+  };
 
   const handleCompanySelect = (companyId: string, field: "ownerEntity" | "contractor" | "supervisorEntity") => {
     const company = companies.find(c => String(c.id) === companyId);
@@ -130,18 +273,21 @@ export default function Projects() {
 
   const openEdit = (p: Project) => {
     setEditingProject(p);
+    const isNoSchedule = p.noSchedule === true;
     form.reset({
       name: p.name,
       location: p.location,
       ownerEntity: p.ownerEntity,
       supervisorEntity: p.supervisorEntity,
       contractor: p.contractor,
-      startDate: new Date(p.startDate).toISOString().split('T')[0],
-      expectedEndDate: new Date(p.expectedEndDate).toISOString().split('T')[0],
+      noSchedule: isNoSchedule,
+      startDate: p.startDate ? new Date(p.startDate).toISOString().split('T')[0] : "",
+      expectedEndDate: p.expectedEndDate ? new Date(p.expectedEndDate).toISOString().split('T')[0] : "",
       status: p.status as ProjectFormValues["status"],
       ownerCompanyId: (p as any).ownerCompanyId ? String((p as any).ownerCompanyId) : "",
       contractorCompanyId: (p as any).contractorCompanyId ? String((p as any).contractorCompanyId) : "",
       supervisorCompanyId: (p as any).supervisorCompanyId ? String((p as any).supervisorCompanyId) : "",
+      onedriveTestResultsFolderId: (p as any).onedriveTestResultsFolderId || "",
     });
     setIsDialogOpen(true);
   };
@@ -151,12 +297,14 @@ export default function Projects() {
     form.reset({
       name: "", location: "", ownerEntity: "", supervisorEntity: "",
       contractor: "",
+      noSchedule: false,
       startDate: new Date().toISOString().split('T')[0],
       expectedEndDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
       status: "active",
       ownerCompanyId: "",
       contractorCompanyId: "",
       supervisorCompanyId: "",
+      onedriveTestResultsFolderId: "",
     });
     setIsDialogOpen(true);
   };
@@ -196,7 +344,7 @@ export default function Projects() {
     switch (status) {
       case 'active': return <Badge variant="default" className="bg-primary hover:bg-primary">نشط</Badge>;
       case 'completed': return <Badge variant="secondary" className="bg-emerald-500 hover:bg-emerald-600 text-white">مكتمل</Badge>;
-      case 'delayed': return <Badge variant="destructive">متأخر</Badge>;
+      case 'delayed': return <Badge variant="destructive">منحرف عن الخطة</Badge>;
       case 'suspended': return <Badge variant="outline" className="bg-orange-500 text-white hover:bg-orange-600 border-none">متوقف</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
@@ -228,13 +376,13 @@ export default function Projects() {
           setIsDialogOpen(open);
           if (!open) { setEditingProject(null); form.reset(); }
         }}>
-          <DialogContent className="sm:max-w-[600px]" dir="rtl">
+          <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto" dir="rtl">
             <DialogHeader>
               <DialogTitle>{editingProject ? "تعديل المشروع" : "إضافة مشروع جديد"}</DialogTitle>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <FormField
                     control={form.control}
                     name="name"
@@ -340,26 +488,90 @@ export default function Projects() {
                   />
                   <FormField
                     control={form.control}
-                    name="startDate"
+                    name="onedriveTestResultsFolderId"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>تاريخ البداية</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel className="flex items-center gap-1.5">
+                          <FlaskConical className="h-3.5 w-3.5 text-emerald-600" />
+                          مجلد نتائج الاختبارات (OneDrive)
+                        </FormLabel>
+                        <div className="flex items-center gap-2">
+                          <FormControl>
+                            <Input {...field} placeholder="لم يتم اختيار مجلد" dir="ltr" className="text-left text-sm flex-1" readOnly />
+                          </FormControl>
+                          <Button type="button" variant="outline" size="sm" onClick={openFolderBrowser} className="shrink-0 gap-1.5">
+                            <FolderOpen className="h-4 w-4" />
+                            تصفح
+                          </Button>
+                          {field.value && (
+                            <Button type="button" variant="ghost" size="sm" onClick={() => form.setValue("onedriveTestResultsFolderId", "")} className="shrink-0 text-muted-foreground hover:text-red-500 px-2">
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">اختر المجلد الذي سيتم عرض ملفاته في بوابة المالك</p>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                   <FormField
                     control={form.control}
-                    name="expectedEndDate"
+                    name="noSchedule"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>تاريخ النهاية المتوقع {editingProject && <span className="text-xs text-muted-foreground">(يُحسب تلقائياً من الأنشطة والتمديدات)</span>}</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
-                        <FormMessage />
+                      <FormItem className="sm:col-span-2 flex items-center justify-between rounded-lg border p-2.5 sm:p-3 gap-2 sm:gap-3">
+                        <div className="space-y-0.5 flex-1 min-w-0">
+                          <FormLabel className="text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2">
+                            <CalendarOff className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground shrink-0" />
+                            بدون جدول زمني معتمد
+                          </FormLabel>
+                          <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">
+                            لن يُحسب الانحراف عن الخطة ولا تجاوز المدة، وتصبح التواريخ اختيارية
+                          </p>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={(checked) => {
+                              field.onChange(checked);
+                              if (checked) {
+                                form.setValue("startDate", "");
+                                form.setValue("expectedEndDate", "");
+                              } else {
+                                form.setValue("startDate", new Date().toISOString().split('T')[0]);
+                                form.setValue("expectedEndDate", new Date(Date.now() + 31536000000).toISOString().split('T')[0]);
+                              }
+                            }}
+                          />
+                        </FormControl>
                       </FormItem>
                     )}
                   />
+                  {!watchNoSchedule && (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name="startDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>تاريخ البداية</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="expectedEndDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>تاريخ النهاية المتوقع {editingProject && <span className="text-xs text-muted-foreground">(يُحسب تلقائياً من البنود والتمديدات)</span>}</FormLabel>
+                            <FormControl><Input type="date" {...field} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
                   <FormField
                     control={form.control}
                     name="status"
@@ -373,7 +585,7 @@ export default function Projects() {
                           <SelectContent dir="rtl">
                             <SelectItem value="active">نشط</SelectItem>
                             <SelectItem value="completed">مكتمل</SelectItem>
-                            <SelectItem value="delayed">متأخر</SelectItem>
+                            <SelectItem value="delayed">منحرف عن الخطة</SelectItem>
                             <SelectItem value="suspended">متوقف</SelectItem>
                           </SelectContent>
                         </Select>
@@ -382,7 +594,7 @@ export default function Projects() {
                     )}
                   />
                 </div>
-                <div className="flex justify-end pt-4 gap-2">
+                <div className="flex justify-end pt-3 sm:pt-4 gap-2 sticky bottom-0 bg-background pb-1">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
                   <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? "جاري الحفظ..." : editingProject ? "حفظ التعديلات" : "حفظ المشروع"}
@@ -413,7 +625,7 @@ export default function Projects() {
               <SelectItem value="all">الكل</SelectItem>
               <SelectItem value="active">نشط</SelectItem>
               <SelectItem value="completed">مكتمل</SelectItem>
-              <SelectItem value="delayed">متأخر</SelectItem>
+              <SelectItem value="delayed">منحرف عن الخطة</SelectItem>
               <SelectItem value="suspended">متوقف</SelectItem>
             </SelectContent>
           </Select>
@@ -433,11 +645,16 @@ export default function Projects() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projects?.map((project) => (
-            <Card key={project.id} className="hover:shadow-md transition-shadow flex flex-col h-full">
+            <Card
+              key={project.id}
+              className="hover:shadow-md transition-shadow flex flex-col h-full"
+              onMouseEnter={() => prefetchProject(project.id)}
+              onTouchStart={() => prefetchProject(project.id)}
+            >
               <CardHeader className="pb-3 border-b border-border/50">
                 <div className="flex justify-between items-start gap-2">
                   <CardTitle className="text-lg line-clamp-2 flex-1">
-                    <Link href={`/projects/${project.id}`} className="hover:text-primary transition-colors">
+                    <Link href={getProjectLink(project.id)} className="hover:text-primary transition-colors">
                       {project.name}
                     </Link>
                   </CardTitle>
@@ -466,16 +683,23 @@ export default function Projects() {
                     <Building2 className="h-4 w-4 shrink-0" />
                     <span className="truncate">المالك: {project.ownerEntity}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Calendar className="h-4 w-4 shrink-0" />
-                    <span>النهاية: <span className="font-mono">{fmtDate(project.expectedEndDate)}</span></span>
-                  </div>
+                  {project.noSchedule ? (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <CalendarOff className="h-4 w-4 shrink-0" />
+                      <span className="text-xs">بدون جدول زمني معتمد</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Calendar className="h-4 w-4 shrink-0" />
+                      <span>النهاية: <span className="font-mono">{fmtDate(project.expectedEndDate)}</span></span>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="space-y-1.5 mt-auto pt-4">
                   <div className="flex justify-between text-sm font-medium">
                     <span>نسبة الإنجاز</span>
-                    <span>%{project.overallProgress}</span>
+                    <span>%{(project.overallProgress ?? 0).toFixed(1)}</span>
                   </div>
                   <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
                     <div 
@@ -510,6 +734,107 @@ export default function Projects() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={folderBrowserOpen} onOpenChange={setFolderBrowserOpen}>
+        <DialogContent className="max-w-lg" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderOpen className="h-5 w-5 text-emerald-600" />
+              اختيار مجلد من OneDrive
+            </DialogTitle>
+          </DialogHeader>
+
+          {folderBrowserPath.length > 0 && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
+              <button type="button" onClick={() => { setFolderBrowserPath([]); browseFolders(); }} className="hover:text-foreground hover:underline">
+                OneDrive
+              </button>
+              {folderBrowserPath.map((p, i) => (
+                <span key={p.id} className="flex items-center gap-1">
+                  <ChevronRight className="h-3 w-3 rotate-180" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newPath = folderBrowserPath.slice(0, i + 1);
+                      setFolderBrowserPath(newPath);
+                      browseFolders(p.id);
+                    }}
+                    className="hover:text-foreground hover:underline"
+                  >
+                    {p.name}
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="border rounded-lg max-h-[350px] overflow-y-auto">
+            {folderBrowserLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+              </div>
+            ) : folderBrowserItems.length === 0 ? (
+              <div className="text-center py-12 text-sm text-muted-foreground">
+                لا توجد عناصر في هذا المجلد
+              </div>
+            ) : (
+              <div className="divide-y">
+                {folderBrowserPath.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={navigateUp}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors text-right"
+                  >
+                    <ArrowUp className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">..</span>
+                  </button>
+                )}
+                {folderBrowserItems.filter(i => i.isFolder).map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => navigateToFolder(item.id, item.name)}
+                      className="flex items-center gap-3 flex-1 min-w-0 text-right"
+                    >
+                      <Folder className="h-5 w-5 text-amber-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{item.childCount} عنصر</p>
+                      </div>
+                    </button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => selectFolder(item.id)}
+                      className="shrink-0 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                    >
+                      اختيار
+                    </Button>
+                  </div>
+                ))}
+                {folderBrowserItems.filter(i => !i.isFolder).map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 px-4 py-3 opacity-50">
+                    <FileText className="h-5 w-5 text-gray-400 shrink-0" />
+                    <p className="text-sm truncate">{item.name}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {folderBrowserCurrentId !== "root" && (
+            <Button
+              type="button"
+              onClick={() => selectFolder(folderBrowserCurrentId)}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+            >
+              <FolderOpen className="h-4 w-4" />
+              اختيار المجلد الحالي
+            </Button>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -11,14 +11,18 @@ export interface Activity {
   id: number;
   projectId: number;
   name: string;
-  plannedStartDate: Date;
-  plannedEndDate: Date;
+  /** @nullable */
+  plannedStartDate?: Date | null;
+  /** @nullable */
+  plannedEndDate?: Date | null;
   /** @nullable */
   actualStartDate?: Date | null;
   /** @nullable */
   actualEndDate?: Date | null;
   plannedProgress: number;
   actualProgress: number;
+  /** Relative weight (cost share / volume share). Default 1. */
+  weight: number;
   status: ActivityStatus;
   sortOrder: number;
   /** @nullable */

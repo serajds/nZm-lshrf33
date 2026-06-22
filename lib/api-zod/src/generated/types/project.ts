@@ -14,14 +14,25 @@ export interface Project {
   ownerEntity: string;
   supervisorEntity: string;
   contractor: string;
-  startDate: Date;
-  expectedEndDate: Date;
+  /** @nullable */
+  startDate?: Date | null;
+  /** @nullable */
+  expectedEndDate?: Date | null;
   /** @nullable */
   actualEndDate?: Date | null;
   status: ProjectStatus;
   overallProgress: number;
+  noSchedule: boolean;
   /** @nullable */
   ownerAccessToken?: string | null;
+  /** @nullable */
+  siteLatitude?: number | null;
+  /** @nullable */
+  siteLongitude?: number | null;
+  /** @nullable */
+  siteRadiusMeters?: number | null;
+  attendanceAutoCloseHours: number;
+  attendanceLongDayHours: number;
   createdAt: Date;
   updatedAt: Date;
 }

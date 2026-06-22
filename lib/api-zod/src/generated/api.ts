@@ -27,7 +27,13 @@ export const LoginResponse = zod.object({
     id: zod.number(),
     phone: zod.string(),
     fullName: zod.string(),
-    role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+    role: zod.enum([
+      "admin",
+      "project_manager",
+      "engineer",
+      "owner",
+      "contractor",
+    ]),
     companies: zod
       .array(
         zod.object({
@@ -36,6 +42,22 @@ export const LoginResponse = zod.object({
         }),
       )
       .optional(),
+    projects: zod
+      .array(
+        zod.object({
+          projectId: zod.number(),
+          projectName: zod.string(),
+          role: zod.enum([
+            "project_manager",
+            "engineer",
+            "contractor",
+            "viewer",
+          ]),
+        }),
+      )
+      .optional(),
+    incompleteProfile: zod.boolean().optional(),
+    projectMembershipsCount: zod.number().optional(),
     createdAt: zod.coerce.date(),
   }),
   token: zod.string(),
@@ -49,13 +71,28 @@ export const LogoutResponse = zod.object({
 });
 
 /**
+ * @summary Self-register a new user (name, phone, password). The new account starts inactive — no token is issued; the admin must link the user to a company and project before they can log in.
+ */
+export const RegisterBody = zod.object({
+  fullName: zod.string(),
+  phone: zod.string(),
+  password: zod.string(),
+});
+
+/**
  * @summary Get current logged-in user
  */
 export const GetMeResponse = zod.object({
   id: zod.number(),
   phone: zod.string(),
   fullName: zod.string(),
-  role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+  role: zod.enum([
+    "admin",
+    "project_manager",
+    "engineer",
+    "owner",
+    "contractor",
+  ]),
   companies: zod
     .array(
       zod.object({
@@ -64,6 +101,17 @@ export const GetMeResponse = zod.object({
       }),
     )
     .optional(),
+  projects: zod
+    .array(
+      zod.object({
+        projectId: zod.number(),
+        projectName: zod.string(),
+        role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
+      }),
+    )
+    .optional(),
+  incompleteProfile: zod.boolean().optional(),
+  projectMembershipsCount: zod.number().optional(),
   createdAt: zod.coerce.date(),
 });
 
@@ -82,12 +130,18 @@ export const ListProjectsResponseItem = zod.object({
   ownerEntity: zod.string(),
   supervisorEntity: zod.string(),
   contractor: zod.string(),
-  startDate: zod.coerce.date(),
-  expectedEndDate: zod.coerce.date(),
+  startDate: zod.coerce.date().nullish(),
+  expectedEndDate: zod.coerce.date().nullish(),
   actualEndDate: zod.coerce.date().nullish(),
   status: zod.enum(["active", "completed", "delayed", "suspended"]),
   overallProgress: zod.number(),
+  noSchedule: zod.boolean(),
   ownerAccessToken: zod.string().nullish(),
+  siteLatitude: zod.number().nullish(),
+  siteLongitude: zod.number().nullish(),
+  siteRadiusMeters: zod.number().nullish(),
+  attendanceAutoCloseHours: zod.number(),
+  attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -96,6 +150,7 @@ export const ListProjectsResponse = zod.array(ListProjectsResponseItem);
 /**
  * @summary Create a new project
  */
+export const createProjectBodyNoScheduleDefault = false;
 export const createProjectBodyStatusDefault = `active`;
 
 export const CreateProjectBody = zod.object({
@@ -104,8 +159,9 @@ export const CreateProjectBody = zod.object({
   ownerEntity: zod.string(),
   supervisorEntity: zod.string(),
   contractor: zod.string(),
-  startDate: zod.coerce.date(),
-  expectedEndDate: zod.coerce.date(),
+  startDate: zod.coerce.date().nullish(),
+  expectedEndDate: zod.coerce.date().nullish(),
+  noSchedule: zod.boolean().default(createProjectBodyNoScheduleDefault),
   status: zod
     .enum(["active", "completed", "delayed", "suspended"])
     .default(createProjectBodyStatusDefault),
@@ -125,12 +181,18 @@ export const GetProjectResponse = zod.object({
   ownerEntity: zod.string(),
   supervisorEntity: zod.string(),
   contractor: zod.string(),
-  startDate: zod.coerce.date(),
-  expectedEndDate: zod.coerce.date(),
+  startDate: zod.coerce.date().nullish(),
+  expectedEndDate: zod.coerce.date().nullish(),
   actualEndDate: zod.coerce.date().nullish(),
   status: zod.enum(["active", "completed", "delayed", "suspended"]),
   overallProgress: zod.number(),
+  noSchedule: zod.boolean(),
   ownerAccessToken: zod.string().nullish(),
+  siteLatitude: zod.number().nullish(),
+  siteLongitude: zod.number().nullish(),
+  siteRadiusMeters: zod.number().nullish(),
+  attendanceAutoCloseHours: zod.number(),
+  attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -151,6 +213,7 @@ export const UpdateProjectBody = zod.object({
   startDate: zod.coerce.date().nullish(),
   expectedEndDate: zod.coerce.date().nullish(),
   actualEndDate: zod.coerce.date().nullish(),
+  noSchedule: zod.boolean().nullish(),
   status: zod
     .union([
       zod.literal("active"),
@@ -161,6 +224,9 @@ export const UpdateProjectBody = zod.object({
     ])
     .nullish(),
   overallProgress: zod.number().nullish(),
+  siteLatitude: zod.number().nullish(),
+  siteLongitude: zod.number().nullish(),
+  siteRadiusMeters: zod.number().nullish(),
 });
 
 export const UpdateProjectResponse = zod.object({
@@ -170,12 +236,18 @@ export const UpdateProjectResponse = zod.object({
   ownerEntity: zod.string(),
   supervisorEntity: zod.string(),
   contractor: zod.string(),
-  startDate: zod.coerce.date(),
-  expectedEndDate: zod.coerce.date(),
+  startDate: zod.coerce.date().nullish(),
+  expectedEndDate: zod.coerce.date().nullish(),
   actualEndDate: zod.coerce.date().nullish(),
   status: zod.enum(["active", "completed", "delayed", "suspended"]),
   overallProgress: zod.number(),
+  noSchedule: zod.boolean(),
   ownerAccessToken: zod.string().nullish(),
+  siteLatitude: zod.number().nullish(),
+  siteLongitude: zod.number().nullish(),
+  siteRadiusMeters: zod.number().nullish(),
+  attendanceAutoCloseHours: zod.number(),
+  attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -194,16 +266,22 @@ export const ListActivitiesParams = zod.object({
   projectId: zod.coerce.number(),
 });
 
+export const listActivitiesResponseWeightDefault = 1;
+
 export const ListActivitiesResponseItem = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   name: zod.string(),
-  plannedStartDate: zod.coerce.date(),
-  plannedEndDate: zod.coerce.date(),
+  plannedStartDate: zod.coerce.date().nullish(),
+  plannedEndDate: zod.coerce.date().nullish(),
   actualStartDate: zod.coerce.date().nullish(),
   actualEndDate: zod.coerce.date().nullish(),
   plannedProgress: zod.number(),
   actualProgress: zod.number(),
+  weight: zod
+    .number()
+    .default(listActivitiesResponseWeightDefault)
+    .describe("Relative weight (cost share \/ volume share). Default 1."),
   status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
   sortOrder: zod.number(),
   groupId: zod.number().nullish(),
@@ -220,19 +298,21 @@ export const CreateActivityParams = zod.object({
 
 export const createActivityBodyPlannedProgressDefault = 0;
 export const createActivityBodyActualProgressDefault = 0;
+export const createActivityBodyWeightDefault = 1;
 export const createActivityBodyStatusDefault = `not_started`;
 export const createActivityBodySortOrderDefault = 0;
 
 export const CreateActivityBody = zod.object({
   name: zod.string(),
-  plannedStartDate: zod.coerce.date(),
-  plannedEndDate: zod.coerce.date(),
+  plannedStartDate: zod.coerce.date().nullish(),
+  plannedEndDate: zod.coerce.date().nullish(),
   actualStartDate: zod.coerce.date().nullish(),
   actualEndDate: zod.coerce.date().nullish(),
   plannedProgress: zod
     .number()
     .default(createActivityBodyPlannedProgressDefault),
   actualProgress: zod.number().default(createActivityBodyActualProgressDefault),
+  weight: zod.number().default(createActivityBodyWeightDefault),
   status: zod
     .enum(["not_started", "in_progress", "completed", "delayed"])
     .default(createActivityBodyStatusDefault),
@@ -267,6 +347,7 @@ export const UpdateActivityBody = zod.object({
   actualEndDate: zod.coerce.date().nullish(),
   plannedProgress: zod.number().nullish(),
   actualProgress: zod.number().nullish(),
+  weight: zod.number().nullish(),
   status: zod
     .union([
       zod.literal("not_started"),
@@ -280,16 +361,22 @@ export const UpdateActivityBody = zod.object({
   groupId: zod.number().nullish(),
 });
 
+export const updateActivityResponseWeightDefault = 1;
+
 export const UpdateActivityResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   name: zod.string(),
-  plannedStartDate: zod.coerce.date(),
-  plannedEndDate: zod.coerce.date(),
+  plannedStartDate: zod.coerce.date().nullish(),
+  plannedEndDate: zod.coerce.date().nullish(),
   actualStartDate: zod.coerce.date().nullish(),
   actualEndDate: zod.coerce.date().nullish(),
   plannedProgress: zod.number(),
   actualProgress: zod.number(),
+  weight: zod
+    .number()
+    .default(updateActivityResponseWeightDefault)
+    .describe("Relative weight (cost share \/ volume share). Default 1."),
   status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
   sortOrder: zod.number(),
   groupId: zod.number().nullish(),
@@ -330,6 +417,14 @@ export const ListReportsResponseItem = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
   activitiesSnapshot: zod
     .array(
       zod.object({
@@ -341,11 +436,20 @@ export const ListReportsResponseItem = zod.object({
         actualEndDate: zod.string().nullish(),
         plannedProgress: zod.number().optional(),
         actualProgress: zod.number().optional(),
+        weight: zod
+          .number()
+          .optional()
+          .describe(
+            "Activity weight (cost\/volume share) used for the report's weighted progress.",
+          ),
         status: zod.string().optional(),
         sortOrder: zod.number().optional(),
       }),
     )
     .nullish(),
+  status: zod.enum(["draft", "approved"]),
+  approvedAt: zod.coerce.date().nullish(),
+  approvedById: zod.number().nullish(),
   createdById: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -369,6 +473,14 @@ export const CreateReportBody = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()).optional(),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
 });
 
 /**
@@ -392,6 +504,14 @@ export const GetReportResponse = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
   activitiesSnapshot: zod
     .array(
       zod.object({
@@ -403,11 +523,20 @@ export const GetReportResponse = zod.object({
         actualEndDate: zod.string().nullish(),
         plannedProgress: zod.number().optional(),
         actualProgress: zod.number().optional(),
+        weight: zod
+          .number()
+          .optional()
+          .describe(
+            "Activity weight (cost\/volume share) used for the report's weighted progress.",
+          ),
         status: zod.string().optional(),
         sortOrder: zod.number().optional(),
       }),
     )
     .nullish(),
+  status: zod.enum(["draft", "approved"]),
+  approvedAt: zod.coerce.date().nullish(),
+  approvedById: zod.number().nullish(),
   createdById: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -433,6 +562,26 @@ export const UpdateReportBody = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()).optional(),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
+  activitiesSnapshot: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        actualProgress: zod.number().optional(),
+        status: zod.string().optional(),
+      }),
+    )
+    .nullish()
+    .describe(
+      "Partial-merge update for the report's activities snapshot. Each item\nmust carry the snapshot row `id`; only `actualProgress` and `status`\nare applied. Unknown ids are ignored; rows omitted from the payload\nare kept unchanged. When provided WITHOUT an explicit\n`progressPercentage`, the server recomputes the report's overall\nprogress as a weighted average using each row's stored `weight`.\n",
+    ),
 });
 
 export const UpdateReportResponse = zod.object({
@@ -448,6 +597,14 @@ export const UpdateReportResponse = zod.object({
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
   activitiesSnapshot: zod
     .array(
       zod.object({
@@ -459,11 +616,20 @@ export const UpdateReportResponse = zod.object({
         actualEndDate: zod.string().nullish(),
         plannedProgress: zod.number().optional(),
         actualProgress: zod.number().optional(),
+        weight: zod
+          .number()
+          .optional()
+          .describe(
+            "Activity weight (cost\/volume share) used for the report's weighted progress.",
+          ),
         status: zod.string().optional(),
         sortOrder: zod.number().optional(),
       }),
     )
     .nullish(),
+  status: zod.enum(["draft", "approved"]),
+  approvedAt: zod.coerce.date().nullish(),
+  approvedById: zod.number().nullish(),
   createdById: zod.number().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -476,6 +642,90 @@ export const DeleteReportParams = zod.object({
   projectId: zod.coerce.number(),
   id: zod.coerce.number(),
 });
+
+/**
+ * @summary Approve or revert a report (project_manager / admin)
+ */
+export const UpdateReportStatusParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+export const UpdateReportStatusBody = zod.object({
+  status: zod.enum(["draft", "approved"]),
+});
+
+export const UpdateReportStatusResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  reportNumber: zod.number().optional(),
+  type: zod.enum(["weekly", "monthly"]),
+  reportDate: zod.coerce.date(),
+  periodStart: zod.coerce.date(),
+  periodEnd: zod.coerce.date(),
+  workDescription: zod.string(),
+  progressPercentage: zod.number(),
+  technicalNotes: zod.string().nullish(),
+  recommendations: zod.string().nullish(),
+  imageUrls: zod.array(zod.string()),
+  imageGroups: zod
+    .array(
+      zod.object({
+        category: zod.string(),
+        urls: zod.array(zod.string()),
+      }),
+    )
+    .nullish(),
+  activitiesSnapshot: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        name: zod.string().optional(),
+        plannedStartDate: zod.string().optional(),
+        plannedEndDate: zod.string().optional(),
+        actualStartDate: zod.string().nullish(),
+        actualEndDate: zod.string().nullish(),
+        plannedProgress: zod.number().optional(),
+        actualProgress: zod.number().optional(),
+        weight: zod
+          .number()
+          .optional()
+          .describe(
+            "Activity weight (cost\/volume share) used for the report's weighted progress.",
+          ),
+        status: zod.string().optional(),
+        sortOrder: zod.number().optional(),
+      }),
+    )
+    .nullish(),
+  status: zod.enum(["draft", "approved"]),
+  approvedAt: zod.coerce.date().nullish(),
+  approvedById: zod.number().nullish(),
+  createdById: zod.number().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Get the activity log for a single report
+ */
+export const GetReportAuditLogParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+export const GetReportAuditLogResponseItem = zod.object({
+  id: zod.number(),
+  action: zod.enum(["create", "update", "delete"]),
+  entityName: zod.string().nullish(),
+  userId: zod.number().nullish(),
+  userName: zod.string().nullish(),
+  userFullName: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const GetReportAuditLogResponse = zod.array(
+  GetReportAuditLogResponseItem,
+);
 
 /**
  * @summary Export project reports as PDF
@@ -541,7 +791,7 @@ export const ListProjectMembersResponseItem = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   userId: zod.number(),
-  role: zod.enum(["project_manager", "engineer"]),
+  role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
   createdAt: zod.coerce.date(),
   fullName: zod.string(),
   phone: zod.string(),
@@ -562,7 +812,7 @@ export const AddProjectMemberParams = zod.object({
 
 export const AddProjectMemberBody = zod.object({
   userId: zod.number(),
-  role: zod.enum(["project_manager", "engineer"]),
+  role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
   assignedGroupIds: zod.array(zod.number()).optional(),
 });
 
@@ -577,7 +827,13 @@ export const GetEligibleUsersResponseItem = zod.object({
   id: zod.number(),
   phone: zod.string(),
   fullName: zod.string(),
-  role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+  role: zod.enum([
+    "admin",
+    "project_manager",
+    "engineer",
+    "owner",
+    "contractor",
+  ]),
   companies: zod
     .array(
       zod.object({
@@ -586,6 +842,17 @@ export const GetEligibleUsersResponseItem = zod.object({
       }),
     )
     .optional(),
+  projects: zod
+    .array(
+      zod.object({
+        projectId: zod.number(),
+        projectName: zod.string(),
+        role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
+      }),
+    )
+    .optional(),
+  incompleteProfile: zod.boolean().optional(),
+  projectMembershipsCount: zod.number().optional(),
   createdAt: zod.coerce.date(),
 });
 export const GetEligibleUsersResponse = zod.array(GetEligibleUsersResponseItem);
@@ -599,7 +866,9 @@ export const UpdateProjectMemberParams = zod.object({
 });
 
 export const UpdateProjectMemberBody = zod.object({
-  role: zod.enum(["project_manager", "engineer"]).optional(),
+  role: zod
+    .enum(["project_manager", "engineer", "contractor", "viewer"])
+    .optional(),
   assignedGroupIds: zod.array(zod.number()).optional(),
 });
 
@@ -607,7 +876,7 @@ export const UpdateProjectMemberResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   userId: zod.number(),
-  role: zod.enum(["project_manager", "engineer"]),
+  role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
   createdAt: zod.coerce.date(),
   fullName: zod.string(),
   phone: zod.string(),
@@ -652,6 +921,121 @@ export const GetMyProjectPermissionsResponse = zod.object({
   projectRole: zod.string().optional(),
   assignedGroupIds: zod.array(zod.number()).optional(),
   canEditAll: zod.boolean(),
+  isViewer: zod.boolean().optional(),
+  tabPermissions: zod
+    .object({
+      overview: zod.enum(["hidden", "view", "edit"]).optional(),
+      activities: zod.enum(["hidden", "view", "edit"]).optional(),
+      extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+      suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+      reports: zod.enum(["hidden", "view", "edit"]).optional(),
+      forms: zod.enum(["hidden", "view", "edit"]).optional(),
+      attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+      files: zod.enum(["hidden", "view", "edit"]).optional(),
+      deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+    })
+    .optional(),
+});
+
+/**
+ * @summary Get effective per-tab permissions for a project member
+ */
+export const GetMemberTabPermissionsParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+export const GetMemberTabPermissionsResponse = zod.object({
+  memberId: zod.number(),
+  projectId: zod.number(),
+  userId: zod.number(),
+  role: zod.string(),
+  overrides: zod
+    .union([
+      zod.object({
+        overview: zod.enum(["hidden", "view", "edit"]).optional(),
+        activities: zod.enum(["hidden", "view", "edit"]).optional(),
+        extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+        suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+        reports: zod.enum(["hidden", "view", "edit"]).optional(),
+        forms: zod.enum(["hidden", "view", "edit"]).optional(),
+        attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+        files: zod.enum(["hidden", "view", "edit"]).optional(),
+        deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  effective: zod.object({
+    overview: zod.enum(["hidden", "view", "edit"]).optional(),
+    activities: zod.enum(["hidden", "view", "edit"]).optional(),
+    extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+    suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+    reports: zod.enum(["hidden", "view", "edit"]).optional(),
+    forms: zod.enum(["hidden", "view", "edit"]).optional(),
+    attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+    files: zod.enum(["hidden", "view", "edit"]).optional(),
+    deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+  }),
+});
+
+/**
+ * @summary Update per-tab permission overrides for a project member
+ */
+export const UpdateMemberTabPermissionsParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+export const UpdateMemberTabPermissionsBody = zod.object({
+  tabPermissions: zod.union([
+    zod.object({
+      overview: zod.enum(["hidden", "view", "edit"]).optional(),
+      activities: zod.enum(["hidden", "view", "edit"]).optional(),
+      extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+      suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+      reports: zod.enum(["hidden", "view", "edit"]).optional(),
+      forms: zod.enum(["hidden", "view", "edit"]).optional(),
+      attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+      files: zod.enum(["hidden", "view", "edit"]).optional(),
+      deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+    }),
+    zod.null(),
+  ]),
+});
+
+export const UpdateMemberTabPermissionsResponse = zod.object({
+  memberId: zod.number(),
+  projectId: zod.number(),
+  userId: zod.number(),
+  role: zod.string(),
+  overrides: zod
+    .union([
+      zod.object({
+        overview: zod.enum(["hidden", "view", "edit"]).optional(),
+        activities: zod.enum(["hidden", "view", "edit"]).optional(),
+        extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+        suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+        reports: zod.enum(["hidden", "view", "edit"]).optional(),
+        forms: zod.enum(["hidden", "view", "edit"]).optional(),
+        attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+        files: zod.enum(["hidden", "view", "edit"]).optional(),
+        deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  effective: zod.object({
+    overview: zod.enum(["hidden", "view", "edit"]).optional(),
+    activities: zod.enum(["hidden", "view", "edit"]).optional(),
+    extensions: zod.enum(["hidden", "view", "edit"]).optional(),
+    suspensions: zod.enum(["hidden", "view", "edit"]).optional(),
+    reports: zod.enum(["hidden", "view", "edit"]).optional(),
+    forms: zod.enum(["hidden", "view", "edit"]).optional(),
+    attendance: zod.enum(["hidden", "view", "edit"]).optional(),
+    files: zod.enum(["hidden", "view", "edit"]).optional(),
+    deviation: zod.enum(["hidden", "view", "edit"]).optional(),
+  }),
 });
 
 /**
@@ -661,7 +1045,13 @@ export const ListUsersResponseItem = zod.object({
   id: zod.number(),
   phone: zod.string(),
   fullName: zod.string(),
-  role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+  role: zod.enum([
+    "admin",
+    "project_manager",
+    "engineer",
+    "owner",
+    "contractor",
+  ]),
   companies: zod
     .array(
       zod.object({
@@ -670,6 +1060,17 @@ export const ListUsersResponseItem = zod.object({
       }),
     )
     .optional(),
+  projects: zod
+    .array(
+      zod.object({
+        projectId: zod.number(),
+        projectName: zod.string(),
+        role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
+      }),
+    )
+    .optional(),
+  incompleteProfile: zod.boolean().optional(),
+  projectMembershipsCount: zod.number().optional(),
   createdAt: zod.coerce.date(),
 });
 export const ListUsersResponse = zod.array(ListUsersResponseItem);
@@ -681,8 +1082,22 @@ export const CreateUserBody = zod.object({
   phone: zod.string(),
   password: zod.string(),
   fullName: zod.string(),
-  role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+  role: zod.enum([
+    "admin",
+    "project_manager",
+    "engineer",
+    "owner",
+    "contractor",
+  ]),
   companyIds: zod.array(zod.number()).optional(),
+  projectIds: zod.array(zod.number()).optional(),
+});
+
+/**
+ * @summary Count of users with incomplete profile (no company or no project)
+ */
+export const GetIncompleteUsersCountResponse = zod.object({
+  count: zod.number(),
 });
 
 /**
@@ -698,13 +1113,20 @@ export const UpdateUserBody = zod.object({
   role: zod.string().nullish(),
   password: zod.string().nullish(),
   companyIds: zod.array(zod.number()).optional(),
+  projectIds: zod.array(zod.number()).optional(),
 });
 
 export const UpdateUserResponse = zod.object({
   id: zod.number(),
   phone: zod.string(),
   fullName: zod.string(),
-  role: zod.enum(["admin", "project_manager", "engineer", "owner"]),
+  role: zod.enum([
+    "admin",
+    "project_manager",
+    "engineer",
+    "owner",
+    "contractor",
+  ]),
   companies: zod
     .array(
       zod.object({
@@ -713,6 +1135,17 @@ export const UpdateUserResponse = zod.object({
       }),
     )
     .optional(),
+  projects: zod
+    .array(
+      zod.object({
+        projectId: zod.number(),
+        projectName: zod.string(),
+        role: zod.enum(["project_manager", "engineer", "contractor", "viewer"]),
+      }),
+    )
+    .optional(),
+  incompleteProfile: zod.boolean().optional(),
+  projectMembershipsCount: zod.number().optional(),
   createdAt: zod.coerce.date(),
 });
 
@@ -743,6 +1176,8 @@ export const VerifyOwnerAccessBody = zod.object({
   password: zod.string().optional(),
 });
 
+export const verifyOwnerAccessResponseActivitiesItemWeightDefault = 1;
+
 export const VerifyOwnerAccessResponse = zod.object({
   project: zod.object({
     id: zod.number(),
@@ -751,12 +1186,18 @@ export const VerifyOwnerAccessResponse = zod.object({
     ownerEntity: zod.string(),
     supervisorEntity: zod.string(),
     contractor: zod.string(),
-    startDate: zod.coerce.date(),
-    expectedEndDate: zod.coerce.date(),
+    startDate: zod.coerce.date().nullish(),
+    expectedEndDate: zod.coerce.date().nullish(),
     actualEndDate: zod.coerce.date().nullish(),
     status: zod.enum(["active", "completed", "delayed", "suspended"]),
     overallProgress: zod.number(),
+    noSchedule: zod.boolean(),
     ownerAccessToken: zod.string().nullish(),
+    siteLatitude: zod.number().nullish(),
+    siteLongitude: zod.number().nullish(),
+    siteRadiusMeters: zod.number().nullish(),
+    attendanceAutoCloseHours: zod.number(),
+    attendanceLongDayHours: zod.number(),
     createdAt: zod.coerce.date(),
     updatedAt: zod.coerce.date(),
   }),
@@ -765,12 +1206,16 @@ export const VerifyOwnerAccessResponse = zod.object({
       id: zod.number(),
       projectId: zod.number(),
       name: zod.string(),
-      plannedStartDate: zod.coerce.date(),
-      plannedEndDate: zod.coerce.date(),
+      plannedStartDate: zod.coerce.date().nullish(),
+      plannedEndDate: zod.coerce.date().nullish(),
       actualStartDate: zod.coerce.date().nullish(),
       actualEndDate: zod.coerce.date().nullish(),
       plannedProgress: zod.number(),
       actualProgress: zod.number(),
+      weight: zod
+        .number()
+        .default(verifyOwnerAccessResponseActivitiesItemWeightDefault)
+        .describe("Relative weight (cost share \/ volume share). Default 1."),
       status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
       sortOrder: zod.number(),
       groupId: zod.number().nullish(),
@@ -791,6 +1236,14 @@ export const VerifyOwnerAccessResponse = zod.object({
       technicalNotes: zod.string().nullish(),
       recommendations: zod.string().nullish(),
       imageUrls: zod.array(zod.string()),
+      imageGroups: zod
+        .array(
+          zod.object({
+            category: zod.string(),
+            urls: zod.array(zod.string()),
+          }),
+        )
+        .nullish(),
       activitiesSnapshot: zod
         .array(
           zod.object({
@@ -802,11 +1255,20 @@ export const VerifyOwnerAccessResponse = zod.object({
             actualEndDate: zod.string().nullish(),
             plannedProgress: zod.number().optional(),
             actualProgress: zod.number().optional(),
+            weight: zod
+              .number()
+              .optional()
+              .describe(
+                "Activity weight (cost\/volume share) used for the report's weighted progress.",
+              ),
             status: zod.string().optional(),
             sortOrder: zod.number().optional(),
           }),
         )
         .nullish(),
+      status: zod.enum(["draft", "approved"]),
+      approvedAt: zod.coerce.date().nullish(),
+      approvedById: zod.number().nullish(),
       createdById: zod.number().nullish(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
@@ -823,9 +1285,60 @@ export const VerifyOwnerAccessResponse = zod.object({
     totalDays: zod.number(),
     daysRemaining: zod.number(),
     delayDays: zod.number(),
+    suspensionDays: zod.number(),
+    netDelayDays: zod.number(),
+    overrunDays: zod
+      .number()
+      .optional()
+      .describe("Days passed after expectedEndDate while progress < 100%"),
     reportsCount: zod.number(),
     filesCount: zod.number(),
+    noSchedule: zod.boolean().optional(),
   }),
+});
+
+/**
+ * @summary Create a full database backup
+ */
+export const CreateBackupResponse = zod.object({
+  success: zod.boolean().optional(),
+  filename: zod.string().optional(),
+  size: zod.number().optional(),
+  createdAt: zod.string().optional(),
+  stats: zod.object({}).passthrough().optional(),
+});
+
+/**
+ * @summary List all available backups
+ */
+export const ListBackupsResponse = zod.object({
+  backups: zod
+    .array(
+      zod.object({
+        filename: zod.string().optional(),
+        size: zod.number().optional(),
+        createdAt: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Download a backup file
+ */
+export const DownloadBackupParams = zod.object({
+  filename: zod.coerce.string(),
+});
+
+/**
+ * @summary Delete a backup file
+ */
+export const DeleteBackupParams = zod.object({
+  filename: zod.coerce.string(),
+});
+
+export const DeleteBackupResponse = zod.object({
+  success: zod.boolean().optional(),
 });
 
 /**
@@ -836,8 +1349,13 @@ export const GetDashboardSummaryResponse = zod.object({
   activeProjects: zod.number(),
   completedProjects: zod.number(),
   delayedProjects: zod.number(),
+  suspendedProjects: zod.number(),
   averageProgress: zod.number(),
   totalReports: zod.number(),
+  totalActivities: zod.number(),
+  completedActivities: zod.number(),
+  delayedActivities: zod.number(),
+  inProgressActivities: zod.number(),
   recentProjects: zod.array(
     zod.object({
       id: zod.number(),
@@ -846,14 +1364,58 @@ export const GetDashboardSummaryResponse = zod.object({
       ownerEntity: zod.string(),
       supervisorEntity: zod.string(),
       contractor: zod.string(),
-      startDate: zod.coerce.date(),
-      expectedEndDate: zod.coerce.date(),
+      startDate: zod.coerce.date().nullish(),
+      expectedEndDate: zod.coerce.date().nullish(),
       actualEndDate: zod.coerce.date().nullish(),
       status: zod.enum(["active", "completed", "delayed", "suspended"]),
       overallProgress: zod.number(),
+      noSchedule: zod.boolean(),
       ownerAccessToken: zod.string().nullish(),
+      siteLatitude: zod.number().nullish(),
+      siteLongitude: zod.number().nullish(),
+      siteRadiusMeters: zod.number().nullish(),
+      attendanceAutoCloseHours: zod.number(),
+      attendanceLongDayHours: zod.number(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
+    }),
+  ),
+  allProjects: zod.array(
+    zod.object({
+      id: zod.number().optional(),
+      name: zod.string().optional(),
+      overallProgress: zod.number().optional(),
+      plannedProgress: zod.number().optional(),
+      status: zod.string().optional(),
+      daysRemaining: zod.number().optional(),
+      ownerEntity: zod.string().nullish(),
+      startDate: zod.string().nullish(),
+      expectedEndDate: zod.string().nullish(),
+      noSchedule: zod.boolean().optional(),
+      overrunDays: zod
+        .number()
+        .optional()
+        .describe("Days passed after expectedEndDate while progress < 100%"),
+    }),
+  ),
+  recentReports: zod.array(
+    zod.object({
+      id: zod.number().optional(),
+      projectId: zod.number().optional(),
+      type: zod.string().optional(),
+      reportDate: zod.string().optional(),
+      progressPercentage: zod.number().optional(),
+    }),
+  ),
+  delayedActivitiesList: zod.array(
+    zod.object({
+      id: zod.number().optional(),
+      name: zod.string().optional(),
+      projectId: zod.number().optional(),
+      projectName: zod.string().optional(),
+      plannedEndDate: zod.string().nullish(),
+      actualProgress: zod.number().optional(),
+      delayDays: zod.number().optional(),
     }),
   ),
 });
@@ -876,8 +1438,15 @@ export const GetProjectSummaryResponse = zod.object({
   totalDays: zod.number(),
   daysRemaining: zod.number(),
   delayDays: zod.number(),
+  suspensionDays: zod.number(),
+  netDelayDays: zod.number(),
+  overrunDays: zod
+    .number()
+    .optional()
+    .describe("Days passed after expectedEndDate while progress < 100%"),
   reportsCount: zod.number(),
   filesCount: zod.number(),
+  noSchedule: zod.boolean().optional(),
 });
 
 /**
@@ -887,16 +1456,93 @@ export const GetProjectDeviationParams = zod.object({
   projectId: zod.coerce.number(),
 });
 
+export const getProjectDeviationQueryCurveDefault = `linear`;
+
+export const GetProjectDeviationQueryParams = zod.object({
+  curve: zod
+    .enum(["linear", "scurve"])
+    .default(getProjectDeviationQueryCurveDefault)
+    .describe("Planned-progress curve model used for the calculation."),
+});
+
 export const GetProjectDeviationResponse = zod.object({
   projectId: zod.number(),
   timeDeviation: zod.number(),
   progressDeviation: zod.number(),
+  plannedProgress: zod
+    .number()
+    .optional()
+    .describe("Weighted planned progress for the project at today's date."),
+  actualProgress: zod
+    .number()
+    .optional()
+    .describe("Weighted actual progress (overall project progress)."),
   status: zod.enum([
     "on_track",
     "slightly_delayed",
     "significantly_delayed",
     "ahead",
   ]),
+  criticalPathStatus: zod
+    .enum(["healthy", "at_risk", "critical"])
+    .optional()
+    .describe(
+      "Health of the critical path based on the count of activities deviating > 10%.",
+    ),
+  suspensionDays: zod.number().optional(),
+  grossDelayDays: zod.number().optional(),
+  netDelayDays: zod.number().optional(),
+  overrunDays: zod
+    .number()
+    .optional()
+    .describe("Days passed after expectedEndDate while progress < 100%"),
+  spi: zod
+    .number()
+    .nullish()
+    .describe(
+      "Schedule Performance Index = actual \/ planned (>1 ahead, <1 behind).",
+    ),
+  forecastCompletionDate: zod.coerce
+    .date()
+    .nullish()
+    .describe("Forecast completion date if the current pace continues."),
+  expectedProgressAtEnd: zod
+    .number()
+    .optional()
+    .describe(
+      "Expected progress percentage at the contractual end date if the current pace continues.",
+    ),
+  contractEndDate: zod.coerce.date().nullish(),
+  forecastDelayDays: zod
+    .number()
+    .optional()
+    .describe(
+      "Days between forecastCompletionDate and contractEndDate (positive = late).",
+    ),
+  suspensionsBreakdown: zod
+    .array(
+      zod.object({
+        type: zod.enum([
+          "official_holiday",
+          "force_majeure",
+          "contractor_delay",
+        ]),
+        days: zod.number(),
+        count: zod.number(),
+      }),
+    )
+    .optional()
+    .describe("Breakdown of suspension days by cause type."),
+  recommendations: zod
+    .array(
+      zod.object({
+        severity: zod.enum(["info", "warning", "critical"]),
+        title: zod.string(),
+        description: zod.string(),
+      }),
+    )
+    .optional()
+    .describe("Auto-generated recommendations based on the project state."),
   activitiesAnalysis: zod.array(
     zod.object({
       activityId: zod.number(),
@@ -904,9 +1550,73 @@ export const GetProjectDeviationResponse = zod.object({
       plannedProgress: zod.number(),
       actualProgress: zod.number(),
       deviation: zod.number(),
-      delayDays: zod.number().nullish(),
+      weight: zod
+        .number()
+        .optional()
+        .describe(
+          "Activity weight used in the project-level weighted average.",
+        ),
+      weightedImpact: zod
+        .number()
+        .optional()
+        .describe(
+          "Contribution of this activity's deviation to overall project deviation (= deviation × weight \/ totalWeight).",
+        ),
+      delayDays: zod
+        .number()
+        .nullish()
+        .describe(
+          "Deprecated alias for overrunDays (kept for backward compatibility)",
+        ),
+      overrunDays: zod
+        .number()
+        .nullish()
+        .describe("Days past activity plannedEndDate while not completed"),
     }),
   ),
+  noSchedule: zod.boolean().optional(),
+});
+
+/**
+ * @summary Get historical deviation time-series for a project
+ */
+export const GetProjectDeviationTimelineParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const getProjectDeviationTimelineQueryCurveDefault = `linear`;
+
+export const GetProjectDeviationTimelineQueryParams = zod.object({
+  curve: zod
+    .enum(["linear", "scurve"])
+    .default(getProjectDeviationTimelineQueryCurveDefault)
+    .describe("Planned-progress curve model used for the historical points."),
+});
+
+export const GetProjectDeviationTimelineResponse = zod.object({
+  projectId: zod.number(),
+  noSchedule: zod.boolean().optional(),
+  points: zod.array(
+    zod.object({
+      date: zod.coerce.date(),
+      plannedProgress: zod.number(),
+      actualProgress: zod.number(),
+      deviation: zod.number(),
+    }),
+  ),
+  suspensionsBreakdown: zod
+    .array(
+      zod.object({
+        type: zod.enum([
+          "official_holiday",
+          "force_majeure",
+          "contractor_delay",
+        ]),
+        days: zod.number(),
+        count: zod.number(),
+      }),
+    )
+    .describe("Breakdown of suspension days by cause type for this project."),
 });
 
 /**
@@ -924,4 +1634,267 @@ export const GenerateOwnerLinkBody = zod.object({
 export const GenerateOwnerLinkResponse = zod.object({
   token: zod.string(),
   url: zod.string(),
+});
+
+/**
+ * @summary Get my current check-in status across my projects
+ */
+export const GetMyAttendanceStatusResponseItem = zod.object({
+  projectId: zod.number(),
+  projectName: zod.string(),
+  hasSiteLocation: zod.boolean(),
+  siteLatitude: zod.number().nullish(),
+  siteLongitude: zod.number().nullish(),
+  siteRadiusMeters: zod.number().nullish(),
+  currentlyCheckedIn: zod.boolean(),
+  lastRecord: zod
+    .union([
+      zod.object({
+        id: zod.number(),
+        projectId: zod.number(),
+        userId: zod.number(),
+        type: zod.enum(["check_in", "check_out"]),
+        recordedAt: zod.coerce.date(),
+        latitude: zod.number().nullish(),
+        longitude: zod.number().nullish(),
+        accuracyMeters: zod.number().nullish(),
+        distanceMeters: zod.number().nullish(),
+        outOfRange: zod.boolean(),
+        selfieFilename: zod.string().nullish(),
+        selfieUrl: zod.string().nullish(),
+        notes: zod.string().nullish(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+});
+export const GetMyAttendanceStatusResponse = zod.array(
+  GetMyAttendanceStatusResponseItem,
+);
+
+/**
+ * @summary Get my attendance history
+ */
+export const GetMyAttendanceHistoryQueryParams = zod.object({
+  limit: zod.coerce.number().nullish(),
+  projectId: zod.coerce.number().nullish(),
+});
+
+export const GetMyAttendanceHistoryResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  projectName: zod.string().nullish(),
+  userId: zod.number(),
+  type: zod.enum(["check_in", "check_out"]),
+  recordedAt: zod.coerce.date(),
+  latitude: zod.number().nullish(),
+  longitude: zod.number().nullish(),
+  accuracyMeters: zod.number().nullish(),
+  distanceMeters: zod.number().nullish(),
+  outOfRange: zod.boolean(),
+  selfieUrl: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+export const GetMyAttendanceHistoryResponse = zod.array(
+  GetMyAttendanceHistoryResponseItem,
+);
+
+/**
+ * @summary Edit an attendance record (admin or PM)
+ */
+export const UpdateAttendanceRecordParams = zod.object({
+  recordId: zod.coerce.number(),
+});
+
+export const UpdateAttendanceRecordBody = zod.object({
+  reason: zod.string(),
+  type: zod
+    .union([
+      zod.literal("check_in"),
+      zod.literal("check_out"),
+      zod.literal(null),
+    ])
+    .nullish(),
+  recordedAt: zod.coerce.date().nullish(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateAttendanceRecordResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  userId: zod.number(),
+  type: zod.enum(["check_in", "check_out"]),
+  recordedAt: zod.coerce.date(),
+  latitude: zod.number().nullish(),
+  longitude: zod.number().nullish(),
+  accuracyMeters: zod.number().nullish(),
+  distanceMeters: zod.number().nullish(),
+  outOfRange: zod.boolean(),
+  selfieFilename: zod.string().nullish(),
+  selfieUrl: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Delete an attendance record (admin or PM)
+ */
+export const DeleteAttendanceRecordParams = zod.object({
+  recordId: zod.coerce.number(),
+});
+
+export const DeleteAttendanceRecordBody = zod.object({
+  reason: zod.string(),
+});
+
+/**
+ * @summary Check in to a project (site photo + GPS required)
+ */
+export const AttendanceCheckInParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const AttendanceCheckInBody = zod.object({
+  selfie: zod.instanceof(File),
+  latitude: zod.number(),
+  longitude: zod.number(),
+  accuracy: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Check out of a project (site photo + GPS required)
+ */
+export const AttendanceCheckOutParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const AttendanceCheckOutBody = zod.object({
+  selfie: zod.instanceof(File),
+  latitude: zod.number(),
+  longitude: zod.number(),
+  accuracy: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary List members currently checked in
+ */
+export const GetActiveAttendanceParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const GetActiveAttendanceResponse = zod.object({
+  activeCount: zod.number(),
+  members: zod.array(
+    zod.object({
+      recordId: zod.number(),
+      userId: zod.number(),
+      fullName: zod.string(),
+      phone: zod.string().nullish(),
+      userRole: zod.string().nullish(),
+      checkedInAt: zod.coerce.date(),
+      latitude: zod.number().nullish(),
+      longitude: zod.number().nullish(),
+      accuracyMeters: zod.number().nullish(),
+      distanceMeters: zod.number().nullish(),
+      outOfRange: zod.boolean(),
+      selfieUrl: zod.string().nullish(),
+      notes: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary List attendance records (with filters)
+ */
+export const ListAttendanceRecordsParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const ListAttendanceRecordsQueryParams = zod.object({
+  dateFrom: zod.date().nullish(),
+  dateTo: zod.date().nullish(),
+  userId: zod.coerce.number().nullish(),
+  limit: zod.coerce.number().nullish(),
+});
+
+export const ListAttendanceRecordsResponseItem = zod.object({
+  id: zod.number(),
+  userId: zod.number(),
+  fullName: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  type: zod.enum(["check_in", "check_out"]),
+  recordedAt: zod.coerce.date(),
+  latitude: zod.number().nullish(),
+  longitude: zod.number().nullish(),
+  accuracyMeters: zod.number().nullish(),
+  distanceMeters: zod.number().nullish(),
+  outOfRange: zod.boolean(),
+  selfieUrl: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  editedAt: zod.coerce.date().nullish(),
+  editedByUserId: zod.number().nullish(),
+  editReason: zod.string().nullish(),
+});
+export const ListAttendanceRecordsResponse = zod.array(
+  ListAttendanceRecordsResponseItem,
+);
+
+/**
+ * @summary Per-employee daily attendance report
+ */
+export const GetEmployeeAttendanceReportParams = zod.object({
+  projectId: zod.coerce.number(),
+  userId: zod.coerce.number(),
+});
+
+export const GetEmployeeAttendanceReportQueryParams = zod.object({
+  dateFrom: zod.date().nullish(),
+  dateTo: zod.date().nullish(),
+});
+
+export const GetEmployeeAttendanceReportResponse = zod.object({
+  project: zod.object({
+    id: zod.number(),
+    name: zod.string(),
+    attendanceAutoCloseHours: zod.number().optional(),
+    attendanceLongDayHours: zod.number().optional(),
+  }),
+  employee: zod.object({
+    id: zod.number(),
+    fullName: zod.string(),
+    phone: zod.string().nullish(),
+    role: zod.string().nullish(),
+  }),
+  dateFrom: zod.coerce.date().nullish(),
+  dateTo: zod.coerce.date().nullish(),
+  autoCloseHours: zod.number(),
+  longDayHours: zod.number(),
+  days: zod.array(
+    zod.object({
+      date: zod.coerce.date(),
+      sessions: zod.array(
+        zod.object({
+          checkInRecordId: zod.number(),
+          checkOutRecordId: zod.number().nullish(),
+          checkInAt: zod.coerce.date(),
+          checkOutAt: zod.coerce.date().nullish(),
+          durationMinutes: zod.number().nullish(),
+          status: zod.enum(["closed", "open", "auto_closed"]),
+        }),
+      ),
+      totalMinutes: zod.number(),
+      flags: zod.object({
+        incomplete: zod.boolean(),
+        longDay: zod.boolean(),
+      }),
+    }),
+  ),
+  summary: zod.object({
+    totalMinutes: zod.number(),
+    workDays: zod.number(),
+    averageDailyMinutes: zod.number(),
+    incompleteDays: zod.number(),
+    longDays: zod.number(),
+  }),
 });

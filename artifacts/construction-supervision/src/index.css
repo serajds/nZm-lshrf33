@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "leaflet/dist/leaflet.css";
 @plugin "@tailwindcss/typography";
 
 /* Force Western Arabic (Latin) numerals 0–9 throughout — prevents Arabic-Indic digit substitution */

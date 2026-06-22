@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { InstallButton } from "@/components/install-button";
+import { InstallPromptBanner } from "@/components/install-prompt-banner";
+import { NotificationToggle } from "@/components/notification-toggle";
 import {
   LayoutDashboard,
   Building2,
@@ -29,14 +32,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isAdmin = user?.role === "admin";
   const isAdminOrPM = isAdmin || user?.role === "project_manager";
+  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
 
   const navigation = [
-    { name: "لوحة التحكم", href: "/", icon: LayoutDashboard },
-    { name: "المشاريع", href: "/projects", icon: Building2 },
-    ...(isAdminOrPM
+    ...(!isContractor
+      ? [{ name: "لوحة التحكم", href: "/dashboard", icon: LayoutDashboard }]
+      : []),
+    { name: "المشاريع", href: isContractor ? "/" : "/projects", icon: Building2 },
+    ...(!isContractor && isAdminOrPM
       ? [{ name: "الشركات", href: "/companies", icon: Landmark }]
       : []),
-    ...(isAdmin
+    ...(!isContractor && isAdmin
       ? [
           { name: "المستخدمون", href: "/users", icon: Users },
           { name: "سجل العمليات", href: "/audit-log", icon: ClipboardList },
@@ -231,7 +237,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 className="text-[11px] truncate"
                 style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.5 }}
               >
-                {user?.role === "admin" ? "مدير النظام" : user?.role === "project_manager" ? "مدير مشروع" : "مهندس مشرف"}
+                {user?.role === "admin" ? "مدير النظام" : user?.role === "project_manager" ? "مدير مشروع" : user?.role === "contractor" ? "مقاول" : "مهندس مشرف"}
               </p>
             </div>
             <button
@@ -337,6 +343,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <h1 className="font-semibold text-base text-foreground truncate">
               {currentPage?.name || "إدارة الإشراف والمتابعة"}
             </h1>
+            <div className="mr-auto flex items-center gap-2">
+              <NotificationToggle />
+              <InstallButton />
+            </div>
           </header>
 
           {/* ---- Page Content ---- */}
@@ -345,6 +355,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </div>
+
+      {/* Auto-shown PWA install suggestion (snoozes for 7 days on dismiss) */}
+      <InstallPromptBanner />
     </div>
   );
 }

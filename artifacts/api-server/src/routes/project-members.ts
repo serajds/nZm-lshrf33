@@ -2,7 +2,9 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectMembersTable, usersTable, memberGroupAssignmentsTable, activityGroupsTable, projectsTable, companiesTable, userCompaniesTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
-import { requireProjectManager, requireProjectAccess, requireAdmin } from "../middlewares/auth";
+import { requireProjectManager, requireProjectAccess, requireAdmin, rejectContractor } from "../middlewares/auth";
+import { resolveTabPermissions, isValidTabPermissions, TAB_KEYS } from "../lib/tab-permissions";
+import { invalidateProfileCache } from "../app";
 
 const router: IRouter = Router();
 
@@ -51,6 +53,23 @@ async function getCompanyNamesForUser(userId: number, projectCompanyIds?: number
   return rows.map(r => r.name);
 }
 
+// True when a project member must be treated as a fixed-permission contractor.
+// Three rules: membership role contractor, OR target user's global role
+// contractor, OR (user belongs to the project's contractor company AND is not
+// a global project_manager — PMs are exempt, mirroring requireProjectAccess).
+async function isMemberContractorLocked(membershipRole: string, userId: number, projectId: number): Promise<boolean> {
+  if (membershipRole === "contractor") return true;
+  const [u] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, userId));
+  if (u?.role === "contractor") return true;
+  if (u?.role === "project_manager") return false;
+  const [proj] = await db.select({ contractorCompanyId: projectsTable.contractorCompanyId })
+    .from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!proj?.contractorCompanyId) return false;
+  const links = await db.select({ companyId: userCompaniesTable.companyId })
+    .from(userCompaniesTable).where(eq(userCompaniesTable.userId, userId));
+  return links.some(l => l.companyId === proj.contractorCompanyId);
+}
+
 async function getMemberWithUser(memberId: number) {
   const [memberWithUser] = await db.select({
     id: projectMembersTable.id,
@@ -78,7 +97,7 @@ async function getMemberWithUser(memberId: number) {
   return { ...memberWithUser, companyNames, assignedGroupIds };
 }
 
-router.get("/projects/:projectId/members", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/members", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -136,11 +155,36 @@ router.get("/projects/:projectId/members", requireProjectAccess("projectId"), as
     }
   }
 
-  const result = members.map(m => ({
-    ...m,
-    companyNames: companyMap.get(m.userId) || [],
-    assignedGroupIds: assignmentMap.get(m.id) || [],
-  }));
+  // Mark members whose effective permissions are locked to the historical
+  // contractor defaults so the UI can hide the dynamic permissions editor.
+  // Locked when: project_members.role === "contractor", OR users.role ===
+  // "contractor", OR the user belongs to the project's contractor company
+  // (and is not a global project_manager — PMs are exempt, mirroring
+  // requireProjectAccess).
+  const contractorCompanyId = project?.contractorCompanyId ?? null;
+  const contractorCompanyUserIds = new Set<number>();
+  if (contractorCompanyId && userIds.length > 0) {
+    const ccRows = await db.select({ userId: userCompaniesTable.userId })
+      .from(userCompaniesTable)
+      .where(and(
+        inArray(userCompaniesTable.userId, userIds),
+        eq(userCompaniesTable.companyId, contractorCompanyId),
+      ));
+    for (const r of ccRows) contractorCompanyUserIds.add(r.userId);
+  }
+
+  const result = members.map(m => {
+    const isContractorLocked =
+      m.role === "contractor"
+      || m.userRole === "contractor"
+      || (contractorCompanyUserIds.has(m.userId) && m.userRole !== "project_manager");
+    return {
+      ...m,
+      companyNames: companyMap.get(m.userId) || [],
+      assignedGroupIds: assignmentMap.get(m.id) || [],
+      isContractorLocked,
+    };
+  });
 
   res.json(result);
 });
@@ -230,8 +274,8 @@ router.post("/projects/:projectId/members", requireProjectManager("projectId"), 
     return;
   }
 
-  if (role !== "project_manager" && role !== "engineer") {
-    res.status(400).json({ error: "الدور يجب أن يكون مدير مشروع أو مهندس" });
+  if (role !== "project_manager" && role !== "engineer" && role !== "contractor" && role !== "viewer") {
+    res.status(400).json({ error: "الدور يجب أن يكون مدير مشروع أو مهندس أو مقاول أو مشاهد" });
     return;
   }
 
@@ -285,6 +329,9 @@ router.post("/projects/:projectId/members", requireProjectManager("projectId"), 
       await setGroupsForMember(member.id, assignedGroupIds, projectId);
     }
 
+    // Newly added project membership flips a user from "incomplete" → "complete".
+    invalidateProfileCache(userId);
+
     const memberWithUser = await getMemberWithUser(member.id);
     res.status(201).json(memberWithUser);
   } catch (e: any) {
@@ -299,8 +346,8 @@ router.patch("/projects/:projectId/members/:id", requireProjectManager("projectI
   const { role, assignedGroupIds } = req.body;
   const user = (req as any).user;
 
-  if (role && role !== "project_manager" && role !== "engineer") {
-    res.status(400).json({ error: "الدور يجب أن يكون مدير مشروع أو مهندس" });
+  if (role && role !== "project_manager" && role !== "engineer" && role !== "contractor" && role !== "viewer") {
+    res.status(400).json({ error: "الدور يجب أن يكون مدير مشروع أو مهندس أو مقاول أو مشاهد" });
     return;
   }
 
@@ -326,6 +373,9 @@ router.patch("/projects/:projectId/members/:id", requireProjectManager("projectI
       res.status(404).json({ error: "العضو غير موجود" });
       return;
     }
+    // Role change doesn't affect completeness today, but invalidate
+    // anyway to keep semantics consistent if logic changes.
+    invalidateProfileCache(targetMember.userId);
   }
 
   if (Array.isArray(assignedGroupIds)) {
@@ -379,8 +429,45 @@ router.get("/projects/:projectId/my-permissions", requireProjectAccess("projectI
   const user = (req as any).user;
 
   if (user.role === "admin") {
-    res.json({ role: "admin", projectRole: "admin", assignedGroupIds: [], canEditAll: true });
+    res.json({
+      role: "admin",
+      projectRole: "admin",
+      assignedGroupIds: [],
+      canEditAll: true,
+      tabPermissions: resolveTabPermissions("admin", null),
+    });
     return;
+  }
+
+  // Global contractor users are always locked to fixed contractor permissions.
+  if (user.role === "contractor") {
+    res.json({
+      role: "contractor",
+      projectRole: "contractor",
+      assignedGroupIds: [],
+      canEditAll: false,
+      tabPermissions: resolveTabPermissions("contractor", null),
+    });
+    return;
+  }
+
+  // Contractor short-circuit: any user belonging to the project's contractor
+  // company is locked to the historical contractor permissions, even if they
+  // also have a project_members row with a different role. Mirrors the same
+  // logic (and the project_manager exemption) in middlewares/tab-access.ts
+  // and middlewares/auth.ts requireProjectAccess.
+  const isPmExempt = user.role === "project_manager";
+  const userCompanies = isPmExempt ? [] : await db.select({ companyId: userCompaniesTable.companyId })
+    .from(userCompaniesTable)
+    .where(eq(userCompaniesTable.userId, user.userId));
+  let isContractorOnProject = false;
+  if (userCompanies.length > 0) {
+    const [proj] = await db.select({ contractorCompanyId: projectsTable.contractorCompanyId })
+      .from(projectsTable)
+      .where(eq(projectsTable.id, projectId));
+    if (proj?.contractorCompanyId && userCompanies.some(c => c.companyId === proj.contractorCompanyId)) {
+      isContractorOnProject = true;
+    }
   }
 
   const [membership] = await db.select()
@@ -392,24 +479,138 @@ router.get("/projects/:projectId/my-permissions", requireProjectAccess("projectI
       )
     );
 
+  if (isContractorOnProject || membership?.role === "contractor") {
+    res.json({
+      role: user.role,
+      projectRole: "contractor",
+      assignedGroupIds: [],
+      canEditAll: false,
+      tabPermissions: resolveTabPermissions("contractor", null),
+    });
+    return;
+  }
+
   if (!membership) {
-    res.json({ role: user.role, canEditAll: false, assignedGroupIds: [] });
+    // Owner fallback (no membership, not on contractor company).
+    const fallbackRole = user.role === "owner" ? "owner" : "contractor";
+    res.json({
+      role: user.role,
+      canEditAll: false,
+      assignedGroupIds: [],
+      tabPermissions: resolveTabPermissions(fallbackRole as any, null),
+    });
     return;
   }
 
-  if (membership.role === "project_manager") {
-    res.json({ role: user.role, projectRole: "project_manager", assignedGroupIds: [], canEditAll: true });
-    return;
-  }
-
-  const assignedGroupIds = await getGroupIdsForMember(membership.id);
-  const canEditAll = assignedGroupIds.length === 0;
+  const assignedGroupIds = membership.role === "engineer"
+    ? await getGroupIdsForMember(membership.id)
+    : [];
+  const canEditAll = membership.role === "project_manager"
+    || (membership.role === "engineer" && assignedGroupIds.length === 0);
 
   res.json({
     role: user.role,
     projectRole: membership.role,
     assignedGroupIds,
     canEditAll,
+    isViewer: membership.role === "viewer",
+    tabPermissions: resolveTabPermissions(membership.role as any, membership.tabPermissions ?? null),
+  });
+});
+
+// Get effective per-tab permissions for a specific project member (admin / project manager view).
+router.get("/projects/:projectId/members/:id/permissions", requireProjectManager("projectId"), async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
+  const projectId = parseInt(raw, 10);
+  const memberId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+
+  const [membership] = await db.select().from(projectMembersTable)
+    .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)));
+  if (!membership) {
+    res.status(404).json({ error: "العضو غير موجود" });
+    return;
+  }
+
+  // For locked contractors, return fixed contractor defaults and report no
+  // effective overrides so the admin UI is consistent with runtime behavior.
+  const locked = await isMemberContractorLocked(membership.role, membership.userId, projectId);
+  if (locked) {
+    res.json({
+      memberId: membership.id,
+      projectId: membership.projectId,
+      userId: membership.userId,
+      role: "contractor",
+      overrides: null,
+      effective: resolveTabPermissions("contractor", null),
+      isContractorLocked: true,
+    });
+    return;
+  }
+
+  res.json({
+    memberId: membership.id,
+    projectId: membership.projectId,
+    userId: membership.userId,
+    role: membership.role,
+    overrides: membership.tabPermissions ?? null,
+    effective: resolveTabPermissions(membership.role as any, membership.tabPermissions ?? null),
+    isContractorLocked: false,
+  });
+});
+
+// Replace per-tab permission overrides for a project member.
+router.put("/projects/:projectId/members/:id/permissions", requireProjectManager("projectId"), async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
+  const projectId = parseInt(raw, 10);
+  const memberId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const body = req.body || {};
+  const overrides = body.tabPermissions;
+
+  if (overrides !== null && overrides !== undefined && !isValidTabPermissions(overrides)) {
+    res.status(400).json({
+      error: "صلاحيات التبويبات غير صالحة",
+      allowedTabs: TAB_KEYS,
+    });
+    return;
+  }
+
+  // Contractors are excluded from the override system. Reject any attempt to
+  // store custom tab permissions on a contractor membership — their effective
+  // permissions are always the historical contractor defaults. This covers
+  // three cases: (1) project_members.role === "contractor", (2) the target
+  // user's global users.role === "contractor", and (3) the target user is a
+  // member of the project's contractor company.
+  const [existing] = await db.select({
+    role: projectMembersTable.role,
+    userId: projectMembersTable.userId,
+  }).from(projectMembersTable)
+    .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)));
+  if (!existing) {
+    res.status(404).json({ error: "العضو غير موجود" });
+    return;
+  }
+  if (await isMemberContractorLocked(existing.role, existing.userId, projectId)) {
+    res.status(400).json({ error: "صلاحيات المقاول ثابتة وغير قابلة للتعديل" });
+    return;
+  }
+
+  const [updated] = await db.update(projectMembersTable)
+    .set({ tabPermissions: overrides ?? null })
+    .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)))
+    .returning();
+
+  if (!updated) {
+    res.status(404).json({ error: "العضو غير موجود" });
+    return;
+  }
+
+  res.json({
+    memberId: updated.id,
+    projectId: updated.projectId,
+    userId: updated.userId,
+    role: updated.role,
+    overrides: updated.tabPermissions ?? null,
+    effective: resolveTabPermissions(updated.role as any, updated.tabPermissions ?? null),
   });
 });
 
@@ -434,6 +635,9 @@ router.delete("/projects/:projectId/members/:id", requireProjectManager("project
     res.status(404).json({ error: "العضو غير موجود" });
     return;
   }
+
+  // Removing a membership may flip user back to "incomplete".
+  invalidateProfileCache(deleted.userId);
 
   res.sendStatus(204);
 });

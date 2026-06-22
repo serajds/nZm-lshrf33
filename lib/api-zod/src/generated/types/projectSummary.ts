@@ -17,6 +17,11 @@ export interface ProjectSummary {
   totalDays: number;
   daysRemaining: number;
   delayDays: number;
+  suspensionDays: number;
+  netDelayDays: number;
+  /** Days passed after expectedEndDate while progress < 100% */
+  overrunDays?: number;
   reportsCount: number;
   filesCount: number;
+  noSchedule?: boolean;
 }

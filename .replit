@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "postgresql-16"]
+modules = ["nodejs-24", "python-3.11", "postgresql-16"]
 
 [[artifacts]]
 id = "artifacts/api-server"
@@ -22,6 +22,7 @@ runButton = "Project"
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
+integrations = ["onedrive:1.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
@@ -32,3 +33,28 @@ channel = "stable-25_05"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-e2a8d32d-ff8d-4db4-8adf-cea8f1ff447b"
+
+[userenv]
+
+[userenv.shared]
+JWT_SECRET = "a82ef16d017a25a63404b5cf20071ab7331c4aa87dda0e95a5ab1b066ed99b4b3315cd173135f8aaf2ba278eadf41af44cbde1b5bc81e9d743ab26c7d17e994f"
+SETUP_SECRET = "edb6577074ff7337c566cf261642acddda784f0e4bc6c82d9ada22ba48df57c7"
+VAPID_PUBLIC_KEY = "BACSqHGq4j2NZIuUekeKDo38_aLE-PFG13ZPcVH0OYJnKC430B0OQvRipmPsO7XcKiToXqQezQnNeVV5VugrMes"
+VAPID_PRIVATE_KEY = "-NbiHuJMMUXThgwLoPfupwgPI13AW8VQqQBoumLhmZM"
+VAPID_SUBJECT = "mailto:notify@construction-supervision.local"
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 18115
+externalPort = 80
+
+[[ports]]
+localPort = 22349
+externalPort = 3000

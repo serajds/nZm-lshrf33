@@ -28,6 +28,8 @@ tags:
     description: Project member management
   - name: dashboard
     description: Dashboard analytics
+  - name: attendance
+    description: Staff attendance check-in/check-out
 
 paths:
   /healthz:
@@ -68,6 +70,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Account not yet activated by admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /auth/logout:
     post:
@@ -81,6 +89,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Self-register a new user (name, phone, password). The new account starts inactive — no token is issued; the admin must link the user to a company and project before they can log in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterBody"
+      responses:
+        "201":
+          description: Account created (inactive — awaiting admin activation)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+        "409":
+          description: Phone already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /auth/me:
     get:
@@ -474,6 +513,68 @@ paths:
         "204":
           description: Deleted
 
+  /projects/{projectId}/reports/{id}/status:
+    patch:
+      operationId: updateReportStatus
+      tags: [reports]
+      summary: Approve or revert a report (project_manager / admin)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReportStatusBody"
+      responses:
+        "200":
+          description: Updated report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /projects/{projectId}/reports/{id}/audit-log:
+    get:
+      operationId: getReportAuditLog
+      tags: [reports]
+      summary: Get the activity log for a single report
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Activity log entries (newest first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReportAuditLogEntry"
+
   /projects/{projectId}/reports/export-pdf:
     get:
       operationId: exportReportsPdf
@@ -755,6 +856,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProjectPermissions"
 
+  /projects/{projectId}/members/{id}/permissions:
+    get:
+      operationId: getMemberTabPermissions
+      tags: [project-members]
+      summary: Get effective per-tab permissions for a project member
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Effective tab permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberTabPermissions"
+    put:
+      operationId: updateMemberTabPermissions
+      tags: [project-members]
+      summary: Update per-tab permission overrides for a project member
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tabPermissions:
+                  oneOf:
+                    - $ref: "#/components/schemas/TabPermissionsMap"
+                    - type: "null"
+              required:
+                - tabPermissions
+      responses:
+        "200":
+          description: Updated permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberTabPermissions"
+
   # Users
   /users:
     get:
@@ -787,6 +947,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+
+  /users/incomplete-count:
+    get:
+      operationId: getIncompleteUsersCount
+      tags: [users]
+      summary: Count of users with incomplete profile (no company or no project)
+      responses:
+        "200":
+          description: Count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                required:
+                  - count
 
   /users/{id}:
     patch:
@@ -885,6 +1063,95 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # Backup
+  /backup/create:
+    post:
+      operationId: createBackup
+      tags: [backup]
+      summary: Create a full database backup
+      responses:
+        "200":
+          description: Backup created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  filename:
+                    type: string
+                  size:
+                    type: integer
+                  createdAt:
+                    type: string
+                  stats:
+                    type: object
+  /backup/list:
+    get:
+      operationId: listBackups
+      tags: [backup]
+      summary: List all available backups
+      responses:
+        "200":
+          description: List of backups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                        size:
+                          type: integer
+                        createdAt:
+                          type: string
+  /backup/download/{filename}:
+    get:
+      operationId: downloadBackup
+      tags: [backup]
+      summary: Download a backup file
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Backup file download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+  /backup/{filename}:
+    delete:
+      operationId: deleteBackup
+      tags: [backup]
+      summary: Delete a backup file
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Backup deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
   # Dashboard
   /dashboard/summary:
     get:
@@ -929,6 +1196,14 @@ paths:
           required: true
           schema:
             type: integer
+        - name: curve
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [linear, scurve]
+            default: linear
+          description: Planned-progress curve model used for the calculation.
       responses:
         "200":
           description: Deviation analysis
@@ -936,6 +1211,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeviationAnalysis"
+
+  /projects/{projectId}/deviation/timeline:
+    get:
+      operationId: getProjectDeviationTimeline
+      tags: [dashboard]
+      summary: Get historical deviation time-series for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: curve
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [linear, scurve]
+            default: linear
+          description: Planned-progress curve model used for the historical points.
+      responses:
+        "200":
+          description: Deviation timeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviationTimeline"
 
   /projects/{projectId}/generate-owner-link:
     post:
@@ -961,6 +1263,256 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OwnerLinkResponse"
+
+  # Attendance
+  /attendance/my-status:
+    get:
+      operationId: getMyAttendanceStatus
+      tags: [attendance]
+      summary: Get my current check-in status across my projects
+      responses:
+        "200":
+          description: Status per project
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MyAttendanceProjectStatus"
+
+  /attendance/my-history:
+    get:
+      operationId: getMyAttendanceHistory
+      tags: [attendance]
+      summary: Get my attendance history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: projectId
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: My attendance history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MyAttendanceHistoryItem"
+
+  /attendance/records/{recordId}:
+    patch:
+      operationId: updateAttendanceRecord
+      tags: [attendance]
+      summary: Edit an attendance record (admin or PM)
+      parameters:
+        - name: recordId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAttendanceRecordBody"
+      responses:
+        "200":
+          description: Updated record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceRecord"
+    delete:
+      operationId: deleteAttendanceRecord
+      tags: [attendance]
+      summary: Delete an attendance record (admin or PM)
+      parameters:
+        - name: recordId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteAttendanceRecordBody"
+      responses:
+        "204":
+          description: Deleted
+
+  /attendance/projects/{projectId}/check-in:
+    post:
+      operationId: attendanceCheckIn
+      tags: [attendance]
+      summary: Check in to a project (site photo + GPS required)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/AttendanceCheckBody"
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceRecord"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflicting state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /attendance/projects/{projectId}/check-out:
+    post:
+      operationId: attendanceCheckOut
+      tags: [attendance]
+      summary: Check out of a project (site photo + GPS required)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/AttendanceCheckBody"
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceRecord"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflicting state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /attendance/projects/{projectId}/active:
+    get:
+      operationId: getActiveAttendance
+      tags: [attendance]
+      summary: List members currently checked in
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Currently checked-in members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveAttendanceResponse"
+
+  /attendance/projects/{projectId}/records:
+    get:
+      operationId: listAttendanceRecords
+      tags: [attendance]
+      summary: List attendance records (with filters)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: ["string", "null"]
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: ["string", "null"]
+            format: date
+        - name: userId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Attendance records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceRecordWithUser"
+
+  /attendance/projects/{projectId}/users/{userId}/report:
+    get:
+      operationId: getEmployeeAttendanceReport
+      tags: [attendance]
+      summary: Per-employee daily attendance report
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: ["string", "null"]
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: ["string", "null"]
+            format: date
+      responses:
+        "200":
+          description: Report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeAttendanceReport"
 
 components:
   schemas:
@@ -1028,6 +1580,28 @@ components:
         - user
         - token
 
+    RegisterResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+      required:
+        - user
+
+    RegisterBody:
+      type: object
+      properties:
+        fullName:
+          type: string
+        phone:
+          type: string
+        password:
+          type: string
+      required:
+        - fullName
+        - phone
+        - password
+
     # User
     UserCompany:
       type: object
@@ -1040,6 +1614,21 @@ components:
         - companyId
         - companyName
 
+    UserProjectMembership:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        projectName:
+          type: string
+        role:
+          type: string
+          enum: [project_manager, engineer, contractor, viewer]
+      required:
+        - projectId
+        - projectName
+        - role
+
     User:
       type: object
       properties:
@@ -1051,11 +1640,19 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, project_manager, engineer, owner]
+          enum: [admin, project_manager, engineer, owner, contractor]
         companies:
           type: array
           items:
             $ref: "#/components/schemas/UserCompany"
+        projects:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserProjectMembership"
+        incompleteProfile:
+          type: boolean
+        projectMembershipsCount:
+          type: integer
         createdAt:
           type: string
           format: date-time
@@ -1077,8 +1674,12 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, project_manager, engineer, owner]
+          enum: [admin, project_manager, engineer, owner, contractor]
         companyIds:
+          type: array
+          items:
+            type: integer
+        projectIds:
           type: array
           items:
             type: integer
@@ -1099,7 +1700,7 @@ components:
           type: integer
         role:
           type: string
-          enum: [project_manager, engineer]
+          enum: [project_manager, engineer, contractor, viewer]
         createdAt:
           type: string
           format: date-time
@@ -1134,7 +1735,7 @@ components:
           type: integer
         role:
           type: string
-          enum: [project_manager, engineer]
+          enum: [project_manager, engineer, contractor, viewer]
         assignedGroupIds:
           type: array
           items:
@@ -1148,7 +1749,7 @@ components:
       properties:
         role:
           type: string
-          enum: [project_manager, engineer]
+          enum: [project_manager, engineer, contractor, viewer]
         assignedGroupIds:
           type: array
           items:
@@ -1167,9 +1768,63 @@ components:
             type: integer
         canEditAll:
           type: boolean
+        isViewer:
+          type: boolean
+        tabPermissions:
+          $ref: "#/components/schemas/TabPermissionsMap"
       required:
         - role
         - canEditAll
+
+    TabAccess:
+      type: string
+      enum: [hidden, view, edit]
+
+    TabPermissionsMap:
+      type: object
+      properties:
+        overview:
+          $ref: "#/components/schemas/TabAccess"
+        activities:
+          $ref: "#/components/schemas/TabAccess"
+        extensions:
+          $ref: "#/components/schemas/TabAccess"
+        suspensions:
+          $ref: "#/components/schemas/TabAccess"
+        reports:
+          $ref: "#/components/schemas/TabAccess"
+        forms:
+          $ref: "#/components/schemas/TabAccess"
+        attendance:
+          $ref: "#/components/schemas/TabAccess"
+        files:
+          $ref: "#/components/schemas/TabAccess"
+        deviation:
+          $ref: "#/components/schemas/TabAccess"
+
+    MemberTabPermissions:
+      type: object
+      properties:
+        memberId:
+          type: integer
+        projectId:
+          type: integer
+        userId:
+          type: integer
+        role:
+          type: string
+        overrides:
+          oneOf:
+            - $ref: "#/components/schemas/TabPermissionsMap"
+            - type: "null"
+        effective:
+          $ref: "#/components/schemas/TabPermissionsMap"
+      required:
+        - memberId
+        - projectId
+        - userId
+        - role
+        - effective
 
     UpdateUserBody:
       type: object
@@ -1183,6 +1838,10 @@ components:
         password:
           type: ["string", "null"]
         companyIds:
+          type: array
+          items:
+            type: integer
+        projectIds:
           type: array
           items:
             type: integer
@@ -1204,10 +1863,10 @@ components:
         contractor:
           type: string
         startDate:
-          type: string
+          type: ["string", "null"]
           format: date
         expectedEndDate:
-          type: string
+          type: ["string", "null"]
           format: date
         actualEndDate:
           type: ["string", "null"]
@@ -1217,8 +1876,20 @@ components:
           enum: [active, completed, delayed, suspended]
         overallProgress:
           type: number
+        noSchedule:
+          type: boolean
         ownerAccessToken:
           type: ["string", "null"]
+        siteLatitude:
+          type: ["number", "null"]
+        siteLongitude:
+          type: ["number", "null"]
+        siteRadiusMeters:
+          type: ["integer", "null"]
+        attendanceAutoCloseHours:
+          type: integer
+        attendanceLongDayHours:
+          type: integer
         createdAt:
           type: string
           format: date-time
@@ -1232,10 +1903,11 @@ components:
         - ownerEntity
         - supervisorEntity
         - contractor
-        - startDate
-        - expectedEndDate
         - status
         - overallProgress
+        - noSchedule
+        - attendanceAutoCloseHours
+        - attendanceLongDayHours
         - createdAt
         - updatedAt
 
@@ -1253,11 +1925,14 @@ components:
         contractor:
           type: string
         startDate:
-          type: string
+          type: ["string", "null"]
           format: date
         expectedEndDate:
-          type: string
+          type: ["string", "null"]
           format: date
+        noSchedule:
+          type: boolean
+          default: false
         status:
           type: string
           enum: [active, completed, delayed, suspended]
@@ -1268,8 +1943,6 @@ components:
         - ownerEntity
         - supervisorEntity
         - contractor
-        - startDate
-        - expectedEndDate
 
     UpdateProjectBody:
       type: object
@@ -1293,11 +1966,19 @@ components:
         actualEndDate:
           type: ["string", "null"]
           format: date
+        noSchedule:
+          type: ["boolean", "null"]
         status:
           type: ["string", "null"]
           enum: [active, completed, delayed, suspended, null]
         overallProgress:
           type: ["number", "null"]
+        siteLatitude:
+          type: ["number", "null"]
+        siteLongitude:
+          type: ["number", "null"]
+        siteRadiusMeters:
+          type: ["integer", "null"]
 
     # Activities
     Activity:
@@ -1310,10 +1991,10 @@ components:
         name:
           type: string
         plannedStartDate:
-          type: string
+          type: ["string", "null"]
           format: date
         plannedEndDate:
-          type: string
+          type: ["string", "null"]
           format: date
         actualStartDate:
           type: ["string", "null"]
@@ -1325,6 +2006,10 @@ components:
           type: number
         actualProgress:
           type: number
+        weight:
+          type: number
+          description: Relative weight (cost share / volume share). Default 1.
+          default: 1
         status:
           type: string
           enum: [not_started, in_progress, completed, delayed]
@@ -1339,10 +2024,9 @@ components:
         - id
         - projectId
         - name
-        - plannedStartDate
-        - plannedEndDate
         - plannedProgress
         - actualProgress
+        - weight
         - status
         - sortOrder
         - createdAt
@@ -1353,10 +2037,10 @@ components:
         name:
           type: string
         plannedStartDate:
-          type: string
+          type: ["string", "null"]
           format: date
         plannedEndDate:
-          type: string
+          type: ["string", "null"]
           format: date
         actualStartDate:
           type: ["string", "null"]
@@ -1370,6 +2054,9 @@ components:
         actualProgress:
           type: number
           default: 0
+        weight:
+          type: number
+          default: 1
         status:
           type: string
           enum: [not_started, in_progress, completed, delayed]
@@ -1381,8 +2068,6 @@ components:
           type: ["integer", "null"]
       required:
         - name
-        - plannedStartDate
-        - plannedEndDate
 
     UpdateActivityBody:
       type: object
@@ -1404,6 +2089,8 @@ components:
         plannedProgress:
           type: ["number", "null"]
         actualProgress:
+          type: ["number", "null"]
+        weight:
           type: ["number", "null"]
         status:
           type: ["string", "null"]
@@ -1447,6 +2134,20 @@ components:
           type: array
           items:
             type: string
+        imageGroups:
+          type: ["array", "null"]
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              urls:
+                type: array
+                items:
+                  type: string
+            required:
+              - category
+              - urls
         activitiesSnapshot:
           type: ["array", "null"]
           items:
@@ -1468,10 +2169,21 @@ components:
                 type: number
               actualProgress:
                 type: number
+              weight:
+                type: number
+                description: Activity weight (cost/volume share) used for the report's weighted progress.
               status:
                 type: string
               sortOrder:
                 type: integer
+        status:
+          type: string
+          enum: [draft, approved]
+        approvedAt:
+          type: ["string", "null"]
+          format: date-time
+        approvedById:
+          type: ["integer", "null"]
         createdById:
           type: ["integer", "null"]
         createdAt:
@@ -1490,6 +2202,7 @@ components:
         - workDescription
         - progressPercentage
         - imageUrls
+        - status
         - createdAt
         - updatedAt
 
@@ -1520,6 +2233,20 @@ components:
           type: array
           items:
             type: string
+        imageGroups:
+          type: ["array", "null"]
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              urls:
+                type: array
+                items:
+                  type: string
+            required:
+              - category
+              - urls
       required:
         - type
         - reportDate
@@ -1527,6 +2254,39 @@ components:
         - periodEnd
         - workDescription
         - progressPercentage
+
+    ReportAuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        action:
+          type: string
+          enum: [create, update, delete]
+        entityName:
+          type: ["string", "null"]
+        userId:
+          type: ["integer", "null"]
+        userName:
+          type: ["string", "null"]
+        userFullName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - action
+        - createdAt
+
+    UpdateReportStatusBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [draft, approved]
+      required:
+        - status
 
     UpdateReportBody:
       type: object
@@ -1555,6 +2315,40 @@ components:
           type: array
           items:
             type: string
+        imageGroups:
+          type: ["array", "null"]
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              urls:
+                type: array
+                items:
+                  type: string
+            required:
+              - category
+              - urls
+        activitiesSnapshot:
+          type: ["array", "null"]
+          description: |
+            Partial-merge update for the report's activities snapshot. Each item
+            must carry the snapshot row `id`; only `actualProgress` and `status`
+            are applied. Unknown ids are ignored; rows omitted from the payload
+            are kept unchanged. When provided WITHOUT an explicit
+            `progressPercentage`, the server recomputes the report's overall
+            progress as a weighted average using each row's stored `weight`.
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              actualProgress:
+                type: number
+              status:
+                type: string
+            required:
+              - id
 
     # Files
     ProjectFile:
@@ -1656,22 +2450,102 @@ components:
           type: integer
         delayedProjects:
           type: integer
+        suspendedProjects:
+          type: integer
         averageProgress:
           type: number
         totalReports:
+          type: integer
+        totalActivities:
+          type: integer
+        completedActivities:
+          type: integer
+        delayedActivities:
+          type: integer
+        inProgressActivities:
           type: integer
         recentProjects:
           type: array
           items:
             $ref: "#/components/schemas/Project"
+        allProjects:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              overallProgress:
+                type: number
+              plannedProgress:
+                type: number
+              status:
+                type: string
+              daysRemaining:
+                type: integer
+              ownerEntity:
+                type: ["string", "null"]
+              startDate:
+                type: ["string", "null"]
+              expectedEndDate:
+                type: ["string", "null"]
+              noSchedule:
+                type: boolean
+              overrunDays:
+                type: integer
+                description: Days passed after expectedEndDate while progress < 100%
+        recentReports:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              projectId:
+                type: integer
+              type:
+                type: string
+              reportDate:
+                type: string
+              progressPercentage:
+                type: number
+        delayedActivitiesList:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              projectId:
+                type: integer
+              projectName:
+                type: string
+              plannedEndDate:
+                type: ["string", "null"]
+              actualProgress:
+                type: number
+              delayDays:
+                type: integer
       required:
         - totalProjects
         - activeProjects
         - completedProjects
         - delayedProjects
+        - suspendedProjects
         - averageProgress
         - totalReports
+        - totalActivities
+        - completedActivities
+        - delayedActivities
+        - inProgressActivities
         - recentProjects
+        - allProjects
+        - recentReports
+        - delayedActivitiesList
 
     ProjectSummary:
       type: object
@@ -1696,10 +2570,19 @@ components:
           type: integer
         delayDays:
           type: integer
+        suspensionDays:
+          type: integer
+        netDelayDays:
+          type: integer
+        overrunDays:
+          type: integer
+          description: Days passed after expectedEndDate while progress < 100%
         reportsCount:
           type: integer
         filesCount:
           type: integer
+        noSchedule:
+          type: boolean
       required:
         - projectId
         - overallProgress
@@ -1711,6 +2594,8 @@ components:
         - totalDays
         - daysRemaining
         - delayDays
+        - suspensionDays
+        - netDelayDays
         - reportsCount
         - filesCount
 
@@ -1723,13 +2608,84 @@ components:
           type: number
         progressDeviation:
           type: number
+        plannedProgress:
+          type: number
+          description: Weighted planned progress for the project at today's date.
+        actualProgress:
+          type: number
+          description: Weighted actual progress (overall project progress).
         status:
           type: string
           enum: [on_track, slightly_delayed, significantly_delayed, ahead]
+        criticalPathStatus:
+          type: string
+          enum: [healthy, at_risk, critical]
+          description: Health of the critical path based on the count of activities deviating > 10%.
+        suspensionDays:
+          type: integer
+        grossDelayDays:
+          type: integer
+        netDelayDays:
+          type: integer
+        overrunDays:
+          type: integer
+          description: Days passed after expectedEndDate while progress < 100%
+        spi:
+          type: ["number", "null"]
+          description: Schedule Performance Index = actual / planned (>1 ahead, <1 behind).
+        forecastCompletionDate:
+          type: ["string", "null"]
+          format: date
+          description: Forecast completion date if the current pace continues.
+        expectedProgressAtEnd:
+          type: number
+          description: Expected progress percentage at the contractual end date if the current pace continues.
+        contractEndDate:
+          type: ["string", "null"]
+          format: date
+        forecastDelayDays:
+          type: integer
+          description: Days between forecastCompletionDate and contractEndDate (positive = late).
+        suspensionsBreakdown:
+          type: array
+          description: Breakdown of suspension days by cause type.
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [official_holiday, force_majeure, contractor_delay]
+              days:
+                type: integer
+              count:
+                type: integer
+            required:
+              - type
+              - days
+              - count
+        recommendations:
+          type: array
+          description: Auto-generated recommendations based on the project state.
+          items:
+            type: object
+            properties:
+              severity:
+                type: string
+                enum: [info, warning, critical]
+              title:
+                type: string
+              description:
+                type: string
+            required:
+              - severity
+              - title
+              - description
         activitiesAnalysis:
           type: array
           items:
             $ref: "#/components/schemas/ActivityDeviation"
+        noSchedule:
+          type: boolean
       required:
         - projectId
         - timeDeviation
@@ -1750,11 +2706,434 @@ components:
           type: number
         deviation:
           type: number
+        weight:
+          type: number
+          description: Activity weight used in the project-level weighted average.
+        weightedImpact:
+          type: number
+          description: Contribution of this activity's deviation to overall project deviation (= deviation × weight / totalWeight).
         delayDays:
           type: ["integer", "null"]
+          description: Deprecated alias for overrunDays (kept for backward compatibility)
+        overrunDays:
+          type: ["integer", "null"]
+          description: Days past activity plannedEndDate while not completed
       required:
         - activityId
         - activityName
         - plannedProgress
         - actualProgress
         - deviation
+
+    DeviationTimelinePoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        plannedProgress:
+          type: number
+        actualProgress:
+          type: number
+        deviation:
+          type: number
+      required:
+        - date
+        - plannedProgress
+        - actualProgress
+        - deviation
+
+    DeviationTimeline:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        noSchedule:
+          type: boolean
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviationTimelinePoint"
+        suspensionsBreakdown:
+          type: array
+          description: Breakdown of suspension days by cause type for this project.
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [official_holiday, force_majeure, contractor_delay]
+              days:
+                type: integer
+              count:
+                type: integer
+            required:
+              - type
+              - days
+              - count
+      required:
+        - projectId
+        - points
+        - suspensionsBreakdown
+
+    AttendanceCheckBody:
+      type: object
+      required:
+        - selfie
+        - latitude
+        - longitude
+      properties:
+        selfie:
+          type: string
+          format: binary
+        latitude:
+          type: number
+        longitude:
+          type: number
+        accuracy:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+
+    UpdateAttendanceRecordBody:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+        type:
+          type: ["string", "null"]
+          enum: [check_in, check_out, null]
+        recordedAt:
+          type: ["string", "null"]
+          format: date-time
+        notes:
+          type: ["string", "null"]
+
+    DeleteAttendanceRecordBody:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+
+    AttendanceRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        userId:
+          type: integer
+        type:
+          type: string
+          enum: [check_in, check_out]
+        recordedAt:
+          type: string
+          format: date-time
+        latitude:
+          type: ["number", "null"]
+        longitude:
+          type: ["number", "null"]
+        accuracyMeters:
+          type: ["number", "null"]
+        distanceMeters:
+          type: ["number", "null"]
+        outOfRange:
+          type: boolean
+        selfieFilename:
+          type: ["string", "null"]
+        selfieUrl:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - id
+        - projectId
+        - userId
+        - type
+        - recordedAt
+        - outOfRange
+
+    AttendanceRecordWithUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        fullName:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [check_in, check_out]
+        recordedAt:
+          type: string
+          format: date-time
+        latitude:
+          type: ["number", "null"]
+        longitude:
+          type: ["number", "null"]
+        accuracyMeters:
+          type: ["number", "null"]
+        distanceMeters:
+          type: ["number", "null"]
+        outOfRange:
+          type: boolean
+        selfieUrl:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        editedAt:
+          type: ["string", "null"]
+          format: date-time
+        editedByUserId:
+          type: ["integer", "null"]
+        editReason:
+          type: ["string", "null"]
+      required:
+        - id
+        - userId
+        - type
+        - recordedAt
+        - outOfRange
+
+    MyAttendanceProjectStatus:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        projectName:
+          type: string
+        hasSiteLocation:
+          type: boolean
+        siteLatitude:
+          type: ["number", "null"]
+        siteLongitude:
+          type: ["number", "null"]
+        siteRadiusMeters:
+          type: ["integer", "null"]
+        currentlyCheckedIn:
+          type: boolean
+        lastRecord:
+          oneOf:
+            - $ref: "#/components/schemas/AttendanceRecord"
+            - type: "null"
+      required:
+        - projectId
+        - projectName
+        - hasSiteLocation
+        - currentlyCheckedIn
+
+    MyAttendanceHistoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        projectName:
+          type: ["string", "null"]
+        userId:
+          type: integer
+        type:
+          type: string
+          enum: [check_in, check_out]
+        recordedAt:
+          type: string
+          format: date-time
+        latitude:
+          type: ["number", "null"]
+        longitude:
+          type: ["number", "null"]
+        accuracyMeters:
+          type: ["number", "null"]
+        distanceMeters:
+          type: ["number", "null"]
+        outOfRange:
+          type: boolean
+        selfieUrl:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - id
+        - projectId
+        - userId
+        - type
+        - recordedAt
+        - outOfRange
+
+    ActiveAttendanceMember:
+      type: object
+      properties:
+        recordId:
+          type: integer
+        userId:
+          type: integer
+        fullName:
+          type: string
+        phone:
+          type: ["string", "null"]
+        userRole:
+          type: ["string", "null"]
+        checkedInAt:
+          type: string
+          format: date-time
+        latitude:
+          type: ["number", "null"]
+        longitude:
+          type: ["number", "null"]
+        accuracyMeters:
+          type: ["number", "null"]
+        distanceMeters:
+          type: ["number", "null"]
+        outOfRange:
+          type: boolean
+        selfieUrl:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - recordId
+        - userId
+        - fullName
+        - checkedInAt
+        - outOfRange
+
+    ActiveAttendanceResponse:
+      type: object
+      properties:
+        activeCount:
+          type: integer
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActiveAttendanceMember"
+      required:
+        - activeCount
+        - members
+
+    AttendanceReportSession:
+      type: object
+      properties:
+        checkInRecordId:
+          type: integer
+        checkOutRecordId:
+          type: ["integer", "null"]
+        checkInAt:
+          type: string
+          format: date-time
+        checkOutAt:
+          type: ["string", "null"]
+          format: date-time
+        durationMinutes:
+          type: ["integer", "null"]
+        status:
+          type: string
+          enum: [closed, open, auto_closed]
+      required:
+        - checkInRecordId
+        - checkInAt
+        - status
+
+    EmployeeAttendanceDay:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttendanceReportSession"
+        totalMinutes:
+          type: integer
+        flags:
+          type: object
+          properties:
+            incomplete:
+              type: boolean
+            longDay:
+              type: boolean
+          required:
+            - incomplete
+            - longDay
+      required:
+        - date
+        - sessions
+        - totalMinutes
+        - flags
+
+    EmployeeAttendanceReport:
+      type: object
+      properties:
+        project:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            attendanceAutoCloseHours:
+              type: integer
+            attendanceLongDayHours:
+              type: integer
+          required: [id, name]
+        employee:
+          type: object
+          properties:
+            id:
+              type: integer
+            fullName:
+              type: string
+            phone:
+              type: ["string", "null"]
+            role:
+              type: ["string", "null"]
+          required: [id, fullName]
+        dateFrom:
+          type: ["string", "null"]
+          format: date
+        dateTo:
+          type: ["string", "null"]
+          format: date
+        autoCloseHours:
+          type: integer
+        longDayHours:
+          type: integer
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeeAttendanceDay"
+        summary:
+          type: object
+          properties:
+            totalMinutes:
+              type: integer
+            workDays:
+              type: integer
+            averageDailyMinutes:
+              type: integer
+            incompleteDays:
+              type: integer
+            longDays:
+              type: integer
+          required:
+            - totalMinutes
+            - workDays
+            - averageDailyMinutes
+            - incompleteDays
+            - longDays
+      required:
+        - project
+        - employee
+        - days
+        - summary
+        - autoCloseHours
+        - longDayHours

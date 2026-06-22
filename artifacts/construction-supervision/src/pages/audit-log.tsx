@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ type AuditEntry = {
   id: number;
   userId: number | null;
   userName: string | null;
+  userFullName: string | null;
   action: string;
   entityType: string;
   entityId: number | null;
@@ -27,18 +29,25 @@ type AuditEntry = {
   createdAt: string;
 };
 
-function authFetch(url: string) {
+async function authFetch(url: string): Promise<AuditEntry[]> {
   const token = localStorage.getItem("auth_token");
-  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.json());
+  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 }
 
 const ACTION_LABELS: Record<string, string> = { create: "إنشاء", update: "تعديل", delete: "حذف" };
 const ACTION_COLORS: Record<string, string> = { create: "bg-green-100 text-green-700", update: "bg-blue-100 text-blue-700", delete: "bg-red-100 text-red-700" };
-const ENTITY_LABELS: Record<string, string> = { project: "مشروع", activity: "نشاط", report: "تقرير", user: "مستخدم" };
+const ENTITY_LABELS: Record<string, string> = { project: "مشروع", activity: "بند عمل", report: "تقرير", user: "مستخدم" };
 
 const ACTION_ICONS: Record<string, typeof Plus> = { create: Plus, update: Edit2, delete: Trash2 };
 
 export default function AuditLogPage() {
+  usePageTitle("سجل التدقيق");
   const [entityType, setEntityType] = useState<string>("all");
   const [action, setAction] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -81,7 +90,7 @@ export default function AuditLogPage() {
                   <SelectContent dir="rtl">
                     <SelectItem value="all">كل الأنواع</SelectItem>
                     <SelectItem value="project">مشروع</SelectItem>
-                    <SelectItem value="activity">نشاط</SelectItem>
+                    <SelectItem value="activity">بند عمل</SelectItem>
                     <SelectItem value="report">تقرير</SelectItem>
                     <SelectItem value="user">مستخدم</SelectItem>
                   </SelectContent>
@@ -146,7 +155,7 @@ export default function AuditLogPage() {
                               {new Date(log.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
                             </span>
                           </TableCell>
-                          <TableCell className="text-sm">{log.userName ?? "—"}</TableCell>
+                          <TableCell className="text-sm">{log.userFullName ?? log.userName ?? "—"}</TableCell>
                           <TableCell>
                             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${ACTION_COLORS[log.action] ?? "bg-gray-100 text-gray-700"}`}>
                               <Icon className="h-3 w-3" />
@@ -183,7 +192,7 @@ export default function AuditLogPage() {
                       </div>
                       <div className="text-sm font-medium truncate">{log.entityName ?? "—"}</div>
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{log.userName ?? "—"}</span>
+                        <span>{log.userFullName ?? log.userName ?? "—"}</span>
                         <span className="tabular-nums">
                           {new Date(log.createdAt).toLocaleDateString("en-GB")}{" "}
                           {new Date(log.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}

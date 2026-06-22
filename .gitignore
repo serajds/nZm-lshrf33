@@ -11,6 +11,10 @@ out-tsc
 # dependencies
 node_modules
 
+# user-uploaded files (PII: selfies, photos, attachments)
+artifacts/*/uploads/
+uploads/
+
 # IDEs and editors
 /.idea
 .project
@@ -44,6 +48,11 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
+# Backups
+backups/
+**/backups/
+
 # Replit
 .cache/
 .local/
+.env
