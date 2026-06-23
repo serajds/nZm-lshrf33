@@ -402,7 +402,7 @@ function SelfCheckCard({
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           {isCheckedIn ? (
-            <Badge className="bg-green-600 hover:bg-green-600 text-white">مسجّل حضور الآن</Badge>
+            <Badge className="bg-green-600 hover:bg-green-600">مسجّل حضور الآن</Badge>
           ) : (
             <Badge variant="secondary">غير حاضر</Badge>
           )}
@@ -497,7 +497,7 @@ function ActiveTab({
                     {m.outOfRange ? (
                       <Badge variant="destructive" className="shrink-0">خارج النطاق</Badge>
                     ) : (
-                      <Badge className="bg-green-600 hover:bg-green-600 shrink-0 text-white">داخل النطاق</Badge>
+                      <Badge className="bg-green-600 hover:bg-green-600 shrink-0">داخل النطاق</Badge>
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -569,7 +569,7 @@ function ActiveTab({
                         {m.outOfRange ? (
                           <Badge variant="destructive">خارج النطاق</Badge>
                         ) : (
-                          <Badge className="bg-green-600 hover:bg-green-600 text-white">داخل النطاق</Badge>
+                          <Badge className="bg-green-600 hover:bg-green-600">داخل النطاق</Badge>
                         )}
                       </td>
                       <td className="px-2 py-2">
@@ -737,14 +737,14 @@ function RecordsTable({ rows, showName, canManage = false, onMutated, onShowPhot
                 )}
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {r.type === "check_in" ? (
-                    <Badge className="bg-green-600 hover:bg-green-600 text-white">حضور</Badge>
+                    <Badge className="bg-green-600 hover:bg-green-600">حضور</Badge>
                   ) : (
                     <Badge variant="secondary">انصراف</Badge>
                   )}
                   {r.outOfRange ? (
                     <Badge variant="destructive">خارج النطاق</Badge>
                   ) : (
-                    <Badge className="bg-green-600 hover:bg-green-600 text-white">داخل النطاق</Badge>
+                    <Badge className="bg-green-600 hover:bg-green-600">داخل النطاق</Badge>
                   )}
                   {r.editedAt && (
                     <Badge
@@ -815,7 +815,7 @@ function RecordsTable({ rows, showName, canManage = false, onMutated, onShowPhot
                 <td className="px-2 py-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {r.type === "check_in" ? (
-                      <Badge className="bg-green-600 hover:bg-green-600 text-white">حضور</Badge>
+                      <Badge className="bg-green-600 hover:bg-green-600">حضور</Badge>
                     ) : (
                       <Badge variant="secondary">انصراف</Badge>
                     )}
@@ -847,7 +847,7 @@ function RecordsTable({ rows, showName, canManage = false, onMutated, onShowPhot
                 </td>
                 <td className="px-2 py-2 text-xs">{r.distanceMeters != null ? `${Math.round(r.distanceMeters)} م` : "—"}</td>
                 <td className="px-2 py-2">
-                  {r.outOfRange ? <Badge variant="destructive">خارج النطاق</Badge> : <Badge className="bg-green-600 hover:bg-green-600 text-white">داخل النطاق</Badge>}
+                  {r.outOfRange ? <Badge variant="destructive">خارج النطاق</Badge> : <Badge className="bg-green-600 hover:bg-green-600">داخل النطاق</Badge>}
                 </td>
                 <td className="px-2 py-2">
                   {r.selfieUrl ? (
@@ -950,45 +950,38 @@ function EditRecordDialog({ record, onClose, onSaved }: {
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent dir="rtl" className="max-w-md p-0 overflow-hidden">
-        <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
-          <DialogHeader>
-            <DialogTitle className="text-xl">تعديل سجل الحضور</DialogTitle>
-          </DialogHeader>
-        </div>
-        <div className="p-6 pt-4 space-y-6">
-          <div className="p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-4">
-            <div>
-              <Label className="text-sm font-semibold mb-2 block text-foreground/90">النوع</Label>
-              <Select value={type} onValueChange={(v) => setType(v as "check_in" | "check_out")} dir="rtl">
-                <SelectTrigger className="h-11 bg-background" dir="rtl"><SelectValue /></SelectTrigger>
-                <SelectContent dir="rtl">
-                  <SelectItem value="check_in">حضور</SelectItem>
-                  <SelectItem value="check_out">انصراف</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-sm font-semibold mb-2 block text-foreground/90">الوقت</Label>
-              <Input className="h-11 bg-background font-mono text-left" dir="ltr" type="datetime-local" value={recordedAt} onChange={(e) => setRecordedAt(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-sm font-semibold mb-2 block text-foreground/90">ملاحظات (اختياري)</Label>
-              <Input className="h-11 bg-background" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="اختياري" />
-            </div>
+      <DialogContent dir="rtl" className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>تعديل سجل الحضور</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">النوع</Label>
+            <Select value={type} onValueChange={(v) => setType(v as "check_in" | "check_out")} dir="rtl">
+              <SelectTrigger dir="rtl"><SelectValue /></SelectTrigger>
+              <SelectContent dir="rtl">
+                <SelectItem value="check_in">حضور</SelectItem>
+                <SelectItem value="check_out">انصراف</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 space-y-2 shadow-sm">
-            <Label className="text-sm font-semibold text-amber-700 dark:text-amber-500 block flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" />
-              سبب التعديل (إلزامي)
-            </Label>
-            <Input className="h-11 bg-background border-amber-500/30" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="اشرح سبب التعديل" />
+          <div>
+            <Label className="text-xs">الوقت</Label>
+            <Input type="datetime-local" value={recordedAt} onChange={(e) => setRecordedAt(e.target.value)} />
           </div>
-          <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
-            <Button variant="outline" className="w-full sm:w-auto" onClick={onClose} disabled={saving}>إلغاء والتراجع</Button>
-            <Button className="w-full sm:w-auto shadow-md" onClick={save} disabled={saving}>
+          <div>
+            <Label className="text-xs">ملاحظات</Label>
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="اختياري" />
+          </div>
+          <div>
+            <Label className="text-xs">سبب التعديل (إلزامي)</Label>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="اشرح سبب التعديل" />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={onClose} disabled={saving}>إلغاء</Button>
+            <Button onClick={save} disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : null}
-              حفظ التعديلات
+              حفظ
             </Button>
           </div>
         </div>
@@ -1032,28 +1025,23 @@ function DeleteRecordDialog({ record, onClose, onDeleted }: {
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent dir="rtl" className="max-w-md p-0 overflow-hidden">
-        <div className="bg-gradient-to-br from-red-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
-          <DialogHeader>
-            <DialogTitle className="text-xl text-red-600">حذف سجل الحضور</DialogTitle>
-          </DialogHeader>
-        </div>
-        <div className="p-6 pt-4 space-y-6">
-          <div className="text-sm text-foreground/80 leading-relaxed bg-muted/30 p-4 rounded-xl border border-border/50">
-            سيتم <strong className="text-destructive">حذف</strong> سجل {record.type === "check_in" ? "الحضور" : "الانصراف"} للموظف <span className="font-semibold text-primary">{record.fullName ?? ""}</span> بتاريخ <span className="font-semibold">{fmtLibyaDateTime(record.recordedAt)}</span> بشكل نهائي.
+      <DialogContent dir="rtl" className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>حذف سجل الحضور</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="text-sm text-muted-foreground">
+            سيتم حذف سجل {record.type === "check_in" ? "الحضور" : "الانصراف"} للموظف <span className="font-medium text-foreground">{record.fullName ?? ""}</span> بتاريخ <span className="font-medium text-foreground">{fmtLibyaDateTime(record.recordedAt)}</span>.
           </div>
-          <div className="p-4 rounded-xl border border-red-500/30 bg-red-500/5 dark:bg-red-500/10 space-y-2 shadow-sm">
-            <Label className="text-sm font-semibold text-red-700 dark:text-red-500 block flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" />
-              سبب الحذف (إلزامي)
-            </Label>
-            <Input className="h-11 bg-background border-red-500/30" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="اشرح سبب الحذف" />
+          <div>
+            <Label className="text-xs">سبب الحذف (إلزامي)</Label>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="اشرح سبب الحذف" />
           </div>
-          <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
-            <Button variant="outline" className="w-full sm:w-auto" onClick={onClose} disabled={busy}>إلغاء وتراجع</Button>
-            <Button variant="destructive" className="w-full sm:w-auto shadow-md" onClick={go} disabled={busy}>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={onClose} disabled={busy}>إلغاء</Button>
+            <Button variant="destructive" onClick={go} disabled={busy}>
               {busy ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : null}
-              تأكيد الحذف
+              حذف
             </Button>
           </div>
         </div>
@@ -1251,7 +1239,7 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
                     <div className="font-medium">{d.date}</div>
                     <div className="flex items-center gap-1 flex-wrap">
                       {d.flags.incomplete && <Badge variant="destructive">غير مكتمل</Badge>}
-                      {d.flags.longDay && <Badge className="bg-amber-500 hover:bg-amber-500 text-white">يوم طويل</Badge>}
+                      {d.flags.longDay && <Badge className="bg-amber-500 hover:bg-amber-500">يوم طويل</Badge>}
                       <Badge variant="outline">{fmtDurationHHMM(d.totalMinutes)}</Badge>
                     </div>
                   </div>
@@ -1318,7 +1306,7 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
                           <td className="px-2 py-2 whitespace-nowrap" rowSpan={sessions.length}>
                             <div className="flex flex-col gap-1">
                               {d.flags.incomplete && <Badge variant="destructive">غير مكتمل</Badge>}
-                              {d.flags.longDay && <Badge className="bg-amber-500 hover:bg-amber-500 text-white">يوم طويل</Badge>}
+                              {d.flags.longDay && <Badge className="bg-amber-500 hover:bg-amber-500">يوم طويل</Badge>}
                               {d.sessions.some(x => x.status === "auto_closed") && <Badge variant="outline">إغلاق تلقائي</Badge>}
                             </div>
                           </td>

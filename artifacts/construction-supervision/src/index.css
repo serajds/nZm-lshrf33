@@ -79,75 +79,75 @@ html, body, * {
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-  /* LIGHT MODE */
+/* LIGHT MODE */
 :root {
-  --button-outline: rgba(0,0,0, .05);
+  --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
 
   --opaque-button-border-intensity: -6;
 
   --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .06);
+  --elevate-2: rgba(0,0,0, .07);
 
-  /* Page background — clean soft pearl */
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
-  --border: 214 32% 91%;
+  /* Page background — clean neutral, no blue tint */
+  --background: 220 14% 95%;
+  --foreground: 220 22% 14%;
+  --border: 220 13% 88%;
 
   /* Cards — pure white */
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 214 32% 91%;
+  --card-foreground: 220 22% 14%;
+  --card-border: 220 13% 88%;
 
-  /* Sidebar — premium midnight blue */
-  --sidebar: 222 47% 11%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 222 40% 16%;
-  --sidebar-primary: 218 80% 45%;
+  /* Sidebar — deep charcoal */
+  --sidebar: 222 28% 11%;
+  --sidebar-foreground: 215 18% 80%;
+  --sidebar-border: 222 24% 16%;
+  --sidebar-primary: 213 60% 50%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 222 40% 18%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 218 80% 45%;
+  --sidebar-accent: 222 24% 17%;
+  --sidebar-accent-foreground: 215 18% 88%;
+  --sidebar-ring: 213 60% 50%;
 
   /* Popover */
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 214 32% 91%;
+  --popover-foreground: 220 22% 14%;
+  --popover-border: 220 13% 88%;
 
-  /* Primary — Deep Trust Blue */
-  --primary: 221 83% 40%;
+  /* Primary — calm steel blue */
+  --primary: 213 58% 38%;
   --primary-foreground: 0 0% 100%;
 
   /* Secondary */
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222 47% 11%;
+  --secondary: 220 12% 93%;
+  --secondary-foreground: 220 22% 20%;
 
   /* Muted */
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
+  --muted: 220 12% 93%;
+  --muted-foreground: 215 14% 50%;
 
-  /* Accent — Premium Gold/Amber */
-  --accent: 43 96% 56%;
-  --accent-foreground: 222 47% 11%;
+  /* Accent */
+  --accent: 220 12% 91%;
+  --accent-foreground: 220 22% 14%;
 
   /* Destructive */
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 0 68% 48%;
+  --destructive-foreground: 0 0% 100%;
 
-  --input: 214.3 31.8% 91.4%;
-  --ring: 221 83% 53.3%;
+  --input: 220 13% 86%;
+  --ring: 213 58% 38%;
 
-  /* Charts */
-  --chart-1: 221 83% 40%;
-  --chart-2: 43 96% 56%;
-  --chart-3: 158 52% 42%;
+  /* Charts — calm professional palette */
+  --chart-1: 213 58% 42%;
+  --chart-2: 158 52% 38%;
+  --chart-3: 36 62% 46%;
   --chart-4: 270 42% 52%;
   --chart-5: 0 58% 50%;
 
   --app-font-sans: 'Noto Kufi Arabic', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
-  --radius: 0.75rem;
+  --radius: .5rem;
 
   /* Real subtle shadows */
   --shadow-2xs: 0 1px 2px 0 rgba(0,0,0,0.04);
@@ -193,48 +193,47 @@ html, body, * {
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  --background: 222 47% 7%;
-  --foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  
-  --card: 222 47% 9%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217.2 32.6% 17.5%;
+  --background: 222 26% 9%;
+  --foreground: 215 18% 88%;
+  --border: 222 22% 18%;
+  --card: 222 24% 12%;
+  --card-foreground: 215 18% 88%;
+  --card-border: 222 22% 18%;
 
-  --sidebar: 222 47% 7%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 217.2 32.6% 17.5%;
-  --sidebar-primary: 221 83% 53.3%;
+  --sidebar: 222 28% 8%;
+  --sidebar-foreground: 215 18% 78%;
+  --sidebar-border: 222 24% 13%;
+  --sidebar-primary: 213 60% 52%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 217.2 32.6% 17.5%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 221 83% 53.3%;
+  --sidebar-accent: 222 24% 14%;
+  --sidebar-accent-foreground: 215 18% 85%;
+  --sidebar-ring: 213 60% 52%;
 
-  --popover: 222 47% 9%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217.2 32.6% 17.5%;
+  --popover: 222 24% 12%;
+  --popover-foreground: 215 18% 88%;
+  --popover-border: 222 22% 18%;
 
-  --primary: 221 83% 53.3%;
-  --primary-foreground: 222.2 47.4% 11.2%;
+  --primary: 213 62% 52%;
+  --primary-foreground: 0 0% 100%;
 
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 222 22% 18%;
+  --secondary-foreground: 215 18% 88%;
 
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
+  --muted: 222 22% 16%;
+  --muted-foreground: 215 14% 55%;
 
-  --accent: 43 96% 56%;
-  --accent-foreground: 222 47% 11%;
+  --accent: 222 22% 18%;
+  --accent-foreground: 215 18% 88%;
 
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 0 65% 45%;
+  --destructive-foreground: 0 0% 100%;
 
-  --input: 217.2 32.6% 17.5%;
-  --ring: 221 83% 53.3%;
+  --input: 222 22% 20%;
+  --ring: 213 62% 52%;
 
-  --chart-1: 221 83% 53.3%;
-  --chart-2: 43 96% 56%;
-  --chart-3: 158 52% 42%;
+  --chart-1: 213 62% 52%;
+  --chart-2: 158 52% 42%;
+  --chart-3: 36 62% 50%;
   --chart-4: 270 42% 56%;
   --chart-5: 0 58% 54%;
 
@@ -250,7 +249,7 @@ html, body, * {
 
 @layer base {
   * {
-    @apply border-border/80;
+    @apply border-border;
   }
 
   body {
@@ -259,25 +258,6 @@ html, body, * {
 }
 
 @layer utilities {
-  .glass {
-    @apply bg-background/60 backdrop-blur-xl border border-white/20 dark:border-white/5 shadow-sm;
-  }
-  
-  .glass-card {
-    @apply bg-card/80 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-sm transition-all duration-300;
-  }
-  
-  .hover-card-premium {
-    @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-primary/30 dark:hover:border-primary/50;
-  }
-  
-  .bg-gradient-premium {
-    @apply bg-gradient-to-br from-primary via-primary/90 to-primary/70;
-  }
-  
-  .bg-gradient-subtle {
-    @apply bg-gradient-to-br from-background via-background to-secondary/30;
-  }
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
   }

@@ -48,7 +48,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, AlertCircle, Star, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2 } from "lucide-react";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
@@ -620,7 +620,7 @@ export default function ProjectReports() {
     }));
 
     const uploadOne = (file: File, idx: number): Promise<string | null> =>
-      new Promise<string | null>((resolve) => {
+      new Promise((resolve) => {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("description", "صورة تقرير");
@@ -865,34 +865,13 @@ export default function ProjectReports() {
               <Plus className="h-4 w-4" /> إضافة تقرير
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[750px] max-h-[90vh] overflow-hidden p-0" dir="rtl">
-            <div className="bg-gradient-to-br from-indigo-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
-              <DialogHeader>
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-indigo-500/10 rounded-xl">
-                    <FileText className="h-6 w-6 text-indigo-600" />
-                  </div>
-                  <div>
-                    <DialogTitle className="text-xl">{editingId ? "تعديل التقرير" : "إضافة تقرير جديد"}</DialogTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {editingId ? "تحديث بيانات التقرير ونسب الإنجاز والملاحظات." : "أدخل تفاصيل الإنجاز الفنية والنسب للتقرير الجديد."}
-                    </p>
-                  </div>
-                </div>
-              </DialogHeader>
-            </div>
-
-            <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-4 space-y-8">
-                  
-                  {/* Section 1: Basic Info */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-indigo-600/80 uppercase tracking-wide flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
-                      معلومات التقرير
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto" dir="rtl">
+            <DialogHeader>
+              <DialogTitle>{editingId ? "تعديل تقرير" : "تقرير جديد"}</DialogTitle>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="type"
@@ -1013,334 +992,283 @@ export default function ProjectReports() {
                       );
                     }}
                   />
-                    </div>
-                  </div>
-
-                  <div className="h-px bg-border/50 w-full" />
-
-                  {/* Section 2: Text Fields */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-indigo-600/80 uppercase tracking-wide flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
-                      التفاصيل والملاحظات
-                    </h3>
-                    
-                    <div className="p-4 sm:p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
-                      <FormField
-                        control={form.control}
-                        name="workDescription"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-base text-foreground/90 flex items-center gap-2">
-                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                              وصف الأعمال المنجزة خلال الفترة
-                            </FormLabel>
-                            <FormControl><Textarea className="min-h-28 text-base bg-background shadow-inner" placeholder="اكتب وصفاً مفصلاً للأعمال التي تم إنجازها..." {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="technicalNotes"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-base text-foreground/90 flex items-center gap-2">
-                              <AlertCircle className="h-4 w-4 text-amber-500" />
-                              الملاحظات الفنية والعوائق (اختياري)
-                            </FormLabel>
-                            <FormControl><Textarea className="min-h-24 bg-background" placeholder="أي ملاحظات، صعوبات، أو تأخيرات..." {...field} value={field.value ?? ''} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="recommendations"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-base text-foreground/90 flex items-center gap-2">
-                              <Star className="h-4 w-4 text-indigo-500" />
-                              التوصيات والمقترحات (اختياري)
-                            </FormLabel>
-                            <FormControl><Textarea className="min-h-24 bg-background" placeholder="ما هي خطوات العمل القادمة المقترحة؟" {...field} value={field.value ?? ''} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
-
-                {/* Editable activities snapshot (edit mode only). */}
-                {!!editingId && (
-                  <>
-                    <div className="h-px bg-border/50 w-full" />
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-semibold text-indigo-600/80 uppercase tracking-wide flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
-                        نسب إنجاز البنود
-                      </h3>
-                      <div className="border rounded-2xl overflow-hidden shadow-sm">
-                        <div className="bg-gradient-to-r from-muted/50 to-muted/20 px-4 py-3 flex items-center justify-between flex-wrap gap-2 border-b border-border/50">
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-semibold">تحديث حالة البنود</h3>
-                            {snapshotRows.length > 0 && (
-                              <span className="text-xs text-muted-foreground bg-background px-2 py-0.5 rounded-full border shadow-sm">({snapshotRows.length} بند)</span>
-                            )}
-                          </div>
-                          {snapshotWeightedProgress != null && (
-                            <Badge variant="outline" className="font-mono bg-background shadow-sm border-primary/20 text-primary">
-                              متوسط الإنجاز الكلي: {snapshotWeightedProgress}%
-                            </Badge>
-                          )}
-                        </div>
-                        {isLoadingSnapshot ? (
-                          <div className="p-8"><LoadingSpinner text="جاري تحميل البنود..." /></div>
-                        ) : snapshotRows.length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground flex flex-col items-center gap-2">
-                            <AlertCircle className="h-8 w-8 text-muted-foreground/30" />
-                            <p className="text-sm">لا توجد بنود محفوظة في هذا التقرير</p>
-                          </div>
-                        ) : (
-                          <div className="overflow-x-auto bg-card">
-                            <table className="w-full text-sm">
-                              <thead className="bg-muted/10 text-xs text-muted-foreground/80 font-medium">
-                                <tr>
-                                  <th className="text-right px-4 py-3 font-semibold">البند</th>
-                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap">الوزن</th>
-                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap">المخطط %</th>
-                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap w-32">الفعلي %</th>
-                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap w-36">الحالة</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-border/40">
-                                {snapshotRows.map(row => {
-                                  const rowId = row.id;
-                                  if (typeof rowId !== "number") return null;
-                                  return (
-                                    <tr key={rowId} className="hover:bg-muted/10 transition-colors">
-                                      <td className="px-4 py-3 align-middle">
-                                        <span className="font-medium text-foreground/90">{row.name ?? "—"}</span>
-                                      </td>
-                                      <td className="px-4 py-3 text-center font-mono text-xs text-muted-foreground/70">
-                                        {typeof row.weight === "number" ? row.weight : 1}
-                                      </td>
-                                      <td className="px-4 py-3 text-center font-mono text-xs text-muted-foreground/70">
-                                        {typeof row.plannedProgress === "number" ? Math.round(row.plannedProgress * 10) / 10 : 0}%
-                                      </td>
-                                      <td className="px-4 py-3">
-                                        <Input
-                                          type="number"
-                                          min={0}
-                                          max={100}
-                                          step={0.1}
-                                          value={row.actualProgress ?? 0}
-                                          onChange={e => {
-                                            const v = e.target.value === "" ? 0 : Number(e.target.value);
-                                            const clamped = Math.min(100, Math.max(0, Number.isFinite(v) ? v : 0));
-                                            updateSnapshotRow(rowId, { actualProgress: clamped });
-                                          }}
-                                          className="h-9 text-center font-mono text-sm bg-background border-input/60 shadow-inner"
-                                        />
-                                      </td>
-                                      <td className="px-4 py-3">
-                                        <Select
-                                          value={row.status ?? "not_started"}
-                                          onValueChange={(v) => updateSnapshotRow(rowId, { status: v })}
-                                        >
-                                          <SelectTrigger dir="rtl" className="h-9 text-xs bg-background">
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent dir="rtl">
-                                            {Object.entries(STATUS_LABELS).map(([v, label]) => (
-                                              <SelectItem key={v} value={v}>{label}</SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-
-
-                {/* Image Groups Section */}
-                <div className="h-px bg-border/50 w-full" />
-
-                {/* Section 4: Attachments */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-indigo-600/80 uppercase tracking-wide flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
-                    مرفقات التقرير
-                  </h3>
-                  
                   <FormField
                     control={form.control}
-                    name="imageGroups"
-                    render={({ field }) => {
-                      const groups = field.value ?? [];
-                      const totalImages = groups.reduce((s, g) => s + (g.urls?.length ?? 0), 0);
-                      return (
-                        <FormItem>
-                          <FormLabel className="flex items-center gap-2 text-base text-foreground/90">
-                            <ImagePlus className="h-4 w-4 text-emerald-500" /> صور الموقع التوثيقية (اختياري)
-                            {totalImages > 0 && (
-                              <span className="text-xs text-muted-foreground font-normal bg-muted px-2 py-0.5 rounded-full">— {totalImages} صورة في {groups.filter(g => g.urls.length > 0).length} قسم</span>
-                            )}
-                          </FormLabel>
-                          <div className="space-y-3 mt-3">
-                            {groups.map((group, gIdx) => {
-                              const groupProgress = uploadProgress[gIdx];
-                              const isThisUploading = !!groupProgress;
-                              const progressPct = groupProgress && groupProgress.total > 0
-                                ? Math.min(100, Math.round((groupProgress.loaded / groupProgress.total) * 100))
-                                : 0;
-                              const isOpen = openGroupIdx === gIdx;
-                              const isEmpty = group.urls.length === 0;
-                              const canDelete = isEmpty && groups.length > 1 && !isThisUploading;
-                              return (
-                                <Collapsible
-                                  key={gIdx}
-                                  open={isOpen}
-                                  onOpenChange={(o) => setOpenGroupIdx(o ? gIdx : null)}
-                                  className="border rounded-2xl bg-muted/10 overflow-hidden shadow-sm"
-                                >
-                                  <div className="flex items-center justify-between gap-2 flex-wrap p-4 hover:bg-muted/20 transition-colors">
-                                    <CollapsibleTrigger asChild>
-                                      <button type="button" className="flex items-center gap-2 flex-1 min-w-0 text-right">
-                                        <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                                        <span className="text-sm font-semibold text-foreground truncate">{group.category}</span>
-                                        <Badge variant="outline" className="text-xs text-muted-foreground shrink-0 bg-background">{group.urls.length} صورة</Badge>
-                                      </button>
-                                    </CollapsibleTrigger>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                      <label className="cursor-pointer">
-                                        <input
-                                          type="file"
-                                          accept="image/*"
-                                          multiple
-                                          className="hidden"
-                                          onChange={(e) => { setOpenGroupIdx(gIdx); handleImageUpload(e, gIdx); }}
-                                        />
-                                        <span className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 hover:border-primary/30 font-medium transition-all shadow-sm">
-                                          {isThisUploading ? (
-                                            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> إضافة المزيد</>
-                                          ) : (
-                                            <><ImagePlus className="h-3.5 w-3.5" /> إضافة صور للقسم</>
-                                          )}
-                                        </span>
-                                      </label>
-                                      {canDelete && (
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-8 w-8 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10"
-                                          title="حذف هذا القسم الفارغ"
-                                          onClick={() => removeImageGroup(gIdx)}
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                      )}
-                                      {!isEmpty && groups.length > 1 && (
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-8 w-8 rounded-lg text-muted-foreground/40 cursor-not-allowed"
-                                          title="احذف الصور أولاً ثم يمكنك حذف القسم"
-                                          disabled
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {isThisUploading && (
-                                    <div className="px-4 pb-4 -mt-1">
-                                      <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1.5">
-                                        <span className="flex items-center gap-1.5 font-medium">
-                                          <Loader2 className="h-3.5 w-3.5 text-primary animate-spin" />
-                                          جاري رفع {groupProgress.doneCount} / {groupProgress.totalCount}
-                                        </span>
-                                        <span className="font-mono text-primary font-semibold">{progressPct}%</span>
-                                      </div>
-                                      <Progress value={progressPct} className="h-2 bg-primary/10" />
-                                    </div>
-                                  )}
-                                  <CollapsibleContent>
-                                    <div className="px-4 pb-4">
-                                      {isEmpty ? (
-                                        <div className="text-center p-6 border-2 border-dashed rounded-xl bg-background/50 text-muted-foreground/60 flex flex-col items-center gap-2">
-                                          <ImagePlus className="h-8 w-8 opacity-50" />
-                                          <p className="text-xs font-medium">اسحب وأفلت الصور هنا أو انقر على "إضافة صور للقسم"</p>
-                                        </div>
-                                      ) : (
-                                        <div className="flex flex-wrap gap-3">
-                                          {group.urls.map((url, idx) => (
-                                            <div key={idx} className="relative group w-24 h-24 rounded-xl overflow-hidden border-2 border-transparent hover:border-primary/50 shadow-sm transition-all">
-                                              <img
-                                                src={url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`}
-                                                alt={`صورة ${idx + 1}`}
-                                                loading="lazy"
-                                                decoding="async"
-                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                              />
-                                              <button
-                                                type="button"
-                                                onClick={() => removeImageFromGroup(gIdx, idx)}
-                                                className="absolute top-1 right-1 bg-background/80 backdrop-blur-sm text-destructive hover:bg-destructive hover:text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-md"
-                                              >
-                                                <X className="h-3.5 w-3.5" />
-                                              </button>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </CollapsibleContent>
-                                </Collapsible>
-                              );
-                            })}
-
-                            <div className="pt-2">
-                              <AddImageGroupButton
-                                suggestions={categorySuggestions}
-                                onAdd={(cat) => {
-                                  addImageGroup(cat);
-                                  setOpenGroupIdx((form.getValues("imageGroups") ?? []).length - 1);
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </FormItem>
-                      );
-                    }}
+                    name="workDescription"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel>وصف الأعمال المنجزة خلال الفترة</FormLabel>
+                        <FormControl><Textarea className="min-h-24" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="technicalNotes"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel>الملاحظات الفنية (اختياري)</FormLabel>
+                        <FormControl><Textarea className="min-h-20" {...field} value={field.value ?? ''} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="recommendations"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel>التوصيات (اختياري)</FormLabel>
+                        <FormControl><Textarea className="min-h-20" {...field} value={field.value ?? ''} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
                 </div>
 
-                <div className="flex justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
-                  <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
+                {/* Editable activities snapshot (edit mode only — see task #45). */}
+                {!!editingId && (
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="bg-muted/50 px-3 py-2 flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold">بنود التقرير</h3>
+                        {snapshotRows.length > 0 && (
+                          <span className="text-xs text-muted-foreground">({snapshotRows.length} بند)</span>
+                        )}
+                      </div>
+                      {snapshotWeightedProgress != null && (
+                        <Badge variant="outline" className="font-mono">
+                          المتوسط الموزون: {snapshotWeightedProgress}%
+                        </Badge>
+                      )}
+                    </div>
+                    {isLoadingSnapshot ? (
+                      <div className="p-4"><LoadingSpinner text="جاري تحميل البنود..." /></div>
+                    ) : snapshotRows.length === 0 ? (
+                      <p className="text-xs text-muted-foreground p-4 text-center">
+                        لا توجد بنود محفوظة في هذا التقرير
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/30 text-xs text-muted-foreground">
+                            <tr>
+                              <th className="text-right px-2 py-2 font-medium">البند</th>
+                              <th className="text-center px-2 py-2 font-medium whitespace-nowrap">الوزن</th>
+                              <th className="text-center px-2 py-2 font-medium whitespace-nowrap">المخطط %</th>
+                              <th className="text-center px-2 py-2 font-medium whitespace-nowrap w-28">الفعلي %</th>
+                              <th className="text-center px-2 py-2 font-medium whitespace-nowrap w-32">الحالة</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {snapshotRows.map(row => {
+                              const rowId = row.id;
+                              if (typeof rowId !== "number") return null;
+                              return (
+                                <tr key={rowId} className="border-t">
+                                  <td className="px-2 py-2 align-middle">
+                                    <span className="text-foreground">{row.name ?? "—"}</span>
+                                  </td>
+                                  <td className="px-2 py-2 text-center font-mono text-xs text-muted-foreground">
+                                    {typeof row.weight === "number" ? row.weight : 1}
+                                  </td>
+                                  <td className="px-2 py-2 text-center font-mono text-xs text-muted-foreground">
+                                    {typeof row.plannedProgress === "number" ? Math.round(row.plannedProgress * 10) / 10 : 0}%
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      max={100}
+                                      step={0.1}
+                                      value={row.actualProgress ?? 0}
+                                      onChange={e => {
+                                        const v = e.target.value === "" ? 0 : Number(e.target.value);
+                                        const clamped = Math.min(100, Math.max(0, Number.isFinite(v) ? v : 0));
+                                        updateSnapshotRow(rowId, { actualProgress: clamped });
+                                      }}
+                                      className="h-8 text-center font-mono text-xs"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    <Select
+                                      value={row.status ?? "not_started"}
+                                      onValueChange={(v) => updateSnapshotRow(rowId, { status: v })}
+                                    >
+                                      <SelectTrigger dir="rtl" className="h-8 text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent dir="rtl">
+                                        {Object.entries(STATUS_LABELS).map(([v, label]) => (
+                                          <SelectItem key={v} value={v}>{label}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Image Groups Section */}
+                <FormField
+                  control={form.control}
+                  name="imageGroups"
+                  render={({ field }) => {
+                    const groups = field.value ?? [];
+                    const totalImages = groups.reduce((s, g) => s + (g.urls?.length ?? 0), 0);
+                    return (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2">
+                          <ImagePlus className="h-4 w-4" /> صور الموقع (اختياري)
+                          {totalImages > 0 && (
+                            <span className="text-xs text-muted-foreground font-normal">— {totalImages} صورة في {groups.filter(g => g.urls.length > 0).length} قسم</span>
+                          )}
+                        </FormLabel>
+                        <div className="space-y-3">
+                          {groups.map((group, gIdx) => {
+                            const groupProgress = uploadProgress[gIdx];
+                            const isThisUploading = !!groupProgress;
+                            const progressPct = groupProgress && groupProgress.total > 0
+                              ? Math.min(100, Math.round((groupProgress.loaded / groupProgress.total) * 100))
+                              : 0;
+                            const isOpen = openGroupIdx === gIdx;
+                            const isEmpty = group.urls.length === 0;
+                            const canDelete = isEmpty && groups.length > 1 && !isThisUploading;
+                            return (
+                              <Collapsible
+                                key={gIdx}
+                                open={isOpen}
+                                onOpenChange={(o) => setOpenGroupIdx(o ? gIdx : null)}
+                                className="border rounded-lg bg-muted/30 overflow-hidden"
+                              >
+                                <div className="flex items-center justify-between gap-2 flex-wrap p-3">
+                                  <CollapsibleTrigger asChild>
+                                    <button type="button" className="flex items-center gap-2 flex-1 min-w-0 text-right hover:opacity-80 transition-opacity">
+                                      <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                                      <span className="text-sm font-semibold text-foreground truncate">{group.category}</span>
+                                      <span className="text-xs text-muted-foreground shrink-0">({group.urls.length} صورة)</span>
+                                    </button>
+                                  </CollapsibleTrigger>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <label className="cursor-pointer">
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        className="hidden"
+                                        onChange={(e) => { setOpenGroupIdx(gIdx); handleImageUpload(e, gIdx); }}
+                                      />
+                                      <span className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border bg-background hover:bg-accent transition-colors">
+                                        {isThisUploading ? (
+                                          <><Loader2 className="h-3.5 w-3.5 animate-spin" /> إضافة المزيد</>
+                                        ) : (
+                                          <><ImagePlus className="h-3.5 w-3.5" /> إضافة صور</>
+                                        )}
+                                      </span>
+                                    </label>
+                                    {canDelete && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        title="حذف هذا القسم الفارغ"
+                                        onClick={() => removeImageGroup(gIdx)}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
+                                    {!isEmpty && groups.length > 1 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-muted-foreground/40 cursor-not-allowed"
+                                        title="احذف الصور أولاً ثم يمكنك حذف القسم"
+                                        disabled
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                                {isThisUploading && (
+                                  <div className="px-3 pb-3 -mt-1">
+                                    <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
+                                      <span className="flex items-center gap-1.5">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        جاري رفع {groupProgress.doneCount} / {groupProgress.totalCount}
+                                      </span>
+                                      <span className="font-mono">{progressPct}%</span>
+                                    </div>
+                                    <Progress value={progressPct} className="h-1.5" />
+                                  </div>
+                                )}
+                                <CollapsibleContent>
+                                  <div className="px-3 pb-3">
+                                    {isEmpty ? (
+                                      <p className="text-xs text-muted-foreground italic">لم تتم إضافة أي صور لهذا القسم بعد</p>
+                                    ) : (
+                                      <div className="flex flex-wrap gap-2">
+                                        {group.urls.map((url, idx) => (
+                                          <div key={idx} className="relative group w-20 h-20 rounded-md overflow-hidden border">
+                                            <img
+                                              src={url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`}
+                                              alt={`صورة ${idx + 1}`}
+                                              loading="lazy"
+                                              decoding="async"
+                                              className="w-full h-full object-cover"
+                                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => removeImageFromGroup(gIdx, idx)}
+                                              className="absolute top-0.5 right-0.5 bg-destructive text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                              <X className="h-3 w-3" />
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </CollapsibleContent>
+                              </Collapsible>
+                            );
+                          })}
+
+                          <AddImageGroupButton
+                            suggestions={categorySuggestions}
+                            onAdd={(cat) => {
+                              addImageGroup(cat);
+                              setOpenGroupIdx((form.getValues("imageGroups") ?? []).length - 1);
+                            }}
+                          />
+                        </div>
+                      </FormItem>
+                    );
+                  }}
+                />
+
+                <div className="flex justify-end gap-2 pt-4 sticky bottom-0 bg-background pb-2 mt-4">
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
                   <Button
                     type="submit"
-                    className="w-full sm:w-auto shadow-md"
                     disabled={createReport.isPending || updateReport.isPending || isAnyUploading}
                     title={isAnyUploading ? "يرجى الانتظار حتى اكتمال رفع الصور" : undefined}
                   >
-                    {isAnyUploading ? <><Loader2 className="h-4 w-4 ml-2 animate-spin" /> جاري الرفع...</> : editingId ? "حفظ وتحديث التقرير" : "إنشاء التقرير"}
+                    {isAnyUploading ? "جاري رفع الصور..." : "حفظ التقرير"}
                   </Button>
                 </div>
               </form>
             </Form>
-            </div>
           </DialogContent>
         </Dialog>
         )}
@@ -1458,7 +1386,7 @@ export default function ProjectReports() {
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground mb-0.5">الإنجاز التراكمي</div>
-                  <Badge className="bg-primary text-white">{report.progressPercentage}%</Badge>
+                  <Badge className="bg-primary">{report.progressPercentage}%</Badge>
                 </div>
                 <div className="col-span-2 sm:col-span-4">
                   <div className="text-xs text-muted-foreground mb-0.5">الفترة</div>
@@ -1613,7 +1541,7 @@ export default function ProjectReports() {
                                 {fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}
                               </td>
                               <td className="px-3 py-2.5 whitespace-nowrap">
-                                <Badge className="bg-primary text-white">{report.progressPercentage}%</Badge>
+                                <Badge className="bg-primary">{report.progressPercentage}%</Badge>
                               </td>
                               <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
                                 <span className="inline-flex items-center gap-1">
@@ -1665,7 +1593,7 @@ export default function ProjectReports() {
                                 <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 text-xs">معتمد</Badge>
                               )}
                             </div>
-                            <Badge className="bg-primary shrink-0 text-white">{report.progressPercentage}%</Badge>
+                            <Badge className="bg-primary shrink-0">{report.progressPercentage}%</Badge>
                           </div>
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <span className="font-mono">{fmtDate(report.reportDate)}</span>
