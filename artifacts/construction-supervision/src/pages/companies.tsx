@@ -235,111 +235,138 @@ export default function Companies() {
         setIsDialogOpen(open);
         if (!open) { setEditingCompany(null); form.reset(); setLogoFile(null); setLogoPreview(null); }
       }}>
-        <DialogContent className="sm:max-w-[500px]" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>{editingCompany ? "تعديل الشركة" : "إضافة شركة جديدة"}</DialogTitle>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="flex flex-col items-center gap-3 mb-2">
-                <div
-                  className="w-24 h-24 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:border-primary transition-colors overflow-hidden bg-gray-50"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {logoPreview ? (
-                    <img src={logoPreview} alt="شعار" loading="lazy" decoding="async" className="w-full h-full object-contain p-1" />
-                  ) : (
-                    <div className="text-center">
-                      <Image className="h-8 w-8 mx-auto text-gray-400" />
-                      <span className="text-xs text-gray-400 mt-1 block">شعار</span>
-                    </div>
-                  )}
+        <DialogContent className="sm:max-w-[650px] p-0 overflow-hidden" dir="rtl">
+          <div className="bg-gradient-to-br from-amber-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+            <DialogHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-500/10 rounded-xl">
+                  <Building2 className="h-6 w-6 text-amber-600" />
                 </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleLogoSelect}
-                />
-                <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="h-3 w-3 ml-1" />
-                  {logoPreview ? "تغيير الشعار" : "رفع شعار"}
-                </Button>
+                <div>
+                  <DialogTitle className="text-xl">{editingCompany ? "تعديل بيانات الشركة" : "إضافة شركة جديدة"}</DialogTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {editingCompany ? "تحديث بيانات الشركة وتعديل معلومات التواصل." : "أدخل بيانات الشركة الأساسية وارفع شعارها."}
+                  </p>
+                </div>
               </div>
+            </DialogHeader>
+          </div>
 
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>اسم الشركة</FormLabel>
-                    <FormControl><Input {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+          <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-4 space-y-8">
+                
+                <div className="flex flex-col items-center justify-center p-6 bg-gradient-to-br from-muted/30 to-background rounded-2xl border shadow-sm">
+                  <div className="flex flex-col items-center gap-4">
+                    <div
+                      className="w-28 h-28 rounded-2xl border-2 border-dashed border-border/60 hover:border-amber-500/50 flex items-center justify-center cursor-pointer transition-all overflow-hidden bg-background hover:bg-amber-500/5 shadow-sm group"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {logoPreview ? (
+                        <img src={logoPreview} alt="شعار" loading="lazy" decoding="async" className="w-full h-full object-contain p-1 group-hover:scale-105 transition-transform" />
+                      ) : (
+                        <div className="text-center group">
+                          <Image className="h-10 w-10 mx-auto text-muted-foreground group-hover:text-amber-500 transition-colors" />
+                          <span className="text-xs text-muted-foreground group-hover:text-amber-600 mt-2 block transition-colors">شعار الشركة</span>
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleLogoSelect}
+                    />
+                    <Button type="button" variant="outline" size="sm" className="rounded-full text-xs hover:bg-amber-50" onClick={() => fileInputRef.current?.click()}>
+                      <Upload className="h-3 w-3 ml-1.5 text-amber-600" />
+                      {logoPreview ? "تغيير الشعار" : "رفع شعار جديد"}
+                    </Button>
+                  </div>
+                </div>
 
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>نوع الشركة</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} dir="rtl">
-                      <FormControl>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="owner">مالك</SelectItem>
-                        <SelectItem value="contractor">مقاول</SelectItem>
-                        <SelectItem value="supervisor">إشراف</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-amber-600/80 uppercase tracking-wide flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
+                    البيانات الأساسية
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                    <FormField
+                      control={form.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem className="sm:col-span-2">
+                          <FormLabel className="text-foreground/90">اسم الشركة</FormLabel>
+                          <FormControl><Input {...field} placeholder="أدخل اسم الشركة" className="bg-background" /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>الهاتف</FormLabel>
-                      <FormControl><Input {...field} /></FormControl>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>البريد الإلكتروني</FormLabel>
-                      <FormControl><Input {...field} type="email" /></FormControl>
-                    </FormItem>
-                  )}
-                />
-              </div>
+                    <FormField
+                      control={form.control}
+                      name="type"
+                      render={({ field }) => (
+                        <FormItem className="sm:col-span-2">
+                          <FormLabel className="text-foreground/90">نوع الشركة</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value} dir="rtl">
+                            <FormControl>
+                              <SelectTrigger className="bg-background"><SelectValue placeholder="اختر النوع" /></SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="owner">جهة مالكة</SelectItem>
+                              <SelectItem value="contractor">شركة مقاولات</SelectItem>
+                              <SelectItem value="supervisor">جهة إشراف هندسي</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-              <FormField
-                control={form.control}
-                name="address"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>العنوان</FormLabel>
-                    <FormControl><Input {...field} /></FormControl>
-                  </FormItem>
-                )}
-              />
+                    <FormField
+                      control={form.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-foreground/90">رقم الهاتف (اختياري)</FormLabel>
+                          <FormControl><Input {...field} placeholder="05XXXXXXXX" dir="ltr" className="text-right bg-background" /></FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-foreground/90">البريد الإلكتروني (اختياري)</FormLabel>
+                          <FormControl><Input {...field} type="email" placeholder="example@company.com" dir="ltr" className="text-right bg-background" /></FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="address"
+                      render={({ field }) => (
+                        <FormItem className="sm:col-span-2">
+                          <FormLabel className="text-foreground/90">العنوان (اختياري)</FormLabel>
+                          <FormControl><Input {...field} placeholder="أدخل المقر الرئيسي" className="bg-background" /></FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
 
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? "جاري الحفظ..." : editingCompany ? "تحديث" : "إضافة"}
-              </Button>
-            </form>
-          </Form>
+                <div className="flex justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+                  <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
+                  <Button type="submit" className="w-full sm:w-auto shadow-md" disabled={isSubmitting}>
+                    {isSubmitting ? "جاري الحفظ..." : editingCompany ? "تحديث بيانات الشركة" : "إضافة الشركة"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </div>
         </DialogContent>
       </Dialog>
 
