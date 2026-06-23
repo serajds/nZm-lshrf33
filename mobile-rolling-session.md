@@ -1,0 +1,2 @@
+- [Mobile rolling-session token handling](mobile-rolling-session.md) — Expo client has its own fetch layer; must mirror web's X-Renewed-Token saver + 401 handler, token-aware to avoid stale-response races.
+- [Edge-safe upload transport](edge-safe-upload-transport.md) — file uploads must be base64 over text/plain JSON, not multipart; Replit Autoscale edge CSRF intermittently blocks header-stripped multipart with HTML 403.
