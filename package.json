@@ -1,14 +1,21 @@
 {
-  "name": "@workspace/scripts",
+  "name": "workspace",
   "version": "0.0.0",
-  "private": true,
-  "type": "module",
+  "license": "MIT",
   "scripts": {
-    "hello": "tsx ./src/hello.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
+  "private": true,
   "devDependencies": {
-    "@types/node": "catalog:",
-    "tsx": "catalog:"
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.2"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["sharp"]
   }
 }

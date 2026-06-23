@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { InstallButton } from "@/components/install-button";
 import { InstallPromptBanner } from "@/components/install-prompt-banner";
@@ -75,36 +74,31 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return (
       <Link href={item.href}>
         <span
-          className={cn(
-            "flex items-center rounded-lg cursor-pointer transition-all duration-300 relative overflow-hidden group",
-            isActive ? "shadow-md shadow-primary/20" : ""
-          )}
+          className="flex items-center rounded-lg cursor-pointer transition-colors"
           style={{
             gap: collapsed ? 0 : 10,
             padding: collapsed ? "10px 0" : "9px 12px",
             justifyContent: collapsed ? "center" : "flex-start",
+            backgroundColor: isActive ? "hsl(var(--sidebar-accent))" : "transparent",
             color: isActive
               ? "hsl(var(--sidebar-accent-foreground))"
               : "hsl(var(--sidebar-foreground))",
-            opacity: isActive ? 1 : 0.7,
+            opacity: isActive ? 1 : 0.65,
+            position: "relative",
           }}
           onMouseEnter={(e) => {
             if (!isActive) {
-              (e.currentTarget as HTMLElement).style.backgroundColor = "hsl(var(--sidebar-accent) / 0.3)";
+              (e.currentTarget as HTMLElement).style.backgroundColor = "hsl(var(--sidebar-accent) / 0.5)";
               (e.currentTarget as HTMLElement).style.opacity = "1";
             }
           }}
           onMouseLeave={(e) => {
             if (!isActive) {
               (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-              (e.currentTarget as HTMLElement).style.opacity = "0.7";
+              (e.currentTarget as HTMLElement).style.opacity = "0.65";
             }
           }}
         >
-          {/* Active Gradient Background */}
-          {isActive && (
-            <div className="absolute inset-0 bg-gradient-to-r from-primary via-primary/90 to-primary/80 opacity-20 -z-10" />
-          )}
           {isActive && (
             <span
               className="absolute right-0 top-1/2 rounded-full"
@@ -188,7 +182,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-1">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-0.5">
         {navigation.map((item) => (
           <NavItem key={item.href} item={item} collapsed={collapsed} />
         ))}
@@ -205,27 +199,27 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {collapsed ? (
           <button
             onClick={logout}
-            className="w-full flex items-center justify-center rounded-lg p-2 transition-all hover:bg-red-50 dark:hover:bg-red-900/20"
-            style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.7 }}
+            className="w-full flex items-center justify-center rounded-lg p-2 transition-colors"
+            style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.5 }}
             onMouseEnter={(e) => {
               e.currentTarget.style.opacity = "1";
-              e.currentTarget.style.color = "#ef4444";
+              e.currentTarget.style.color = "#f87171";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.opacity = "0.7";
+              e.currentTarget.style.opacity = "0.5";
               e.currentTarget.style.color = "hsl(var(--sidebar-foreground))";
             }}
             title="تسجيل الخروج"
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="w-4 h-4" />
           </button>
         ) : (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <div
-              className="flex items-center justify-center rounded-full shrink-0 text-sm font-bold shadow-sm"
+              className="flex items-center justify-center rounded-full shrink-0 text-xs font-bold"
               style={{
-                width: 38,
-                height: 38,
+                width: 34,
+                height: 34,
                 backgroundColor: "hsl(var(--sidebar-accent))",
                 color: "hsl(var(--sidebar-accent-foreground))",
               }}
@@ -234,33 +228,33 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex-1 min-w-0">
               <p
-                className="text-sm font-bold truncate"
+                className="text-xs font-semibold truncate"
                 style={{ color: "hsl(var(--sidebar-accent-foreground))" }}
               >
                 {user?.fullName}
               </p>
               <p
-                className="text-xs font-medium truncate mt-0.5"
-                style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.6 }}
+                className="text-[11px] truncate"
+                style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.5 }}
               >
                 {user?.role === "admin" ? "مدير النظام" : user?.role === "project_manager" ? "مدير مشروع" : user?.role === "contractor" ? "مقاول" : "مهندس مشرف"}
               </p>
             </div>
             <button
               onClick={logout}
-              className="shrink-0 rounded-lg p-2 transition-all hover:bg-red-50 dark:hover:bg-red-900/20"
-              style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.6 }}
+              className="shrink-0 rounded-md p-1.5 transition-colors"
+              style={{ color: "hsl(var(--sidebar-foreground))", opacity: 0.45 }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.color = "#ef4444";
+                e.currentTarget.style.color = "#f87171";
                 e.currentTarget.style.opacity = "1";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.color = "hsl(var(--sidebar-foreground))";
-                e.currentTarget.style.opacity = "0.6";
+                e.currentTarget.style.opacity = "0.45";
               }}
               title="تسجيل الخروج"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         )}
@@ -269,13 +263,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex h-screen w-full bg-[#020617] text-slate-100 overflow-hidden" dir="rtl">
+    <div className="flex min-h-screen bg-background" dir="rtl">
 
       {/* ===== DESKTOP SIDEBAR ===== */}
       <aside
-        className="hidden md:flex flex-col h-full shrink-0"
+        className="hidden md:flex fixed inset-y-0 right-0 z-50 flex-col"
         style={{
           width: sidebarWidth,
+          backgroundColor: "hsl(var(--sidebar))",
+          borderLeft: "1px solid hsl(var(--sidebar-border))",
           transition: "width 250ms cubic-bezier(.4,0,.2,1)",
         }}
       >
@@ -285,19 +281,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* ===== MOBILE SIDEBAR OVERLAY ===== */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-40 md:hidden backdrop-blur-sm"
-          style={{ backgroundColor: "rgba(2,6,23,0.8)" }}
+          className="fixed inset-0 z-40 md:hidden"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
           onClick={() => setMobileOpen(false)}
         />
       )}
 
       {/* ===== MOBILE SIDEBAR DRAWER ===== */}
       <aside
-        className="fixed inset-y-0 right-0 z-50 flex flex-col md:hidden shadow-2xl"
+        className="fixed inset-y-0 right-0 z-50 flex flex-col md:hidden"
         style={{
           width: SIDEBAR_FULL,
-          backgroundColor: "#020617",
-          borderLeft: "1px solid rgba(255,255,255,0.05)",
+          backgroundColor: "hsl(var(--sidebar))",
+          borderLeft: "1px solid hsl(var(--sidebar-border))",
           transform: mobileOpen ? "translateX(0)" : "translateX(100%)",
           transition: "transform 280ms cubic-bezier(.4,0,.2,1)",
         }}
@@ -305,12 +301,30 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <SidebarContent collapsed={false} onClose={() => setMobileOpen(false)} />
       </aside>
 
-      {/* ===== MAIN CONTENT CARD ===== */}
-      <div className="flex-1 flex flex-col h-screen py-2 pl-2 pr-0 transition-all duration-300">
-        <main className="flex-1 bg-background text-foreground rounded-r-3xl md:rounded-r-[2.5rem] shadow-[-10px_0_40px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col relative border border-white/10 dark:border-white/5">
-          {/* ---- Top Header ── */}
+      {/* ===== MAIN CONTENT ===== */}
+      <div
+        className="flex-1 flex flex-col min-w-0"
+        style={{
+          marginRight: undefined,
+        }}
+      >
+        {/* Hidden spacer on desktop to push content away from sidebar */}
+        <style>{`
+          @media (min-width: 768px) {
+            .main-content-wrapper {
+              margin-right: ${sidebarWidth}px;
+              transition: margin-right 250ms cubic-bezier(.4,0,.2,1);
+            }
+          }
+        `}</style>
+        <div className="flex-1 flex flex-col min-w-0 main-content-wrapper">
+          {/* ---- Top Header ---- */}
           <header
-            className="h-16 flex items-center px-4 md:px-6 gap-3 shrink-0 backdrop-blur-xl bg-background/80 border-b border-border/50 transition-all duration-300 z-10"
+            className="sticky top-0 z-40 h-14 flex items-center px-4 md:px-6 gap-3 shrink-0"
+            style={{
+              backgroundColor: "hsl(var(--card))",
+              borderBottom: "1px solid hsl(var(--border))",
+            }}
           >
             {/* Hamburger — mobile only */}
             <button
@@ -326,7 +340,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               className="h-5 w-0.5 rounded-full hidden md:block"
               style={{ backgroundColor: "hsl(var(--primary))", opacity: 0.7 }}
             />
-            <h1 className="font-semibold text-base text-foreground truncate tracking-wide">
+            <h1 className="font-semibold text-base text-foreground truncate">
               {currentPage?.name || "إدارة الإشراف والمتابعة"}
             </h1>
             <div className="mr-auto flex items-center gap-2">
@@ -336,10 +350,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </header>
 
           {/* ---- Page Content ---- */}
-          <div className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 z-0">
+          <main className="flex-1 overflow-auto p-4 md:p-6">
             {children}
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
 
       {/* Auto-shown PWA install suggestion (snoozes for 7 days on dismiss) */}
