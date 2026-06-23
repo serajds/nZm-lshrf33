@@ -276,119 +276,129 @@ export default function ProjectSuspensions() {
                 <Plus className="h-4 w-4" /> إضافة توقف
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[540px]" dir="rtl">
-              <DialogHeader>
-                <DialogTitle>تسجيل توقف جديد</DialogTitle>
-              </DialogHeader>
+            <DialogContent className="sm:max-w-[650px] p-0 overflow-hidden" dir="rtl">
+              <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+                <DialogHeader>
+                  <DialogTitle className="text-xl">تسجيل توقف جديد</DialogTitle>
+                </DialogHeader>
+              </div>
               <Form {...form}>
-                <form onSubmit={form.handleSubmit((v) => createSusp.mutate(v))} className="space-y-4 pt-2">
-                  <FormField control={form.control} name="type" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>نوع التوقف</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value} dir="rtl">
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="اختر النوع" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent dir="rtl">
-                          <SelectItem value="official_holiday">
-                            <span className="flex items-center gap-2"><Umbrella className="h-3.5 w-3.5 text-violet-500" /> عطلة رسمية (يُعيد حساب الجدول)</span>
-                          </SelectItem>
-                          <SelectItem value="force_majeure">
-                            <span className="flex items-center gap-2"><Wind className="h-3.5 w-3.5 text-red-500" /> ظرف قاهر (يُعيد حساب الجدول)</span>
-                          </SelectItem>
-                          <SelectItem value="contractor_delay">
-                            <span className="flex items-center gap-2"><AlertTriangle className="h-3.5 w-3.5 text-orange-500" /> توقف من المقاول (بدون تعديل الجدول)</span>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
+                <form onSubmit={form.handleSubmit((v) => createSusp.mutate(v))} className="overflow-y-auto max-h-[calc(90vh-140px)]">
+                  <div className="p-6 pt-4 space-y-6">
+                    <div className="p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
+                      <FormField control={form.control} name="type" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-foreground/90">نوع التوقف</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value} dir="rtl">
+                            <FormControl>
+                              <SelectTrigger className="h-11 bg-background">
+                                <SelectValue placeholder="اختر النوع" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent dir="rtl">
+                              <SelectItem value="official_holiday">
+                                <span className="flex items-center gap-2"><Umbrella className="h-4 w-4 text-violet-500" /> عطلة رسمية (يُعيد حساب الجدول)</span>
+                              </SelectItem>
+                              <SelectItem value="force_majeure">
+                                <span className="flex items-center gap-2"><Wind className="h-4 w-4 text-red-500" /> ظرف قاهر (يُعيد حساب الجدول)</span>
+                              </SelectItem>
+                              <SelectItem value="contractor_delay">
+                                <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-orange-500" /> توقف من المقاول (بدون تعديل الجدول)</span>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
 
-                  <FormField control={form.control} name="title" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>العنوان</FormLabel>
-                      <FormControl>
-                        <Input placeholder="مثال: عطلة عيد الأضحى، عاصفة مطرية..." {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <FormField control={form.control} name="startDate" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>تاريخ البداية</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="endDate" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>تاريخ النهاية</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                  </div>
-
-                  {watchedStart && watchedEnd && (
-                    <div className="rounded-md bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-700 flex items-center gap-2">
-                      <Calendar className="h-3.5 w-3.5 shrink-0" />
-                      المدة:{" "}
-                      <Badge variant="outline" className={previewDays > 0 ? "text-slate-800 font-bold" : "text-destructive"}>
-                        {previewDays > 0 ? `${previewDays} يوم (شامل)` : "تاريخ النهاية يجب أن يكون بعد البداية"}
-                      </Badge>
-                    </div>
-                  )}
-
-                  {isShiftable && (
-                    <FormField control={form.control} name="shiftDates" render={({ field }) => (
-                      <FormItem className="rounded-md border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800 px-3 py-3">
-                        <div className="flex items-start gap-3">
+                      <FormField control={form.control} name="title" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-foreground/90">العنوان</FormLabel>
                           <FormControl>
-                            <Checkbox
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                              className="mt-0.5"
-                            />
+                            <Input className="h-11 bg-background" placeholder="مثال: عطلة عيد الأضحى، عاصفة مطرية..." {...field} />
                           </FormControl>
-                          <div className="space-y-1 leading-none flex-1">
-                            <FormLabel className="text-sm font-medium cursor-pointer flex items-center gap-1.5">
-                              <CalendarClock className="h-4 w-4 text-blue-600" />
-                              ترحيل الجدول الزمني
-                            </FormLabel>
-                            <p className="text-xs text-muted-foreground">
-                              تأجيل تواريخ البنود اللاحقة وتاريخ نهاية المشروع بعدد أيام التوقف
-                            </p>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                      <FormField control={form.control} name="startDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-foreground/90">تاريخ البداية</FormLabel>
+                          <FormControl><Input type="date" className="h-11 bg-background" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="endDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-foreground/90">تاريخ النهاية</FormLabel>
+                          <FormControl><Input type="date" className="h-11 bg-background" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      
+                      {watchedStart && watchedEnd && (
+                        <div className="sm:col-span-2 rounded-xl bg-background border border-border/50 px-4 py-3 text-sm text-foreground/90 shadow-sm flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-primary" />
+                            <span className="font-medium">المدة الإجمالية للتوقف:</span>
                           </div>
+                          <Badge variant={previewDays > 0 ? "secondary" : "destructive"} className={previewDays > 0 ? "bg-primary/10 text-primary border-primary/20" : ""}>
+                            {previewDays > 0 ? `${previewDays} يوم (شامل)` : "تاريخ النهاية قبل البداية"}
+                          </Badge>
                         </div>
-                      </FormItem>
-                    )} />
-                  )}
+                      )}
+                    </div>
 
-                  <FormField control={form.control} name="reason" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>السبب / الوصف</FormLabel>
-                      <FormControl><Input placeholder="تفاصيل إضافية..." {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
+                    {isShiftable && (
+                      <FormField control={form.control} name="shiftDates" render={({ field }) => (
+                        <FormItem className="rounded-2xl border border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 transition-colors p-5 shadow-sm">
+                          <div className="flex items-start gap-3">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                className="mt-1"
+                              />
+                            </FormControl>
+                            <div className="space-y-1.5 leading-none flex-1">
+                              <FormLabel className="text-base font-semibold cursor-pointer flex items-center gap-2 text-foreground/90">
+                                <CalendarClock className="h-5 w-5 text-blue-600" />
+                                ترحيل الجدول الزمني
+                              </FormLabel>
+                              <p className="text-sm text-muted-foreground leading-relaxed">
+                                تفعيل هذا الخيار سيؤدي إلى تأجيل جميع تواريخ البنود اللاحقة وتاريخ نهاية المشروع بمقدار أيام التوقف.
+                              </p>
+                            </div>
+                          </div>
+                        </FormItem>
+                      )} />
+                    )}
 
-                  <FormField control={form.control} name="notes" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>ملاحظات</FormLabel>
-                      <FormControl><Input placeholder="ملاحظات إضافية..." {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
+                    <div className="p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
+                      <FormField control={form.control} name="reason" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-foreground/90">السبب / الوصف <span className="text-muted-foreground text-[10px] font-normal px-1.5 py-0.5 bg-muted rounded">(اختياري)</span></FormLabel>
+                          <FormControl><Input className="h-11 bg-background" placeholder="تفاصيل إضافية..." {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
 
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
-                    <Button type="submit" disabled={createSusp.isPending}>
-                      {createSusp.isPending ? "جاري الحفظ..." : "إضافة التوقف"}
+                      <FormField control={form.control} name="notes" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-foreground/90">ملاحظات <span className="text-muted-foreground text-[10px] font-normal px-1.5 py-0.5 bg-muted rounded">(اختياري)</span></FormLabel>
+                          <FormControl><Input className="h-11 bg-background" placeholder="ملاحظات إضافية..." {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl p-4 z-10">
+                    <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
+                    <Button type="submit" disabled={createSusp.isPending} className="w-full sm:w-auto shadow-md gap-2">
+                      {createSusp.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> جاري الحفظ...</> : <><Plus className="h-4 w-4" /> تأكيد إضافة التوقف</>}
                     </Button>
                   </div>
                 </form>

@@ -196,12 +196,12 @@ function TemplateBuilder({
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2">
-          <Label>اسم النموذج *</Label>
-          <Input value={name} onChange={e => setName(e.target.value)} placeholder="مثال: تقرير العمل اليومي" className="mt-1" />
+          <Label className="text-sm font-semibold">اسم النموذج *</Label>
+          <Input value={name} onChange={e => setName(e.target.value)} placeholder="مثال: تقرير العمل اليومي" className="mt-2 h-[52px] bg-muted/20 border-border/60 hover:border-border/80 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-xl transition-all shadow-sm px-4 text-[15px]" />
         </div>
         <div className="sm:col-span-2">
-          <Label>وصف النموذج</Label>
-          <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="وصف اختياري للنموذج..." className="mt-1 min-h-16" />
+          <Label className="text-sm font-semibold">وصف النموذج</Label>
+          <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="وصف اختياري للنموذج..." className="mt-2 min-h-[100px] p-4 bg-muted/20 border-border/60 hover:border-border/80 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-xl transition-all shadow-sm resize-y text-[15px] leading-relaxed" />
         </div>
         <div className="sm:col-span-2 flex items-center gap-3">
           <Switch id="visibleToContractor" checked={visibleToContractor} onCheckedChange={setVisibleToContractor} />
@@ -458,10 +458,10 @@ function TemplateBuilder({
         </div>
       )}
 
-      <div className="flex justify-end gap-2 pt-2 border-t">
-        <Button variant="outline" onClick={onCancel}>إلغاء</Button>
-        <Button onClick={handleSave} disabled={!name.trim()}>
-          {template ? "حفظ التغييرات" : "إنشاء النموذج"}
+      <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-6 px-6">
+        <Button variant="outline" className="w-full sm:w-auto" onClick={onCancel}>إلغاء والتراجع</Button>
+        <Button onClick={handleSave} disabled={!name.trim()} className="w-full sm:w-auto shadow-md gap-2">
+          {template ? "حفظ التغييرات" : "تأكيد وإنشاء النموذج"}
         </Button>
       </div>
     </div>
@@ -600,8 +600,8 @@ function FormFiller({
       <ProjectInfoHeader project={project} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <Label>تاريخ التقرير *</Label>
-          <Input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="mt-1" />
+          <Label className="text-sm font-semibold">تاريخ التقرير *</Label>
+          <Input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="mt-2 h-[52px] bg-muted/20 border-border/60 hover:border-border/80 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-xl transition-all shadow-sm px-4 text-[15px]" />
         </div>
       </div>
 
@@ -627,7 +627,7 @@ function FormFiller({
                   value={(formData[field.id] as string) || ""}
                   onChange={e => updateValue(field.id, e.target.value)}
                   placeholder={field.placeholder || ""}
-                  className="mt-1"
+                  className="mt-2 h-[52px] bg-muted/20 border-border/60 hover:border-border/80 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-xl transition-all shadow-sm px-4 text-[15px]"
                 />
               )}
 
@@ -636,7 +636,7 @@ function FormFiller({
                   value={(formData[field.id] as string) || ""}
                   onChange={e => updateValue(field.id, e.target.value)}
                   placeholder={field.placeholder || ""}
-                  className="mt-1 min-h-20"
+                  className="mt-2 min-h-[120px] p-4 bg-muted/20 border-border/60 hover:border-border/80 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-xl transition-all shadow-sm resize-y text-[15px] leading-relaxed"
                 />
               )}
 
@@ -645,7 +645,7 @@ function FormFiller({
                   type="number"
                   value={(formData[field.id] as string) || ""}
                   onChange={e => updateValue(field.id, e.target.value)}
-                  className="mt-1"
+                  className="mt-2 h-[52px] bg-muted/20 border-border/60 hover:border-border/80 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-xl transition-all shadow-sm px-4 text-[15px]"
                 />
               )}
 
@@ -654,7 +654,7 @@ function FormFiller({
                   type="date"
                   value={(formData[field.id] as string) || new Date().toISOString().slice(0, 10)}
                   onChange={e => updateValue(field.id, e.target.value)}
-                  className="mt-1"
+                  className="mt-2 h-[52px] bg-muted/20 border-border/60 hover:border-border/80 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-xl transition-all shadow-sm px-4 text-[15px]"
                 />
               )}
 
@@ -663,7 +663,7 @@ function FormFiller({
                   value={(formData[field.id] as string) || ""}
                   onValueChange={v => updateValue(field.id, v)}
                 >
-                  <SelectTrigger className="mt-1" dir="rtl">
+                  <SelectTrigger className="mt-2 h-[52px] bg-muted/20 border-border/60 hover:border-border/80 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-xl transition-all shadow-sm px-4 text-[15px]" dir="rtl">
                     <SelectValue placeholder="اختر..." />
                   </SelectTrigger>
                   <SelectContent dir="rtl">
@@ -681,7 +681,7 @@ function FormFiller({
                     {(field.options || []).filter(o => o.trim()).map((opt, i) => {
                       const isChecked = checklistData[opt] !== undefined;
                       return (
-                        <div key={i} className="flex items-center gap-3 p-2 rounded-lg border bg-background hover:bg-muted/30 transition-colors">
+                        <div key={i} className="flex items-center gap-4 p-3.5 rounded-xl border border-border/60 bg-muted/10 hover:bg-muted/30 hover:border-border/80 transition-all shadow-sm">
                           <Checkbox
                             checked={isChecked}
                             onCheckedChange={(checked) => {
@@ -706,7 +706,7 @@ function FormFiller({
                                 updateValue(field.id, updated);
                               }}
                               placeholder="العدد"
-                              className="w-20 h-8 text-xs text-center"
+                              className="w-24 h-10 text-sm font-semibold text-center bg-background border-border/60 rounded-lg focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all shadow-sm"
                             />
                           )}
                         </div>
@@ -737,7 +737,7 @@ function FormFiller({
                               <Input
                                 value={row[ci] || ""}
                                 onChange={e => updateTableRow(field.id, ri, ci, e.target.value, field.columns!)}
-                                className="h-8 text-xs"
+                                className="h-10 text-sm bg-background/50 border-border/50 hover:bg-background focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-lg transition-all"
                               />
                             </td>
                           ))}
@@ -763,15 +763,15 @@ function FormFiller({
       </div>
 
       <div>
-        <Label>ملاحظات إضافية</Label>
-        <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="ملاحظات اختيارية..." className="mt-1 min-h-16" />
+        <Label className="text-sm font-semibold">ملاحظات إضافية</Label>
+        <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="ملاحظات اختيارية..." className="mt-2 min-h-[120px] p-4 bg-muted/20 border-border/60 hover:border-border/80 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-xl transition-all shadow-sm resize-y text-[15px] leading-relaxed" />
       </div>
 
-      <div className="flex justify-end gap-2 pt-2 border-t">
-        <Button variant="outline" onClick={onCancel}>إلغاء</Button>
-        <Button onClick={handleSubmit} className="gap-2">
+      <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-6 px-6">
+        <Button variant="outline" className="w-full sm:w-auto" onClick={onCancel}>إلغاء والتراجع</Button>
+        <Button onClick={handleSubmit} className="w-full sm:w-auto shadow-md gap-2">
           <Send className="h-4 w-4" />
-          {submission ? "تحديث" : "إرسال"}
+          {submission ? "تحديث البيانات" : "تأكيد الإرسال"}
         </Button>
       </div>
     </div>
@@ -1693,48 +1693,60 @@ export default function ProjectForms() {
       )}
 
       <Dialog open={builderOpen} onOpenChange={open => { if (!open) { setBuilderOpen(false); setEditingTemplate(null); } }}>
-        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>{editingTemplate ? "تعديل النموذج" : "إنشاء نموذج جديد"}</DialogTitle>
-          </DialogHeader>
-          <TemplateBuilder
-            template={editingTemplate}
-            onSave={handleSaveTemplate}
-            onCancel={() => { setBuilderOpen(false); setEditingTemplate(null); }}
-          />
+        <DialogContent className="sm:max-w-[800px] p-0 overflow-hidden" dir="rtl">
+          <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+            <DialogHeader>
+              <DialogTitle className="text-xl">{editingTemplate ? "تعديل النموذج" : "إنشاء نموذج جديد"}</DialogTitle>
+            </DialogHeader>
+          </div>
+          <div className="overflow-y-auto max-h-[calc(90vh-140px)] p-6 pt-4">
+            <TemplateBuilder
+              template={editingTemplate}
+              onSave={handleSaveTemplate}
+              onCancel={() => { setBuilderOpen(false); setEditingTemplate(null); }}
+            />
+          </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={fillerOpen} onOpenChange={open => { if (!open) { setFillerOpen(false); setFillingTemplate(null); setEditingSubmission(null); } }}>
-        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>{fillingTemplate?.name || "إرسال النموذج"}</DialogTitle>
-          </DialogHeader>
-          {fillingTemplate && (
-            <FormFiller
-              template={fillingTemplate}
-              submission={editingSubmission}
-              project={project as Record<string, unknown> | undefined}
-              onSubmit={handleSubmitForm}
-              onCancel={() => { setFillerOpen(false); setFillingTemplate(null); setEditingSubmission(null); }}
-            />
-          )}
+        <DialogContent className="sm:max-w-[800px] p-0 overflow-hidden" dir="rtl">
+          <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+            <DialogHeader>
+              <DialogTitle className="text-xl">{fillingTemplate?.name || "إرسال النموذج"}</DialogTitle>
+            </DialogHeader>
+          </div>
+          <div className="overflow-y-auto max-h-[calc(90vh-140px)] p-6 pt-4">
+            {fillingTemplate && (
+              <FormFiller
+                template={fillingTemplate}
+                submission={editingSubmission}
+                project={project as Record<string, unknown> | undefined}
+                onSubmit={handleSubmitForm}
+                onCancel={() => { setFillerOpen(false); setFillingTemplate(null); setEditingSubmission(null); }}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!viewingSubmission} onOpenChange={open => { if (!open) { setViewingSubmission(null); setViewingTemplate(null); } }}>
-        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>عرض النموذج</DialogTitle>
-          </DialogHeader>
-          {viewingSubmission && viewingTemplate && (
-            <SubmissionViewer
-              submission={viewingSubmission}
-              template={viewingTemplate}
-              project={project}
-              onClose={() => { setViewingSubmission(null); setViewingTemplate(null); }}
-            />
-          )}
+        <DialogContent className="sm:max-w-[800px] p-0 overflow-hidden" dir="rtl">
+          <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+            <DialogHeader>
+              <DialogTitle className="text-xl">عرض النموذج</DialogTitle>
+            </DialogHeader>
+          </div>
+          <div className="overflow-y-auto max-h-[calc(90vh-140px)] p-6 pt-4">
+            {viewingSubmission && viewingTemplate && (
+              <SubmissionViewer
+                submission={viewingSubmission}
+                template={viewingTemplate}
+                project={project}
+                onClose={() => { setViewingSubmission(null); setViewingTemplate(null); }}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

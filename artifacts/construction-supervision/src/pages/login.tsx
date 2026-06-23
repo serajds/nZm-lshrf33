@@ -16,7 +16,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Loader2, Phone, Lock, Eye, EyeOff, User as UserIcon } from "lucide-react";
+import { Loader2, Phone, Lock, Eye, EyeOff, User as UserIcon, ArrowLeft } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 const loginSchema = z.object({
   phone: z.string().min(1, "رقم الهاتف مطلوب"),
@@ -43,9 +44,6 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<"login" | "register">("login");
 
-  // When the central 401 handler bounced us here, surface a friendly
-  // "your session expired" notice instead of letting the user wonder why
-  // they were logged out. The flag is one-shot.
   useEffect(() => {
     try {
       if (sessionStorage.getItem("auth_session_expired") === "1") {
@@ -55,17 +53,9 @@ export default function Login() {
           description: "يرجى تسجيل الدخول مجددًا للمتابعة.",
         });
       }
-    } catch {
-      // sessionStorage may be unavailable — skip silently.
-    }
+    } catch {}
   }, [toast]);
 
-  // CRITICAL: every hook below MUST run on every render. Returning early
-  // (or calling setLocation during render) above this line broke the
-  // Rules of Hooks and put RHF into an inconsistent internal state — on
-  // mobile this manifested as inputs that focused but never committed
-  // characters, because RHF's controller re-mounted on every render
-  // and reverted each keystroke.
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: { phone: "", password: "" },
@@ -76,15 +66,11 @@ export default function Login() {
     defaultValues: { fullName: "", phone: "", password: "", confirmPassword: "" },
   });
 
-  // Redirect AFTER render via effect — never call setLocation in the
-  // render body (it triggers a state update during render and warns).
   useEffect(() => {
     if (isAuthenticated) setLocation("/");
   }, [isAuthenticated, setLocation]);
 
-  if (isAuthenticated) {
-    return null;
-  }
+  if (isAuthenticated) return null;
 
   async function onSubmit(values: z.infer<typeof loginSchema>) {
     try {
@@ -99,252 +85,302 @@ export default function Login() {
     try {
       setIsRegistering(true);
       await register({ fullName: values.fullName, phone: values.phone, password: values.password });
-      // Registration no longer auto-logs the user in (account starts inert
-      // until the admin activates it). Reset the form and switch back to
-      // the login tab so the user sees the success toast in context.
       regForm.reset();
       setMode("login");
-    } catch {
-      // toast handled in hook
-    } finally {
+    } catch {} finally {
       setIsRegistering(false);
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-emerald-50/40" dir="rtl">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-blue-100/30 rounded-full blur-3xl" />
-      </div>
+    <div className="min-h-screen w-full relative flex items-center justify-center overflow-hidden bg-slate-50" dir="rtl">
+      {/* Background Image Layer */}
+      <motion.div 
+        initial={{ scale: 1.1, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 1.5, ease: "easeOut" }}
+        className="absolute inset-0 z-0 pointer-events-none"
+      >
+        <div 
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${import.meta.env.BASE_URL}login-bg.png)` }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-tr from-white/95 via-slate-100/80 to-primary/20 backdrop-blur-sm" />
+      </motion.div>
 
-      <div className="relative w-full max-w-md mx-4">
-        <div className="text-center mb-8">
-          <img src={`${import.meta.env.BASE_URL}app-icon.png`} alt="إدارة الإشراف والمتابعة" className="w-20 h-20 rounded-2xl shadow-lg shadow-emerald-200 mb-5 mx-auto" />
-          <h1 className="text-2xl font-bold text-slate-800">إدارة الإشراف والمتابعة</h1>
-        </div>
+      {/* Animated Glowing Orbs */}
+      <motion.div 
+        animate={{ 
+          x: [0, 50, 0, -50, 0],
+          y: [0, -50, 50, 0, 0],
+        }}
+        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+        className="absolute top-1/4 right-1/4 w-[40vw] h-[40vw] bg-primary/20 rounded-full blur-[120px] pointer-events-none z-0"
+      />
+      <motion.div 
+        animate={{ 
+          x: [0, -60, 0, 60, 0],
+          y: [0, 60, -60, 0, 0],
+        }}
+        transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+        className="absolute bottom-1/4 left-1/4 w-[30vw] h-[30vw] bg-emerald-500/15 rounded-full blur-[100px] pointer-events-none z-0"
+      />
 
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 p-8">
-          {mode === "login" ? (
-            <>
-              <div className="mb-6">
-                <h2 className="text-xl font-bold text-slate-800">تسجيل الدخول</h2>
-                <p className="text-sm text-slate-500 mt-1">أدخل بيانات حسابك للوصول إلى النظام</p>
-              </div>
+      {/* Main Glassmorphism Container */}
+      <div className="relative z-10 w-full max-w-[480px] p-6">
+        <motion.div 
+          initial={{ y: 30, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
+          className="relative bg-white/70 backdrop-blur-2xl border border-white/60 rounded-[2.5rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] overflow-hidden"
+        >
+          {/* Inner Highlight Line */}
+          <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white to-transparent" />
+          
+          <div className="p-8 md:p-12">
+            {/* Branding Logo */}
+            <div className="flex flex-col items-center mb-10">
+              <motion.div 
+                whileHover={{ scale: 1.05 }}
+                className="w-20 h-20 rounded-2xl bg-primary/10 border border-primary/20 shadow-xl p-4 flex items-center justify-center mb-6 text-primary"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-building-2 drop-shadow-sm">
+                  <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/>
+                  <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
+                  <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/>
+                  <path d="M10 6h4"/>
+                  <path d="M10 10h4"/>
+                  <path d="M10 14h4"/>
+                  <path d="M10 18h4"/>
+                </svg>
+              </motion.div>
+              <h2 className="text-2xl font-bold text-slate-900 tracking-wide text-center">
+                إدارة الإشراف والمتابعة
+              </h2>
+            </div>
 
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium text-slate-700">رقم الهاتف</FormLabel>
-                        <div className="relative">
-                          <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
-                          <FormControl>
-                            <Input
-                              placeholder="أدخل رقم الهاتف"
-                              type="tel"
-                              autoComplete="tel"
-                              dir="ltr"
-                              {...field}
-                              className="h-11 text-right pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
-                            />
-                          </FormControl>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium text-slate-700">كلمة المرور</FormLabel>
-                        <div className="relative">
-                          <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
-                          <FormControl>
-                            <Input
-                              type={showPassword ? "text" : "password"}
-                              placeholder="أدخل كلمة المرور"
-                              autoComplete="current-password"
-                              {...field}
-                              className="h-11 pr-10 pl-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
-                            />
-                          </FormControl>
-                          <button
-                            type="button"
-                            tabIndex={-1}
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors z-10"
-                          >
-                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Button
-                    type="submit"
-                    className="w-full h-11 font-semibold text-base bg-gradient-to-l from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-md shadow-emerald-200 transition-all"
-                    disabled={isLoggingIn}
-                  >
-                    {isLoggingIn ? (
-                      <>
-                        <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-                        جاري الدخول...
-                      </>
-                    ) : (
-                      "تسجيل الدخول"
-                    )}
-                  </Button>
-                </form>
-              </Form>
-
-              <div className="mt-6 pt-5 border-t border-slate-100 text-center text-sm text-slate-500">
-                ليس لديك حساب؟{" "}
-                <button
-                  type="button"
-                  onClick={() => setMode("register")}
-                  className="text-emerald-700 font-semibold hover:underline"
+            {/* Form Transitions */}
+            <AnimatePresence mode="wait">
+              {mode === "login" ? (
+                <motion.div 
+                  key="login"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.3 }}
                 >
-                  إنشاء حساب جديد
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="mb-6">
-                <h2 className="text-xl font-bold text-slate-800">إنشاء حساب جديد</h2>
-              </div>
-
-              {/*
-                The register form uses react-hook-form's `register()` API
-                directly (instead of <FormField>/<Controller>) because the
-                Controller-based wrapper, combined with Radix <Slot> inside
-                <FormControl>, intermittently dropped keystrokes on mobile —
-                tapping the field focused it but typed characters never
-                committed to RHF state. Using register() attaches the input
-                as uncontrolled and works consistently across browsers.
-              */}
-              <form onSubmit={regForm.handleSubmit(onRegisterSubmit)} className="space-y-5" noValidate>
-                <div>
-                  <label htmlFor="reg-fullName" className="block text-sm font-medium text-slate-700 mb-2">الاسم الكامل</label>
-                  <div className="relative">
-                    <UserIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
-                    <Input
-                      id="reg-fullName"
-                      placeholder="أدخل اسمك الكامل"
-                      autoComplete="name"
-                      className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
-                      {...regForm.register("fullName")}
-                    />
+                  <div className="text-center mb-8">
+                    <h3 className="text-xl font-bold text-slate-800">مرحباً بعودتك</h3>
+                    <p className="text-sm text-slate-500 mt-2">يرجى إدخال بيانات الدخول للمتابعة</p>
                   </div>
-                  {regForm.formState.errors.fullName && (
-                    <p className="text-[0.8rem] font-medium text-destructive mt-1.5">{regForm.formState.errors.fullName.message}</p>
-                  )}
-                </div>
 
-                <div>
-                  <label htmlFor="reg-phone" className="block text-sm font-medium text-slate-700 mb-2">رقم الهاتف</label>
-                  <div className="relative">
-                    <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
-                    <Input
-                      id="reg-phone"
-                      type="tel"
-                      placeholder="أدخل رقم الهاتف"
-                      autoComplete="tel"
-                      dir="ltr"
-                      className="h-11 text-right pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
-                      {...regForm.register("phone")}
-                    />
-                  </div>
-                  {regForm.formState.errors.phone && (
-                    <p className="text-[0.8rem] font-medium text-destructive mt-1.5">{regForm.formState.errors.phone.message}</p>
-                  )}
-                </div>
+                  <Form {...form}>
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+                      <FormField
+                        control={form.control}
+                        name="phone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <div className="relative group">
+                              <Phone className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                              <FormControl>
+                                <Input
+                                  placeholder="رقم الهاتف"
+                                  type="tel"
+                                  autoComplete="tel"
+                                  dir="ltr"
+                                  {...field}
+                                  className="h-14 text-right pr-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                                />
+                              </FormControl>
+                            </div>
+                            <FormMessage className="text-rose-500" />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="password"
+                        render={({ field }) => (
+                          <FormItem>
+                            <div className="relative group">
+                              <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                              <FormControl>
+                                <Input
+                                  type={showPassword ? "text" : "password"}
+                                  placeholder="كلمة المرور"
+                                  autoComplete="current-password"
+                                  {...field}
+                                  className="h-14 pr-12 pl-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                                />
+                              </FormControl>
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors z-10"
+                              >
+                                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                              </button>
+                            </div>
+                            <FormMessage className="text-rose-500" />
+                          </FormItem>
+                        )}
+                      />
 
-                <div>
-                  <label htmlFor="reg-password" className="block text-sm font-medium text-slate-700 mb-2">كلمة المرور</label>
-                  <div className="relative">
-                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
-                    <Input
-                      id="reg-password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="6 أحرف على الأقل"
-                      autoComplete="new-password"
-                      className="h-11 pr-10 pl-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
-                      {...regForm.register("password")}
-                    />
+                      <Button
+                        type="submit"
+                        className="w-full h-14 font-semibold text-base bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_8px_20px_rgba(var(--primary),0.25)] hover:shadow-[0_12px_25px_rgba(var(--primary),0.35)] rounded-2xl transition-all duration-300"
+                        disabled={isLoggingIn}
+                      >
+                        {isLoggingIn ? (
+                          <Loader2 className="h-6 w-6 animate-spin" />
+                        ) : (
+                          "دخول إلى المنصة"
+                        )}
+                      </Button>
+                    </form>
+                  </Form>
+
+                  <div className="mt-8 text-center">
                     <button
                       type="button"
-                      tabIndex={-1}
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors z-10"
+                      onClick={() => setMode("register")}
+                      className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      ليس لديك حساب؟ <span className="text-primary hover:underline underline-offset-4">إنشاء حساب جديد</span>
                     </button>
                   </div>
-                  {regForm.formState.errors.password && (
-                    <p className="text-[0.8rem] font-medium text-destructive mt-1.5">{regForm.formState.errors.password.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="reg-confirmPassword" className="block text-sm font-medium text-slate-700 mb-2">تأكيد كلمة المرور</label>
-                  <div className="relative">
-                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
-                    <Input
-                      id="reg-confirmPassword"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="أعد إدخال كلمة المرور"
-                      autoComplete="new-password"
-                      className="h-11 pr-10 bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
-                      {...regForm.register("confirmPassword")}
-                    />
+                </motion.div>
+              ) : (
+                <motion.div 
+                  key="register"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="text-right">
+                      <h3 className="text-xl font-bold text-slate-800">إنشاء حساب</h3>
+                      <p className="text-sm text-slate-500 mt-1">سجل بياناتك للانضمام إلينا</p>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => setMode("login")}
+                      className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full"
+                    >
+                      <ArrowLeft className="h-5 w-5" />
+                    </Button>
                   </div>
-                  {regForm.formState.errors.confirmPassword && (
-                    <p className="text-[0.8rem] font-medium text-destructive mt-1.5">{regForm.formState.errors.confirmPassword.message}</p>
-                  )}
-                </div>
 
-                <Button
-                  type="submit"
-                  className="w-full h-11 font-semibold text-base bg-gradient-to-l from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-md shadow-emerald-200 transition-all"
-                  disabled={isRegistering}
-                >
-                  {isRegistering ? (
-                    <>
-                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-                      جاري إنشاء الحساب...
-                    </>
-                  ) : (
-                    "إنشاء الحساب"
-                  )}
-                </Button>
-              </form>
+                  <form onSubmit={regForm.handleSubmit(onRegisterSubmit)} className="space-y-4" noValidate>
+                    <div>
+                      <div className="relative group">
+                        <UserIcon className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                        <Input
+                          id="reg-fullName"
+                          placeholder="الاسم الكامل"
+                          autoComplete="name"
+                          className="h-14 pr-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                          {...regForm.register("fullName")}
+                        />
+                      </div>
+                      {regForm.formState.errors.fullName && (
+                        <p className="text-[0.8rem] font-medium text-rose-500 mt-1.5 px-2">{regForm.formState.errors.fullName.message}</p>
+                      )}
+                    </div>
 
-              <div className="mt-6 pt-5 border-t border-slate-100 text-center text-sm text-slate-500">
-                لديك حساب بالفعل؟{" "}
-                <button
-                  type="button"
-                  onClick={() => setMode("login")}
-                  className="text-emerald-700 font-semibold hover:underline"
-                >
-                  تسجيل الدخول
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+                    <div>
+                      <div className="relative group">
+                        <Phone className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                        <Input
+                          id="reg-phone"
+                          type="tel"
+                          placeholder="رقم الهاتف"
+                          autoComplete="tel"
+                          dir="ltr"
+                          className="h-14 text-right pr-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                          {...regForm.register("phone")}
+                        />
+                      </div>
+                      {regForm.formState.errors.phone && (
+                        <p className="text-[0.8rem] font-medium text-rose-500 mt-1.5 px-2">{regForm.formState.errors.phone.message}</p>
+                      )}
+                    </div>
 
-        <a href="https://about.me/seraj" target="_blank" rel="noopener noreferrer" className="hover:text-emerald-500 transition-colors mt-8 text-center text-xs text-slate-400 block">
-          Developed By :: Eng. Seraj Elajtel
-        </a>
+                    <div>
+                      <div className="relative group">
+                        <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                        <Input
+                          id="reg-password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="كلمة المرور (6 أحرف على الأقل)"
+                          autoComplete="new-password"
+                          className="h-14 pr-12 pl-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                          {...regForm.register("password")}
+                        />
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors z-10"
+                        >
+                          {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        </button>
+                      </div>
+                      {regForm.formState.errors.password && (
+                        <p className="text-[0.8rem] font-medium text-rose-500 mt-1.5 px-2">{regForm.formState.errors.password.message}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="relative group">
+                        <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                        <Input
+                          id="reg-confirmPassword"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="تأكيد كلمة المرور"
+                          autoComplete="new-password"
+                          className="h-14 pr-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                          {...regForm.register("confirmPassword")}
+                        />
+                      </div>
+                      {regForm.formState.errors.confirmPassword && (
+                        <p className="text-[0.8rem] font-medium text-rose-500 mt-1.5 px-2">{regForm.formState.errors.confirmPassword.message}</p>
+                      )}
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="w-full h-14 font-semibold text-base bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_8px_20px_rgba(var(--primary),0.25)] hover:shadow-[0_12px_25px_rgba(var(--primary),0.35)] rounded-2xl transition-all duration-300 mt-2"
+                      disabled={isRegistering}
+                    >
+                      {isRegistering ? (
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      ) : (
+                        "إنشاء الحساب الموحد"
+                      )}
+                    </Button>
+                  </form>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </motion.div>
+
+        {/* Developer Credit */}
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1, duration: 1 }}
+          className="mt-8 text-center"
+        >
+          <span className="text-slate-500 text-xs font-medium tracking-widest uppercase cursor-default">
+            Developed By Seraj Elajtel
+          </span>
+        </motion.div>
       </div>
     </div>
   );

@@ -342,7 +342,7 @@ export default function Projects() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'active': return <Badge variant="default" className="bg-primary hover:bg-primary">نشط</Badge>;
+      case 'active': return <Badge variant="default" className="bg-primary hover:bg-primary text-white">نشط</Badge>;
       case 'completed': return <Badge variant="secondary" className="bg-emerald-500 hover:bg-emerald-600 text-white">مكتمل</Badge>;
       case 'delayed': return <Badge variant="destructive">منحرف عن الخطة</Badge>;
       case 'suspended': return <Badge variant="outline" className="bg-orange-500 text-white hover:bg-orange-600 border-none">متوقف</Badge>;
@@ -376,232 +376,282 @@ export default function Projects() {
           setIsDialogOpen(open);
           if (!open) { setEditingProject(null); form.reset(); }
         }}>
-          <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto" dir="rtl">
-            <DialogHeader>
-              <DialogTitle>{editingProject ? "تعديل المشروع" : "إضافة مشروع جديد"}</DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem className="sm:col-span-2">
-                        <FormLabel>اسم المشروع</FormLabel>
-                        <FormControl><Input {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="ownerCompanyId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>شركة المالك</FormLabel>
-                        <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "ownerEntity"); }} dir="rtl">
-                          <FormControl><SelectTrigger><SelectValue placeholder="اختر شركة..." /></SelectTrigger></FormControl>
-                          <SelectContent dir="rtl">
-                            <SelectItem value="none">— بدون —</SelectItem>
-                            {ownerCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="ownerEntity"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>اسم الجهة المالكة</FormLabel>
-                        <FormControl><Input {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="contractorCompanyId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>شركة المقاول</FormLabel>
-                        <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "contractor"); }} dir="rtl">
-                          <FormControl><SelectTrigger><SelectValue placeholder="اختر شركة..." /></SelectTrigger></FormControl>
-                          <SelectContent dir="rtl">
-                            <SelectItem value="none">— بدون —</SelectItem>
-                            {contractorCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="contractor"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>اسم المقاول</FormLabel>
-                        <FormControl><Input {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="supervisorCompanyId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>شركة الإشراف</FormLabel>
-                        <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "supervisorEntity"); }} dir="rtl">
-                          <FormControl><SelectTrigger><SelectValue placeholder="اختر شركة..." /></SelectTrigger></FormControl>
-                          <SelectContent dir="rtl">
-                            <SelectItem value="none">— بدون —</SelectItem>
-                            {supervisorCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="supervisorEntity"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>اسم الجهة المشرفة</FormLabel>
-                        <FormControl><Input {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="location"
-                    render={({ field }) => (
-                      <FormItem className="sm:col-span-2">
-                        <FormLabel>موقع المشروع</FormLabel>
-                        <FormControl><Input {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="onedriveTestResultsFolderId"
-                    render={({ field }) => (
-                      <FormItem className="sm:col-span-2">
-                        <FormLabel className="flex items-center gap-1.5">
-                          <FlaskConical className="h-3.5 w-3.5 text-emerald-600" />
-                          مجلد نتائج الاختبارات (OneDrive)
-                        </FormLabel>
-                        <div className="flex items-center gap-2">
-                          <FormControl>
-                            <Input {...field} placeholder="لم يتم اختيار مجلد" dir="ltr" className="text-left text-sm flex-1" readOnly />
-                          </FormControl>
-                          <Button type="button" variant="outline" size="sm" onClick={openFolderBrowser} className="shrink-0 gap-1.5">
-                            <FolderOpen className="h-4 w-4" />
-                            تصفح
-                          </Button>
-                          {field.value && (
-                            <Button type="button" variant="ghost" size="sm" onClick={() => form.setValue("onedriveTestResultsFolderId", "")} className="shrink-0 text-muted-foreground hover:text-red-500 px-2">
-                              <X className="h-4 w-4" />
-                            </Button>
+          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-hidden p-0" dir="rtl">
+            <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+              <DialogHeader>
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-500/10 rounded-xl">
+                    <Building2 className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <DialogTitle className="text-xl">{editingProject ? "تعديل بيانات المشروع" : "إضافة مشروع جديد"}</DialogTitle>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {editingProject ? "قم بتحديث بيانات المشروع والجهات المشاركة فيه." : "أدخل تفاصيل المشروع الجديد لتتبعه في النظام."}
+                    </p>
+                  </div>
+                </div>
+              </DialogHeader>
+            </div>
+
+            <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-4 space-y-8">
+                  
+                  {/* Section 1: Basic Info */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-primary/80 uppercase tracking-wide flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                      البيانات الأساسية
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                      <FormField
+                        control={form.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem className="sm:col-span-2">
+                            <FormLabel className="text-foreground/90">اسم المشروع</FormLabel>
+                            <FormControl><Input {...field} className="h-11 bg-background" placeholder="أدخل اسم المشروع" /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="location"
+                        render={({ field }) => (
+                          <FormItem className="sm:col-span-2">
+                            <FormLabel className="text-foreground/90">موقع المشروع</FormLabel>
+                            <FormControl><Input {...field} className="h-11 bg-background" placeholder="مثال: الرياض، حي الملقا" /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="status"
+                        render={({ field }) => (
+                          <FormItem className="sm:col-span-2">
+                            <FormLabel className="text-foreground/90">حالة المشروع</FormLabel>
+                            <Select value={field.value} onValueChange={field.onChange} dir="rtl">
+                              <FormControl>
+                                <SelectTrigger className="h-11 bg-background"><SelectValue /></SelectTrigger>
+                              </FormControl>
+                              <SelectContent dir="rtl">
+                                <SelectItem value="active">نشط (قيد التنفيذ)</SelectItem>
+                                <SelectItem value="completed">مكتمل</SelectItem>
+                                <SelectItem value="delayed">منحرف عن الخطة</SelectItem>
+                                <SelectItem value="suspended">متوقف</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Section 2: Parties */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-primary/80 uppercase tracking-wide flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                      الجهات المشاركة
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                      <div className="sm:col-span-2 p-4 rounded-xl border bg-background shadow-sm space-y-4">
+                        <FormField
+                          control={form.control}
+                          name="ownerCompanyId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-foreground/90">الجهة المالكة</FormLabel>
+                              <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "ownerEntity"); }} dir="rtl">
+                                <FormControl><SelectTrigger className="h-11"><SelectValue placeholder="اختر شركة..." /></SelectTrigger></FormControl>
+                                <SelectContent dir="rtl">
+                                  <SelectItem value="none">— إدخال يدوي —</SelectItem>
+                                  {ownerCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </FormItem>
                           )}
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">اختر المجلد الذي سيتم عرض ملفاته في بوابة المالك</p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="noSchedule"
-                    render={({ field }) => (
-                      <FormItem className="sm:col-span-2 flex items-center justify-between rounded-lg border p-2.5 sm:p-3 gap-2 sm:gap-3">
-                        <div className="space-y-0.5 flex-1 min-w-0">
-                          <FormLabel className="text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2">
-                            <CalendarOff className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground shrink-0" />
-                            بدون جدول زمني معتمد
-                          </FormLabel>
-                          <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">
-                            لن يُحسب الانحراف عن الخطة ولا تجاوز المدة، وتصبح التواريخ اختيارية
-                          </p>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={(checked) => {
-                              field.onChange(checked);
-                              if (checked) {
-                                form.setValue("startDate", "");
-                                form.setValue("expectedEndDate", "");
-                              } else {
-                                form.setValue("startDate", new Date().toISOString().split('T')[0]);
-                                form.setValue("expectedEndDate", new Date(Date.now() + 31536000000).toISOString().split('T')[0]);
-                              }
-                            }}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="ownerEntity"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl><Input {...field} placeholder="اسم المالك كتابة" /></FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <div className="p-4 rounded-xl border bg-background shadow-sm space-y-4">
+                        <FormField
+                          control={form.control}
+                          name="contractorCompanyId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-foreground/90">المقاول</FormLabel>
+                              <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "contractor"); }} dir="rtl">
+                                <FormControl><SelectTrigger className="h-11"><SelectValue placeholder="اختر مقاول..." /></SelectTrigger></FormControl>
+                                <SelectContent dir="rtl">
+                                  <SelectItem value="none">— إدخال يدوي —</SelectItem>
+                                  {contractorCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="contractor"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl><Input {...field} placeholder="اسم المقاول كتابة" /></FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <div className="p-4 rounded-xl border bg-background shadow-sm space-y-4">
+                        <FormField
+                          control={form.control}
+                          name="supervisorCompanyId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-foreground/90">الاستشاري المشرف</FormLabel>
+                              <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "supervisorEntity"); }} dir="rtl">
+                                <FormControl><SelectTrigger className="h-11"><SelectValue placeholder="اختر استشاري..." /></SelectTrigger></FormControl>
+                                <SelectContent dir="rtl">
+                                  <SelectItem value="none">— إدخال يدوي —</SelectItem>
+                                  {supervisorCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="supervisorEntity"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormControl><Input {...field} placeholder="اسم المشرف كتابة" /></FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 3: Integrations & Dates */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-primary/80 uppercase tracking-wide flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                      الجدول الزمني والربط
+                    </h3>
+                    
+                    <div className="p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
+                      <FormField
+                        control={form.control}
+                        name="noSchedule"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center justify-between rounded-xl border bg-background p-4 gap-3 shadow-sm hover:border-primary/30 transition-colors">
+                            <div className="space-y-0.5 flex-1 min-w-0">
+                              <FormLabel className="text-sm font-semibold flex items-center gap-2">
+                                <CalendarOff className="h-4 w-4 text-primary shrink-0" />
+                                بدون جدول زمني معتمد
+                              </FormLabel>
+                              <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                                عند التفعيل، لن يُحسب الانحراف الزمني أو التأخيرات، وتصبح تواريخ البداية والنهاية اختيارية تماماً.
+                              </p>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={(checked) => {
+                                  field.onChange(checked);
+                                  if (checked) {
+                                    form.setValue("startDate", "");
+                                    form.setValue("expectedEndDate", "");
+                                  } else {
+                                    form.setValue("startDate", new Date().toISOString().split('T')[0]);
+                                    form.setValue("expectedEndDate", new Date(Date.now() + 31536000000).toISOString().split('T')[0]);
+                                  }
+                                }}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      {!watchNoSchedule && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl border bg-background shadow-sm">
+                          <FormField
+                            control={form.control}
+                            name="startDate"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-foreground/90">تاريخ البداية الفعلي</FormLabel>
+                                <FormControl><Input type="date" {...field} className="h-11" /></FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
                           />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  {!watchNoSchedule && (
-                    <>
+                          <FormField
+                            control={form.control}
+                            name="expectedEndDate"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-foreground/90">تاريخ النهاية المتوقع</FormLabel>
+                                <FormControl><Input type="date" {...field} className="h-11" /></FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      )}
+
                       <FormField
                         control={form.control}
-                        name="startDate"
+                        name="onedriveTestResultsFolderId"
                         render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>تاريخ البداية</FormLabel>
-                            <FormControl><Input type="date" {...field} /></FormControl>
+                          <FormItem className="p-4 rounded-xl border bg-emerald-50/50 dark:bg-emerald-950/20 shadow-sm">
+                            <FormLabel className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-500 mb-3 font-semibold">
+                              <FlaskConical className="h-4 w-4" />
+                              الربط السحابي لنتائج الاختبارات (OneDrive)
+                            </FormLabel>
+                            <div className="flex items-center gap-2">
+                              <FormControl>
+                                <Input {...field} placeholder="لم يتم اختيار مجلد لنتائج الاختبارات" dir="ltr" className="text-left text-sm flex-1 bg-background" readOnly />
+                              </FormControl>
+                              <Button type="button" variant="outline" onClick={openFolderBrowser} className="shrink-0 gap-1.5 bg-background">
+                                <FolderOpen className="h-4 w-4" />
+                                تصفح
+                              </Button>
+                              {field.value && (
+                                <Button type="button" variant="ghost" size="icon" onClick={() => form.setValue("onedriveTestResultsFolderId", "")} className="shrink-0 text-muted-foreground hover:text-red-500 bg-background border shadow-sm">
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                      <FormField
-                        control={form.control}
-                        name="expectedEndDate"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>تاريخ النهاية المتوقع {editingProject && <span className="text-xs text-muted-foreground">(يُحسب تلقائياً من البنود والتمديدات)</span>}</FormLabel>
-                            <FormControl><Input type="date" {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </>
-                  )}
-                  <FormField
-                    control={form.control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem className="sm:col-span-2">
-                        <FormLabel>حالة المشروع</FormLabel>
-                        <Select value={field.value} onValueChange={field.onChange} dir="rtl">
-                          <FormControl>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                          </FormControl>
-                          <SelectContent dir="rtl">
-                            <SelectItem value="active">نشط</SelectItem>
-                            <SelectItem value="completed">مكتمل</SelectItem>
-                            <SelectItem value="delayed">منحرف عن الخطة</SelectItem>
-                            <SelectItem value="suspended">متوقف</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="flex justify-end pt-3 sm:pt-4 gap-2 sticky bottom-0 bg-background pb-1">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? "جاري الحفظ..." : editingProject ? "حفظ التعديلات" : "حفظ المشروع"}
-                  </Button>
-                </div>
-              </form>
-            </Form>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+                    <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
+                    <Button type="submit" className="w-full sm:w-auto shadow-md" disabled={isSubmitting}>
+                      {isSubmitting ? "جاري الحفظ..." : editingProject ? "حفظ تعديلات المشروع" : "تأكيد إضافة المشروع"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

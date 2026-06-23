@@ -43,6 +43,8 @@ import { UserPlus, Trash2, Shield, Users, FolderOpen, Building2, ShieldCheck, Ro
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { cn } from "@/lib/utils";
 
 interface ActivityGroup {
   id: number;
@@ -189,15 +191,15 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
 
   const getRoleBadge = (role: string) => {
     if (role === "project_manager") {
-      return <Badge className="bg-amber-600 hover:bg-amber-600">مدير مشروع</Badge>;
+      return <Badge className="bg-amber-600 hover:bg-amber-600 text-white">مدير مشروع</Badge>;
     }
     if (role === "contractor") {
-      return <Badge className="bg-orange-600 hover:bg-orange-600">مقاول</Badge>;
+      return <Badge className="bg-orange-600 hover:bg-orange-600 text-white">مقاول</Badge>;
     }
     if (role === "viewer") {
-      return <Badge className="bg-slate-500 hover:bg-slate-500">مشاهد</Badge>;
+      return <Badge className="bg-slate-500 hover:bg-slate-500 text-white">مشاهد</Badge>;
     }
-    return <Badge className="bg-primary hover:bg-primary">مهندس</Badge>;
+    return <Badge className="bg-primary hover:bg-primary text-white">مهندس</Badge>;
   };
 
   const sortedGroups = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -218,73 +220,105 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                   إضافة عضو
                 </Button>
               </DialogTrigger>
-              <DialogContent dir="rtl" className="sm:max-w-[440px]">
-                <DialogHeader>
-                  <DialogTitle>إضافة عضو للمشروع</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 pt-4">
-                  <div className="space-y-2">
-                    <Label>المستخدم</Label>
-                    <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                      <SelectTrigger dir="rtl" className="w-full">
-                        <span className="truncate block text-right">
-                          {selectedUserId
-                            ? (() => {
-                                const u = availableUsers.find(u => String(u.id) === selectedUserId);
-                                return u ? u.fullName : "اختر مستخدم";
-                              })()
-                            : "اختر مستخدم"}
-                        </span>
-                      </SelectTrigger>
-                      <SelectContent dir="rtl" className="max-w-[400px]">
-                        {availableUsers.map(u => (
-                          <SelectItem key={u.id} value={String(u.id)} className="max-w-full">
-                            <span className="font-medium">{u.fullName}</span>
-                          </SelectItem>
-                        ))}
-                        {availableUsers.length === 0 && (
-                          <div className="p-2 text-sm text-muted-foreground text-center">
-                            لا يوجد مستخدمين متاحين
-                          </div>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>الدور في المشروع</Label>
-                    <Select value={selectedRole} onValueChange={setSelectedRole}>
-                      <SelectTrigger dir="rtl">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent dir="rtl">
-                        <SelectItem value="project_manager">مدير مشروع</SelectItem>
-                        <SelectItem value="engineer">مهندس</SelectItem>
-                        <SelectItem value="contractor">مقاول</SelectItem>
-                        <SelectItem value="viewer">مشاهد (قراءة فقط)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {selectedRole === "engineer" && sortedGroups.length > 0 && (
-                    <div className="space-y-2">
-                      <Label>المجموعات المسموح بتعديلها</Label>
-                      <p className="text-xs text-muted-foreground">إذا لم تختر أي مجموعة، سيتمكن المهندس من تعديل جميع البنود</p>
-                      <div className="space-y-2 max-h-[160px] overflow-y-auto border rounded-md p-2">
-                        {sortedGroups.map(g => (
-                          <label key={g.id} className="flex items-center gap-2 cursor-pointer">
-                            <Checkbox
-                              checked={selectedGroupIds.includes(g.id)}
-                              onCheckedChange={() => toggleGroupId(g.id, selectedGroupIds, setSelectedGroupIds)}
-                            />
-                            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: g.color }} />
-                            <span className="text-sm">{g.name}</span>
-                          </label>
-                        ))}
+              <DialogContent dir="rtl" className="sm:max-w-[550px] p-0 overflow-hidden">
+                <div className="bg-gradient-to-br from-primary/10 via-background to-background p-6 pb-4 border-b border-border/50">
+                  <DialogHeader>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-primary/10 rounded-xl">
+                        <UserPlus className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <DialogTitle className="text-xl">إضافة عضو للمشروع</DialogTitle>
+                        <p className="text-sm text-muted-foreground mt-1">أضف مستخدم جديد وحدد دوره وصلاحياته داخل هذا المشروع.</p>
                       </div>
                     </div>
-                  )}
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Button variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
-                    <Button onClick={handleAdd} disabled={addMember.isPending}>إضافة</Button>
+                  </DialogHeader>
+                </div>
+                <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+                  <div className="px-6 py-4 space-y-6">
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-semibold text-primary/80 uppercase tracking-wide flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                        بيانات العضو والدور
+                      </h3>
+                      <div className="grid grid-cols-1 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                        <div className="space-y-2">
+                          <Label className="text-foreground/90 font-semibold">المستخدم</Label>
+                          <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                            <SelectTrigger dir="rtl" className="w-full bg-background">
+                              <span className="truncate block text-right">
+                                {selectedUserId
+                                  ? (() => {
+                                      const u = availableUsers.find(u => String(u.id) === selectedUserId);
+                                      return u ? u.fullName : "اختر مستخدم";
+                                    })()
+                                  : "اختر مستخدم"}
+                              </span>
+                            </SelectTrigger>
+                            <SelectContent dir="rtl" className="max-w-[400px]">
+                              {availableUsers.map(u => (
+                                <SelectItem key={u.id} value={String(u.id)} className="max-w-full">
+                                  <span className="font-medium">{u.fullName}</span>
+                                </SelectItem>
+                              ))}
+                              {availableUsers.length === 0 && (
+                                <div className="p-4 text-sm text-muted-foreground text-center">
+                                  لا يوجد مستخدمين متاحين
+                                </div>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-foreground/90 font-semibold">الدور في المشروع</Label>
+                          <Select value={selectedRole} onValueChange={setSelectedRole}>
+                            <SelectTrigger dir="rtl" className="bg-background">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent dir="rtl">
+                              <SelectItem value="project_manager">مدير مشروع</SelectItem>
+                              <SelectItem value="engineer">مهندس</SelectItem>
+                              <SelectItem value="contractor">مقاول</SelectItem>
+                              <SelectItem value="viewer">مشاهد (قراءة فقط)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                    {selectedRole === "engineer" && sortedGroups.length > 0 && (
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-primary/80 uppercase tracking-wide flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                          المجموعات المسموحة (للمهندس)
+                        </h3>
+                        <div className="space-y-3 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                          <p className="text-xs text-muted-foreground bg-amber-50/50 border border-amber-200/50 p-3 rounded-xl flex items-center gap-2">
+                            <Shield className="h-4 w-4 text-amber-500 shrink-0" />
+                            إذا لم تختر أي مجموعة، سيتمكن المهندس من تعديل جميع البنود.
+                          </p>
+                          <div className="space-y-2 max-h-[160px] overflow-y-auto border bg-background rounded-xl p-3 shadow-inner">
+                            {sortedGroups.map(g => {
+                              const isChecked = selectedGroupIds.includes(g.id);
+                              return (
+                                <label key={g.id} className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors border border-transparent">
+                                  <Checkbox
+                                    checked={isChecked}
+                                    onCheckedChange={() => toggleGroupId(g.id, selectedGroupIds, setSelectedGroupIds)}
+                                    className="data-[state=checked]:bg-primary"
+                                  />
+                                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: g.color }} />
+                                  <span className="text-sm font-medium">{g.name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+                      <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
+                      <Button type="submit" className="w-full sm:w-auto shadow-md" onClick={handleAdd} disabled={addMember.isPending}>إضافة العضو</Button>
+                    </div>
                   </div>
                 </div>
               </DialogContent>
@@ -452,32 +486,48 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
         onClose={() => setPermissionsMemberId(null)}
       />
       <Dialog open={editingGroupsMemberId !== null} onOpenChange={(open) => { if (!open) setEditingGroupsMemberId(null); }}>
-        <DialogContent dir="rtl" className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>تعديل المجموعات المسموحة</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <p className="text-sm text-muted-foreground">
-              حدد المجموعات التي يمكن لهذا المهندس تعديل بنودها. إذا لم تحدد أي مجموعة، سيتمكن من تعديل جميع البنود.
+        <DialogContent dir="rtl" className="sm:max-w-[480px] p-0 overflow-hidden">
+          <div className="bg-gradient-to-br from-indigo-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+            <DialogHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-500/10 rounded-xl">
+                  <FolderOpen className="h-6 w-6 text-indigo-600" />
+                </div>
+                <div>
+                  <DialogTitle className="text-xl">تعديل المجموعات المسموحة</DialogTitle>
+                  <p className="text-sm text-muted-foreground mt-1">تحديد بنود الأعمال التي يحق للمهندس الإشراف عليها.</p>
+                </div>
+              </div>
+            </DialogHeader>
+          </div>
+          <div className="overflow-y-auto max-h-[calc(90vh-140px)] px-6 py-4 space-y-6">
+            <p className="text-sm text-foreground bg-indigo-50/50 border border-indigo-200/50 p-4 rounded-2xl leading-relaxed">
+              إذا لم تحدد أي مجموعة، <strong className="text-indigo-700">سيتمكن المهندس من تعديل جميع البنود</strong> في المشروع كصلاحية افتراضية.
             </p>
-            <div className="space-y-2 max-h-[200px] overflow-y-auto border rounded-md p-3">
+            <div className="space-y-2 max-h-[240px] overflow-y-auto border bg-gradient-to-br from-muted/20 to-background rounded-2xl p-3 shadow-inner">
               {sortedGroups.map(g => (
-                <label key={g.id} className="flex items-center gap-2 cursor-pointer">
+                <label key={g.id} className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-background transition-colors border border-transparent hover:border-border/50 hover:shadow-sm">
                   <Checkbox
                     checked={editGroupIds.includes(g.id)}
                     onCheckedChange={() => toggleGroupId(g.id, editGroupIds, setEditGroupIds)}
+                    className="data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
                   />
-                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: g.color }} />
-                  <span className="text-sm">{g.name}</span>
+                  <span className="inline-block w-3 h-3 rounded-full border shadow-sm" style={{ backgroundColor: g.color }} />
+                  <span className="text-sm font-medium">{g.name}</span>
                 </label>
               ))}
               {sortedGroups.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-2">لا توجد مجموعات في هذا المشروع</p>
+                <div className="p-6 text-center">
+                  <FolderOpen className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />
+                  <p className="text-sm text-muted-foreground">لا توجد مجموعات أعمال مسجلة في هذا المشروع حتى الآن.</p>
+                </div>
               )}
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setEditingGroupsMemberId(null)}>إلغاء</Button>
+            <div className="flex justify-end gap-3 pt-6 border-t mt-4 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+              <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setEditingGroupsMemberId(null)}>إلغاء</Button>
               <Button
+                type="submit"
+                className="w-full sm:w-auto shadow-md bg-indigo-600 hover:bg-indigo-700"
                 onClick={() => {
                   if (editingGroupsMemberId) {
                     updateGroupsMutation.mutate({ memberId: editingGroupsMemberId, groupIds: editGroupIds });
@@ -485,7 +535,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                 }}
                 disabled={updateGroupsMutation.isPending}
               >
-                حفظ
+                حفظ التعديلات
               </Button>
             </div>
           </div>
@@ -575,80 +625,93 @@ function TabPermissionsDialog({ projectId, memberId, memberName, onClose }: TabP
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent dir="rtl" className="sm:max-w-[560px] max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-primary" />
-            صلاحيات التبويبات — {memberName}
-          </DialogTitle>
-        </DialogHeader>
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground text-center py-6">جاري التحميل...</p>
-        ) : (
-          <div className="space-y-3 pt-2">
-            <p className="text-xs text-muted-foreground">
-              حدد لكل تبويب: مخفي / مشاهدة فقط / تعديل. الإعدادات الافتراضية مشتقة من دور العضو في المشروع.
-              {overrideEnabled && (
-                <span className="block mt-1 text-amber-700 dark:text-amber-400">
-                  وضع التخصيص مُفعَّل لهذا العضو.
-                </span>
-              )}
-            </p>
-
-            <div className="border rounded-md divide-y">
-              {TAB_DEFS.map(tab => {
-                const current = effective[tab.key] ?? "hidden";
-                return (
-                  <div key={tab.key} className="flex items-center justify-between gap-3 px-3 py-2">
-                    <span className="text-sm font-medium">{tab.label}</span>
-                    <div className="flex items-center gap-1">
-                      {ACCESS_OPTIONS.map(opt => {
-                        const active = current === opt.value;
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => setTabAccess(tab.key, opt.value)}
-                            className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
-                              active
-                                ? opt.value === "edit"
-                                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                                  : opt.value === "view"
-                                    ? "bg-blue-100 text-blue-800 border-blue-300"
-                                    : "bg-slate-200 text-slate-700 border-slate-300"
-                                : "bg-background text-muted-foreground border-border hover:bg-muted"
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+      <DialogContent dir="rtl" className="sm:max-w-[650px] p-0 overflow-hidden">
+        <div className="bg-gradient-to-br from-teal-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-teal-500/10 rounded-xl">
+                <ShieldCheck className="h-6 w-6 text-teal-600" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl">تخصيص صلاحيات التبويبات</DialogTitle>
+                <p className="text-sm text-muted-foreground mt-1">تحديد مستوى الوصول الفردي للعضو: <span className="font-semibold text-foreground">{memberName}</span></p>
+              </div>
             </div>
-
-            <div className="flex flex-row-reverse justify-between gap-2 pt-3">
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={onClose}>إلغاء</Button>
-                <Button onClick={handleSave} disabled={updateMutation.isPending}>
-                  حفظ
+          </DialogHeader>
+        </div>
+        
+        <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+          {isLoading ? (
+            <div className="p-12 flex items-center justify-center">
+              <LoadingSpinner text="جاري تحميل الصلاحيات..." />
+            </div>
+          ) : (
+            <div className="px-6 py-4 space-y-6">
+              <div className="bg-muted/30 border border-muted-foreground/10 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="space-y-1 text-sm text-foreground/90 leading-relaxed">
+                  <p>حدد لكل تبويب مستوى الوصول: <strong className="text-slate-600 bg-slate-100 px-1 rounded">مخفي</strong> أو <strong className="text-blue-600 bg-blue-100 px-1 rounded">مشاهدة</strong> أو <strong className="text-emerald-600 bg-emerald-100 px-1 rounded">تعديل</strong>.</p>
+                  {overrideEnabled ? (
+                    <p className="text-amber-600 font-medium flex items-center gap-1"><Shield className="h-3 w-3" /> وضع التخصيص مُفعَّل: هذا العضو يمتلك صلاحيات استثنائية.</p>
+                  ) : (
+                    <p className="text-muted-foreground">تستخدم الآن الإعدادات الافتراضية المرتبطة بدور العضو في المشروع.</p>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetToDefaults}
+                  className="gap-2 shrink-0 bg-background"
+                  disabled={!overrideEnabled}
+                >
+                  <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                  العودة للافتراضي
                 </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleResetToDefaults}
-                className="gap-1"
-                title="استعادة الإعدادات الافتراضية حسب الدور"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                إعادة للافتراضي
-              </Button>
+
+              <div className="border rounded-2xl overflow-hidden shadow-sm bg-background divide-y">
+                {TAB_DEFS.map(tab => {
+                  const current = effective[tab.key] ?? "hidden";
+                  return (
+                    <div key={tab.key} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-4 hover:bg-muted/20 transition-colors">
+                      <span className="text-sm font-semibold text-foreground/90">{tab.label}</span>
+                      <div className="flex items-center p-1 bg-muted/40 rounded-lg border w-full sm:w-auto overflow-x-auto hide-scrollbar">
+                        {ACCESS_OPTIONS.map(opt => {
+                          const active = current === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setTabAccess(tab.key, opt.value)}
+                              className={cn(
+                                "flex-1 sm:flex-none px-4 py-1.5 text-xs font-medium rounded-md transition-all duration-200 min-w-[70px]",
+                                active
+                                  ? opt.value === "edit"
+                                    ? "bg-emerald-500 text-white shadow-sm ring-1 ring-emerald-600/20"
+                                    : opt.value === "view"
+                                      ? "bg-blue-500 text-white shadow-sm ring-1 ring-blue-600/20"
+                                      : "bg-slate-600 text-white shadow-sm ring-1 ring-slate-700/20"
+                                  : "text-muted-foreground hover:bg-background hover:text-foreground"
+                              )}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onClose}>إلغاء والتراجع</Button>
+                <Button type="submit" className="w-full sm:w-auto shadow-md" onClick={handleSave} disabled={updateMutation.isPending}>
+                  حفظ الصلاحيات المُخصصة
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

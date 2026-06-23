@@ -82,16 +82,19 @@ interface KpiCardProps {
 }
 const KpiCard = memo(function KpiCard({ label, value, icon: Icon, gradient, sub }: KpiCardProps) {
   return (
-    <Card className="overflow-hidden border-0 shadow-md">
-      <CardContent className="p-0">
-        <div className={`${gradient} p-3 sm:p-4 flex items-center justify-between`}>
+    <Card className={`relative overflow-hidden border-0 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1 group ${gradient}`}>
+      {/* Decorative Blob */}
+      <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10 transition-transform duration-500 group-hover:scale-150 pointer-events-none" />
+      
+      <CardContent className="relative z-10 p-5 sm:p-6">
+        <div className="flex items-start justify-between">
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] sm:text-xs font-medium text-white/80 mb-0.5 sm:mb-1 truncate">{label}</p>
-            <p className="text-2xl sm:text-3xl font-extrabold text-white tabular-nums">{value}</p>
-            {sub && <p className="text-[10px] sm:text-xs text-white/70 mt-0.5 sm:mt-1 truncate">{sub}</p>}
+            <p className="text-sm font-medium text-white/80 mb-2 truncate tracking-wide">{label}</p>
+            <p className="text-3xl sm:text-4xl font-black text-white tabular-nums tracking-tight drop-shadow-sm">{value}</p>
+            {sub && <p className="text-xs text-white/70 mt-2 truncate font-medium">{sub}</p>}
           </div>
-          <div className="bg-white/20 rounded-lg sm:rounded-xl p-2 sm:p-3 shrink-0">
-            <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 sm:p-4 shrink-0 ring-1 ring-white/20 shadow-inner group-hover:bg-white/20 transition-all duration-300">
+            <Icon className="h-6 w-6 sm:h-7 sm:w-7 text-white" strokeWidth={2} />
           </div>
         </div>
       </CardContent>
@@ -194,8 +197,12 @@ export default function Dashboard() {
   const actPct = (n: number) => totalActivities > 0 ? Math.round(n / totalActivities * 100) : 0;
 
   return (
-    <div className="space-y-6">
-      {/* ── Header ── */}
+    <div className="space-y-6 lg:space-y-8 relative">
+      {/* Decorative Background Orbs for Premium Feel */}
+      <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+      <div className="absolute bottom-0 left-1/4 w-[400px] h-[400px] bg-accent/5 rounded-full blur-[100px] pointer-events-none -z-10" />
+
+      {/* ── Page Header ── */}
       <div className="flex items-start sm:items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-primary/10 rounded-xl">
@@ -289,19 +296,19 @@ export default function Dashboard() {
       })()}
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <KpiCard
           label="إجمالي المشاريع"
           value={totalProjects}
           icon={Building2}
-          gradient="bg-gradient-to-br from-blue-600 to-blue-800"
+          gradient="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800"
           sub={`${summary?.activeProjects ?? 0} نشط حالياً`}
         />
         <KpiCard
           label="متوسط الإنجاز"
           value={`${(summary?.averageProgress ?? 0).toFixed(1)}%`}
           icon={TrendingUp}
-          gradient="bg-gradient-to-br from-indigo-600 to-purple-700"
+          gradient="bg-gradient-to-br from-indigo-500 via-purple-600 to-purple-800"
           sub="عبر جميع المشاريع"
         />
         <KpiCard
@@ -310,8 +317,8 @@ export default function Dashboard() {
           icon={AlertTriangle}
           gradient={
             (summary?.delayedProjects ?? 0) > 0
-              ? "bg-gradient-to-br from-red-500 to-rose-700"
-              : "bg-gradient-to-br from-emerald-500 to-green-700"
+              ? "bg-gradient-to-br from-rose-500 via-red-600 to-rose-800"
+              : "bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-800"
           }
           sub={(summary?.delayedProjects ?? 0) === 0 ? "لا يوجد انحراف عن الخطة" : "تحتاج متابعة"}
         />
@@ -319,7 +326,7 @@ export default function Dashboard() {
           label="التقارير المرفوعة"
           value={summary?.totalReports ?? 0}
           icon={FileText}
-          gradient="bg-gradient-to-br from-orange-500 to-amber-700"
+          gradient="bg-gradient-to-br from-amber-500 via-orange-500 to-rose-600"
           sub="إجمالي التقارير"
         />
       </div>
@@ -347,9 +354,9 @@ export default function Dashboard() {
       </div>
 
       {/* ── Charts Row ── */}
-      <div className="grid gap-5 lg:grid-cols-5">
+      <div className="grid gap-6 lg:grid-cols-5">
         {/* Donut: Status Distribution */}
-        <Card className="shadow-sm lg:col-span-2">
+        <Card className="shadow-sm border-border/40 hover:shadow-md transition-shadow duration-300 rounded-2xl lg:col-span-2">
           <CardHeader className="pb-1">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">توزيع حالة المشاريع</CardTitle>
           </CardHeader>
@@ -397,7 +404,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Bar: Actual vs Planned per project */}
-        <Card className="shadow-sm lg:col-span-3">
+        <Card className="shadow-sm border-border/40 hover:shadow-md transition-shadow duration-300 rounded-2xl lg:col-span-3">
           <CardHeader className="pb-1">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">الإنجاز الفعلي مقابل المخطط</CardTitle>
           </CardHeader>
@@ -495,9 +502,9 @@ export default function Dashboard() {
       )}
 
       {/* ── Projects Table + Recent Reports ── */}
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-3">
         {/* Projects Table */}
-        <Card className="shadow-sm lg:col-span-2">
+        <Card className="shadow-sm border-border/40 hover:shadow-md transition-shadow duration-300 rounded-2xl lg:col-span-2">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
               جميع المشاريع
@@ -558,7 +565,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Recent Reports */}
-        <Card className="shadow-sm">
+        <Card className="shadow-sm border-border/40 hover:shadow-md transition-shadow duration-300 rounded-2xl">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">آخر التقارير</CardTitle>
           </CardHeader>

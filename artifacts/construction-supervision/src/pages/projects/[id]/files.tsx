@@ -35,7 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   Trash2, ArrowRight, FileText, File as FileIcon, 
   UploadCloud, Download, Search, FolderOpen, FileImage, FileSpreadsheet,
-  FileCheck2, Eye, HardDrive
+  FileCheck2, Eye, HardDrive, Loader2
 } from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 
@@ -290,14 +290,16 @@ export default function ProjectFiles() {
               <UploadCloud className="h-4 w-4" /> رفع ملف
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]" dir="rtl">
-            <DialogHeader>
-              <DialogTitle>رفع ملف جديد</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleUpload} className="space-y-4 pt-2">
+          <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden" dir="rtl">
+            <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+              <DialogHeader>
+                <DialogTitle className="text-xl">رفع ملف جديد</DialogTitle>
+              </DialogHeader>
+            </div>
+            <form onSubmit={handleUpload} className="p-6 pt-4 space-y-6">
               <div
-                className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${
-                  isDragOver ? 'border-primary bg-primary/5' : fileToUpload ? 'border-emerald-400 bg-emerald-50' : 'border-muted-foreground/25 hover:border-primary/50'
+                className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
+                  isDragOver ? 'border-primary bg-primary/5 scale-[1.02]' : fileToUpload ? 'border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-500/10' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30'
                 }`}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -319,58 +321,72 @@ export default function ProjectFiles() {
                   className="hidden"
                 />
                 {fileToUpload ? (
-                  <div className="space-y-2">
-                    <FileCheck2 className="h-10 w-10 text-emerald-500 mx-auto" />
-                    <p className="font-medium text-sm truncate">{fileToUpload.name}</p>
-                    <p className="text-xs text-muted-foreground">{formatFileSize(fileToUpload.size)}</p>
-                    <Button type="button" variant="ghost" size="sm" className="text-xs"
+                  <div className="space-y-3">
+                    <div className="mx-auto w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
+                      <FileCheck2 className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm truncate max-w-[250px] mx-auto text-foreground/90">{fileToUpload.name}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{formatFileSize(fileToUpload.size)}</p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" className="mt-2 text-xs h-8"
                       onClick={(e) => { e.stopPropagation(); setFileToUpload(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}>
                       تغيير الملف
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <UploadCloud className={`h-10 w-10 mx-auto ${isDragOver ? 'text-primary' : 'text-muted-foreground/40'}`} />
-                    <p className="text-sm font-medium">اسحب الملف هنا أو انقر للاختيار</p>
-                    <p className="text-xs text-muted-foreground">يدعم جميع أنواع الملفات</p>
+                  <div className="space-y-3">
+                    <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center transition-colors ${isDragOver ? 'bg-primary/20' : 'bg-muted'}`}>
+                      <UploadCloud className={`h-8 w-8 ${isDragOver ? 'text-primary' : 'text-muted-foreground/60'}`} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground/90">اسحب الملف هنا أو انقر للاختيار</p>
+                      <p className="text-xs text-muted-foreground mt-1">يدعم جميع أنواع الملفات المسموح بها</p>
+                    </div>
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
                 <div className="space-y-2">
-                  <Label>التصنيف</Label>
+                  <Label className="text-foreground/90">التصنيف</Label>
                   <Select value={uploadCategory} onValueChange={setUploadCategory}>
-                    <SelectTrigger dir="rtl"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-11 bg-background" dir="rtl"><SelectValue /></SelectTrigger>
                     <SelectContent dir="rtl">
                       {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
-                        <SelectItem key={key} value={key}>{cfg.label.replace(/\s*\(.*\)/, '')}</SelectItem>
+                        <SelectItem key={key} value={key}>
+                          <div className="flex items-center gap-2">
+                            <cfg.icon className={`h-4 w-4 ${cfg.color}`} />
+                            {cfg.label.replace(/\s*\(.*\)/, '')}
+                          </div>
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>الوصف <span className="text-muted-foreground text-xs">(اختياري)</span></Label>
+                  <Label className="text-foreground/90">الوصف <span className="text-muted-foreground text-[10px] font-normal px-1.5 py-0.5 bg-muted rounded">(اختياري)</span></Label>
                   <Input 
+                    className="h-11 bg-background"
                     value={uploadDescription} 
                     onChange={(e) => setUploadDescription(e.target.value)} 
-                    placeholder="وصف مختصر"
+                    placeholder="وصف مختصر للملف"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
-                <Button type="submit" disabled={isUploading || !fileToUpload} className="gap-2 min-w-[100px]">
+              <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
+                <Button type="submit" disabled={isUploading || !fileToUpload} className="w-full sm:w-auto shadow-md gap-2">
                   {isUploading ? (
                     <>
-                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       جاري الرفع...
                     </>
                   ) : (
                     <>
                       <UploadCloud className="h-4 w-4" />
-                      رفع الملف
+                      تأكيد ورفع الملف
                     </>
                   )}
                 </Button>
