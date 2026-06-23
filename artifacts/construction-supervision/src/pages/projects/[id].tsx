@@ -329,7 +329,7 @@ export default function ProjectDetails() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "active": return <Badge className="bg-primary text-white">نشط</Badge>;
+      case "active": return <Badge className="bg-primary text-primary-foreground">نشط</Badge>;
       case "completed": return <Badge className="bg-emerald-600 text-white">مكتمل</Badge>;
       case "delayed": return <Badge variant="destructive">متأخر</Badge>;
       case "suspended": return <Badge className="bg-orange-500 text-white">متوقف</Badge>;

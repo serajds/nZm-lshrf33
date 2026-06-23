@@ -667,8 +667,8 @@ export default function ProjectActivities() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'not_started': return <Badge variant="outline">لم يبدأ</Badge>;
-      case 'in_progress': return <Badge className="bg-blue-500 text-white">قيد التنفيذ</Badge>;
-      case 'completed': return <Badge className="bg-emerald-500 text-white">مكتمل</Badge>;
+      case 'in_progress': return <Badge className="bg-blue-500">قيد التنفيذ</Badge>;
+      case 'completed': return <Badge className="bg-emerald-500">مكتمل</Badge>;
       case 'delayed': return <Badge variant="destructive">متأخر</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
@@ -1052,46 +1052,36 @@ export default function ProjectActivities() {
                   <FolderPlus className="h-4 w-4" /> <span className="hidden sm:inline">مجموعة جديدة</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden" dir="rtl">
-                <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
-                  <DialogHeader>
-                    <DialogTitle className="text-xl">إضافة مجموعة جديدة</DialogTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      قم بإنشاء مجموعة جديدة لتنظيم بنود الأعمال الخاصة بالمشروع.
-                    </p>
-                  </DialogHeader>
-                </div>
-                <div className="p-6 pt-4 space-y-6">
-                  <div className="p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
-                    <div>
-                      <label className="text-sm font-semibold mb-2 block text-foreground/90">اسم المجموعة</label>
-                      <Input className="h-11 bg-background" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder="مثال: الأعمال الخرسانية" />
-                    </div>
-                    <div>
-                      <label className="text-sm font-semibold mb-2 block text-foreground/90">لون المجموعة</label>
-                      <div className="flex flex-wrap gap-3">
-                        {GROUP_COLORS.map(c => (
-                          <button
-                            key={c.value}
-                            className={`w-9 h-9 rounded-full border-2 transition-all shadow-sm ${newGroupColor === c.value ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
-                            style={{ backgroundColor: c.value }}
-                            onClick={() => setNewGroupColor(c.value)}
-                            title={c.label}
-                          />
-                        ))}
-                      </div>
+              <DialogContent className="sm:max-w-[400px]" dir="rtl">
+                <DialogHeader>
+                  <DialogTitle>إضافة مجموعة</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">اسم المجموعة</label>
+                    <Input value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder="مثال: الأعمال الخرسانية" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">اللون</label>
+                    <div className="flex flex-wrap gap-2">
+                      {GROUP_COLORS.map(c => (
+                        <button
+                          key={c.value}
+                          className={`w-8 h-8 rounded-full border-2 transition-all ${newGroupColor === c.value ? "border-foreground scale-110" : "border-transparent"}`}
+                          style={{ backgroundColor: c.value }}
+                          onClick={() => setNewGroupColor(c.value)}
+                          title={c.label}
+                        />
+                      ))}
                     </div>
                   </div>
-                  <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
-                    <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIsGroupDialogOpen(false)}>إلغاء</Button>
-                    <Button
-                      className="w-full sm:w-auto shadow-md"
-                      disabled={!newGroupName.trim() || createGroup.isPending}
-                      onClick={() => createGroup.mutate({ name: newGroupName.trim(), color: newGroupColor })}
-                    >
-                      {createGroup.isPending ? "جاري الإنشاء..." : "تأكيد وإنشاء"}
-                    </Button>
-                  </div>
+                  <Button
+                    className="w-full"
+                    disabled={!newGroupName.trim() || createGroup.isPending}
+                    onClick={() => createGroup.mutate({ name: newGroupName.trim(), color: newGroupColor })}
+                  >
+                    إنشاء المجموعة
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -1109,55 +1099,46 @@ export default function ProjectActivities() {
                   <Upload className="h-4 w-4" /> <span className="hidden xs:inline">استيراد</span> <span className="hidden sm:inline">Excel</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden" dir="rtl">
-                <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
-                  <DialogHeader>
-                    <DialogTitle className="text-xl">استيراد بنود من ملف Excel</DialogTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      قم برفع ملف Excel لإضافة عدة بنود أعمال دفعة واحدة.
-                    </p>
-                  </DialogHeader>
-                </div>
-                <div className="p-6 pt-4 space-y-6">
-                  <div className="rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors p-8 text-center">
-                    <FileSpreadsheet className="h-12 w-12 mx-auto text-primary/60 mb-4" />
-                    <p className="text-sm font-medium text-foreground/90 mb-2">
-                      اسحب وأفلت ملف Excel هنا، أو انقر للاختيار
+              <DialogContent className="sm:max-w-[480px]" dir="rtl">
+                <DialogHeader>
+                  <DialogTitle>استيراد بنود من ملف Excel</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-6 text-center">
+                    <FileSpreadsheet className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
+                    <p className="text-sm text-muted-foreground mb-3">
+                      اختر ملف Excel يحتوي على بنود الأعمال
                     </p>
                     <input
                       type="file"
                       accept=".xlsx,.xls"
                       onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                      className="block w-full max-w-xs mx-auto text-sm text-muted-foreground file:me-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer transition-all"
+                      className="block w-full text-sm text-muted-foreground file:me-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
                     />
                     {importFile && (
-                      <div className="mt-4 p-3 bg-background rounded-xl border border-emerald-500/30 inline-block shadow-sm">
-                        <p className="text-sm text-emerald-600 font-semibold flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4" />
-                          {importFile.name}
-                        </p>
-                      </div>
+                      <p className="text-sm text-emerald-600 mt-2">{importFile.name}</p>
                     )}
                   </div>
-                  <div className="bg-gradient-to-br from-muted/30 to-background rounded-2xl border p-5 shadow-sm">
-                    <p className="text-sm text-foreground/80 mb-3 leading-relaxed">
-                      يجب أن يحتوي الملف على 3 أعمدة رئيسية للعمل بشكل صحيح: <strong className="text-primary">اسم البند</strong>، <strong className="text-primary">تاريخ البداية</strong>، <strong className="text-primary">تاريخ النهاية</strong>.
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground mb-2">
+                      يجب أن يحتوي الملف على 3 أعمدة: <strong>اسم البند</strong>، <strong>تاريخ البداية</strong>، <strong>تاريخ النهاية</strong>
                     </p>
                     <Button
                       type="button"
-                      variant="outline"
-                      className="gap-2 bg-background w-full sm:w-auto"
+                      variant="link"
+                      size="sm"
+                      className="gap-1 p-0 h-auto text-xs"
                       onClick={downloadTemplate}
                     >
-                      <Download className="h-4 w-4" /> تحميل ملف عينة للتأكد من التنسيق
+                      <Download className="h-3 w-3" /> تحميل ملف عينة
                     </Button>
                   </div>
-                  <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
-                    <Button variant="outline" className="w-full sm:w-auto" onClick={() => { setIsImportOpen(false); setImportFile(null); }}>
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={() => { setIsImportOpen(false); setImportFile(null); }}>
                       إلغاء
                     </Button>
-                    <Button onClick={handleImport} disabled={!importFile || isImporting} className="w-full sm:w-auto shadow-md gap-2">
-                      {isImporting ? <><Loader2 className="h-4 w-4 animate-spin" /> جاري الاستيراد...</> : <><Upload className="h-4 w-4" /> بدء الاستيراد</>}
+                    <Button onClick={handleImport} disabled={!importFile || isImporting} className="gap-2">
+                      {isImporting ? "جاري الاستيراد..." : "استيراد"}
                     </Button>
                   </div>
                 </div>
@@ -1174,123 +1155,93 @@ export default function ProjectActivities() {
                   <Plus className="h-4 w-4" /> إضافة بند
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden max-h-[90vh]" dir="rtl">
-                <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
-                  <DialogHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-blue-500/10 rounded-xl">
-                        {editingId ? <Edit2 className="h-6 w-6 text-blue-600" /> : <Plus className="h-6 w-6 text-blue-600" />}
-                      </div>
-                      <div>
-                        <DialogTitle className="text-xl">{editingId ? "تعديل البند" : "إضافة بند جديد"}</DialogTitle>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {editingId ? "قم بتحديث تفاصيل البند وحالته الحالية." : "أدخل تفاصيل ومواعيد البند الجديد لمتابعته في الجدول الزمني."}
-                        </p>
-                      </div>
+              <DialogContent className="sm:max-w-[600px]" dir="rtl">
+                <DialogHeader>
+                  <DialogTitle>{editingId ? "تعديل بند" : "بند جديد"}</DialogTitle>
+                </DialogHeader>
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+                    <FormField control={form.control} name="name" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>اسم البند</FormLabel>
+                        <FormControl><Input {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <FormField control={form.control} name="plannedStartDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>بداية مخططة {isNoSchedule && <span className="text-xs text-muted-foreground font-normal">(اختياري)</span>}</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="plannedEndDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>نهاية مخططة {isNoSchedule && <span className="text-xs text-muted-foreground font-normal">(اختياري)</span>}</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="actualStartDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>بداية فعلية</FormLabel>
+                          <FormControl><Input type="date" {...field} value={field.value ?? ""} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="actualEndDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>نهاية فعلية</FormLabel>
+                          <FormControl><Input type="date" {...field} value={field.value ?? ""} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="actualProgress" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>الإنجاز الفعلي (%)</FormLabel>
+                          <FormControl><Input type="number" min={0} max={100} {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="weight" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>الوزن النسبي</FormLabel>
+                          <FormControl><Input type="number" min={0} step="0.1" {...field} /></FormControl>
+                          <p className="text-xs text-muted-foreground">يستخدم لحساب نسبة المشروع الإجمالية. الافتراضي 1.</p>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="status" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>الحالة</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl><SelectTrigger dir="rtl"><SelectValue /></SelectTrigger></FormControl>
+                            <SelectContent dir="rtl">
+                              {STATUS_OPTIONS.map(o => (
+                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="sortOrder" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>الترتيب</FormLabel>
+                          <FormControl><Input type="number" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
                     </div>
-                  </DialogHeader>
-                </div>
-                
-                <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
-                  <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 pt-4 space-y-6">
-                      
-                      <div className="p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
-                        <FormField control={form.control} name="name" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-foreground/90">اسم البند</FormLabel>
-                            <FormControl><Input className="h-11 bg-background" {...field} placeholder="مثال: أعمال صب القواعد الخرسانية" /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
-                        <FormField control={form.control} name="plannedStartDate" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-foreground/90">بداية مخططة {isNoSchedule && <span className="text-xs text-muted-foreground font-normal">(اختياري)</span>}</FormLabel>
-                            <FormControl><Input type="date" className="h-11 bg-background" {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                        <FormField control={form.control} name="plannedEndDate" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-foreground/90">نهاية مخططة {isNoSchedule && <span className="text-xs text-muted-foreground font-normal">(اختياري)</span>}</FormLabel>
-                            <FormControl><Input type="date" className="h-11 bg-background" {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                        
-                        <div className="sm:col-span-2 h-px bg-border/50 my-1" />
-
-                        <FormField control={form.control} name="actualStartDate" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-foreground/90">بداية فعلية</FormLabel>
-                            <FormControl><Input type="date" className="h-11 bg-background" {...field} value={field.value ?? ""} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                        <FormField control={form.control} name="actualEndDate" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-foreground/90">نهاية فعلية</FormLabel>
-                            <FormControl><Input type="date" className="h-11 bg-background" {...field} value={field.value ?? ""} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
-                        <FormField control={form.control} name="actualProgress" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-foreground/90">الإنجاز الفعلي (%)</FormLabel>
-                            <FormControl><Input type="number" className="h-11 bg-background font-mono" min={0} max={100} {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                        <FormField control={form.control} name="weight" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-foreground/90 flex items-center justify-between">الوزن النسبي <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">الافتراضي 1</span></FormLabel>
-                            <FormControl><Input type="number" className="h-11 bg-background font-mono" min={0} step="0.1" {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                        <FormField control={form.control} name="sortOrder" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-foreground/90">الترتيب</FormLabel>
-                            <FormControl><Input type="number" className="h-11 bg-background font-mono" {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                        <FormField control={form.control} name="status" render={({ field }) => (
-                          <FormItem className="sm:col-span-2 lg:col-span-3 mt-2">
-                            <FormLabel className="text-foreground/90">الحالة الحالية</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl><SelectTrigger className="h-11 bg-background" dir="rtl"><SelectValue /></SelectTrigger></FormControl>
-                              <SelectContent dir="rtl">
-                                {STATUS_OPTIONS.map(o => (
-                                  <SelectItem key={o.value} value={o.value}>
-                                    <div className="flex items-center gap-2">
-                                      <o.icon className={`h-4 w-4 ${o.cls}`} />
-                                      {o.label}
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                      </div>
-
-                      <div className="flex justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
-                        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
-                        <Button type="submit" className="w-full sm:w-auto shadow-md" disabled={form.formState.isSubmitting}>
-                          {form.formState.isSubmitting ? "جاري الحفظ..." : editingId ? "حفظ تعديلات البند" : "تأكيد إضافة البند"}
-                        </Button>
-                      </div>
-                    </form>
-                  </Form>
-                </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
+                      <Button type="submit" disabled={form.formState.isSubmitting}>
+                        {form.formState.isSubmitting ? "جاري الحفظ..." : "حفظ"}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
               </DialogContent>
             </Dialog>
             )}
