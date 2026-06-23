@@ -1,40 +1,54 @@
-import app from "./app";
-import { logger } from "./lib/logger";
-import { seed } from "./seed";
-import { migrateExistingUploads } from "./lib/fileStorage";
-import { normalizeAbsoluteUrls } from "./migrations/normalize-urls";
-import path from "path";
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import authRouter from "./auth";
+import projectsRouter from "./projects";
+import activitiesRouter from "./activities";
+import reportsRouter from "./reports";
+import reportCommentsRouter from "./report-comments";
+import filesRouter from "./files";
+import usersRouter from "./users";
+import ownerRouter from "./owner";
+import dashboardRouter from "./dashboard";
+import pdfRouter from "./pdf";
+import extensionsRouter from "./extensions";
+import suspensionsRouter from "./suspensions";
+import companiesRouter from "./companies";
+import projectMembersRouter from "./project-members";
+import auditLogRouter from "./audit-log";
+import activityGroupsRouter from "./activity-groups";
+import setupRouter from "./setup";
+import testResultsRouter from "./test-results";
+import formsRouter from "./forms";
+import publicFormsRouter from "./public-forms";
+import backupRouter from "./backup";
+import attendanceRouter from "./attendance";
+import pushRouter from "./push";
 
-const rawPort = process.env["PORT"];
+const router: IRouter = Router();
 
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
+router.use(healthRouter);
+router.use(authRouter);
+router.use(projectsRouter);
+router.use(projectMembersRouter);
+router.use(activitiesRouter);
+router.use(extensionsRouter);
+router.use(suspensionsRouter);
+router.use(pdfRouter);
+router.use(reportsRouter);
+router.use(reportCommentsRouter);
+router.use(filesRouter);
+router.use(usersRouter);
+router.use(ownerRouter);
+router.use(dashboardRouter);
+router.use(companiesRouter);
+router.use(auditLogRouter);
+router.use(activityGroupsRouter);
+router.use(setupRouter);
+router.use(testResultsRouter);
+router.use(formsRouter);
+router.use(publicFormsRouter);
+router.use(backupRouter);
+router.use(attendanceRouter);
+router.use(pushRouter);
 
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-app.listen(port, async (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
-
-  logger.info({ port }, "Server listening");
-
-  await seed();
-  
-  const uploadsDir = path.join(process.cwd(), "uploads");
-  migrateExistingUploads(uploadsDir).catch((err) => {
-    logger.error({ err }, "Failed to migrate existing uploads");
-  });
-
-  normalizeAbsoluteUrls().catch((err) => {
-    logger.error({ err }, "Failed to normalize absolute URLs");
-  });
-});
+export default router;

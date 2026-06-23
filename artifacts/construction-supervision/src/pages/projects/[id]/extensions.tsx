@@ -215,72 +215,83 @@ export default function ProjectExtensions() {
                 <Plus className="h-4 w-4" /> إضافة تمديد
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[520px]" dir="rtl">
-              <DialogHeader>
-                <DialogTitle>تمديد زمني جديد</DialogTitle>
-              </DialogHeader>
+            <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden" dir="rtl">
+              <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+                <DialogHeader>
+                  <DialogTitle className="text-xl">تمديد زمني جديد</DialogTitle>
+                </DialogHeader>
+              </div>
               <Form {...form}>
-                <form onSubmit={form.handleSubmit((v) => createExt.mutate(v))} className="space-y-4 pt-2">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <form onSubmit={form.handleSubmit((v) => createExt.mutate(v))} className="p-6 pt-4 space-y-6">
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
                     <FormField control={form.control} name="extensionDate" render={({ field }) => (
                       <FormItem>
-                        <FormLabel>تاريخ الاتفاقية</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
+                        <FormLabel className="text-foreground/90">تاريخ الاتفاقية</FormLabel>
+                        <FormControl><Input type="date" className="h-11 bg-background" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
                     <FormField control={form.control} name="daysAdded" render={({ field }) => (
                       <FormItem>
-                        <FormLabel>عدد الأيام المضافة</FormLabel>
-                        <FormControl><Input type="number" min={1} {...field} /></FormControl>
+                        <FormLabel className="text-foreground/90">عدد الأيام المضافة</FormLabel>
+                        <FormControl><Input type="number" min={1} className="h-11 bg-background font-mono" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
                   </div>
 
                   {latestEndDate && (
-                    <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-                      التاريخ الحالي:{" "}
-                      <span className="font-bold" dir="ltr">{fmtDate(latestEndDate)}</span>
-                      {" "}← سيصبح بعد إضافة{" "}
-                      <span className="font-bold">{form.watch("daysAdded") || 0}</span> يوم:{" "}
-                      <span className="font-bold" dir="ltr">
-                        {(() => {
-                          const d = new Date(latestEndDate);
-                          d.setDate(d.getDate() + (form.watch("daysAdded") || 0));
-                          return fmtDate(d.toISOString().split("T")[0]);
-                        })()}
-                      </span>
+                    <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 text-sm text-amber-900 dark:text-amber-200 shadow-sm flex flex-col gap-1.5">
+                      <div className="flex items-center gap-2 font-medium">
+                        <Calendar className="h-4 w-4" /> التأثير المتوقع على تاريخ الإنهاء:
+                      </div>
+                      <div>
+                        التاريخ الحالي:{" "}
+                        <span className="font-bold bg-background/50 px-1.5 rounded" dir="ltr">{fmtDate(latestEndDate)}</span>
+                        {" "}← سيصبح بعد إضافة{" "}
+                        <span className="font-bold text-amber-700 dark:text-amber-400">{form.watch("daysAdded") || 0}</span> يوم:{" "}
+                        <span className="font-bold bg-background/50 px-1.5 rounded" dir="ltr">
+                          {(() => {
+                            const d = new Date(latestEndDate);
+                            d.setDate(d.getDate() + (form.watch("daysAdded") || 0));
+                            return fmtDate(d.toISOString().split("T")[0]);
+                          })()}
+                        </span>
+                      </div>
                     </div>
                   )}
 
-                  <FormField control={form.control} name="reason" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>سبب التمديد</FormLabel>
-                      <FormControl><Input placeholder="مثال: ظروف مناخية، أعمال إضافية..." {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <FormField control={form.control} name="documentRef" render={({ field }) => (
+                  <div className="p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
+                    <FormField control={form.control} name="reason" render={({ field }) => (
                       <FormItem>
-                        <FormLabel>رقم الخطاب المرجعي</FormLabel>
-                        <FormControl><Input placeholder="مثال: خ/1234/2025" {...field} /></FormControl>
+                        <FormLabel className="text-foreground/90">سبب التمديد</FormLabel>
+                        <FormControl><Input className="h-11 bg-background" placeholder="مثال: ظروف مناخية، أعمال إضافية..." {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <FormField control={form.control} name="documentRef" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-foreground/90">رقم الخطاب المرجعي</FormLabel>
+                          <FormControl><Input className="h-11 bg-background" placeholder="مثال: خ/1234/2025" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="notes" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-foreground/90">ملاحظات <span className="text-muted-foreground text-[10px] font-normal px-1.5 py-0.5 bg-muted rounded">(اختياري)</span></FormLabel>
+                          <FormControl><Input className="h-11 bg-background" placeholder="ملاحظات إضافية..." {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
                   </div>
-                  <FormField control={form.control} name="notes" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>ملاحظات</FormLabel>
-                      <FormControl><Input placeholder="ملاحظات إضافية..." {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
-                    <Button type="submit" disabled={createExt.isPending}>
-                      {createExt.isPending ? "جاري الحفظ..." : "إضافة التمديد"}
+
+                  <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+                    <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
+                    <Button type="submit" disabled={createExt.isPending} className="w-full sm:w-auto shadow-md gap-2">
+                      {createExt.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> جاري الحفظ...</> : <><Plus className="h-4 w-4" /> إضافة التمديد</>}
                     </Button>
                   </div>
                 </form>
