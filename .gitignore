@@ -1,58 +1,41 @@
-# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
-
-# compiled output
-dist
-tmp
-out-tsc
-*.tsbuildinfo
-.expo
-.expo-shared
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
 # dependencies
-node_modules
+node_modules/
 
-# user-uploaded files (PII: selfies, photos, attachments)
-artifacts/*/uploads/
-uploads/
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
 
-# IDEs and editors
-/.idea
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
+# Native
+ios/
+android/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
 
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+# Metro
+.metro-health-check*
 
-# misc
-/.sass-cache
-/connect.lock
-/coverage
-/libpeerconnection.log
-npm-debug.log
-yarn-error.log
-testem.log
-/typings
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
 
-# System Files
+# macOS
 .DS_Store
-Thumbs.db
+*.pem
 
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
+# local env files
+.env*.local
 
-# Backups
-backups/
-**/backups/
+# typescript
+*.tsbuildinfo
+.vercel
 
-# Replit
-.cache/
-.local/
 .env
