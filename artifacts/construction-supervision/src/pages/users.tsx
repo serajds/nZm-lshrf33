@@ -19,7 +19,6 @@ import {
   getGetMyProjectPermissionsQueryKey,
 } from "@workspace/api-client-react";
 import type { User, UpdateUserBody, CreateUserBody, CreateUserBodyRole, TabPermissionsMap, TabAccess } from "@workspace/api-client-react";
-import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,7 +46,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Edit2, Trash2, Users as UsersIcon, Building2, UserX, AlertTriangle, FolderKanban, Zap, ShieldAlert, Briefcase, HardHat, Pickaxe, UserCheck } from "lucide-react";
+import { Plus, Edit2, Trash2, Users as UsersIcon, Building2, UserX, AlertTriangle, FolderKanban, Zap } from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -465,12 +464,12 @@ export default function Users() {
 
   const getRoleBadge = (role: string) => {
     switch (role) {
-      case 'admin': return <Badge variant="outline" className="gap-1 bg-rose-500/10 text-rose-600 border-rose-500/20 hover:bg-rose-500/20 whitespace-nowrap"><ShieldAlert className="h-3 w-3" /> مدير نظام</Badge>;
-      case 'project_manager': return <Badge variant="outline" className="gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20 hover:bg-amber-500/20 whitespace-nowrap"><Briefcase className="h-3 w-3" /> مدير مشروع</Badge>;
-      case 'engineer': return <Badge variant="outline" className="gap-1 bg-blue-500/10 text-blue-600 border-blue-500/20 hover:bg-blue-500/20 whitespace-nowrap"><HardHat className="h-3 w-3" /> مهندس</Badge>;
-      case 'contractor': return <Badge variant="outline" className="gap-1 bg-orange-500/10 text-orange-600 border-orange-500/20 hover:bg-orange-500/20 whitespace-nowrap"><Pickaxe className="h-3 w-3" /> مقاول</Badge>;
-      case 'owner': return <Badge variant="outline" className="gap-1 bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20 whitespace-nowrap"><UserCheck className="h-3 w-3" /> مالك</Badge>;
-      default: return <Badge variant="outline" className="whitespace-nowrap">{role}</Badge>;
+      case 'admin': return <Badge className="bg-destructive hover:bg-destructive">مدير نظام</Badge>;
+      case 'project_manager': return <Badge className="bg-amber-600 hover:bg-amber-600">مدير مشروع</Badge>;
+      case 'engineer': return <Badge className="bg-primary hover:bg-primary">مهندس</Badge>;
+      case 'contractor': return <Badge className="bg-orange-600 hover:bg-orange-600">مقاول</Badge>;
+      case 'owner': return <Badge className="bg-emerald-600 hover:bg-emerald-600">مالك</Badge>;
+      default: return <Badge variant="outline">{role}</Badge>;
     }
   };
 
@@ -529,187 +528,119 @@ export default function Users() {
               إضافة مستخدم
             </Button>
           </DialogTrigger>
-          <DialogContent dir="rtl" className="sm:max-w-[650px] p-0 overflow-hidden">
-            <div className="bg-gradient-to-br from-violet-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
-              <DialogHeader>
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-violet-500/10 rounded-xl">
-                    <UsersIcon className="h-6 w-6 text-violet-600" />
+          <DialogContent dir="rtl" className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>{editingUserId ? "تعديل مستخدم" : "مستخدم جديد"}</DialogTitle>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="fullName"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel>الاسم الكامل</FormLabel>
+                        <FormControl><Input {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>رقم الهاتف</FormLabel>
+                        <FormControl><Input type="tel" {...field} dir="ltr" className="text-right" placeholder="09XXXXXXXX" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="role"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>الصلاحية</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger dir="rtl">
+                              <SelectValue placeholder="اختر الصلاحية" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent dir="rtl">
+                            <SelectItem value="admin">مدير نظام</SelectItem>
+                            <SelectItem value="project_manager">مدير مشروع</SelectItem>
+                            <SelectItem value="engineer">مهندس</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel>{editingUserId ? "كلمة المرور (اتركها فارغة لعدم التغيير)" : "كلمة المرور"}</FormLabel>
+                        <FormControl><Input type="password" {...field} dir="ltr" className="text-right" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="sm:col-span-2 space-y-2">
+                    <Label>الشركات</Label>
+                    {companies.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">لا توجد شركات مسجلة</p>
+                    ) : (
+                      <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto">
+                        {companies.map(c => (
+                          <label key={c.id} className="flex items-center gap-2 cursor-pointer">
+                            <Checkbox
+                              checked={selectedCompanyIds.includes(c.id)}
+                              onCheckedChange={() => toggleCompany(c.id)}
+                            />
+                            <span className="text-sm">{c.name}</span>
+                            <span className="text-xs text-muted-foreground">({getCompanyTypeName(c.type)})</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <DialogTitle className="text-xl">{editingUserId ? "تعديل بيانات المستخدم" : "إضافة مستخدم جديد"}</DialogTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {editingUserId ? "قم بتحديث بيانات المستخدم وصلاحياته في النظام." : "أدخل بيانات المستخدم الجديد وحدد صلاحياته للوصول للنظام."}
+                  <div className="sm:col-span-2 space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <FolderKanban className="h-4 w-4" />
+                      المشاريع
+                    </Label>
+                    {projectsList.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">لا توجد مشاريع</p>
+                    ) : (
+                      <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto" data-testid="project-membership-picker">
+                        {projectsList.map(p => (
+                          <label key={p.id} className="flex items-center gap-2 cursor-pointer">
+                            <Checkbox
+                              checked={selectedProjectIds.includes(p.id)}
+                              onCheckedChange={() => toggleProject(p.id)}
+                              data-testid={`checkbox-project-${p.id}`}
+                            />
+                            <span className="text-sm">{p.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      سيتم تعيين المستخدم في المشاريع المختارة بدور افتراضي بناءً على صلاحيته في النظام.
                     </p>
                   </div>
                 </div>
-              </DialogHeader>
-            </div>
-            
-            <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-4 space-y-8">
-                  
-                  {/* Section 1: Basic Info */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-violet-600/80 uppercase tracking-wide flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-violet-600"></span>
-                      البيانات الأساسية
-                    </h3>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
-                      <FormField
-                        control={form.control}
-                        name="fullName"
-                        render={({ field }) => (
-                          <FormItem className="sm:col-span-2">
-                            <FormLabel className="text-foreground/90">الاسم الكامل</FormLabel>
-                            <FormControl><Input {...field} placeholder="أدخل الاسم الرباعي" className="bg-background" /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="phone"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-foreground/90">رقم الهاتف</FormLabel>
-                            <FormControl><Input type="tel" {...field} dir="ltr" className="text-right bg-background" placeholder="05XXXXXXXX" /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="password"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-foreground/90">{editingUserId ? "كلمة المرور (اختياري)" : "كلمة المرور"}</FormLabel>
-                            <FormControl><Input type="password" {...field} dir="ltr" className="text-right bg-background" placeholder="••••••••" /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="h-px bg-border/50 w-full" />
-
-                  {/* Section 2: Permissions & Access */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-violet-600/80 uppercase tracking-wide flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-violet-600"></span>
-                      الصلاحيات والوصول
-                    </h3>
-                    
-                    <div className="grid grid-cols-1 gap-5">
-                      <FormField
-                        control={form.control}
-                        name="role"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-foreground/90">صلاحية النظام الرئيسية</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger dir="rtl" className="bg-background">
-                                  <SelectValue placeholder="اختر الصلاحية" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent dir="rtl">
-                                <SelectItem value="admin">مدير نظام (صلاحيات كاملة)</SelectItem>
-                                <SelectItem value="project_manager">مدير مشروع</SelectItem>
-                                <SelectItem value="engineer">مهندس مشرف</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <div className="space-y-3">
-                        <Label className="flex items-center gap-2 text-sm text-foreground/90 font-semibold">
-                          <Building2 className="h-4 w-4 text-violet-500" />
-                          تعيين الشركات
-                        </Label>
-                        {companies.length === 0 ? (
-                          <div className="p-6 rounded-2xl bg-muted/30 border-2 border-dashed text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
-                            <Building2 className="h-8 w-8 opacity-20" />
-                            لا توجد شركات مسجلة
-                          </div>
-                        ) : (
-                          <div className="border rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto bg-muted/10 shadow-inner">
-                            {companies.map(c => {
-                              const isSelected = selectedCompanyIds.includes(c.id);
-                              return (
-                                <label key={c.id} className={cn(
-                                  "flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all border",
-                                  isSelected ? "bg-primary/5 border-primary/30 shadow-sm" : "bg-background border-transparent hover:border-border/60 hover:bg-muted/50"
-                                )}>
-                                  <Checkbox
-                                    checked={isSelected}
-                                    onCheckedChange={() => toggleCompany(c.id)}
-                                    className="data-[state=checked]:bg-primary"
-                                  />
-                                  <div className="flex flex-col flex-1 min-w-0">
-                                    <span className="text-sm font-semibold truncate">{c.name}</span>
-                                    <span className="text-[11px] text-muted-foreground truncate">{getCompanyTypeName(c.type)}</span>
-                                  </div>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="space-y-3">
-                        <Label className="flex items-center gap-2 text-sm text-foreground/90 font-semibold">
-                          <FolderKanban className="h-4 w-4 text-violet-500" />
-                          تعيين المشاريع
-                        </Label>
-                        {projectsList.length === 0 ? (
-                          <div className="p-6 rounded-2xl bg-muted/30 border-2 border-dashed text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
-                            <FolderKanban className="h-8 w-8 opacity-20" />
-                            لا توجد مشاريع مسجلة
-                          </div>
-                        ) : (
-                          <div className="border rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto bg-muted/10 shadow-inner" data-testid="project-membership-picker">
-                            {projectsList.map(p => {
-                              const isSelected = selectedProjectIds.includes(p.id);
-                              return (
-                                <label key={p.id} className={cn(
-                                  "flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all border",
-                                  isSelected ? "bg-primary/5 border-primary/30 shadow-sm" : "bg-background border-transparent hover:border-border/60 hover:bg-muted/50"
-                                )}>
-                                  <Checkbox
-                                    checked={isSelected}
-                                    onCheckedChange={() => toggleProject(p.id)}
-                                    data-testid={`checkbox-project-${p.id}`}
-                                    className="data-[state=checked]:bg-primary"
-                                  />
-                                  <span className="text-sm font-semibold truncate flex-1 min-w-0">{p.name}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
-                        <p className="text-xs text-muted-foreground bg-amber-50/50 border border-amber-200/50 p-3 rounded-xl flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                          سيتم تعيين المستخدم في المشاريع المختارة بدور افتراضي. يمكنك تخصيص الصلاحيات الدقيقة لكل مشروع لاحقاً من قسم إدارة المشاريع.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-6 px-6">
-                    <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
-                    <Button type="submit" className="w-full sm:w-auto shadow-md" disabled={createUser.isPending || updateUser.isPending}>
-                      {editingUserId ? "حفظ التعديلات" : "إضافة المستخدم"}
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-            </div>
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>إلغاء</Button>
+                  <Button type="submit" disabled={createUser.isPending || updateUser.isPending}>حفظ</Button>
+                </div>
+              </form>
+            </Form>
           </DialogContent>
         </Dialog>
       </div>
@@ -888,17 +819,15 @@ export default function Users() {
         open={!!quickAssignUserId}
         onOpenChange={(open) => { if (!open) closeQuickAssign(); }}
       >
-        <DialogContent dir="rtl" className="sm:max-w-[480px] p-0 overflow-hidden" data-testid="dialog-quick-assign">
-          <div className="bg-gradient-to-br from-amber-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-xl">
-                <Zap className="h-6 w-6 text-amber-600" />
-                تعيين سريع
-              </DialogTitle>
-            </DialogHeader>
-          </div>
+        <DialogContent dir="rtl" className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto" data-testid="dialog-quick-assign">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5 text-amber-600" />
+              تعيين سريع
+            </DialogTitle>
+          </DialogHeader>
           {quickAssignUser && (
-            <div className="overflow-y-auto max-h-[calc(90vh-140px)] p-6 pt-4 space-y-5">
+            <div className="space-y-4 pt-2">
               <div className="text-sm">
                 <div className="font-medium">{quickAssignUser.fullName}</div>
                 <div className="text-xs text-muted-foreground" dir="ltr">{quickAssignUser.phone}</div>
@@ -1100,13 +1029,12 @@ export default function Users() {
                 ستُضاف الشركة/المشروع المختارَين إلى تعيينات المستخدم الحالية دون استبدالها.
               </p>
 
-              <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-6 px-6">
-                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={closeQuickAssign}>
-                  إلغاء والتراجع
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={closeQuickAssign}>
+                  إلغاء
                 </Button>
                 <Button
                   type="button"
-                  className="w-full sm:w-auto shadow-md"
                   onClick={handleQuickAssign}
                   disabled={
                     updateUser.isPending ||

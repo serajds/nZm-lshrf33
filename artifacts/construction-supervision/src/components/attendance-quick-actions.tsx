@@ -239,7 +239,7 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2 flex-wrap">
             {isCheckedIn ? (
-              <Badge className="bg-green-600 hover:bg-green-600 text-white">مسجّل حضور الآن</Badge>
+              <Badge className="bg-green-600 hover:bg-green-600">مسجّل حضور الآن</Badge>
             ) : (
               <Badge variant="secondary">غير حاضر</Badge>
             )}
