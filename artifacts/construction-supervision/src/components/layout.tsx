@@ -306,8 +306,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* ===== MAIN CONTENT CARD ===== */}
-      <div className="flex-1 flex flex-col h-screen py-2 pl-2 pr-0 transition-all duration-300">
-        <main className="flex-1 bg-background text-foreground rounded-r-3xl md:rounded-r-[2.5rem] shadow-[-10px_0_40px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col relative border border-white/10 dark:border-white/5">
+      <div className="flex-1 flex flex-col h-screen min-h-0 py-2 pl-2 pr-0 transition-all duration-300">
+        <main className="flex-1 min-h-0 bg-background text-foreground rounded-r-3xl md:rounded-r-[2.5rem] shadow-[-10px_0_40px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col relative border border-white/10 dark:border-white/5">
           {/* ---- Top Header ── */}
           <header
             className="h-16 flex items-center px-4 md:px-6 gap-3 shrink-0 backdrop-blur-xl bg-background/80 border-b border-border/50 transition-all duration-300 z-10"
@@ -336,7 +336,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </header>
 
           {/* ---- Page Content ---- */}
-          <div className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 z-0">
+          <div className="flex-1 min-h-0 overflow-auto p-4 md:p-6 lg:p-8 z-0">
             {children}
           </div>
         </main>
