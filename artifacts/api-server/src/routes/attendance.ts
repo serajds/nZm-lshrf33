@@ -719,8 +719,18 @@ router.get(
       eq(attendanceRecordsTable.projectId, projectId),
       eq(attendanceRecordsTable.userId, targetUserId),
     ];
-    if (dateFrom) conditions.push(gte(attendanceRecordsTable.recordedAt, libyaDayStartUtc(dateFrom)));
-    if (dateTo) conditions.push(lte(attendanceRecordsTable.recordedAt, libyaDayEndUtc(dateTo)));
+    
+    // Widen DB query by 48h to prevent breaking sessions that cross date boundaries
+    if (dateFrom) {
+      const d = libyaDayStartUtc(dateFrom);
+      d.setHours(d.getHours() - 48);
+      conditions.push(gte(attendanceRecordsTable.recordedAt, d));
+    }
+    if (dateTo) {
+      const d = libyaDayEndUtc(dateTo);
+      d.setHours(d.getHours() + 48);
+      conditions.push(lte(attendanceRecordsTable.recordedAt, d));
+    }
 
     const records = await db.select({
       id: attendanceRecordsTable.id,
@@ -750,7 +760,15 @@ router.get(
     const autoCloseHours = project?.attendanceAutoCloseHours ?? 12;
     const longDayHours = project?.attendanceLongDayHours ?? 10;
 
-    const sessions = pairAttendanceSessions(records, autoCloseHours);
+    const allSessions = pairAttendanceSessions(records, autoCloseHours);
+
+    // Filter sessions down to the exact requested date range based on start time
+    const startMs = dateFrom ? libyaDayStartUtc(dateFrom).getTime() : -Infinity;
+    const endMs = dateTo ? libyaDayEndUtc(dateTo).getTime() : Infinity;
+    const sessions = allSessions.filter(s => {
+      const sMs = s.startAt.getTime();
+      return sMs >= startMs && sMs <= endMs;
+    });
 
     // Group sessions by the Libya-local date of their check-in. Night-shift
     // sessions that cross midnight are counted entirely on their start date.

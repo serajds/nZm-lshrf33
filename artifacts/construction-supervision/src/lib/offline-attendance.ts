@@ -12,6 +12,8 @@ const DB_NAME = "attendance-offline";
 const STORE = "queue";
 const DB_VERSION = 1;
 
+import { processFetchResponse } from "@workspace/api-client-react";
+
 export interface QueuedAttendance {
   /** UUID v4 generated client-side; doubles as idempotency key + queue PK. */
   clientId: string;
@@ -186,6 +188,8 @@ export async function sendOrQueue(entry: Omit<QueuedAttendance, "attempts" | "la
     await enqueueAttendance(entry);
     return { kind: "queued", reason: "network-error" };
   }
+
+  await processFetchResponse(response);
 
   if (response.ok) {
     const record = await response.json().catch(() => ({}));

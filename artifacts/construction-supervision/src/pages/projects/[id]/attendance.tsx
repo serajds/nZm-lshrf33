@@ -1216,6 +1216,13 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
           <p className="text-sm text-muted-foreground">اختر موظفاً لعرض تقرير الحضور.</p>
         )}
 
+        {employeeId && isFetching && !report && (
+          <div className="flex flex-col items-center justify-center py-10 space-y-3">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">جاري تحميل التقرير...</p>
+          </div>
+        )}
+
         {employeeId && reportError && (
           <div className="rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-sm p-3">
             {reportError instanceof Error ? reportError.message : "تعذّر تحميل التقرير"}
