@@ -408,7 +408,7 @@ export default function ProjectSuspensions() {
           )}
         </CardHeader>
 
-        <CardContent className="p-0 overflow-x-auto hidden sm:block">
+        <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
@@ -476,66 +476,6 @@ export default function ProjectSuspensions() {
               )}
             </TableBody>
           </Table>
-        </CardContent>
-
-        {/* Mobile card view */}
-        <CardContent className="sm:hidden p-3 space-y-3">
-          {isLoading ? (
-            <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
-              <span className="text-sm">جاري تحميل التوقفات...</span>
-            </div>
-          ) : suspensions.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
-              لا توجد توقفات مسجّلة — كل التأخير يُحسب على المقاول
-            </div>
-          ) : (
-            suspensions.map((s, i) => (
-              <div key={s.id} className="rounded-lg border p-3 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs text-muted-foreground shrink-0">#{i + 1}</span>
-                    <TypeBadge type={s.type} />
-                  </div>
-                  {!isViewer && (
-                    <Button
-                      variant="ghost" size="icon" className="h-7 w-7 shrink-0"
-                      onClick={() => setDeletingId(s.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  )}
-                </div>
-                <p className="text-sm font-medium">{s.title}</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">من</p>
-                    <p className="text-sm font-mono tabular-nums">{fmtDate(s.startDate)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">إلى</p>
-                    <p className="text-sm font-mono tabular-nums">{fmtDate(s.endDate)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-2 pt-1 border-t">
-                  <span className="inline-flex items-center gap-1.5 text-sm">
-                    <span className="text-xs text-muted-foreground">الأيام:</span>
-                    <Badge variant="secondary" className="font-bold">{s.calendarDays}</Badge>
-                  </span>
-                  <span className="text-sm">
-                    {"datesShifted" in s && s.datesShifted ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-blue-600">
-                        <CalendarClock className="h-3 w-3" /> تم الترحيل
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">بدون ترحيل</span>
-                    )}
-                  </span>
-                </div>
-              </div>
-            ))
-          )}
         </CardContent>
       </Card>
 

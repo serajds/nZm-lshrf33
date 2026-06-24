@@ -332,8 +332,6 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
         ) : members.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">لا يوجد أعضاء في هذا المشروع</p>
         ) : (
-          <>
-          <div className="overflow-x-auto hidden sm:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -465,116 +463,6 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
               })}
             </TableBody>
           </Table>
-          </div>
-
-          {/* Mobile card view */}
-          <div className="sm:hidden space-y-3">
-            {members.map(member => {
-              const memberGroups = (member.assignedGroupIds ?? [])
-                .map(gid => groups.find(g => g.id === gid))
-                .filter(Boolean) as ActivityGroup[];
-              return (
-                <div key={member.id} className="rounded-lg border p-3 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">{member.fullName}</p>
-                      <p className="text-xs text-muted-foreground" dir="ltr">{member.phone}</p>
-                    </div>
-                    {canManageMembers && (
-                      <div className="flex items-center gap-1 shrink-0">
-                        {(member.isContractorLocked || member.role === "contractor") ? (
-                          <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground" title="صلاحيات المقاول ثابتة وغير قابلة للتعديل">
-                            صلاحيات ثابتة
-                          </Badge>
-                        ) : (
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPermissionsMemberId(member.id)} title="إدارة صلاحيات التبويبات">
-                            <ShieldCheck className="h-4 w-4 text-primary" />
-                          </Button>
-                        )}
-                        {member.userId !== user?.id && (
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRemovingId(member.id)} disabled={removeMember.isPending}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {(member as any).companyNames?.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {(member as any).companyNames.map((name: string, i: number) => (
-                        <Badge key={i} variant="outline" className="gap-1 text-xs">
-                          <Building2 className="h-3 w-3" />
-                          {name}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted-foreground shrink-0">الدور في المشروع</span>
-                    {canManageMembers && member.userId !== user?.id ? (
-                      <Select value={member.role} onValueChange={(val) => handleChangeRole(member, val)}>
-                        <SelectTrigger className="w-[150px] h-8" dir="rtl">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent dir="rtl">
-                          <SelectItem value="project_manager">مدير مشروع</SelectItem>
-                          <SelectItem value="engineer">مهندس</SelectItem>
-                          <SelectItem value="contractor">مقاول</SelectItem>
-                          <SelectItem value="viewer">مشاهد (قراءة فقط)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      getRoleBadge(member.role)
-                    )}
-                  </div>
-
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-xs text-muted-foreground shrink-0 pt-0.5">المجموعات</span>
-                    <div className="flex flex-wrap gap-1 justify-end">
-                      {member.role === "engineer" ? (
-                        <>
-                          {memberGroups.length > 0 ? (
-                            memberGroups.map(g => (
-                              <Badge key={g.id} variant="outline" className="gap-1 text-xs">
-                                <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: g.color }} />
-                                {g.name}
-                              </Badge>
-                            ))
-                          ) : (
-                            <span className="text-xs text-muted-foreground">جميع المجموعات</span>
-                          )}
-                          {canManageMembers && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => {
-                                if (sortedGroups.length === 0) {
-                                  toast({ title: "لا توجد مجموعات بنود", description: "يرجى إنشاء مجموعات بنود أولاً من صفحة بنود الأعمال" });
-                                  return;
-                                }
-                                openGroupsEditor(member);
-                              }}
-                              title="مجموعات البنود"
-                            >
-                              <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                          )}
-                        </>
-                      ) : member.role === "viewer" ? (
-                        <span className="text-xs text-muted-foreground">قراءة فقط</span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">صلاحية كاملة</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          </>
         )}
       </CardContent>
       <AlertDialog open={!!removingId} onOpenChange={(open) => { if (!open) setRemovingId(null); }}>

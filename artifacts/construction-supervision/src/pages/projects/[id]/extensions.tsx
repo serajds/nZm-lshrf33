@@ -301,7 +301,7 @@ export default function ProjectExtensions() {
           )}
         </CardHeader>
 
-        <CardContent className="p-0 overflow-x-auto hidden sm:block">
+        <CardContent className="p-0 overflow-x-auto">
           <Table className="min-w-[640px]">
             <TableHeader>
               <TableRow>
@@ -363,58 +363,6 @@ export default function ProjectExtensions() {
               )}
             </TableBody>
           </Table>
-        </CardContent>
-
-        {/* Mobile card view */}
-        <CardContent className="sm:hidden p-3 space-y-3">
-          {isLoading ? (
-            <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
-              <span className="text-sm">جاري تحميل التمديدات...</span>
-            </div>
-          ) : extensions.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
-              لا توجد تمديدات مسجّلة — المشروع يسير وفق الجدول الأصلي
-            </div>
-          ) : (
-            extensions.map((ext, i) => (
-              <div key={ext.id} className="rounded-lg border p-3 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">#{i + 1}</span>
-                    <Badge className="bg-amber-500 text-white">+{ext.daysAdded} يوم</Badge>
-                  </div>
-                  {!isViewer && (
-                    <Button
-                      variant="ghost" size="icon" className="h-7 w-7"
-                      onClick={() => setDeletingId(ext.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">تاريخ الاتفاقية</p>
-                    <p dir="ltr" className="text-sm tabular-nums">{fmtDate(ext.extensionDate)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">تاريخ الإنهاء الجديد</p>
-                    <p dir="ltr" className="text-sm tabular-nums font-medium text-amber-700">{fmtDate(ext.newEndDate)}</p>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">السبب</p>
-                  <p className="text-sm">{ext.reason ?? <span className="text-muted-foreground">—</span>}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">رقم الخطاب</p>
-                  <p className="text-sm font-mono">{ext.documentRef ?? <span className="text-muted-foreground">—</span>}</p>
-                </div>
-              </div>
-            ))
-          )}
         </CardContent>
       </Card>
 
