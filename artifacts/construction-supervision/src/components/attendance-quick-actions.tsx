@@ -16,15 +16,18 @@ import {
   queueCount,
   subscribeQueue,
 } from "@/lib/offline-attendance";
+import { processFetchResponse } from "@workspace/api-client-react";
 import { startGeofenceWatch, chimeAndVibrate } from "@/lib/geofence-watcher";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
-function authFetch(url: string, opts?: RequestInit) {
+async function authFetch(url: string, opts?: RequestInit) {
   const token = localStorage.getItem("auth_token");
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  return fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> || {}) } });
+  const response = await fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> || {}) } });
+  await processFetchResponse(response);
+  return response;
 }
 
 interface MyStatus {

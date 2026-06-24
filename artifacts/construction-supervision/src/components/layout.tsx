@@ -269,7 +269,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex h-screen w-full bg-[#020617] text-slate-100 overflow-hidden" dir="rtl">
+    <div className="flex h-[100dvh] w-full bg-[#020617] text-slate-100 overflow-hidden" dir="rtl">
 
       {/* ===== DESKTOP SIDEBAR ===== */}
       <aside
@@ -306,8 +306,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* ===== MAIN CONTENT CARD ===== */}
-      <div className="flex-1 flex flex-col h-screen py-2 pl-2 pr-0 transition-all duration-300">
-        <main className="flex-1 bg-background text-foreground rounded-r-3xl md:rounded-r-[2.5rem] shadow-[-10px_0_40px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col relative border border-white/10 dark:border-white/5">
+      <div className="flex-1 flex flex-col h-[100dvh] md:py-2 md:pl-2 min-w-0 transition-all duration-300">
+        <main className="flex-1 min-h-0 bg-background text-foreground md:rounded-r-[2.5rem] shadow-none md:shadow-[-10px_0_40px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col relative md:border border-white/10 dark:md:border-white/5">
           {/* ---- Top Header ── */}
           <header
             className="h-16 flex items-center px-4 md:px-6 gap-3 shrink-0 backdrop-blur-xl bg-background/80 border-b border-border/50 transition-all duration-300 z-10"
