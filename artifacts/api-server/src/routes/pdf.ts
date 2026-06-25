@@ -684,14 +684,25 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   y = MARGIN;
   y = drawSectionHeader(doc, "التوقيعات والاعتماد", y);
 
-  const sigBoxW = (CONTENT_W - 20) / 3;
   const sigBoxH = 100;
   const sigBoxY = y + 20;
-  const sigs = [
+  
+  // Custom Signatures Support
+  let sigs = [
     { title: "المقاول المنفذ", name: project.contractor },
     { title: "الجهة المشرفة", name: project.supervisorEntity },
     { title: "الجهة المالكة", name: project.ownerEntity },
   ];
+  
+  if (project.reportSignatures && Array.isArray(project.reportSignatures)) {
+    sigs = (project.reportSignatures as {id: string, title: string, role: string, name?: string}[]).map(sig => ({
+      title: sig.title || sig.role,
+      name: sig.name || "—"
+    }));
+  }
+
+  const sigBoxW = sigs.length > 0 ? (CONTENT_W - ((sigs.length - 1) * 10)) / sigs.length : 0;
+
   sigs.forEach((sig, i) => {
     const sx = MARGIN + i * (sigBoxW + 10);
     doc.roundedRect(sx, sigBoxY, sigBoxW, sigBoxH, 6).stroke(C.border);
@@ -706,8 +717,6 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
 
   y = sigBoxY + sigBoxH + 30;
   doc.roundedRect(MARGIN, y, CONTENT_W, 50, 4).fill(C.light).stroke(C.border);
-  setFont(8, C.textMuted);
-  doc.text("صدر هذا التقرير من إدارة الإشراف والمتابعة", MARGIN + 8, y + 10, { width: CONTENT_W - 16, align: "center" });
   setFont(9, C.textDark);
   doc.text(`تاريخ الإصدار: ${formatDate(new Date())}  |  المشروع: ${project.name}`, MARGIN + 8, y + 27, { width: CONTENT_W - 16, align: "center" });
 

@@ -27,6 +27,7 @@ export const projectsTable = pgTable("projects", {
   siteRadiusMeters: integer("site_radius_meters").default(200),
   attendanceAutoCloseHours: integer("attendance_auto_close_hours").notNull().default(12),
   attendanceLongDayHours: integer("attendance_long_day_hours").notNull().default(10),
+  reportSignatures: jsonb("report_signatures").$type<{id: string; title: string; role: string; name?: string}[]>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [

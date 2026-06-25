@@ -5,6 +5,7 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { ReportSignature } from "./reportSignature";
 import type { UpdateProjectBodyStatus } from "./updateProjectBodyStatus";
 
 export interface UpdateProjectBody {
@@ -36,4 +37,6 @@ export interface UpdateProjectBody {
   siteLongitude?: number | null;
   /** @nullable */
   siteRadiusMeters?: number | null;
+  /** @nullable */
+  reportSignatures?: ReportSignature[] | null;
 }

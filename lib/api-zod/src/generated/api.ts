@@ -140,6 +140,16 @@ export const ListProjectsResponseItem = zod.object({
   siteLatitude: zod.number().nullish(),
   siteLongitude: zod.number().nullish(),
   siteRadiusMeters: zod.number().nullish(),
+  reportSignatures: zod
+    .array(
+      zod.object({
+        id: zod.string().optional(),
+        title: zod.string().optional(),
+        role: zod.string().optional(),
+        name: zod.string().optional(),
+      }),
+    )
+    .nullish(),
   attendanceAutoCloseHours: zod.number(),
   attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
@@ -191,6 +201,16 @@ export const GetProjectResponse = zod.object({
   siteLatitude: zod.number().nullish(),
   siteLongitude: zod.number().nullish(),
   siteRadiusMeters: zod.number().nullish(),
+  reportSignatures: zod
+    .array(
+      zod.object({
+        id: zod.string().optional(),
+        title: zod.string().optional(),
+        role: zod.string().optional(),
+        name: zod.string().optional(),
+      }),
+    )
+    .nullish(),
   attendanceAutoCloseHours: zod.number(),
   attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
@@ -227,6 +247,16 @@ export const UpdateProjectBody = zod.object({
   siteLatitude: zod.number().nullish(),
   siteLongitude: zod.number().nullish(),
   siteRadiusMeters: zod.number().nullish(),
+  reportSignatures: zod
+    .array(
+      zod.object({
+        id: zod.string().optional(),
+        title: zod.string().optional(),
+        role: zod.string().optional(),
+        name: zod.string().optional(),
+      }),
+    )
+    .nullish(),
 });
 
 export const UpdateProjectResponse = zod.object({
@@ -246,6 +276,16 @@ export const UpdateProjectResponse = zod.object({
   siteLatitude: zod.number().nullish(),
   siteLongitude: zod.number().nullish(),
   siteRadiusMeters: zod.number().nullish(),
+  reportSignatures: zod
+    .array(
+      zod.object({
+        id: zod.string().optional(),
+        title: zod.string().optional(),
+        role: zod.string().optional(),
+        name: zod.string().optional(),
+      }),
+    )
+    .nullish(),
   attendanceAutoCloseHours: zod.number(),
   attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
@@ -1196,6 +1236,16 @@ export const VerifyOwnerAccessResponse = zod.object({
     siteLatitude: zod.number().nullish(),
     siteLongitude: zod.number().nullish(),
     siteRadiusMeters: zod.number().nullish(),
+    reportSignatures: zod
+      .array(
+        zod.object({
+          id: zod.string().optional(),
+          title: zod.string().optional(),
+          role: zod.string().optional(),
+          name: zod.string().optional(),
+        }),
+      )
+      .nullish(),
     attendanceAutoCloseHours: zod.number(),
     attendanceLongDayHours: zod.number(),
     createdAt: zod.coerce.date(),
@@ -1374,6 +1424,16 @@ export const GetDashboardSummaryResponse = zod.object({
       siteLatitude: zod.number().nullish(),
       siteLongitude: zod.number().nullish(),
       siteRadiusMeters: zod.number().nullish(),
+      reportSignatures: zod
+        .array(
+          zod.object({
+            id: zod.string().optional(),
+            title: zod.string().optional(),
+            role: zod.string().optional(),
+            name: zod.string().optional(),
+          }),
+        )
+        .nullish(),
       attendanceAutoCloseHours: zod.number(),
       attendanceLongDayHours: zod.number(),
       createdAt: zod.coerce.date(),

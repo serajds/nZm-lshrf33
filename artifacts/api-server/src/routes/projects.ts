@@ -285,6 +285,7 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
     }
     updateData.attendanceLongDayHours = n;
   }
+  if (body.reportSignatures !== undefined) updateData.reportSignatures = body.reportSignatures;
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });
