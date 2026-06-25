@@ -44,6 +44,7 @@ export interface ReportPdfData {
     supervisor?: CompanyLogo;
   };
   apiBase?: string;
+  reportSignatures?: {id: string, title: string, role: string, name?: string}[] | null;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -539,9 +540,42 @@ ${recsHTML}
 <!-- IMAGES -->
 ${imagesHTML}
 
+<!-- SIGNATURES -->
+${(() => {
+  let sigs = [
+    { title: "المقاول المنفذ", name: data.contractor },
+    { title: "الجهة المشرفة", name: data.supervisorEntity },
+    { title: "الجهة المالكة", name: data.ownerEntity },
+  ];
+  if (data.reportSignatures && Array.isArray(data.reportSignatures)) {
+    sigs = data.reportSignatures.map((sig: any) => ({
+      title: sig.title || sig.role,
+      name: sig.name || "—"
+    }));
+  }
+  
+  if (sigs.length === 0) return "";
+  
+  return `
+  <div class="section avoid-break">
+    <div class="section-title">التوقيعات والاعتماد</div>
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+      ${sigs.map(sig => `
+        <div style="flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; text-align: center; height: 100px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="font-size: 13px; font-weight: 700; color: #1e293b;">${esc(sig.title)}</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">${esc(sig.name || "—")}</div>
+          </div>
+          <div style="border-top: 1px solid #e2e8f0; padding-top: 4px; font-size: 10px; color: #94a3b8;">التوقيع والختم</div>
+        </div>
+      `).join('')}
+    </div>
+  </div>`;
+})()}
+
 <!-- FOOTER -->
 <div class="footer avoid-break">
-  <span>تم إنشاؤه آلياً بواسطة إدارة الإشراف والمتابعة — ${fmtDate(new Date().toISOString())}</span>
+  <span></span>
   <span style="font-weight:700;color:#64748b">تقرير ${typeLbl} #${data.reportNumber ?? data.reportId}</span>
 </div>
 
@@ -1175,8 +1209,8 @@ ${logosHTML}
 
 <!-- FOOTER -->
 <div class="footer avoid-break">
-  <span>تم إنشاؤه آلياً بواسطة إدارة الإشراف والمتابعة — ${fmtDate(new Date().toISOString())}</span>
-  <span style="font-weight:700;color:#64748b">توقيت ليبيا (GMT+2)</span>
+  <span></span>
+  <span style="font-weight:700;color:#64748b">الملف التعريفي — ${esc(data.projectName)}</span>
 </div>
 
 </body>

@@ -14,6 +14,8 @@ import {
   getReport,
   getListReportsQueryKey,
   getGetReportQueryKey,
+  useUpdateProject,
+  getGetProjectQueryKey,
 } from "@workspace/api-client-react";
 import type { ReportAuditLogEntry } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
@@ -48,7 +50,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, AlertCircle, Star, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2 } from "lucide-react";
+import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, AlertCircle, Star, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2, Settings2, GripVertical } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
@@ -266,6 +268,147 @@ function ReportActivityLog({ projectId, reportId }: { projectId: number; reportI
         </CollapsibleContent>
       </Collapsible>
     </div>
+  );
+}
+
+function ReportSignaturesDialog({ projectId }: { projectId: number }) {
+  const [open, setOpen] = useState(false);
+  const { data: project, isLoading } = useGetProject(projectId, { query: { enabled: open } });
+  const updateProject = useUpdateProject();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const [signatures, setSignatures] = useState<{ id: string; title: string; role: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (open && project) {
+      if (project.reportSignatures && Array.isArray(project.reportSignatures)) {
+        setSignatures(project.reportSignatures as any);
+      } else {
+        // Fallback defaults
+        setSignatures([
+          { id: "1", role: "contractor", title: "المقاول المنفذ", name: project.contractor || "" },
+          { id: "2", role: "supervisor", title: "الجهة المشرفة", name: project.supervisorEntity || "" },
+          { id: "3", role: "owner", title: "الجهة المالكة", name: project.ownerEntity || "" },
+        ]);
+      }
+    }
+  }, [open, project]);
+
+  const handleSave = async () => {
+    try {
+      await updateProject.mutateAsync({
+        id: projectId,
+        data: { reportSignatures: signatures }
+      });
+      queryClient.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) });
+      toast({ title: "تم حفظ إعدادات التوقيعات بنجاح" });
+      setOpen(false);
+    } catch (err) {
+      console.error("Save signatures error:", err);
+      toast({ variant: "destructive", title: "حدث خطأ أثناء حفظ التوقيعات" });
+    }
+  };
+
+  const addSignature = () => {
+    setSignatures([...signatures, { id: Date.now().toString(), role: "custom", title: "توقيع جديد", name: "" }]);
+  };
+
+  const removeSignature = (id: string) => {
+    setSignatures(signatures.filter(s => s.id !== id));
+  };
+
+  const updateSignature = (id: string, field: string, value: string) => {
+    setSignatures(signatures.map(s => s.id === id ? { ...s, [field]: value } : s));
+  };
+
+  const resetToDefault = () => {
+    if (!project) return;
+    setSignatures([
+      { id: "1", role: "contractor", title: "المقاول المنفذ", name: project.contractor || "" },
+      { id: "2", role: "supervisor", title: "الجهة المشرفة", name: project.supervisorEntity || "" },
+      { id: "3", role: "owner", title: "الجهة المالكة", name: project.ownerEntity || "" },
+    ]);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="gap-2 shrink-0">
+          <Settings2 className="h-4 w-4" />
+          إعدادات التوقيعات
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-hidden p-0" dir="rtl">
+        <div className="bg-gradient-to-br from-slate-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-slate-500/10 rounded-xl">
+                <Settings2 className="h-6 w-6 text-slate-600" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl">إعدادات توقيعات التقارير</DialogTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  قم بإدارة الأشخاص والجهات التي يحق لها التوقيع على تقارير المشروع.
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+        </div>
+        
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)] space-y-4">
+          {isLoading ? (
+            <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <>
+              <div className="space-y-3">
+                {signatures.map((sig, index) => (
+                  <div key={sig.id} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center bg-accent/20 p-3 rounded-lg border">
+                    <div className="flex-1 space-y-2 w-full">
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="text-xs mb-1 block">الصفة / الجهة</label>
+                          <Input value={sig.title} onChange={(e) => updateSignature(sig.id, "title", e.target.value)} placeholder="مثال: المهندس المشرف" className="h-8 text-sm" />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-xs mb-1 block">الاسم (اختياري)</label>
+                          <Input value={sig.name || ""} onChange={(e) => updateSignature(sig.id, "name", e.target.value)} placeholder="الاسم" className="h-8 text-sm" />
+                        </div>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="shrink-0 text-destructive mt-4 sm:mt-0" onClick={() => removeSignature(sig.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              
+              {signatures.length === 0 && (
+                <div className="text-center p-4 border border-dashed rounded-lg text-sm text-muted-foreground">
+                  لا توجد توقيعات محددة. التقرير سيتم تصديره بدون مساحات توقيع.
+                </div>
+              )}
+              
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <Button variant="outline" size="sm" onClick={addSignature} className="gap-2">
+                  <Plus className="h-4 w-4" /> إضافة موقع
+                </Button>
+                <Button variant="ghost" size="sm" onClick={resetToDefault} className="gap-2 text-muted-foreground hover:text-foreground">
+                  <RotateCcw className="h-4 w-4" /> استعادة الافتراضي
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+        
+        <div className="p-4 border-t bg-muted/20 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setOpen(false)}>إلغاء</Button>
+          <Button onClick={handleSave} disabled={isLoading || updateProject.isPending}>
+            {updateProject.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "حفظ التغييرات"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -593,6 +736,7 @@ export default function ProjectReports() {
       plannedProgress: (project as any).plannedProgress ?? null,
       companyLogos: companyLogos as any,
       apiBase,
+      reportSignatures: (project as any).reportSignatures ?? null,
     });
   };
 
@@ -820,18 +964,20 @@ export default function ProjectReports() {
         </div>
         
         {!isViewer && (
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          setOpenGroupIdx(0);
-          if (!open) {
-            form.reset();
-            setEditingId(null);
-            setSnapshotRows([]);
-            setManualOverrideProgress(false);
-          }
-        }}>
-          <DialogTrigger asChild>
-            <Button className="gap-2" onClick={() => {
+        <div className="flex items-center gap-2">
+          <ReportSignaturesDialog projectId={projectId} />
+          <Dialog open={isDialogOpen} onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            setOpenGroupIdx(0);
+            if (!open) {
+              form.reset();
+              setEditingId(null);
+              setSnapshotRows([]);
+              setManualOverrideProgress(false);
+            }
+          }}>
+            <DialogTrigger asChild>
+              <Button className="gap-2" onClick={() => {
               if (!editingId) {
                 const auto = calcAutoProgress();
                 if (auto !== null) form.setValue("progressPercentage", auto);
@@ -1343,6 +1489,7 @@ export default function ProjectReports() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
         )}
       </div>
 
