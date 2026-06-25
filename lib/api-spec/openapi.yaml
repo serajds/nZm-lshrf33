@@ -1886,6 +1886,10 @@ components:
           type: ["number", "null"]
         siteRadiusMeters:
           type: ["integer", "null"]
+        reportSignatures:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/ReportSignature"
         attendanceAutoCloseHours:
           type: integer
         attendanceLongDayHours:
@@ -1944,6 +1948,18 @@ components:
         - supervisorEntity
         - contractor
 
+    ReportSignature:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        role:
+          type: string
+        name:
+          type: string
+
     UpdateProjectBody:
       type: object
       properties:
@@ -1979,6 +1995,10 @@ components:
           type: ["number", "null"]
         siteRadiusMeters:
           type: ["integer", "null"]
+        reportSignatures:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/ReportSignature"
 
     # Activities
     Activity:

@@ -253,6 +253,13 @@ export const ProjectStatus = {
   suspended: "suspended",
 } as const;
 
+export interface ReportSignature {
+  id?: string;
+  title?: string;
+  role?: string;
+  name?: string;
+}
+
 export interface Project {
   id: number;
   name: string;
@@ -277,6 +284,8 @@ export interface Project {
   siteLongitude?: number | null;
   /** @nullable */
   siteRadiusMeters?: number | null;
+  /** @nullable */
+  reportSignatures?: ReportSignature[] | null;
   attendanceAutoCloseHours: number;
   attendanceLongDayHours: number;
   createdAt: string;
@@ -350,6 +359,8 @@ export interface UpdateProjectBody {
   siteLongitude?: number | null;
   /** @nullable */
   siteRadiusMeters?: number | null;
+  /** @nullable */
+  reportSignatures?: ReportSignature[] | null;
 }
 
 export type CreateActivityBodyStatus =

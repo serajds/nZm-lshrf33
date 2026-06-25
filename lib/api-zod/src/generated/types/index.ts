@@ -99,6 +99,7 @@ export * from "./reportActivitiesSnapshotItem";
 export * from "./reportAuditLogEntry";
 export * from "./reportAuditLogEntryAction";
 export * from "./reportImageGroupsItem";
+export * from "./reportSignature";
 export * from "./reportStatus";
 export * from "./reportType";
 export * from "./tabAccess";

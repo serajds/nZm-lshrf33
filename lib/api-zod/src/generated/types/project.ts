@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ProjectStatus } from "./projectStatus";
+import type { ReportSignature } from "./reportSignature";
 
 export interface Project {
   id: number;
@@ -31,6 +32,8 @@ export interface Project {
   siteLongitude?: number | null;
   /** @nullable */
   siteRadiusMeters?: number | null;
+  /** @nullable */
+  reportSignatures?: ReportSignature[] | null;
   attendanceAutoCloseHours: number;
   attendanceLongDayHours: number;
   createdAt: Date;
