@@ -5,8 +5,8 @@ packages:
   - scripts
 
 allowBuilds:
-  esbuild: set this to true or false
-  sharp: set this to true or false
+  esbuild: true
+  sharp: true
 
 autoInstallPeers: false
 
@@ -39,7 +39,9 @@ minimumReleaseAgeExclude:
   - '@replit/*'
   - stripe-replit-sync
 
-onlyBuiltDependencies: sharp
+onlyBuiltDependencies:
+  - sharp
+  - esbuild
 
 overrides:
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0

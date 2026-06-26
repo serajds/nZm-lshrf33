@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  api-server:
+    build:
+      context: .
+      dockerfile: artifacts/api-server/Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - DATABASE_URL=${DATABASE_URL:-postgresql://neondb_owner:npg_FBjA2CcPIp9M@ep-quiet-base-aeezx3c7.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require}
+    restart: unless-stopped
+
+  construction-supervision:
+    build:
+      context: .
+      dockerfile: artifacts/construction-supervision/Dockerfile
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    depends_on:
+      - api-server
