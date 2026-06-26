@@ -56,38 +56,11 @@ const queryClient = new QueryClient({
   },
 });
 
-// PageFallback used to be a centered "جاري التحميل..." text that REPLACED
-// the previous page on every navigation, which made the whole app feel
-// "stuck loading everywhere". A lazy chunk usually resolves in <100ms once
-// it's cached, so a thin top progress bar conveys activity without ripping
-// the chrome off the screen.
-function PageFallback() {
-  return (
-    <div className="fixed top-0 right-0 left-0 z-[60] h-0.5 overflow-hidden pointer-events-none">
-      <div
-        className="h-full bg-primary"
-        style={{
-          width: "40%",
-          animation: "page-loading-bar 1.1s ease-in-out infinite",
-        }}
-      />
-      <style>{`
-        @keyframes page-loading-bar {
-          0% { transform: translateX(120%); }
-          100% { transform: translateX(-220%); }
-        }
-      `}</style>
-    </div>
-  );
-}
+import { FullScreenLoader, PageFallback } from "@/components/loaders";
+import { PageTransition } from "@/components/page-transition";
+import { AnimatePresence } from "framer-motion";
 
-function FullScreenLoader() {
-  return (
-    <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-      جاري التحميل...
-    </div>
-  );
-}
+// PageFallback and FullScreenLoader have been moved to @/components/loaders
 
 // Pure access-control wrapper. It only decides whether to render the page
 // or redirect — it no longer wraps the page in AppLayout. AppLayout is now
@@ -140,74 +113,78 @@ function AuthenticatedShell() {
   return (
     <AppLayout>
       <Suspense fallback={<PageFallback />}>
-        <Switch>
-          <Route path="/">
-            <HomeRoute />
-          </Route>
-          <Route path="/projects">
-            <Projects />
-          </Route>
-          <Route path="/dashboard">
-            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
-              <Dashboard />
-            </RequireRole>
-          </Route>
-          <Route path="/projects/:id/activities">
-            <ProjectActivities />
-          </Route>
-          <Route path="/projects/:id/reports">
-            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
-              <ProjectReports />
-            </RequireRole>
-          </Route>
-          <Route path="/projects/:id/files">
-            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
-              <ProjectFiles />
-            </RequireRole>
-          </Route>
-          <Route path="/projects/:id/deviation">
-            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
-              <ProjectDeviation />
-            </RequireRole>
-          </Route>
-          <Route path="/projects/:id/extensions">
-            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
-              <ProjectExtensions />
-            </RequireRole>
-          </Route>
-          <Route path="/projects/:id/suspensions">
-            <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
-              <ProjectSuspensions />
-            </RequireRole>
-          </Route>
-          <Route path="/projects/:id/forms">
-            <ProjectForms />
-          </Route>
-          <Route path="/projects/:id/attendance">
-            <RequireRole allowedRoles={["admin", "project_manager", "engineer", "owner"]}>
-              <ProjectAttendance />
-            </RequireRole>
-          </Route>
-          <Route path="/projects/:id">
-            <ProjectDetails />
-          </Route>
-          <Route path="/users">
-            <RequireRole allowedRoles={["admin"]}>
-              <Users />
-            </RequireRole>
-          </Route>
-          <Route path="/companies">
-            <RequireRole allowedRoles={["admin", "project_manager"]}>
-              <Companies />
-            </RequireRole>
-          </Route>
-          <Route path="/audit-log">
-            <RequireRole allowedRoles={["admin"]}>
-              <AuditLog />
-            </RequireRole>
-          </Route>
-          <Route component={NotFound} />
-        </Switch>
+        <AnimatePresence mode="wait">
+          <PageTransition>
+            <Switch>
+              <Route path="/">
+                <HomeRoute />
+              </Route>
+              <Route path="/projects">
+                <Projects />
+              </Route>
+              <Route path="/dashboard">
+                <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+                  <Dashboard />
+                </RequireRole>
+              </Route>
+              <Route path="/projects/:id/activities">
+                <ProjectActivities />
+              </Route>
+              <Route path="/projects/:id/reports">
+                <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+                  <ProjectReports />
+                </RequireRole>
+              </Route>
+              <Route path="/projects/:id/files">
+                <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+                  <ProjectFiles />
+                </RequireRole>
+              </Route>
+              <Route path="/projects/:id/deviation">
+                <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+                  <ProjectDeviation />
+                </RequireRole>
+              </Route>
+              <Route path="/projects/:id/extensions">
+                <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+                  <ProjectExtensions />
+                </RequireRole>
+              </Route>
+              <Route path="/projects/:id/suspensions">
+                <RequireRole allowedRoles={["admin", "project_manager", "engineer"]}>
+                  <ProjectSuspensions />
+                </RequireRole>
+              </Route>
+              <Route path="/projects/:id/forms">
+                <ProjectForms />
+              </Route>
+              <Route path="/projects/:id/attendance">
+                <RequireRole allowedRoles={["admin", "project_manager", "engineer", "owner"]}>
+                  <ProjectAttendance />
+                </RequireRole>
+              </Route>
+              <Route path="/projects/:id">
+                <ProjectDetails />
+              </Route>
+              <Route path="/users">
+                <RequireRole allowedRoles={["admin"]}>
+                  <Users />
+                </RequireRole>
+              </Route>
+              <Route path="/companies">
+                <RequireRole allowedRoles={["admin", "project_manager"]}>
+                  <Companies />
+                </RequireRole>
+              </Route>
+              <Route path="/audit-log">
+                <RequireRole allowedRoles={["admin"]}>
+                  <AuditLog />
+                </RequireRole>
+              </Route>
+              <Route component={NotFound} />
+            </Switch>
+          </PageTransition>
+        </AnimatePresence>
       </Suspense>
     </AppLayout>
   );
