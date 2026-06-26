@@ -419,7 +419,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   const forecastCompletionDate = forecastCompletion ? forecastCompletion.toISOString().slice(0, 10) : null;
   const expectedProgressAtEnd = roundPercent(calcExpectedProgressAtEnd(plannedProgress, actualProgress));
   const forecastDelayDays = forecastCompletion && project.expectedEndDate
-    ? Math.max(0, Math.ceil((forecastCompletion.getTime() - new Date(project.expectedEndDate).getTime()) / 86400000))
+    ? Math.ceil((forecastCompletion.getTime() - new Date(project.expectedEndDate).getTime()) / 86400000)
     : 0;
 
   const breakdownMap: Record<string, { days: number; count: number }> = {
@@ -505,6 +505,12 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
       severity: forecastDelayDays > 30 ? "critical" : "warning",
       title: "تاريخ الإكمال المتوقع متأخر عن التعاقدي",
       description: `بناءً على المعدل الحالي، يُتوقع إنجاز المشروع بعد ${forecastDelayDays} يوم${forecastDelayDays === 1 ? "" : "اً"} من الموعد التعاقدي.`,
+    });
+  } else if (forecastDelayDays < 0 && project.expectedEndDate) {
+    recommendations.push({
+      severity: "info",
+      title: "إنجاز مبكر متوقع",
+      description: `يُتوقع إنجاز المشروع قبل موعده التعاقدي بـ ${Math.abs(forecastDelayDays)} يوم.`,
     });
   }
   if (suspensionDays > 0) {
