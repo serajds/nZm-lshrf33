@@ -11,6 +11,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList, Plus, Edit2, Trash2, Filter, FileX2 } from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
+import { processFetchResponse } from "@workspace/api-client-react";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -32,6 +33,7 @@ type AuditEntry = {
 async function authFetch(url: string): Promise<AuditEntry[]> {
   const token = localStorage.getItem("auth_token");
   const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  await processFetchResponse(res);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);

@@ -9,6 +9,7 @@ import {
   useDeleteActivity,
   useGetProject,
   getListActivitiesQueryKey,
+  processFetchResponse,
 } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
 import type { Activity, ProjectSuspension, UpdateActivityBodyStatus } from "@workspace/api-client-react";
@@ -78,12 +79,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
 
-function authFetch(url: string, init?: RequestInit) {
+async function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
-  return fetch(url, {
+  const response = await fetch(url, {
     ...init,
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
   });
+  await processFetchResponse(response);
+  return response;
 }
 
 interface ActivityGroup {

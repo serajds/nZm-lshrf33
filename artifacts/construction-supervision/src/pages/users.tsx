@@ -17,6 +17,7 @@ import {
   getListProjectMembersQueryKey,
   getGetMemberTabPermissionsQueryKey,
   getGetMyProjectPermissionsQueryKey,
+  processFetchResponse,
 } from "@workspace/api-client-react";
 import type { User, UpdateUserBody, CreateUserBody, CreateUserBodyRole, TabPermissionsMap, TabAccess } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
@@ -56,12 +57,14 @@ import { useLocation } from "wouter";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
-function authFetch(url: string, init?: RequestInit) {
+async function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
-  return fetch(url, {
+  const response = await fetch(url, {
     ...init,
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
   });
+  await processFetchResponse(response);
+  return response;
 }
 
 interface Company {

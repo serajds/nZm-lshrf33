@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useGetProject } from "@workspace/api-client-react";
+import { useGetProject, processFetchResponse } from "@workspace/api-client-react";
 import { useTabAccess } from "@/hooks/use-tab-access";
 import type { ProjectSuspension } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,9 +32,9 @@ import { Plus, Trash2, ArrowRight, Calendar, FileText, Umbrella, Wind, AlertTria
 import { Checkbox } from "@/components/ui/checkbox";
 import { fmtDate } from "@/lib/utils";
 
-function authFetch(url: string, init?: RequestInit) {
+async function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
-  return fetch(url, {
+  const response = await fetch(url, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -42,6 +42,8 @@ function authFetch(url: string, init?: RequestInit) {
       ...(init?.headers ?? {}),
     },
   });
+  await processFetchResponse(response);
+  return response;
 }
 
 const suspensionSchema = z.object({

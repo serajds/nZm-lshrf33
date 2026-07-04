@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useGetProject } from "@workspace/api-client-react";
+import { useGetProject, processFetchResponse } from "@workspace/api-client-react";
 import { useMyProjectPermissions, useTabAccess } from "@/hooks/use-tab-access";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,9 +38,9 @@ import { fmtDate } from "@/lib/utils";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
-function authFetch(url: string, init?: RequestInit) {
+async function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
-  return fetch(url, {
+  const response = await fetch(url, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -48,6 +48,8 @@ function authFetch(url: string, init?: RequestInit) {
       ...(init?.headers ?? {}),
     },
   });
+  await processFetchResponse(response);
+  return response;
 }
 
 type FieldType = "text" | "textarea" | "number" | "date" | "select" | "checklist_qty" | "table" | "section";
