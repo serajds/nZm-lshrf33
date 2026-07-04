@@ -10,6 +10,7 @@ import {
   getListProjectMembersQueryKey,
   getGetMemberTabPermissionsQueryKey,
   getGetMyProjectPermissionsQueryKey,
+  processFetchResponse,
 } from "@workspace/api-client-react";
 import type { ProjectMember as ApiProjectMember } from "@workspace/api-client-react";
 
@@ -54,12 +55,14 @@ interface ActivityGroup {
   sortOrder: number;
 }
 
-function authFetch(url: string, init?: RequestInit) {
+async function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
-  return fetch(url, {
+  const response = await fetch(url, {
     ...init,
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
   });
+  await processFetchResponse(response);
+  return response;
 }
 
 interface ProjectMembersProps {

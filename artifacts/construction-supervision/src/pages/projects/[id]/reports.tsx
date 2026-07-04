@@ -16,6 +16,7 @@ import {
   getGetReportQueryKey,
   useUpdateProject,
   getGetProjectQueryKey,
+  processFetchResponse,
 } from "@workspace/api-client-react";
 import type { ReportAuditLogEntry } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
@@ -59,9 +60,11 @@ import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/r
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
-function authFetchJson(url: string) {
+async function authFetchJson(url: string) {
   const token = localStorage.getItem("auth_token");
-  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.ok ? r.json() : {});
+  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  await processFetchResponse(res);
+  return res.ok ? res.json() : {};
 }
 
 const imageGroupSchema = z.object({
