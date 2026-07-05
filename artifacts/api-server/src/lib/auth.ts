@@ -48,6 +48,39 @@ export function verifyTokenWithClaims(token: string): VerifiedToken | null {
   }
 }
 
+/**
+ * Classify WHY a token failed verification, for diagnostic logging only.
+ * Returns the jsonwebtoken error name (e.g. "TokenExpiredError",
+ * "JsonWebTokenError") plus decoded iat/exp when the payload is readable,
+ * without ever trusting or returning the claims for authorization.
+ */
+export function classifyTokenFailure(token: string): {
+  errorName: string;
+  errorMessage: string;
+  iat: number | null;
+  exp: number | null;
+} {
+  let errorName = "UnknownError";
+  let errorMessage = "";
+  try {
+    jwt.verify(token, JWT_SECRET);
+    errorName = "VerifiedOk"; // should never happen on the failure path
+  } catch (err) {
+    errorName = (err as Error)?.name ?? "UnknownError";
+    errorMessage = (err as Error)?.message ?? "";
+  }
+  let iat: number | null = null;
+  let exp: number | null = null;
+  try {
+    const decoded = jwt.decode(token) as { iat?: number; exp?: number } | null;
+    iat = decoded?.iat ?? null;
+    exp = decoded?.exp ?? null;
+  } catch {
+    // undecodable token — leave nulls
+  }
+  return { errorName, errorMessage, iat, exp };
+}
+
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);
 }

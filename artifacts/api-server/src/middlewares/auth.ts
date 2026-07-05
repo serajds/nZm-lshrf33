@@ -3,9 +3,47 @@ import {
   verifyToken,
   verifyTokenWithClaims,
   signToken,
+  classifyTokenFailure,
   JWT_RENEWAL_THRESHOLD_SECONDS,
   JwtPayload,
 } from "../lib/auth";
+import { logger } from "../lib/logger";
+
+// Diagnostic logging for every 401 issued by requireAuth. Production showed
+// write requests (PATCH/PUT/POST) being rejected with 401 while GETs from the
+// same client passed seconds apart; this tells us exactly WHAT arrived so we
+// can distinguish "header never arrived" from "stale/expired token was sent".
+// Logs only safe metadata — never the token itself.
+function logAuthRejection(
+  req: Request,
+  reason: "missing-header" | "bad-scheme" | "invalid-token",
+  token?: string,
+): void {
+  try {
+    const diag: Record<string, unknown> = {
+      reason,
+      method: req.method,
+      url: (req.originalUrl || req.url || "").split("?")[0],
+      origin: req.headers.origin ?? null,
+      referer: req.headers.referer ? true : false,
+      contentType: req.headers["content-type"] ?? null,
+      secFetchSite: req.headers["sec-fetch-site"] ?? null,
+      userAgent: req.headers["user-agent"] ?? null,
+      authHeaderLen: req.headers.authorization ? req.headers.authorization.length : 0,
+    };
+    if (reason === "invalid-token" && token) {
+      const detail = classifyTokenFailure(token);
+      diag.jwtError = detail.errorName;
+      diag.jwtErrorMessage = detail.errorMessage;
+      diag.tokenIat = detail.iat;
+      diag.tokenExp = detail.exp;
+      diag.nowSec = Math.floor(Date.now() / 1000);
+    }
+    logger.warn({ authDiag: diag }, "auth 401");
+  } catch {
+    // Diagnostics must never break the request path.
+  }
+}
 import { db } from "@workspace/db";
 import { projectMembersTable, userCompaniesTable, projectsTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
@@ -44,6 +82,7 @@ declare global {
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    logAuthRejection(req, authHeader ? "bad-scheme" : "missing-header");
     res.status(401).json({ error: "غير مصرح" });
     return;
   }
@@ -51,6 +90,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   const token = authHeader.slice(7);
   const payload = maybeRenewToken(token, res);
   if (!payload) {
+    logAuthRejection(req, "invalid-token", token);
     res.status(401).json({ error: "رمز الدخول غير صالح أو منتهي الصلاحية" });
     return;
   }
