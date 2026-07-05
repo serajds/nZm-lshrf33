@@ -13,11 +13,13 @@ export interface JwtPayload {
   role: string;
 }
 
-// Full token lifetime in seconds (7 days). When the remaining lifetime of a
+// Full token lifetime in seconds (90 days). When the remaining lifetime of a
 // presented token falls below half of this value, requireAuth will mint a
 // fresh token and return it to the client via the X-Renewed-Token response
 // header, giving us a rolling session for active users.
-export const JWT_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
+// Was 7 days — too short when GET responses are served from browser/workbox
+// cache (304) so the server never gets a chance to issue X-Renewed-Token.
+export const JWT_LIFETIME_SECONDS = 90 * 24 * 60 * 60;
 export const JWT_RENEWAL_THRESHOLD_SECONDS = Math.floor(JWT_LIFETIME_SECONDS / 2);
 
 export function signToken(payload: JwtPayload): string {
