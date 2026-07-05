@@ -3,3 +3,4 @@
 - [Edge-safe upload transport](edge-safe-upload-transport.md) — file uploads must be base64 over text/plain JSON, not multipart; Replit Autoscale edge CSRF intermittently blocks header-stripped multipart with HTML 403.
 - [Project snapshot replace](project-snapshot-replace.md) — overwriting the repl with a GitHub export of itself: cp source dirs, preserve .git/.local/.cache/.config/node_modules/.agents/attached_assets; no rsync; .replit protected.
 - [Deployment build scope](deployment-build-scope.md) — root `pnpm run build` must exclude @workspace/mobile (Metro download fails) and keep web typecheck non-blocking (duplicate @types/react errors); autoscale runs api-server only.
+- [Prod write-401 logout bug](prod-write-401.md) — eliminated causes (edge, Origin, bundle, SW); authDiag 401 logging + probe-before-logout shipped; check deployment logs after republish.
