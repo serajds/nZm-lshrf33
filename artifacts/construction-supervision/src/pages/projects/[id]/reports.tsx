@@ -432,6 +432,7 @@ export default function ProjectReports() {
   type GroupUploadState = { loaded: number; total: number; doneCount: number; totalCount: number };
   const [uploadProgress, setUploadProgress] = useState<Record<number, GroupUploadState>>({});
   const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
+  const [dragOverGroup, setDragOverGroup] = useState<number | null>(null);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
   const isAnyUploading = Object.keys(uploadProgress).length > 0;
@@ -743,11 +744,7 @@ export default function ProjectReports() {
     });
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, groupIndex: number) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    const fileList = Array.from(files);
-    e.target.value = "";
+  const uploadFiles = async (fileList: File[], groupIndex: number) => {
     const token = localStorage.getItem("auth_token");
     const totalBytes = fileList.reduce((s, f) => s + f.size, 0);
 
@@ -843,6 +840,24 @@ export default function ProjectReports() {
       }
       return prev;
     });
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, groupIndex: number) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const fileList = Array.from(files);
+    e.target.value = "";
+    await uploadFiles(fileList, groupIndex);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, groupIndex: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverGroup(null);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+    if (files.length === 0) return;
+    setOpenGroupIdx(groupIndex);
+    await uploadFiles(files, groupIndex);
   };
 
   const onSubmit = async (values: ReportFormValues) => {
@@ -1427,12 +1442,24 @@ export default function ProjectReports() {
                                   <CollapsibleContent>
                                     <div className="px-4 pb-4">
                                       {isEmpty ? (
-                                        <div className="text-center p-6 border-2 border-dashed rounded-xl bg-background/50 text-muted-foreground/60 flex flex-col items-center gap-2">
+                                        <div
+                                          className={`text-center p-6 border-2 border-dashed rounded-xl flex flex-col items-center gap-2 transition-colors cursor-default ${dragOverGroup === gIdx ? "border-primary bg-primary/5 text-primary" : "bg-background/50 text-muted-foreground/60"}`}
+                                          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverGroup(gIdx); }}
+                                          onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverGroup(gIdx); }}
+                                          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverGroup(null); }}
+                                          onDrop={(e) => handleDrop(e, gIdx)}
+                                        >
                                           <ImagePlus className="h-8 w-8 opacity-50" />
                                           <p className="text-xs font-medium">اسحب وأفلت الصور هنا أو انقر على "إضافة صور للقسم"</p>
                                         </div>
                                       ) : (
-                                        <div className="flex flex-wrap gap-3">
+                                        <div
+                                          className={`flex flex-wrap gap-3 min-h-[3rem] rounded-xl transition-all ${dragOverGroup === gIdx ? "ring-2 ring-primary ring-offset-2 bg-primary/5 p-2" : ""}`}
+                                          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverGroup(gIdx); }}
+                                          onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverGroup(gIdx); }}
+                                          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverGroup(null); }}
+                                          onDrop={(e) => handleDrop(e, gIdx)}
+                                        >
                                           {group.urls.map((url, idx) => (
                                             <div key={idx} className="relative group w-24 h-24 rounded-xl overflow-hidden border-2 border-transparent hover:border-primary/50 shadow-sm transition-all">
                                               <img
