@@ -5,8 +5,6 @@ import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectManager } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
-import fs from "fs";
-import path from "path";
 
 type ImageGroup = { category: string; urls: string[] };
 
@@ -113,106 +111,97 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
   const projectId = parseInt(raw, 10);
   const { imageGroups, technicalNotes, recommendations } = req.body;
 
+  if (!process.env.OPENAI_API_KEY) {
+    res.status(503).json({ error: "خدمة الذكاء الاصطناعي غير مهيأة" });
+    return;
+  }
+
   try {
-    const currentActivities = await db.select().from(activitiesTable)
-      .where(and(
-        eq(activitiesTable.projectId, projectId),
-        eq(activitiesTable.status, "in_progress")
-      ))
-      .orderBy(activitiesTable.sortOrder);
+    // Fetch project activities in parallel — in_progress ones for main context,
+    // all for overall progress picture.
+    const [inProgressActivities, allActivities] = await Promise.all([
+      db.select().from(activitiesTable)
+        .where(and(eq(activitiesTable.projectId, projectId), eq(activitiesTable.status, "in_progress")))
+        .orderBy(activitiesTable.sortOrder),
+      db.select().from(activitiesTable)
+        .where(eq(activitiesTable.projectId, projectId))
+        .orderBy(activitiesTable.sortOrder),
+    ]);
 
-    const activitiesText = currentActivities.map(a => `- ${a.name}: (الإنجاز: ${a.actualProgress}%)`).join("\n");
-    
-    const imageUrls: string[] = [];
-    if (Array.isArray(imageGroups)) {
-      for (const group of imageGroups) {
-        if (group.urls && Array.isArray(group.urls)) {
-          imageUrls.push(...group.urls);
-        }
-      }
-    }
+    const inProgressText = inProgressActivities.length > 0
+      ? inProgressActivities.map(a => `- ${a.name}: (الإنجاز الفعلي: ${a.actualProgress ?? 0}%)`).join("\n")
+      : "لا توجد بنود قيد التنفيذ حالياً.";
 
-    const messages: any[] = [
-      {
-        role: "system",
-        content: "أنت وكيل ذكاء اصطناعي متخصص في الإشراف الهندسي وإدارة المشاريع الإنشائية. مهمتك هي صياغة تقرير مهني باللغة العربية بناءً على البيانات المقدمة."
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `يرجى صياغة تقرير فني للمشروع بناءً على المعلومات التالية:
-            
+    const completedCount = allActivities.filter(a => a.status === "completed").length;
+    const delayedCount  = allActivities.filter(a => a.status === "delayed").length;
+    const totalCount    = allActivities.length;
+
+    // Image group category names give the AI topical context without needing
+    // to transfer image bytes (images live in cloud storage).
+    const imageGroupsSummary = Array.isArray(imageGroups) && imageGroups.length > 0
+      ? imageGroups
+          .filter((g: any) => g.category && Array.isArray(g.urls) && g.urls.length > 0)
+          .map((g: any) => `- ${g.category} (${g.urls.length} صورة)`)
+          .join("\n")
+      : null;
+
+    const prompt = `يرجى صياغة تقرير فني مهني للمشروع بناءً على البيانات التالية:
+
+إجمالي بنود الأعمال: ${totalCount}
+البنود المكتملة: ${completedCount}
+البنود المتأخرة: ${delayedCount}
+
 البنود الحالية قيد التنفيذ:
-${activitiesText || "لا توجد بنود محددة قيد التنفيذ حالياً."}
+${inProgressText}
+${imageGroupsSummary ? `\nأقسام الصور المرفقة في التقرير:\n${imageGroupsSummary}` : ""}
+${technicalNotes ? `\nملاحظات فنية أولية من المشرف:\n${technicalNotes}` : ""}
+${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendations}` : ""}
 
-ملاحظات فنية إضافية من المستخدم:
-${technicalNotes || "لا توجد ملاحظات إضافية."}
+المطلوب صياغة ثلاثة أقسام بأسلوب مهني رسمي:
+1. workDescription: وصف شامل للأعمال المنجزة خلال الفترة بناءً على بنود التنفيذ.
+2. technicalNotes: الملاحظات الفنية والمعوقات الميدانية إن وُجدت، أو "لا توجد ملاحظات فنية" إن لم تكن هناك بيانات كافية.
+3. recommendations: التوصيات والخطوات المقترحة للفترة القادمة.
 
-توصيات إضافية من المستخدم:
-${recommendations || "لا توجد توصيات إضافية."}
+أجب بتنسيق JSON فقط:
+{"workDescription":"...","technicalNotes":"...","recommendations":"..."}`;
 
-المطلوب صياغة ثلاثة أقسام:
-1. وصف الأعمال المنجزة (workDescription): صياغة مهنية لما تم إنجازه بناءً على البنود والصور.
-2. الملاحظات الفنية (technicalNotes): تحليل لأي معوقات أو ملاحظات فنية تظهر من البيانات أو الصور.
-3. التوصيات (recommendations): مقترحات لخطوات العمل القادمة.
-
-يجب أن تكون الصياغة مهنية، دقيقة، وباللغة العربية الفصحى المستخدمة في التقارير الهندسية.
-أجب بتنسيق JSON فقط كالتالي:
-{
-  "workDescription": "...",
-  "technicalNotes": "...",
-  "recommendations": "..."
-}`
-          }
-        ]
-      }
-    ];
-
-    // Add images if available
-    if (imageUrls.length > 0) {
-      const uploadsDir = path.join(process.cwd(), "uploads");
-      for (const url of imageUrls.slice(0, 5)) { // Limit to 5 images for the draft
-        const filename = url.split("/").pop();
-        if (filename) {
-          const filePath = path.join(uploadsDir, filename);
-          if (fs.existsSync(filePath)) {
-            const base64Image = fs.readFileSync(filePath).toString("base64");
-            messages[1].content.push({
-              type: "image_url",
-              image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`
-              }
-            });
-          }
-        }
-      }
-    }
-
-    const response = await fetch(`${process.env.OPENAI_API_BASE}/chat/completions`, {
+    const apiBase = (process.env.OPENAI_API_BASE ?? "https://api.openai.com/v1").replace(/\/$/, "");
+    const response = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        messages,
-        response_format: { type: "json_object" }
-      })
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "أنت وكيل ذكاء اصطناعي متخصص في الإشراف الهندسي وإدارة المشاريع الإنشائية. تُصدر تقارير مهنية باللغة العربية الفصحى فقط. لا تخترع بيانات غير موجودة في المدخلات.",
+          },
+          { role: "user", content: prompt },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+      }),
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`AI API error: ${error}`);
+      const errText = await response.text();
+      req.log.error({ status: response.status, body: errText }, "OpenAI API error");
+      res.status(502).json({ error: "خطأ في خدمة الذكاء الاصطناعي" });
+      return;
     }
 
     const result = (await response.json()) as any;
-    const content = JSON.parse(result.choices[0].message.content);
+    const content = JSON.parse(result.choices[0].message.content) as {
+      workDescription?: string;
+      technicalNotes?: string;
+      recommendations?: string;
+    };
     res.json(content);
   } catch (error) {
-    console.error("AI Draft error:", error);
+    req.log.error({ error }, "AI draft generation failed");
     res.status(500).json({ error: "فشل الذكاء الاصطناعي في صياغة التقرير" });
   }
 });

@@ -15,3 +15,8 @@ externalPort = 3001
 [[ports]]
 localPort = 22349
 externalPort = 3000
+
+[userenv]
+
+[userenv.shared]
+OPENAI_API_BASE = "https://api.openai.com/v1"
