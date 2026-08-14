@@ -93,98 +93,13 @@ export async function processFetchResponse(response: Response): Promise<void> {
     }
   }
 
-  if (response.status === 401) {
-    await handleUnauthorized(response);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 401 handling with session verification
-// ---------------------------------------------------------------------------
-//
-// A single anomalous 401 (proxy hiccup, header stripped in transit, one
-// stale request) used to log the user out immediately, which in production
-// turned every failed write into a full logout. Before firing the
-// unauthorized handler we now confirm the session is actually dead by
-// probing GET /api/auth/me with the current token:
-//   - probe returns 401  -> session is really invalid -> fire the handler.
-//   - probe succeeds     -> token still valid -> suppress the logout; the
-//                           original error still propagates to the caller.
-//   - probe unreachable  -> network trouble, not an auth problem -> suppress.
-// The probe uses the raw global fetch (never customFetch) so it cannot
-// recurse, and concurrent 401s share one in-flight probe.
-
-const SESSION_PROBE_PATH = "/api/auth/me";
-
-let _pendingUnauthorizedCheck: Promise<void> | null = null;
-
-function fireUnauthorizedHandler(response: Response): void {
-  if (!_unauthorizedHandler) return;
-  try {
-    _unauthorizedHandler(response);
-  } catch {
-    // Handler errors must not break the caller's error flow.
-  }
-}
-
-async function handleUnauthorized(response: Response): Promise<void> {
-  if (!_unauthorizedHandler) return;
-
-  // Without a token getter we cannot probe — keep the old behaviour.
-  if (!_authTokenGetter) {
-    fireUnauthorizedHandler(response);
-    return;
-  }
-
-  if (_pendingUnauthorizedCheck) {
-    await _pendingUnauthorizedCheck;
-    return;
-  }
-
-  _pendingUnauthorizedCheck = (async () => {
+  if (response.status === 401 && _unauthorizedHandler) {
     try {
-      const token = await _authTokenGetter!();
-      if (!token) {
-        // No stored credential at all — nothing to verify.
-        fireUnauthorizedHandler(response);
-        return;
-      }
-
-      const probeUrl = `${_baseUrl ?? ""}${SESSION_PROBE_PATH}`;
-      const probe = await fetch(probeUrl, {
-        method: "GET",
-        headers: {
-          authorization: `Bearer ${token}`,
-          accept: DEFAULT_JSON_ACCEPT,
-        },
-        cache: "no-store",
-      });
-
-      // The probe itself may carry a renewed rolling-session token.
-      if (_authTokenSaver) {
-        const renewed = probe.headers.get(RENEWED_TOKEN_HEADER);
-        if (renewed) {
-          try {
-            await _authTokenSaver(renewed);
-          } catch {
-            // best-effort
-          }
-        }
-      }
-
-      if (probe.status === 401) {
-        fireUnauthorizedHandler(response);
-      }
-      // Any other probe outcome: the session still works — do NOT log out.
+      _unauthorizedHandler(response);
     } catch {
-      // Probe failed to reach the server (offline / network error). Treat as
-      // uncertainty, not as proof of an expired session — do not log out.
-    } finally {
-      _pendingUnauthorizedCheck = null;
+      // Handler errors must not break the caller's error flow.
     }
-  })();
-
-  await _pendingUnauthorizedCheck;
+  }
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -519,8 +434,12 @@ export async function customFetch<T = unknown>(
     }
   }
 
-  if (response.status === 401) {
-    await handleUnauthorized(response);
+  if (response.status === 401 && _unauthorizedHandler) {
+    try {
+      _unauthorizedHandler(response);
+    } catch {
+      // Handler errors must not break the caller's error flow.
+    }
   }
 
   if (!response.ok) {

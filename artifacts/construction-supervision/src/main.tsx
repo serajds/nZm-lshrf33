@@ -4,29 +4,6 @@ import "./index.css";
 import { setAuthTokenGetter, setAuthTokenSaver } from "@workspace/api-client-react";
 import { registerSW } from "virtual:pwa-register";
 
-// If the stored token is already expired, remove it immediately so the app
-// redirects to login instead of silently failing on every write request.
-// GET responses are often served from browser/workbox cache (304) so the
-// server never gets a chance to issue X-Renewed-Token — the token can expire
-// without the user knowing. We decode the payload (no verification needed
-// here; the server always re-verifies) just to read the `exp` timestamp.
-try {
-  const stored = localStorage.getItem("auth_token");
-  if (stored) {
-    const parts = stored.split(".");
-    if (parts.length === 3) {
-      const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-      const expSec = payload?.exp;
-      if (typeof expSec === "number" && expSec < Math.floor(Date.now() / 1000)) {
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("auth_user_cache");
-      }
-    }
-  }
-} catch {
-  // Non-fatal — if we can't decode, let the server reject it.
-}
-
 setAuthTokenGetter(() => localStorage.getItem("auth_token"));
 // When the server rolls our session forward via X-Renewed-Token, persist
 // the fresh token immediately so the next request (and the next page load)

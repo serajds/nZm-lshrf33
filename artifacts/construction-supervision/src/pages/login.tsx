@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Loader2, Phone, Lock, Eye, EyeOff, User as UserIcon, ArrowLeft } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 
 const loginSchema = z.object({
   phone: z.string().min(1, "رقم الهاتف مطلوب"),
@@ -93,57 +92,17 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen w-full relative flex items-center justify-center overflow-hidden bg-slate-50" dir="rtl">
-      {/* Background Image Layer */}
-      <motion.div 
-        initial={{ scale: 1.1, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 1.5, ease: "easeOut" }}
-        className="absolute inset-0 z-0 pointer-events-none"
-      >
-        <div 
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${import.meta.env.BASE_URL}login-bg.png)` }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-tr from-white/95 via-slate-100/80 to-primary/20 backdrop-blur-sm" />
-      </motion.div>
+    <div className="flex min-h-screen w-full items-center justify-center overflow-hidden bg-background px-4 py-8" dir="rtl">
 
-      {/* Animated Glowing Orbs */}
-      <motion.div 
-        animate={{ 
-          x: [0, 50, 0, -50, 0],
-          y: [0, -50, 50, 0, 0],
-        }}
-        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-        className="absolute top-1/4 right-1/4 w-[40vw] h-[40vw] bg-primary/20 rounded-full blur-[120px] pointer-events-none z-0"
-      />
-      <motion.div 
-        animate={{ 
-          x: [0, -60, 0, 60, 0],
-          y: [0, 60, -60, 0, 0],
-        }}
-        transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
-        className="absolute bottom-1/4 left-1/4 w-[30vw] h-[30vw] bg-emerald-500/15 rounded-full blur-[100px] pointer-events-none z-0"
-      />
-
-      {/* Main Glassmorphism Container */}
-      <div className="relative z-10 w-full max-w-[480px] p-6">
-        <motion.div 
-          initial={{ y: 30, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
-          className="relative bg-white/70 backdrop-blur-2xl border border-white/60 rounded-[2.5rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] overflow-hidden"
-        >
+      <div className="relative z-10 flex w-full max-w-md flex-col items-center">
+      <div className="page-surface-enter surface-card relative w-full overflow-hidden rounded-[2rem] border-border/60 bg-card/95 shadow-2xl shadow-primary/10 backdrop-blur-2xl">
           {/* Inner Highlight Line */}
-          <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white to-transparent" />
+          <div className="absolute inset-x-0 top-0 h-px bg-border/70" />
           
-          <div className="p-8 md:p-12">
+          <div className="p-7 sm:p-9 md:p-10">
             {/* Branding Logo */}
-            <div className="flex flex-col items-center mb-10">
-              <motion.div 
-                whileHover={{ scale: 1.05 }}
-                className="w-20 h-20 rounded-2xl bg-primary/10 border border-primary/20 shadow-xl p-4 flex items-center justify-center mb-6 text-primary"
-              >
+            <div className="flex flex-col items-center mb-8">
+              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 p-3.5 text-primary shadow-lg shadow-primary/10 transition-transform duration-200 hover:scale-[1.03]">
                 <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-building-2 drop-shadow-sm">
                   <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/>
                   <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
@@ -153,25 +112,19 @@ export default function Login() {
                   <path d="M10 14h4"/>
                   <path d="M10 18h4"/>
                 </svg>
-              </motion.div>
-              <h2 className="text-2xl font-bold text-slate-900 tracking-wide text-center">
+              </div>
+              <h2 className="text-xl font-black tracking-wide text-foreground text-center sm:text-2xl">
                 إدارة الإشراف والمتابعة
               </h2>
             </div>
 
             {/* Form Transitions */}
-            <AnimatePresence mode="wait">
+            <div className="auth-form-transition">
               {mode === "login" ? (
-                <motion.div 
-                  key="login"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.3 }}
-                >
+                <div key="login" className="auth-form-panel-enter">
                   <div className="text-center mb-8">
-                    <h3 className="text-xl font-bold text-slate-800">مرحباً بعودتك</h3>
-                    <p className="text-sm text-slate-500 mt-2">يرجى إدخال بيانات الدخول للمتابعة</p>
+                    <h3 className="text-xl font-bold text-foreground">مرحباً بعودتك</h3>
+                    <p className="text-sm text-muted-foreground mt-2">يرجى إدخال بيانات الدخول للمتابعة</p>
                   </div>
 
                   <Form {...form}>
@@ -182,7 +135,7 @@ export default function Login() {
                         render={({ field }) => (
                           <FormItem>
                             <div className="relative group">
-                              <Phone className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                              <Phone className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
                               <FormControl>
                                 <Input
                                   placeholder="رقم الهاتف"
@@ -190,7 +143,7 @@ export default function Login() {
                                   autoComplete="tel"
                                   dir="ltr"
                                   {...field}
-                                  className="h-14 text-right pr-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                                  className="h-14 text-right pr-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
                                 />
                               </FormControl>
                             </div>
@@ -204,21 +157,21 @@ export default function Login() {
                         render={({ field }) => (
                           <FormItem>
                             <div className="relative group">
-                              <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                              <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
                               <FormControl>
                                 <Input
                                   type={showPassword ? "text" : "password"}
                                   placeholder="كلمة المرور"
                                   autoComplete="current-password"
                                   {...field}
-                                  className="h-14 pr-12 pl-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                                  className="h-14 pr-12 pl-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
                                 />
                               </FormControl>
                               <button
                                 type="button"
                                 tabIndex={-1}
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors z-10"
+                                className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors z-10"
                               >
                                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                               </button>
@@ -246,30 +199,24 @@ export default function Login() {
                     <button
                       type="button"
                       onClick={() => setMode("register")}
-                      className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
+                      className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                     >
                       ليس لديك حساب؟ <span className="text-primary hover:underline underline-offset-4">إنشاء حساب جديد</span>
                     </button>
                   </div>
-                </motion.div>
+                </div>
               ) : (
-                <motion.div 
-                  key="register"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.3 }}
-                >
+                <div key="register" className="auth-form-panel-enter">
                   <div className="flex items-center justify-between mb-8">
                     <div className="text-right">
-                      <h3 className="text-xl font-bold text-slate-800">إنشاء حساب</h3>
-                      <p className="text-sm text-slate-500 mt-1">سجل بياناتك للانضمام إلينا</p>
+                      <h3 className="text-xl font-bold text-foreground">إنشاء حساب</h3>
+                      <p className="text-sm text-muted-foreground mt-1">سجل بياناتك للانضمام إلينا</p>
                     </div>
                     <Button 
                       variant="ghost" 
                       size="icon" 
                       onClick={() => setMode("login")}
-                      className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full"
+                      className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-full"
                     >
                       <ArrowLeft className="h-5 w-5" />
                     </Button>
@@ -278,12 +225,12 @@ export default function Login() {
                   <form onSubmit={regForm.handleSubmit(onRegisterSubmit)} className="space-y-4" noValidate>
                     <div>
                       <div className="relative group">
-                        <UserIcon className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                        <UserIcon className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
                         <Input
                           id="reg-fullName"
                           placeholder="الاسم الكامل"
                           autoComplete="name"
-                          className="h-14 pr-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                          className="h-14 pr-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
                           {...regForm.register("fullName")}
                         />
                       </div>
@@ -294,14 +241,14 @@ export default function Login() {
 
                     <div>
                       <div className="relative group">
-                        <Phone className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                        <Phone className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
                         <Input
                           id="reg-phone"
                           type="tel"
                           placeholder="رقم الهاتف"
                           autoComplete="tel"
                           dir="ltr"
-                          className="h-14 text-right pr-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                          className="h-14 text-right pr-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
                           {...regForm.register("phone")}
                         />
                       </div>
@@ -312,20 +259,20 @@ export default function Login() {
 
                     <div>
                       <div className="relative group">
-                        <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                        <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
                         <Input
                           id="reg-password"
                           type={showPassword ? "text" : "password"}
                           placeholder="كلمة المرور (6 أحرف على الأقل)"
                           autoComplete="new-password"
-                          className="h-14 pr-12 pl-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                          className="h-14 pr-12 pl-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
                           {...regForm.register("password")}
                         />
                         <button
                           type="button"
                           tabIndex={-1}
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors z-10"
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors z-10"
                         >
                           {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                         </button>
@@ -337,13 +284,13 @@ export default function Login() {
 
                     <div>
                       <div className="relative group">
-                        <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none z-10" />
+                        <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
                         <Input
                           id="reg-confirmPassword"
                           type={showPassword ? "text" : "password"}
                           placeholder="تأكيد كلمة المرور"
                           autoComplete="new-password"
-                          className="h-14 pr-12 bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-2xl transition-all shadow-sm"
+                          className="h-14 pr-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
                           {...regForm.register("confirmPassword")}
                         />
                       </div>
@@ -364,23 +311,18 @@ export default function Login() {
                       )}
                     </Button>
                   </form>
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
+            </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Developer Credit */}
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1, duration: 1 }}
-          className="mt-8 text-center"
-        >
-          <span className="text-slate-500 text-xs font-medium tracking-widest uppercase cursor-default">
+        <div className="page-surface-enter mt-8 text-center">
+          <span className="text-muted-foreground text-xs font-medium tracking-widest uppercase cursor-default">
             Developed By Seraj Elajtel
           </span>
-        </motion.div>
+        </div>
       </div>
     </div>
   );

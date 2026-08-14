@@ -9,7 +9,6 @@ import {
   useDeleteActivity,
   useGetProject,
   getListActivitiesQueryKey,
-  processFetchResponse,
 } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
 import type { Activity, ProjectSuspension, UpdateActivityBodyStatus } from "@workspace/api-client-react";
@@ -72,21 +71,20 @@ import { useAuth } from "@/hooks/use-auth";
 import { 
   Plus, Edit2, Trash2, ArrowRight, ChevronDown, ChevronLeft,
   CheckCircle2, Clock, AlertTriangle, PlayCircle, 
-  TrendingUp, TrendingDown, Minus, Timer, CalendarCheck, CalendarX, Hourglass,
-  Upload, Download, FileSpreadsheet, GripVertical, FolderPlus, Palette, X, Loader2
+  TrendingUp, TrendingDown, Minus, Timer, ListChecks, CalendarCheck, CalendarX, Hourglass,
+  Upload, Download, FileSpreadsheet, GripVertical, FolderPlus, Palette, X, Loader2,
+  Search, LayoutList, GanttChart, SlidersHorizontal
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
 
-async function authFetch(url: string, init?: RequestInit) {
+function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
-  const response = await fetch(url, {
+  return fetch(url, {
     ...init,
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
   });
-  await processFetchResponse(response);
-  return response;
 }
 
 interface ActivityGroup {
@@ -129,12 +127,23 @@ const createActivitySchema = (isNoSchedule: boolean) => z.object({
 
 function calcPlannedProgress(a: { plannedStartDate?: string | null; plannedEndDate?: string | null }): number {
   if (!a.plannedStartDate || !a.plannedEndDate) return 0;
-  const start = new Date(a.plannedStartDate).getTime();
-  const end = new Date(a.plannedEndDate).getTime();
-  const now = new Date().getTime();
+  
+  const startOfDay = (d: string) => {
+    const date = new Date(d);
+    date.setHours(0, 0, 0, 0);
+    return date.getTime();
+  };
+
+  const start = startOfDay(a.plannedStartDate);
+  const end = startOfDay(a.plannedEndDate);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const nowTime = now.getTime();
+  
   const duration = end - start;
-  if (duration <= 0) return now >= end ? 100 : 0;
-  const elapsed = now - start;
+  if (duration <= 0) return nowTime >= end ? 100 : 0;
+  
+  const elapsed = nowTime - start;
   if (elapsed <= 0) return 0;
   if (elapsed >= duration) return 100;
   return Math.round((elapsed / duration) * 100);
@@ -163,34 +172,50 @@ type DelayInfo =
   | { kind: "late_start"; days: number; label: string };
 
 function calcActivityDelay(a: Activity): DelayInfo {
-  if (!a.plannedStartDate || !a.plannedEndDate) {
-    return { kind: "on_time", days: 0, label: "—" };
-  }
+  const startOfDay = (value?: string | null) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const plannedEnd = new Date(a.plannedEndDate); plannedEnd.setHours(0, 0, 0, 0);
-  const plannedStart = new Date(a.plannedStartDate); plannedStart.setHours(0, 0, 0, 0);
-  const diffDays = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / 86400000);
+  const plannedEnd = startOfDay(a.plannedEndDate);
+  const plannedStart = startOfDay(a.plannedStartDate);
+  const diffDays = (aDate: Date, bDate: Date) => Math.round((aDate.getTime() - bDate.getTime()) / 86400000);
 
+  // A completed activity is late when it finished after the planned end.
+  // If no actual end was saved, today's date is used as a conservative fallback;
+  // this also catches completed activities whose planned end is already past.
   if (a.status === "completed") {
-    const refDate = a.actualEndDate ? new Date(a.actualEndDate) : today;
-    refDate.setHours(0, 0, 0, 0);
+    if (!plannedEnd) return { kind: "on_time", days: 0, label: "—" };
+    const refDate = startOfDay(a.actualEndDate) ?? today;
     const d = diffDays(refDate, plannedEnd);
-    if (d > 0) return { kind: "delayed",  days: d, label: `متأخر ${d} يوم` };
-    if (d < 0) return { kind: "early",    days: -d, label: `مبكر ${-d} يوم` };
+    if (d > 0) return { kind: "delayed", days: d, label: `متأخر ${d} يوم` };
+    if (d < 0) return { kind: "early", days: -d, label: `مبكر ${-d} يوم` };
     return { kind: "on_time", days: 0, label: "في الموعد" };
   }
 
   if (a.status === "not_started") {
+    if (!plannedStart) return { kind: "on_time", days: 0, label: "—" };
     const d = diffDays(today, plannedStart);
-    if (d > 0) return { kind: "late_start", days: d,  label: `تأخر البدء ${d} يوم` };
+    if (d > 0) return { kind: "late_start", days: d, label: `تأخر البدء ${d} يوم` };
     return { kind: "remaining", days: -d, label: `${-d} يوم للبدء` };
   }
 
-  // in_progress or delayed
+  // in_progress or explicitly delayed: compare the current day with planned end.
+  if (!plannedEnd) return { kind: "on_time", days: 0, label: "—" };
   const d = diffDays(today, plannedEnd);
-  if (d > 0) return { kind: "delayed",   days: d,  label: `متأخر ${d} يوم` };
-  if (d === 0) return { kind: "on_time", days: 0,  label: "آخر يوم مخطط" };
+  if (d > 0) return { kind: "delayed", days: d, label: `متأخر ${d} يوم` };
+  if (d === 0) return { kind: "on_time", days: 0, label: "آخر يوم مخطط" };
   return { kind: "remaining", days: -d, label: `${-d} يوم متبقٍ` };
+}
+
+function isActivityDelayed(a: Activity): boolean {
+  // Keep an explicitly saved delayed status visible even when the schedule is incomplete.
+  if (a.status === "delayed") return true;
+  const delay = calcActivityDelay(a);
+  return delay.kind === "delayed" || delay.kind === "late_start";
 }
 
 function DelayBadge({ info }: { info: DelayInfo }) {
@@ -328,6 +353,10 @@ export default function ProjectActivities() {
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupColor, setNewGroupColor] = useState("#3b82f6");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<number | "ungrouped">>(new Set());
+  const [viewMode, setViewMode] = useState<"list" | "gantt">("list");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "not_started" | "in_progress" | "completed" | "delayed">("all");
+  const [groupFilter, setGroupFilter] = useState<"all" | "ungrouped" | number>("all");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: activities, isLoading } = useListActivities(projectId, { query: { enabled: !!projectId } });
@@ -677,13 +706,37 @@ export default function ProjectActivities() {
     }
   };
 
-  const ganttData = (activities ?? []).map((a) => ({
+  const allActivityRows = activities ?? [];
+  const filteredActivities = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+
+    return allActivityRows.filter((activity) => {
+      const matchesSearch = !query || activity.name.toLocaleLowerCase().includes(query);
+      const matchesStatus = statusFilter === "all"
+        ? true
+        : statusFilter === "delayed"
+          ? isActivityDelayed(activity)
+          : activity.status === statusFilter;
+      const activityGroupId = (activity as Activity & { groupId?: number | null }).groupId ?? null;
+      const matchesGroup = groupFilter === "all"
+        ? true
+        : groupFilter === "ungrouped"
+          ? activityGroupId === null
+          : activityGroupId === groupFilter;
+      return matchesSearch && matchesStatus && matchesGroup;
+    });
+  }, [allActivityRows, groupFilter, searchQuery, statusFilter]);
+
+  const activityRows = filteredActivities;
+  const hasActiveFilters = Boolean(searchQuery.trim()) || statusFilter !== "all" || groupFilter !== "all";
+  const effectiveViewMode = isContractorBase ? "gantt" : viewMode;
+  const ganttData = activityRows.map((a) => ({
     name: a.name.length > 14 ? a.name.slice(0, 14) + "…" : a.name,
     "المخطط": calcPlannedProgress(a),
     "الفعلي": a.actualProgress,
   }));
 
-  const allDates = (activities ?? []).flatMap(a => [
+  const allDates = activityRows.flatMap(a => [
     a.plannedStartDate, a.plannedEndDate, a.actualStartDate, a.actualEndDate
   ].filter(Boolean) as string[]);
   const ganttStart = allDates.length > 0
@@ -693,23 +746,253 @@ export default function ProjectActivities() {
     ? new Date(Math.max(...allDates.map(d => new Date(d).getTime())))
     : new Date(project?.expectedEndDate ?? Date.now());
 
+  const completedCount = allActivityRows.filter(a => a.status === "completed").length;
+  const inProgressCount = allActivityRows.filter(a => a.status === "in_progress").length;
+  const delayedCount = allActivityRows.filter(isActivityDelayed).length;
+  const statusCounts = useMemo(() => ({
+    all: allActivityRows.length,
+    not_started: allActivityRows.filter(a => a.status === "not_started").length,
+    in_progress: inProgressCount,
+    completed: completedCount,
+    delayed: delayedCount,
+  }), [allActivityRows, completedCount, delayedCount, inProgressCount]);
+  const groupCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    let ungrouped = 0;
+    for (const activity of allActivityRows) {
+      const groupId = (activity as Activity & { groupId?: number | null }).groupId;
+      if (groupId == null) ungrouped += 1;
+      else counts.set(groupId, (counts.get(groupId) ?? 0) + 1);
+    }
+    return { counts, ungrouped };
+  }, [allActivityRows]);
+  const totalWeight = allActivityRows.reduce((sum, a) => sum + (a.weight && a.weight > 0 ? a.weight : 1), 0);
+  const actualProgress = totalWeight > 0
+    ? Math.round((allActivityRows.reduce((sum, a) => sum + (a.actualProgress ?? 0) * (a.weight && a.weight > 0 ? a.weight : 1), 0) / totalWeight) * 10) / 10
+    : 0;
+  const plannedProgress = allActivityRows.length > 0
+    ? Math.round((allActivityRows.reduce((sum, a) => sum + calcPlannedProgress(a), 0) / allActivityRows.length) * 10) / 10
+    : 0;
+  const progressDelta = Math.round((actualProgress - plannedProgress) * 10) / 10;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start gap-3">
-        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <div className="page-hero flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">الجدول الزمني</p>
+          <h1 className="relative z-10 text-lg font-bold leading-tight text-white md:text-2xl">{project?.name}</h1>
+          <p className="relative z-10 mt-1 text-sm text-white/65">الجدول الزمني</p>
         </div>
       </div>
 
       <ProjectNav projectId={projectId} />
 
+      <section aria-labelledby="activities-overview" className="space-y-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">نظرة تشغيلية</p>
+            <h2 id="activities-overview" className="mt-1 text-xl font-bold tracking-tight">متابعة تقدم بنود الأعمال</h2>
+            <p className="mt-1 text-sm text-muted-foreground">ملخص سريع للحالة الحالية قبل مراجعة المخطط الزمني والتفاصيل.</p>
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            {isLoading ? "جاري تحديث البيانات" : hasActiveFilters ? `عرض ${activityRows.length} من ${allActivityRows.length} بند` : `آخر عرض · ${allActivityRows.length} بند`}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          {[
+            { label: "إجمالي البنود", value: allActivityRows.length, note: `${groups.length} مجموعة`, icon: ListChecks, tone: "text-primary", dot: "bg-primary" },
+            { label: "نسبة الإنجاز", value: `${actualProgress}%`, note: progressDelta >= 0 ? `+${progressDelta}% عن المخطط` : `${progressDelta}% عن المخطط`, icon: TrendingUp, tone: progressDelta < 0 ? "text-destructive" : "text-emerald-600", dot: progressDelta < 0 ? "bg-destructive" : "bg-emerald-500" },
+            { label: "مكتمل", value: completedCount, note: allActivityRows.length ? `${Math.round((completedCount / allActivityRows.length) * 100)}% من البنود` : "لا توجد بيانات", icon: CheckCircle2, tone: "text-emerald-600", dot: "bg-emerald-500" },
+            { label: "قيد التنفيذ", value: inProgressCount, note: "تحتاج متابعة دورية", icon: Timer, tone: "text-blue-600", dot: "bg-blue-500" },
+            { label: "متأخر", value: delayedCount, note: delayedCount > 0 ? "تحتاج إجراءً تصحيحياً" : "لا توجد حالات متأخرة", icon: AlertTriangle, tone: delayedCount > 0 ? "text-destructive" : "text-muted-foreground", dot: delayedCount > 0 ? "bg-destructive" : "bg-muted-foreground" },
+          ].map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <Card key={stat.label} className="surface-card surface-card-hover overflow-hidden">
+                <CardContent className="relative p-4 sm:p-5">
+                  <div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-muted/40 ${stat.tone}`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <p className="text-xs font-medium text-muted-foreground">{stat.label}</p>
+                  <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{stat.value}</p>
+                  <p className="mt-1 truncate text-[11px] text-muted-foreground">{stat.note}</p>
+                  <span className={`absolute left-0 top-0 h-1 w-full ${stat.dot}`} />
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
+
+      <Card className="surface-card surface-card-hover" dir="rtl">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-muted/40 text-primary">
+                  <SlidersHorizontal className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">مساحة العمل</p>
+                  <p className="text-xs text-muted-foreground">ابحث وفلتر البنود ثم اختر طريقة العرض المناسبة للمراجعة.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="tabular-nums">عرض {activityRows.length} من {allActivityRows.length}</span>
+                {hasActiveFilters && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs text-primary"
+                    onClick={() => { setSearchQuery(""); setStatusFilter("all"); setGroupFilter("all"); }}
+                  >
+                    مسح الفلاتر
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[minmax(260px,0.85fr)_minmax(0,2.15fr)]">
+              <div className="flex flex-col gap-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="ابحث باسم البند..."
+                    aria-label="البحث في بنود الأعمال"
+                    className="h-10 bg-background pr-9"
+                  />
+                </div>
+                <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/30 p-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={effectiveViewMode === "list" ? "default" : "ghost"}
+                    className="h-8 flex-1 gap-1.5 px-3 text-xs sm:flex-none"
+                    disabled={isContractorBase}
+                    onClick={() => setViewMode("list")}
+                    title={isContractorBase ? "عرض القائمة غير متاح لهذا الدور" : "عرض القائمة"}
+                  >
+                    <LayoutList className="h-4 w-4" /> القائمة
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={effectiveViewMode === "gantt" ? "default" : "ghost"}
+                    className="h-8 flex-1 gap-1.5 px-3 text-xs sm:flex-none"
+                    onClick={() => setViewMode("gantt")}
+                  >
+                    <GanttChart className="h-4 w-4" /> جانت
+                  </Button>
+                </div>
+              </div>
+
+              <div className="min-w-0 space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground">فهرس الحالة</span>
+                    <span className="text-[11px] text-muted-foreground">اختيار مباشر</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-6" role="group" aria-label="فهرس حالات بنود الأعمال">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={statusFilter === "all" ? "default" : "outline"}
+                      aria-pressed={statusFilter === "all"}
+                      className="h-9 min-w-0 justify-center gap-1.5 px-2 text-xs"
+                      onClick={() => setStatusFilter("all")}
+                    >
+                      <ListChecks className="h-3.5 w-3.5" />
+                      كل الحالات
+                      <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{statusCounts.all}</span>
+                    </Button>
+                    {STATUS_OPTIONS.map((option) => {
+                      const Icon = option.icon;
+                      const isSelected = statusFilter === option.value;
+                      return (
+                        <Button
+                          key={option.value}
+                          type="button"
+                          size="sm"
+                          variant={isSelected ? "default" : "outline"}
+                          aria-pressed={isSelected}
+                          className={`h-9 min-w-0 justify-center gap-1.5 px-2 text-xs ${isSelected ? "" : option.cls}`}
+                          onClick={() => setStatusFilter(option.value)}
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          {option.label}
+                          <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{statusCounts[option.value]}</span>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground">فهرس المجموعات</span>
+                    <span className="text-[11px] text-muted-foreground">{groups.length} مجموعات</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2" role="group" aria-label="فهرس مجموعات بنود الأعمال">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={groupFilter === "all" ? "default" : "outline"}
+                      aria-pressed={groupFilter === "all"}
+                      className="h-9 min-w-0 justify-center gap-1.5 px-2 text-xs"
+                      onClick={() => setGroupFilter("all")}
+                    >
+                      كل المجموعات
+                      <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{allActivityRows.length}</span>
+                    </Button>
+                    {groups.slice().sort((a, b) => a.sortOrder - b.sortOrder).map((group) => {
+                      const isSelected = groupFilter === group.id;
+                      return (
+                        <Button
+                          key={group.id}
+                          type="button"
+                          size="sm"
+                          variant={isSelected ? "default" : "outline"}
+                          aria-pressed={isSelected}
+                          className="h-9 min-w-0 justify-center gap-1.5 px-2 text-xs"
+                          onClick={() => setGroupFilter(group.id)}
+                        >
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: group.color }} />
+                          <span className="max-w-[12rem] truncate">{group.name}</span>
+                          <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{groupCounts.counts.get(group.id) ?? 0}</span>
+                        </Button>
+                      );
+                    })}
+                    {groupCounts.ungrouped > 0 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={groupFilter === "ungrouped" ? "default" : "outline"}
+                        aria-pressed={groupFilter === "ungrouped"}
+                        className="h-9 min-w-0 justify-center gap-1.5 px-2 text-xs"
+                        onClick={() => setGroupFilter("ungrouped")}
+                      >
+                        بدون مجموعة
+                        <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{groupCounts.ungrouped}</span>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6">
         {/* ── Gantt Chart ── */}
-        {(activities ?? []).length > 0 && (() => {
+        {effectiveViewMode === "gantt" && activityRows.length > 0 && (() => {
           const today = new Date(); today.setHours(0, 0, 0, 0);
           const spanMs = ganttEnd.getTime() - ganttStart.getTime() || 86400000;
           const toPct = (d: Date) => Math.max(0, Math.min(100, (d.getTime() - ganttStart.getTime()) / spanMs * 100));
@@ -725,7 +1008,7 @@ export default function ProjectActivities() {
             t === "official_holiday" ? "عطلة رسمية" : t === "force_majeure" ? "ظرف قاهر" : "توقف مقاول";
 
           return (
-            <Card>
+            <Card className="surface-card surface-card-hover">
               <CardHeader className="pb-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <CardTitle className="text-base">مخطط Gantt - الجدول الزمني</CardTitle>
@@ -792,10 +1075,10 @@ export default function ProjectActivities() {
                     </div>
 
                     {/* ── Activity rows ── */}
-                    {(activities ?? []).map((a, idx) => {
+                    {activityRows.map((a, idx) => {
                       const barColor = a.status === "delayed" ? "#ef4444" : a.status === "completed" ? "#10b981" : "#10b981";
                       const actualEnd = a.actualEndDate ?? (a.actualStartDate ? today.toISOString().split("T")[0] : null);
-                      const isLast = idx === (activities ?? []).length - 1;
+                      const isLast = idx === activityRows.length - 1;
 
                       return (
                         <div
@@ -1013,8 +1296,8 @@ export default function ProjectActivities() {
           );
         })()}
 
-        {!isContractorBase && (
-        <Card>
+        {!isContractorBase && effectiveViewMode === "gantt" && (
+        <Card className="surface-card surface-card-hover">
           <CardHeader>
             <CardTitle className="text-base">الإنجاز المخطط مقابل الفعلي</CardTitle>
           </CardHeader>
@@ -1038,8 +1321,8 @@ export default function ProjectActivities() {
         </Card>
         )}
 
-        {!isContractorBase && (
-        <Card>
+        {effectiveViewMode === "list" && !isContractorBase && (
+        <Card className="surface-card surface-card-hover">
           <CardHeader className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -1056,7 +1339,7 @@ export default function ProjectActivities() {
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden" dir="rtl">
-                <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+                <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
                   <DialogHeader>
                     <DialogTitle className="text-xl">إضافة مجموعة جديدة</DialogTitle>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -1065,7 +1348,7 @@ export default function ProjectActivities() {
                   </DialogHeader>
                 </div>
                 <div className="p-6 pt-4 space-y-6">
-                  <div className="p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
+                  <div className="p-5 rounded-2xl border bg-muted/20 shadow-sm space-y-5">
                     <div>
                       <label className="text-sm font-semibold mb-2 block text-foreground/90">اسم المجموعة</label>
                       <Input className="h-11 bg-background" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder="مثال: الأعمال الخرسانية" />
@@ -1113,7 +1396,7 @@ export default function ProjectActivities() {
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden" dir="rtl">
-                <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+                <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
                   <DialogHeader>
                     <DialogTitle className="text-xl">استيراد بنود من ملف Excel</DialogTitle>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -1142,7 +1425,7 @@ export default function ProjectActivities() {
                       </div>
                     )}
                   </div>
-                  <div className="bg-gradient-to-br from-muted/30 to-background rounded-2xl border p-5 shadow-sm">
+                  <div className="bg-muted/20 rounded-2xl border p-5 shadow-sm">
                     <p className="text-sm text-foreground/80 mb-3 leading-relaxed">
                       يجب أن يحتوي الملف على 3 أعمدة رئيسية للعمل بشكل صحيح: <strong className="text-primary">اسم البند</strong>، <strong className="text-primary">تاريخ البداية</strong>، <strong className="text-primary">تاريخ النهاية</strong>.
                     </p>
@@ -1178,7 +1461,7 @@ export default function ProjectActivities() {
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden max-h-[90vh]" dir="rtl">
-                <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+                <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
                   <DialogHeader>
                     <div className="flex items-center gap-3">
                       <div className="p-2.5 bg-blue-500/10 rounded-xl">
@@ -1198,7 +1481,7 @@ export default function ProjectActivities() {
                   <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 pt-4 space-y-6">
                       
-                      <div className="p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
+                      <div className="p-5 rounded-2xl border bg-muted/20 shadow-sm space-y-5">
                         <FormField control={form.control} name="name" render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-foreground/90">اسم البند</FormLabel>
@@ -1208,7 +1491,7 @@ export default function ProjectActivities() {
                         )} />
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-muted/20 shadow-sm">
                         <FormField control={form.control} name="plannedStartDate" render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-foreground/90">بداية مخططة {isNoSchedule && <span className="text-xs text-muted-foreground font-normal">(اختياري)</span>}</FormLabel>
@@ -1242,7 +1525,7 @@ export default function ProjectActivities() {
                         )} />
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 p-5 rounded-2xl border bg-muted/20 shadow-sm">
                         <FormField control={form.control} name="actualProgress" render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-foreground/90">الإنجاز الفعلي (%)</FormLabel>
@@ -1303,7 +1586,7 @@ export default function ProjectActivities() {
           {/* Desktop Table */}
           <CardContent className="p-0 overflow-x-auto hidden md:block">
             {(() => {
-              const allActs = activities ?? [];
+              const allActs = activityRows;
               const groupMap = new Map<number | "ungrouped", (Activity & { groupId?: number | null })[]>();
               const sortedGroups = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -1315,6 +1598,7 @@ export default function ProjectActivities() {
                 if (!groupMap.has(gid)) groupMap.set("ungrouped", [...(groupMap.get("ungrouped") ?? []), a]);
                 else groupMap.get(gid)!.push(a);
               }
+              const visibleGroups = sortedGroups.filter((group) => (groupMap.get(group.id) ?? []).length > 0);
 
               const renderActivityRow = (a: Activity) => {
                 const isBusy = updatingId === a.id;
@@ -1460,15 +1744,15 @@ export default function ProjectActivities() {
                         </TableRow>
                       ) : allActs.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">لا يوجد بنود — أضف أول بند</TableCell>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">{hasActiveFilters ? "لا توجد نتائج مطابقة للفلاتر الحالية" : "لا يوجد بنود — أضف أول بند"}</TableCell>
                         </TableRow>
                       ) : groups.length === 0 ? (
                         <SortableContext items={allActs.map(a => a.id)} strategy={verticalListSortingStrategy}>
                           {allActs.map(renderActivityRow)}
                         </SortableContext>
                       ) : (
-                        <SortableContext items={[...sortedGroups.map(g => `group-${g.id}`), ...allActs.map(a => a.id)]} strategy={verticalListSortingStrategy}>
-                          {sortedGroups.map(g => {
+                        <SortableContext items={[...visibleGroups.map(g => `group-${g.id}`), ...allActs.map(a => a.id)]} strategy={verticalListSortingStrategy}>
+                          {visibleGroups.map(g => {
                             const groupActs = groupMap.get(g.id) ?? [];
                             const isCollapsed = collapsedGroups.has(g.id);
                             const groupProgress = (() => {
@@ -1553,10 +1837,10 @@ export default function ProjectActivities() {
                 <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
                 <span className="text-sm text-muted-foreground">جاري تحميل بنود الأعمال...</span>
               </div>
-            ) : (activities ?? []).length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">لا يوجد بنود — أضف أول بند</div>
+            ) : activityRows.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">{hasActiveFilters ? "لا توجد نتائج مطابقة للفلاتر الحالية" : "لا يوجد بنود — أضف أول بند"}</div>
             ) : (() => {
-              const allActs = activities ?? [];
+              const allActs = activityRows;
               const sortedGroups = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
               const groupMap = new Map<number | "ungrouped", Activity[]>();
               for (const g of sortedGroups) groupMap.set(g.id, []);
@@ -1566,6 +1850,7 @@ export default function ProjectActivities() {
                 if (!groupMap.has(gid)) groupMap.get("ungrouped")!.push(a);
                 else groupMap.get(gid)!.push(a);
               }
+              const visibleGroups = sortedGroups.filter((group) => (groupMap.get(group.id) ?? []).length > 0);
 
               const renderMobileCard = (a: Activity) => {
                 const isBusy = updatingId === a.id;
@@ -1623,7 +1908,7 @@ export default function ProjectActivities() {
 
               return (
                 <>
-                  {sortedGroups.map((g, gi) => {
+                  {visibleGroups.map((g, gi) => {
                     const groupActs = groupMap.get(g.id) ?? [];
                     const isCollapsed = collapsedGroups.has(g.id);
                     const groupProgress = (() => {

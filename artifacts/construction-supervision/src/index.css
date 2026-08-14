@@ -90,32 +90,32 @@ html, body, * {
   --elevate-2: rgba(0,0,0, .06);
 
   /* Page background — clean soft pearl */
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
-  --border: 214 32% 91%;
+  --background: 220 27% 97%;
+  --foreground: 222 38% 13%;
+  --border: 216 24% 88%;
 
   /* Cards — pure white */
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 214 32% 91%;
+  --card-foreground: 222 38% 13%;
+  --card-border: 216 24% 88%;
 
   /* Sidebar — premium midnight blue */
-  --sidebar: 222 47% 11%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 222 40% 16%;
-  --sidebar-primary: 218 80% 45%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 222 40% 18%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 218 80% 45%;
+  --sidebar: 224 42% 12%;
+  --sidebar-foreground: 216 28% 82%;
+  --sidebar-border: 224 28% 20%;
+  --sidebar-primary: 188 86% 48%;
+  --sidebar-primary-foreground: 224 42% 10%;
+  --sidebar-accent: 224 31% 19%;
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-ring: 188 86% 48%;
 
   /* Popover */
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
   --popover-border: 214 32% 91%;
 
-  /* Primary — Deep Trust Blue */
-  --primary: 221 83% 40%;
+  /* Primary — Construction Teal */
+  --primary: 193 83% 36%;
   --primary-foreground: 0 0% 100%;
 
   /* Secondary */
@@ -126,16 +126,16 @@ html, body, * {
   --muted: 210 40% 96.1%;
   --muted-foreground: 215.4 16.3% 46.9%;
 
-  /* Accent — Premium Gold/Amber */
-  --accent: 43 96% 56%;
-  --accent-foreground: 222 47% 11%;
+  /* Accent — Warm Amber */
+  --accent: 38 92% 54%;
+  --accent-foreground: 222 38% 13%;
 
   /* Destructive */
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
 
-  --input: 214.3 31.8% 91.4%;
-  --ring: 221 83% 53.3%;
+  --input: 214.3 31.8% 88.4%;
+  --ring: 193 83% 44%;
 
   /* Charts */
   --chart-1: 221 83% 40%;
@@ -144,10 +144,10 @@ html, body, * {
   --chart-4: 270 42% 52%;
   --chart-5: 0 58% 50%;
 
-  --app-font-sans: 'Noto Kufi Arabic', sans-serif;
+  --app-font-sans: 'Noto Kufi Arabic', 'IBM Plex Sans Arabic', 'Segoe UI', sans-serif;
   --app-font-serif: Georgia, serif;
-  --app-font-mono: Menlo, monospace;
-  --radius: 0.75rem;
+  --app-font-mono: 'IBM Plex Mono', Menlo, monospace;
+  --radius: 0.9rem;
 
   /* Real subtle shadows */
   --shadow-2xs: 0 1px 2px 0 rgba(0,0,0,0.04);
@@ -255,28 +255,77 @@ html, body, * {
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    background-image: none;
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.22);
+    color: hsl(var(--foreground));
+  }
+
+  :focus-visible {
+    outline: 3px solid hsl(var(--ring) / 0.35);
+    outline-offset: 2px;
   }
 }
 
 @layer utilities {
   .glass {
-    @apply bg-background/60 backdrop-blur-xl border border-white/20 dark:border-white/5 shadow-sm;
+    @apply border border-border/70 bg-card shadow-sm;
   }
   
   .glass-card {
-    @apply bg-card/80 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-sm transition-all duration-300;
+    @apply relative overflow-hidden border border-border/70 bg-card shadow-sm transition-shadow duration-200 dark:border-border;
+  }
+
+  .surface-card {
+    @apply rounded-2xl border border-border/70 bg-card shadow-sm;
+  }
+
+  .surface-card-hover {
+    @apply transition-[border-color,box-shadow] duration-200 hover:border-primary/30 hover:shadow-md;
+  }
+
+  .page-hero {
+    @apply relative isolate overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 px-5 py-5 text-white shadow-lg shadow-slate-900/10 sm:px-7 sm:py-6;
+  }
+
+  .section-kicker {
+    @apply text-[0.68rem] font-bold uppercase tracking-[0.16em] text-muted-foreground;
+  }
+
+  .status-dot {
+    @apply inline-block h-2 w-2 rounded-full;
   }
   
   .hover-card-premium {
     @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-primary/30 dark:hover:border-primary/50;
   }
   
-  .bg-gradient-premium {
-    @apply bg-gradient-to-br from-primary via-primary/90 to-primary/70;
+  .bg-solid-premium {
+    @apply bg-primary text-primary-foreground;
   }
   
-  .bg-gradient-subtle {
-    @apply bg-gradient-to-br from-background via-background to-secondary/30;
+  .bg-solid-subtle {
+    @apply bg-background;
+  }
+
+  .premium-divider {
+    @apply h-px w-full bg-border;
+  }
+
+  .premium-glow {
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.06), 0 18px 40px hsl(var(--primary) / 0.08);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
   }
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
@@ -345,5 +394,80 @@ html, body, * {
   .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
+  }
+}
+
+@keyframes page-transition-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.page-transition {
+  animation: page-transition-enter 220ms ease-out both;
+  will-change: opacity, transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition {
+    animation: none;
+  }
+}
+
+@keyframes page-loader-enter {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes loader-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes page-loader-text-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes page-fallback-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+.page-loader-enter {
+  animation: page-loader-enter 260ms ease-out both;
+}
+
+.loader-spinner {
+  animation: loader-spin 900ms linear infinite;
+}
+
+.page-loader-text-enter {
+  animation: page-loader-text-enter 260ms ease-out 120ms both;
+}
+
+.page-fallback-bar {
+  animation: page-fallback-progress 1.35s ease-in-out infinite;
+}
+
+.auth-form-transition {
+  min-height: 22rem;
+}
+
+.auth-form-panel-enter {
+  animation: page-transition-enter 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-loader-enter,
+  .loader-spinner,
+  .page-loader-text-enter,
+  .page-fallback-bar,
+  .auth-form-panel-enter {
+    animation: none;
   }
 }

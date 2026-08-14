@@ -17,7 +17,6 @@ import {
   getListProjectMembersQueryKey,
   getGetMemberTabPermissionsQueryKey,
   getGetMyProjectPermissionsQueryKey,
-  processFetchResponse,
 } from "@workspace/api-client-react";
 import type { User, UpdateUserBody, CreateUserBody, CreateUserBodyRole, TabPermissionsMap, TabAccess } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
@@ -57,14 +56,12 @@ import { useLocation } from "wouter";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
-async function authFetch(url: string, init?: RequestInit) {
+function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
-  const response = await fetch(url, {
+  return fetch(url, {
     ...init,
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
   });
-  await processFetchResponse(response);
-  return response;
 }
 
 interface Company {
@@ -493,14 +490,14 @@ export default function Users() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-violet-500/10 rounded-xl">
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <div className="page-hero flex flex-wrap items-center justify-between gap-3">
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="rounded-2xl bg-white/10 p-3 text-violet-200 ring-1 ring-white/10">
             <UsersIcon className="h-6 w-6 text-violet-600" />
           </div>
           <div>
-            <h1 className="text-lg md:text-2xl font-bold flex items-center gap-2">
+            <h1 className="relative z-10 flex items-center gap-2 text-lg font-bold text-white md:text-2xl">
               المستخدمون
               {incompleteCount > 0 && (
                 <Badge
@@ -513,7 +510,7 @@ export default function Users() {
                 </Badge>
               )}
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">إدارة حسابات المستخدمين والصلاحيات</p>
+            <p className="relative z-10 mt-1 text-sm text-white/65">إدارة حسابات المستخدمين والصلاحيات</p>
           </div>
         </div>
         
@@ -527,13 +524,13 @@ export default function Users() {
           }
         }}>
           <DialogTrigger asChild>
-            <Button className="gap-2" onClick={handleOpenNew}>
+            <Button className="relative z-10 gap-2 bg-white text-primary shadow-lg hover:bg-white/90" onClick={handleOpenNew}>
               <Plus className="h-4 w-4" />
               إضافة مستخدم
             </Button>
           </DialogTrigger>
           <DialogContent dir="rtl" className="sm:max-w-[650px] p-0 overflow-hidden">
-            <div className="bg-gradient-to-br from-violet-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+            <div className="bg-violet-500/5 p-6 pb-4 border-b border-border/50">
               <DialogHeader>
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-violet-500/10 rounded-xl">
@@ -560,7 +557,7 @@ export default function Users() {
                       البيانات الأساسية
                     </h3>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-muted/30 shadow-sm">
                       <FormField
                         control={form.control}
                         name="fullName"
@@ -717,11 +714,11 @@ export default function Users() {
         </Dialog>
       </div>
 
-      <div className="flex items-center gap-2 border-b">
+      <div className="flex items-center gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-card/80 p-1.5 shadow-sm">
         <button
           type="button"
           onClick={() => setFilter("all")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+          className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
             filter === "all"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -733,7 +730,7 @@ export default function Users() {
         <button
           type="button"
           onClick={() => setFilter("incomplete")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px flex items-center gap-1.5 ${
+          className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
             filter === "incomplete"
               ? "border-amber-500 text-amber-700"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -748,7 +745,7 @@ export default function Users() {
       {isLoading ? (
         <LoadingSpinner text="جاري تحميل المستخدمين..." />
       ) : filteredUsers.length === 0 ? (
-        <Card>
+        <Card className="surface-card surface-card-hover">
           <EmptyState
             icon={filter === "incomplete" ? <AlertTriangle className="h-7 w-7 text-amber-500/70" /> : <UserX className="h-7 w-7 text-muted-foreground/60" />}
             title={filter === "incomplete" ? "لا يوجد مستخدمين ببيانات ناقصة" : "لا يوجد مستخدمين"}
@@ -757,7 +754,7 @@ export default function Users() {
         </Card>
       ) : (
       <>
-      <Card className="shadow-sm">
+      <Card className="surface-card surface-card-hover">
         {/* Desktop Table */}
         <CardContent className="p-0 overflow-x-auto hidden sm:block">
           <Table className="min-w-[540px]">
@@ -892,7 +889,7 @@ export default function Users() {
         onOpenChange={(open) => { if (!open) closeQuickAssign(); }}
       >
         <DialogContent dir="rtl" className="sm:max-w-[480px] p-0 overflow-hidden" data-testid="dialog-quick-assign">
-          <div className="bg-gradient-to-br from-amber-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+          <div className="bg-amber-500/5 p-6 pb-4 border-b border-border/50">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-xl">
                 <Zap className="h-6 w-6 text-amber-600" />

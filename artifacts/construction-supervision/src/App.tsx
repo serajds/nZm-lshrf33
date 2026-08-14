@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ComponentType } from "react";
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
@@ -6,32 +6,47 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { getDefaultProjectId } from "@/lib/user-prefs";
 
-// Eager imports — these are needed for the very first authenticated paint.
-// Lazy-loading Dashboard/Projects/ProjectDetails was tried but caused
-// "Failed to fetch dynamically imported module" errors whenever the
-// dev server reloaded or a deployment changed chunk hashes — users
-// saw an Arabic toast "تعذر تحميل جزء من البيانات بسبب قطع الاتصال".
-// Keep these eager; the other heavier route pages stay lazy below.
 import Login from "@/pages/login";
 import PendingAssignment from "@/pages/pending-assignment";
 import NotFound from "@/pages/not-found";
 import { AppLayout } from "@/components/layout";
-import Dashboard from "@/pages/dashboard";
-import Projects from "@/pages/projects/index";
-import ProjectDetails from "@/pages/projects/[id]";
-const ProjectActivities = lazy(() => import("@/pages/projects/[id]/activities"));
-const ProjectReports = lazy(() => import("@/pages/projects/[id]/reports"));
-const ProjectFiles = lazy(() => import("@/pages/projects/[id]/files"));
-const ProjectDeviation = lazy(() => import("@/pages/projects/[id]/deviation"));
-const ProjectExtensions = lazy(() => import("@/pages/projects/[id]/extensions"));
-const ProjectSuspensions = lazy(() => import("@/pages/projects/[id]/suspensions"));
-const ProjectForms = lazy(() => import("@/pages/projects/[id]/forms"));
-const ProjectAttendance = lazy(() => import("@/pages/projects/[id]/attendance"));
-const Users = lazy(() => import("@/pages/users"));
-const Companies = lazy(() => import("@/pages/companies"));
-const AuditLog = lazy(() => import("@/pages/audit-log"));
-const OwnerPortal = lazy(() => import("@/pages/owner/[token]"));
-const PublicForm = lazy(() => import("@/pages/public-form"));
+
+// Route chunks are allowed to fail once after a deployment rotates hashed asset
+// names. A single guarded reload refreshes the entry manifest without creating
+// an infinite reload loop, while normal navigation remains fully lazy-loaded.
+function lazyRoute<T extends ComponentType<any>>(loader: () => Promise<{ default: T }>, key: string) {
+  return lazy(async () => {
+    const retryKey = `route-chunk-retry:${key}`;
+    try {
+      const module = await loader();
+      sessionStorage.removeItem(retryKey);
+      return module;
+    } catch (error) {
+      if (!sessionStorage.getItem(retryKey)) {
+        sessionStorage.setItem(retryKey, "1");
+        window.location.reload();
+      }
+      throw error;
+    }
+  });
+}
+
+const Dashboard = lazyRoute(() => import("@/pages/dashboard"), "dashboard");
+const Projects = lazyRoute(() => import("@/pages/projects/index"), "projects");
+const ProjectDetails = lazyRoute(() => import("@/pages/projects/[id]"), "project-details");
+const ProjectActivities = lazyRoute(() => import("@/pages/projects/[id]/activities"), "activities");
+const ProjectReports = lazyRoute(() => import("@/pages/projects/[id]/reports"), "reports");
+const ProjectFiles = lazyRoute(() => import("@/pages/projects/[id]/files"), "files");
+const ProjectDeviation = lazyRoute(() => import("@/pages/projects/[id]/deviation"), "deviation");
+const ProjectExtensions = lazyRoute(() => import("@/pages/projects/[id]/extensions"), "extensions");
+const ProjectSuspensions = lazyRoute(() => import("@/pages/projects/[id]/suspensions"), "suspensions");
+const ProjectForms = lazyRoute(() => import("@/pages/projects/[id]/forms"), "forms");
+const ProjectAttendance = lazyRoute(() => import("@/pages/projects/[id]/attendance"), "attendance");
+const Users = lazyRoute(() => import("@/pages/users"), "users");
+const Companies = lazyRoute(() => import("@/pages/companies"), "companies");
+const AuditLog = lazyRoute(() => import("@/pages/audit-log"), "audit-log");
+const OwnerPortal = lazyRoute(() => import("@/pages/owner/[token]"), "owner-portal");
+const PublicForm = lazyRoute(() => import("@/pages/public-form"), "public-form");
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,7 +73,6 @@ const queryClient = new QueryClient({
 
 import { FullScreenLoader, PageFallback } from "@/components/loaders";
 import { PageTransition } from "@/components/page-transition";
-import { AnimatePresence } from "framer-motion";
 
 // PageFallback and FullScreenLoader have been moved to @/components/loaders
 
@@ -113,9 +127,8 @@ function AuthenticatedShell() {
   return (
     <AppLayout>
       <Suspense fallback={<PageFallback />}>
-        <AnimatePresence mode="wait">
-          <PageTransition>
-            <Switch>
+        <PageTransition>
+          <Switch>
               <Route path="/">
                 <HomeRoute />
               </Route>
@@ -182,9 +195,8 @@ function AuthenticatedShell() {
                 </RequireRole>
               </Route>
               <Route component={NotFound} />
-            </Switch>
-          </PageTransition>
-        </AnimatePresence>
+          </Switch>
+        </PageTransition>
       </Suspense>
     </AppLayout>
   );

@@ -28,6 +28,8 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from "recharts";
 import { useState, memo } from "react";
+import { motion } from "framer-motion";
+import { DashboardSkeleton } from "@/components/loaders";
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; ring: string }> = {
   active:    { label: "نشط",    color: "text-blue-600",   bg: "bg-blue-100",    ring: "ring-blue-400" },
@@ -77,28 +79,34 @@ interface KpiCardProps {
   label: string;
   value: string | number;
   icon: React.ElementType;
-  gradient: string;
+  surface: string;
   sub?: string;
 }
-const KpiCard = memo(function KpiCard({ label, value, icon: Icon, gradient, sub }: KpiCardProps) {
+const KpiCard = memo(function KpiCard({ label, value, icon: Icon, surface, sub }: KpiCardProps) {
   return (
-    <Card className={`relative overflow-hidden border-0 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1 group ${gradient}`}>
-      {/* Decorative Blob */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10 transition-transform duration-500 group-hover:scale-150 pointer-events-none" />
-      
-      <CardContent className="relative z-10 p-5 sm:p-6">
-        <div className="flex items-start justify-between">
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -4 }}
+      transition={{ duration: 0.45, ease: "easeOut" }}
+      className="h-full"
+      style={{ willChange: "transform, opacity" }}
+    >
+    <Card className={`relative h-full overflow-hidden border border-white/10 shadow-md transition-shadow duration-200 hover:shadow-lg ${surface}`}>
+      <CardContent className="relative z-10 p-4 sm:p-5">
+        <div className="flex min-h-[108px] items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-white/80 mb-2 truncate tracking-wide">{label}</p>
-            <p className="text-3xl sm:text-4xl font-black text-white tabular-nums tracking-tight drop-shadow-sm">{value}</p>
-            {sub && <p className="text-xs text-white/70 mt-2 truncate font-medium">{sub}</p>}
+            <p className="truncate text-xs font-semibold text-white/75 sm:text-sm">{label}</p>
+            <p className="mt-3 text-3xl font-black tracking-tight text-white tabular-nums sm:text-4xl">{value}</p>
+            {sub && <p className="mt-2 truncate text-[11px] font-medium text-white/70 sm:text-xs">{sub}</p>}
           </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 sm:p-4 shrink-0 ring-1 ring-white/20 shadow-inner group-hover:bg-white/20 transition-all duration-300">
-            <Icon className="h-6 w-6 sm:h-7 sm:w-7 text-white" strokeWidth={2} />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/10 sm:h-11 sm:w-11">
+            <Icon className="h-5 w-5 text-white sm:h-6 sm:w-6" strokeWidth={2} />
           </div>
         </div>
       </CardContent>
     </Card>
+    </motion.div>
   );
 });
 
@@ -159,14 +167,7 @@ export default function Dashboard() {
   // every navigation back to /dashboard was wiping the page for a full
   // round-trip and felt like the app froze.
   if (isLoading && !summary) {
-    return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-muted-foreground text-sm">جاري تحميل لوحة التحكم...</p>
-        </div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   const pieData = [
@@ -197,23 +198,25 @@ export default function Dashboard() {
   const actPct = (n: number) => totalActivities > 0 ? Math.round(n / totalActivities * 100) : 0;
 
   return (
-    <div className="space-y-6 lg:space-y-8 relative">
-      {/* Decorative Background Orbs for Premium Feel */}
-      <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-      <div className="absolute bottom-0 left-1/4 w-[400px] h-[400px] bg-accent/5 rounded-full blur-[100px] pointer-events-none -z-10" />
-
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: "easeOut" }}
+      className="relative mx-auto max-w-[1600px] space-y-5 lg:space-y-6"
+      style={{ willChange: "transform, opacity" }}
+    >
       {/* ── Page Header ── */}
-      <div className="flex items-start sm:items-center justify-between gap-2">
+      <div className="page-hero flex flex-col items-stretch gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-primary/10 rounded-xl">
-            <BarChart3 className="h-6 w-6 text-primary" />
+          <div className="relative z-10 rounded-2xl border border-white/15 bg-white/10 p-3 shadow-inner">
+            <BarChart3 className="h-6 w-6 text-cyan-200" />
           </div>
           <div>
-            <h1 className="text-lg md:text-2xl font-bold">لوحة التحكم الرئيسية</h1>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{dateStr}</p>
+            <h1 className="relative z-10 text-lg font-bold tracking-tight text-white md:text-2xl">لوحة التحكم الرئيسية</h1>
+            <p className="relative z-10 mt-1 text-xs text-white/65 sm:text-sm">{dateStr}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
           {allProjects.length > 0 && (
             <Select
               value={defaultProjectId ?? ""}
@@ -232,7 +235,7 @@ export default function Dashboard() {
               }}
             >
               <SelectTrigger
-                className="h-8 text-xs sm:text-sm rounded-lg bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary font-medium w-[180px] sm:w-[220px] shrink-0"
+                className="relative z-10 h-9 w-[180px] shrink-0 rounded-xl border-white/20 bg-white/10 text-xs font-semibold text-white hover:bg-white/20 sm:w-[220px] sm:text-sm"
                 aria-label="فتح مشروع مباشرة"
               >
                 <div className="flex items-center gap-1.5 min-w-0">
@@ -252,13 +255,13 @@ export default function Dashboard() {
           {isAdmin && (
             <button
               onClick={() => { setShowBackupPanel(true); refetchBackups(); }}
-              className="flex items-center gap-1.5 text-xs sm:text-sm px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-medium transition-colors shrink-0"
+              className="relative z-10 flex shrink-0 items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/20 sm:text-sm"
             >
               <Database className="h-4 w-4" />
               <span className="hidden sm:inline">نسخة احتياطية</span>
             </button>
           )}
-          <Link href="/projects" className="flex items-center gap-1 text-xs sm:text-sm text-primary hover:text-primary/80 font-medium transition-colors shrink-0">
+          <Link href="/projects" className="relative z-10 flex shrink-0 items-center gap-1 text-xs font-semibold text-white/80 transition-colors hover:text-white sm:text-sm">
             <span className="hidden sm:inline">عرض جميع</span> المشاريع <ChevronLeft className="h-4 w-4" />
           </Link>
         </div>
@@ -296,29 +299,29 @@ export default function Dashboard() {
       })()}
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           label="إجمالي المشاريع"
           value={totalProjects}
           icon={Building2}
-          gradient="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800"
+          surface="bg-slate-900"
           sub={`${summary?.activeProjects ?? 0} نشط حالياً`}
         />
         <KpiCard
           label="متوسط الإنجاز"
           value={`${(summary?.averageProgress ?? 0).toFixed(1)}%`}
           icon={TrendingUp}
-          gradient="bg-gradient-to-br from-indigo-500 via-purple-600 to-purple-800"
+          surface="bg-primary"
           sub="عبر جميع المشاريع"
         />
         <KpiCard
           label="مشاريع منحرفة عن الخطة"
           value={summary?.delayedProjects ?? 0}
           icon={AlertTriangle}
-          gradient={
+          surface={
             (summary?.delayedProjects ?? 0) > 0
-              ? "bg-gradient-to-br from-rose-500 via-red-600 to-rose-800"
-              : "bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-800"
+              ? "bg-rose-600"
+              : "bg-emerald-600"
           }
           sub={(summary?.delayedProjects ?? 0) === 0 ? "لا يوجد انحراف عن الخطة" : "تحتاج متابعة"}
         />
@@ -326,20 +329,20 @@ export default function Dashboard() {
           label="التقارير المرفوعة"
           value={summary?.totalReports ?? 0}
           icon={FileText}
-          gradient="bg-gradient-to-br from-amber-500 via-orange-500 to-rose-600"
+          surface="bg-amber-500"
           sub="إجمالي التقارير"
         />
       </div>
 
       {/* ── Secondary Stats ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { label: "مكتملة",    value: summary?.completedProjects ?? 0, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
           { label: "متوقفة",    value: summary?.suspendedProjects ?? 0, icon: PauseCircle,  color: "text-orange-600", bg: "bg-orange-50",  border: "border-orange-200" },
           { label: "بنود الأعمال",   value: totalActivities,                  icon: ActivitySquare,color: "text-blue-600", bg: "bg-blue-50",    border: "border-blue-200" },
           { label: "بنود مكتملة", value: completedActs,                icon: BarChart3,   color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" },
         ].map(s => (
-          <Card key={s.label} className={`border ${s.border} shadow-sm`}>
+          <Card key={s.label} className={`surface-card surface-card-hover border ${s.border}`}>
             <CardContent className="p-3 flex items-center gap-3">
               <div className={`p-2 rounded-lg ${s.bg}`}>
                 <s.icon className={`h-4 w-4 ${s.color}`} />
@@ -354,9 +357,9 @@ export default function Dashboard() {
       </div>
 
       {/* ── Charts Row ── */}
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid gap-5 xl:grid-cols-5">
         {/* Donut: Status Distribution */}
-        <Card className="shadow-sm border-border/40 hover:shadow-md transition-shadow duration-300 rounded-2xl lg:col-span-2">
+        <Card className="surface-card surface-card-hover border-border/40 xl:col-span-2">
           <CardHeader className="pb-1">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">توزيع حالة المشاريع</CardTitle>
           </CardHeader>
@@ -373,6 +376,9 @@ export default function Dashboard() {
                     paddingAngle={3}
                     dataKey="value"
                     strokeWidth={0}
+                    isAnimationActive
+                    animationDuration={900}
+                    animationEasing="ease-out"
                   >
                     {pieData.map((entry, i) => (
                       <Cell key={i} fill={entry.color} />
@@ -404,7 +410,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Bar: Actual vs Planned per project */}
-        <Card className="shadow-sm border-border/40 hover:shadow-md transition-shadow duration-300 rounded-2xl lg:col-span-3">
+        <Card className="surface-card surface-card-hover border-border/40 xl:col-span-3">
           <CardHeader className="pb-1">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">الإنجاز الفعلي مقابل المخطط</CardTitle>
           </CardHeader>
@@ -422,8 +428,8 @@ export default function Dashboard() {
                       formatter={(v: number, name: string) => [`${v}%`, name]}
                       contentStyle={{ textAlign: "right", direction: "rtl", fontSize: 12, borderRadius: 8 }}
                     />
-                    <Bar dataKey="مخطط" fill="hsl(var(--muted))" radius={[0, 4, 4, 0]} barSize={8} />
-                    <Bar dataKey="فعلي" fill="hsl(220,90%,56%)" radius={[0, 4, 4, 0]} barSize={8} />
+                    <Bar dataKey="مخطط" fill="hsl(var(--muted))" radius={[0, 6, 6, 0]} barSize={9} isAnimationActive animationDuration={800} animationEasing="ease-out" />
+                    <Bar dataKey="فعلي" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} barSize={9} isAnimationActive animationDuration={1000} animationEasing="ease-out" />
                     <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -435,14 +441,14 @@ export default function Dashboard() {
 
       {/* ── Activity Progress Bar ── */}
       {totalActivities > 0 && (
-        <Card className="shadow-sm">
+        <Card className="surface-card surface-card-hover">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
               ملخص بنود الأعمال — {totalActivities} بند إجمالاً
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-6 mb-4">
+            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
               {[
                 { label: "مكتملة",    val: completedActs,  pct: actPct(completedActs),  color: "bg-emerald-500", textColor: "text-emerald-600" },
                 { label: "جارية",     val: inProgressActs, pct: actPct(inProgressActs), color: "bg-blue-500",    textColor: "text-blue-600" },
@@ -451,8 +457,8 @@ export default function Dashboard() {
                 <div key={a.label} className="text-center">
                   <div className={`text-2xl font-extrabold tabular-nums ${a.textColor}`}>{a.val}</div>
                   <div className="text-xs text-muted-foreground mb-2">{a.label} ({a.pct}%)</div>
-                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className={`h-full ${a.color} rounded-full transition-all`} style={{ width: `${a.pct}%` }} />
+                    <div className="w-full h-2 overflow-hidden rounded-full bg-muted/80">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${a.pct}%` }} transition={{ duration: 0.8, ease: "easeOut" }} className={`h-full ${a.color} rounded-full`} />
                   </div>
                 </div>
               ))}
@@ -463,7 +469,7 @@ export default function Dashboard() {
 
       {/* ── Delayed Activities Alert ── */}
       {delayedActivitiesList.length > 0 && (
-        <Card className="shadow-sm border-red-200 bg-red-50/30">
+        <Card className="surface-card surface-card-hover border-red-200 bg-red-50/55">
           <CardHeader className="pb-2 flex flex-row items-center gap-2">
             <div className="p-2 rounded-lg bg-red-100">
               <AlertTriangle className="h-4 w-4 text-red-600" />
@@ -504,7 +510,7 @@ export default function Dashboard() {
       {/* ── Projects Table + Recent Reports ── */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Projects Table */}
-        <Card className="shadow-sm border-border/40 hover:shadow-md transition-shadow duration-300 rounded-2xl lg:col-span-2">
+        <Card className="surface-card surface-card-hover border-border/40 lg:col-span-2">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
               جميع المشاريع
@@ -565,7 +571,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Recent Reports */}
-        <Card className="shadow-sm border-border/40 hover:shadow-md transition-shadow duration-300 rounded-2xl">
+        <Card className="surface-card surface-card-hover border-border/40">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">آخر التقارير</CardTitle>
           </CardHeader>
@@ -710,6 +716,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

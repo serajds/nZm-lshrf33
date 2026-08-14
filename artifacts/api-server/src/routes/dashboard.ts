@@ -318,6 +318,8 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
     : roundPercent(project.overallProgress);
   const delayDays = hasSchedule ? calcDelayDays(plannedProgress, actualProgressForSummary, totalDays) : 0;
   const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
+  // Net delay is gross delay minus suspension days, but only if gross delay exists.
+  // Also ensuring we don't double count if schedule was already shifted.
   const netDelayDays = Math.max(0, delayDays - suspensionDays);
   const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualProgressForSummary) : 0;
 

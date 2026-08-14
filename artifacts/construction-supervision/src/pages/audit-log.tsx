@@ -11,7 +11,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList, Plus, Edit2, Trash2, Filter, FileX2 } from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
-import { processFetchResponse } from "@workspace/api-client-react";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -33,7 +32,6 @@ type AuditEntry = {
 async function authFetch(url: string): Promise<AuditEntry[]> {
   const token = localStorage.getItem("auth_token");
   const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-  await processFetchResponse(res);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
@@ -70,19 +68,19 @@ export default function AuditLogPage() {
   const hasFilters = entityType !== "all" || action !== "all" || dateFrom || dateTo;
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="p-2.5 bg-primary/10 rounded-xl">
+    <div className="mx-auto max-w-[1600px] space-y-5">
+      <div className="page-hero flex items-center gap-3">
+        <div className="relative z-10 rounded-2xl bg-white/10 p-3 text-primary-foreground ring-1 ring-white/10">
           <ClipboardList className="h-6 w-6 text-primary" />
         </div>
         <div>
-          <h1 className="text-lg md:text-2xl font-bold">سجل العمليات</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">تتبع جميع التغييرات في النظام</p>
+          <h1 className="relative z-10 text-lg font-bold text-white md:text-2xl">سجل العمليات</h1>
+          <p className="relative z-10 mt-1 text-sm text-white/65">تتبع جميع التغييرات في النظام</p>
         </div>
       </div>
 
-      <Card className="shadow-sm">
-        <CardHeader className="pb-3">
+      <Card className="surface-card surface-card-hover">
+        <CardHeader className="border-b border-border/60 bg-muted/10 pb-4">
           <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
             <div className="flex items-center gap-3">
               <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -112,9 +110,9 @@ export default function AuditLogPage() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground whitespace-nowrap">من</span>
-              <Input type="date" className="flex-1 min-w-0 text-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              <Input type="date" className="h-10 flex-1 min-w-0 rounded-xl text-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
               <span className="text-xs text-muted-foreground whitespace-nowrap">إلى</span>
-              <Input type="date" className="flex-1 min-w-0 text-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              <Input type="date" className="h-10 flex-1 min-w-0 rounded-xl text-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
             </div>
             {hasFilters && (
               <Button variant="ghost" size="sm" onClick={() => { setEntityType("all"); setAction("all"); setDateFrom(""); setDateTo(""); }}>مسح</Button>
@@ -184,7 +182,7 @@ export default function AuditLogPage() {
                 {logs.map((log) => {
                   const Icon = ACTION_ICONS[log.action] ?? Edit2;
                   return (
-                    <div key={log.id} className="rounded-lg border p-3 space-y-2">
+                    <div key={log.id} className="surface-card rounded-2xl border p-3 shadow-sm space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${ACTION_COLORS[log.action] ?? "bg-gray-100 text-gray-700"}`}>
                           <Icon className="h-3 w-3" />

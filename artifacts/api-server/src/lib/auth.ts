@@ -13,13 +13,11 @@ export interface JwtPayload {
   role: string;
 }
 
-// Full token lifetime in seconds (90 days). When the remaining lifetime of a
+// Full token lifetime in seconds (7 days). When the remaining lifetime of a
 // presented token falls below half of this value, requireAuth will mint a
 // fresh token and return it to the client via the X-Renewed-Token response
 // header, giving us a rolling session for active users.
-// Was 7 days — too short when GET responses are served from browser/workbox
-// cache (304) so the server never gets a chance to issue X-Renewed-Token.
-export const JWT_LIFETIME_SECONDS = 90 * 24 * 60 * 60;
+export const JWT_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
 export const JWT_RENEWAL_THRESHOLD_SECONDS = Math.floor(JWT_LIFETIME_SECONDS / 2);
 
 export function signToken(payload: JwtPayload): string {
@@ -48,39 +46,6 @@ export function verifyTokenWithClaims(token: string): VerifiedToken | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Classify WHY a token failed verification, for diagnostic logging only.
- * Returns the jsonwebtoken error name (e.g. "TokenExpiredError",
- * "JsonWebTokenError") plus decoded iat/exp when the payload is readable,
- * without ever trusting or returning the claims for authorization.
- */
-export function classifyTokenFailure(token: string): {
-  errorName: string;
-  errorMessage: string;
-  iat: number | null;
-  exp: number | null;
-} {
-  let errorName = "UnknownError";
-  let errorMessage = "";
-  try {
-    jwt.verify(token, JWT_SECRET);
-    errorName = "VerifiedOk"; // should never happen on the failure path
-  } catch (err) {
-    errorName = (err as Error)?.name ?? "UnknownError";
-    errorMessage = (err as Error)?.message ?? "";
-  }
-  let iat: number | null = null;
-  let exp: number | null = null;
-  try {
-    const decoded = jwt.decode(token) as { iat?: number; exp?: number } | null;
-    iat = decoded?.iat ?? null;
-    exp = decoded?.exp ?? null;
-  } catch {
-    // undecodable token — leave nulls
-  }
-  return { errorName, errorMessage, iat, exp };
 }
 
 export async function hashPassword(password: string): Promise<string> {

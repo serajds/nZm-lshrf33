@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@300;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+      body { margin: 0; }
+      .slide-container {
+        width: 1280px;
+        min-height: 720px;
+        background: #F8FAFC;
+        padding-top: 60px;
+        padding-left: 80px;
+        padding-right: 80px;
+        font-family: 'Noto Sans Arabic', sans-serif;
+        box-sizing: border-box;
+      }
+      .section-title {
+        font-weight: 800;
+        font-size: 48px;
+        color: #0F172A;
+        margin-bottom: 24px;
+        border-right: 8px solid #E11D48;
+        padding-right: 20px;
+      }
+      .main-grid {
+        display: grid;
+        grid-template-columns: 1fr 1px 1fr;
+        gap: 24px;
+        margin-top: 20px;
+      }
+      .dashed-divider {
+        border-left: 1px dashed #CBD5E1;
+        align-self: stretch;
+      }
+      .column {
+        box-sizing: border-box;
+      }
+      /* Right column: place risk cards side-by-side to save vertical space */
+      .column.right {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+      .column.right > h3 { grid-column: 1 / -1; margin-bottom: 12px; }
+      .risk-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 16px;
+        margin-top: 12px;
+      }
+      .risk-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .risk-icon { color: #E11D48; font-size: 24px; }
+      .risk-title { font-weight: 800; font-size: 22px; color: #0F172A; }
+      .risk-body { font-weight: 300; font-size: 18px; color: #334155; line-height: 1.6; }
+      .impact-tag { display: inline-block; background: #FFF1F2; color: #E11D48; padding: 4px 12px; border-radius: 4px; font-weight: 800; font-size: 14px; margin-top: 10px; }
+      .critical-item { display: flex; align-items: flex-start; gap: 15px; padding-top: 10px; }
+      .dot { width: 12px; height: 12px; background: #E11D48; border-radius: 50%; margin-top: 8px; flex-shrink: 0; }
+      .critical-text { font-weight: 300; font-size: 18px; color: #334155; }
+      .critical-text b { font-weight: 800; color: #0F172A; }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <h2 class="section-title">تحليل المخاطر والقيود والبنود الحرجة</h2>
+        <div class="main-grid">
+            <div class="column">
+                <h3 style="font-weight: 800; font-size: 24px; color: #0F172A; margin-bottom: 20px;">البنود الحرجة في التنفيذ</h3>
+                <div class="critical-item">
+                    <div class="dot"></div>
+                    <div class="critical-text"><b>الأعمال الإنشائية الكبرى:</b> تأخر في توريد المواد الأساسية يؤثر على المسار الحرج للمشروع.</div>
+                </div>
+                <div class="critical-item">
+                    <div class="dot"></div>
+                    <div class="critical-text"><b>التمديدات الكهروميكانيكية:</b> تداخل في جداول التنفيذ بين المقاولين الفرعيين.</div>
+                </div>
+                <div class="critical-item">
+                    <div class="dot"></div>
+                    <div class="critical-text"><b>أعمال التشطيبات النهائية:</b> قيود لوجستية في الموقع تؤخر بدء المرحلة القادمة.</div>
+                </div>
+            </div>
+            <div class="dashed-divider"></div>
+            <div class="column right">
+                <h3 style="font-weight: 800; font-size: 24px; color: #0F172A;">تقييم المخاطر التشغيلية</h3>
+                <div class="risk-card">
+                    <div class="risk-header">
+                        <i class="fas fa-exclamation-triangle risk-icon"></i>
+                        <div class="risk-title">تأخر التوريدات الخارجية</div>
+                    </div>
+                    <p class="risk-body">تأثر سلاسل الإمداد العالمية يؤدي إلى نقص في المواد المتخصصة المطلوبة للواجهات.</p>
+                    <div class="impact-tag">أثر مرتفع على الجدول الزمني</div>
+                </div>
+                <div class="risk-card">
+                    <div class="risk-header">
+                        <i class="fas fa-clock risk-icon"></i>
+                        <div class="risk-title">انحراف المسار الحرج</div>
+                    </div>
+                    <p class="risk-body">تراكم التأخيرات في البنود التأسيسية يهدد تاريخ التسليم النهائي المتفق عليه.</p>
+                    <div class="impact-tag">يتطلب تدخل إداري فوري</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

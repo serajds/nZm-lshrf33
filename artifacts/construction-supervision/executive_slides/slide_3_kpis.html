@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@300;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1"></script>
+    <style>
+      .slide-container {
+        width: 1280px;
+        min-height: 720px;
+        background: #F8FAFC;
+        padding-top: 60px;
+        padding-left: 80px;
+        padding-right: 80px;
+        font-family: 'Noto Sans Arabic', sans-serif;
+        box-sizing: border-box;
+      }
+      .section-title {
+        font-weight: 800;
+        font-size: 48px;
+        color: #0F172A;
+        margin-bottom: 40px;
+        border-right: 8px solid #E11D48;
+        padding-right: 20px;
+      }
+      .kpi-row {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 20px;
+        gap: 40px;
+      }
+      .kpi-item {
+        flex: 1;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 30px;
+        text-align: center;
+      }
+      .big-number {
+        font-weight: 800;
+        font-size: 84px;
+        color: #0F172A;
+        line-height: 1;
+        margin-bottom: 12px;
+      }
+      .kpi-label {
+        font-weight: 300;
+        font-size: 20px;
+        color: #64748B;
+      }
+      .deviation-risk { color: #E11D48; }
+      .deviation-good { color: #0D9488; }
+      .chart-container {
+        margin-top: 40px;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 20px;
+        height: 250px;
+      }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <h2 class="section-title">مؤشرات الأداء الرئيسية (KPIs)</h2>
+        <div class="kpi-row">
+            <div class="kpi-item">
+                <div class="big-number">72.4%</div>
+                <div class="kpi-label">الإنجاز الفعلي</div>
+            </div>
+            <div class="kpi-item">
+                <div class="big-number">85.0%</div>
+                <div class="kpi-label">الإنجاز المخطط</div>
+            </div>
+            <div class="kpi-item">
+                <div class="big-number deviation-risk">-12.6%</div>
+                <div class="kpi-label">الانحراف عن الخطة</div>
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="progressChart"></canvas>
+        </div>
+    </div>
+    <script>
+        const ctx = document.getElementById('progressChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['الإنجاز الفعلي', 'الإنجاز المخطط'],
+                datasets: [{
+                    label: 'نسبة التقدم %',
+                    data: [72.4, 85.0],
+                    backgroundColor: ['#0D9488', '#0F172A'],
+                    borderRadius: 5,
+                    barThickness: 100
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { max: 100, grid: { display: false } },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

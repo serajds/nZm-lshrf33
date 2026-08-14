@@ -25,18 +25,46 @@ export function roundPercent(n: number | null | undefined): number {
  * schedule — those are never counted as delayed.
  */
 export function isActivityDelayed(
-  activity: { plannedEndDate: string | null; status: string; actualProgress: number },
+  activity: { 
+    plannedStartDate?: string | null; 
+    plannedEndDate: string | null; 
+    actualEndDate?: string | null;
+    status: string; 
+    actualProgress: number 
+  },
   today: Date = new Date(),
   noSchedule: boolean = false,
 ): boolean {
   if (noSchedule) return false;
-  if (activity.status === "completed") return false;
-  if (activity.actualProgress >= 100) return false;
-  if (!activity.plannedEndDate) return false;
-  const plannedEnd = new Date(activity.plannedEndDate);
-  plannedEnd.setHours(0, 0, 0, 0);
+  
+  const startOfDay = (d: string | null | undefined) => {
+    if (!d) return null;
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return null;
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
+
   const t = new Date(today.getTime());
   t.setHours(0, 0, 0, 0);
+  const plannedEnd = startOfDay(activity.plannedEndDate);
+  const plannedStart = startOfDay(activity.plannedStartDate);
+
+  // Case 1: Completed but was late
+  if (activity.status === "completed" || activity.actualProgress >= 100) {
+    if (!plannedEnd) return false;
+    const actualEnd = startOfDay(activity.actualEndDate) || t; 
+    return actualEnd > plannedEnd;
+  }
+
+  // Case 2: Not started but start date passed
+  if (activity.status === "not_started" && activity.actualProgress <= 0) {
+    if (!plannedStart) return false;
+    return t > plannedStart;
+  }
+
+  // Case 3: In progress but end date passed
+  if (!plannedEnd) return false;
   return t > plannedEnd;
 }
 

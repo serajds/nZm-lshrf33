@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@300;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+      .slide-container {
+        width: 1280px;
+        min-height: 720px;
+        background: #F8FAFC;
+        padding-top: 60px; /* keep upper padding for title consistency */
+        padding-left: 80px;
+        padding-right: 80px;
+        font-family: 'Noto Sans Arabic', sans-serif;
+        box-sizing: border-box;
+        position: relative;
+      }
+      .section-title {
+        font-weight: 800;
+        font-size: 48px;
+        color: #0F172A;
+        margin-bottom: 24px; /* reduced from 40px to save vertical space */
+        border-right: 8px solid #0D9488;
+        padding-right: 20px;
+      }
+      .analysis-grid {
+        display: grid;
+        grid-template-columns: 1.5fr 1fr;
+        gap: 20px; /* reduced horizontal gap */
+        margin-top: 12px; /* reduced from 20px */
+      }
+      .text-content {
+        display: flex;
+        flex-direction: column;
+        gap: 6px; /* reduced vertical gap between items */
+      }
+      .analysis-item {
+        display: flex;
+        gap: 8px;
+      }
+      .divider {
+        width: 1px;
+        border-left: 1px dashed #CBD5E1;
+        height: auto;
+        align-self: stretch;
+      }
+      .item-body {
+        flex: 1;
+      }
+      .item-title {
+        font-weight: 800;
+        font-size: 22px;
+        color: #0F172A;
+        margin-bottom: 6px; /* tightened */
+      }
+      .item-text {
+        font-weight: 300;
+        font-size: 18px;
+        color: #334155;
+        line-height: 1.6; /* slightly tightened from 1.8 */
+        margin: 0;
+      }
+      .focus-box {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 8px; /* reduced padding to cut vertical space */
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .oversized-num {
+        font-weight: 800;
+        font-size: 120px;
+        color: #E11D48;
+        line-height: 1;
+      }
+      .num-label {
+        font-weight: 300;
+        font-size: 24px;
+        color: #64748B;
+        margin-top: 6px;
+      }
+      .tag {
+        display: inline-block;
+        padding: 6px 16px;
+        background: #FEE2E2;
+        color: #B91C1C;
+        font-weight: 800;
+        font-size: 14px;
+        border-radius: 4px;
+        margin-top: 8px; /* tightened */
+        align-self: center;
+      }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <h2 class="section-title">قراءة الأداء والتحليل التنفيذي</h2>
+        <div class="analysis-grid">
+            <div class="text-content">
+                <div class="analysis-item">
+                    <div class="divider"></div>
+                    <div class="item-body">
+                        <h3 class="item-title">التقييم الكمي للفجوة الزمنية</h3>
+                        <p class="item-text">الإنجاز الفعلي 72.4% مقابل المخطط 85.0% — انحراف يتطلب تدخلًا فوريًا لتعديل المسار.</p>
+                    </div>
+                </div>
+                <div class="analysis-item">
+                    <div class="divider"></div>
+                    <div class="item-body">
+                        <h3 class="item-title">أثر التوقفات المعتمدة</h3>
+                        <p class="item-text">15 يوم توقف مشروعة تقلل صافي الانحراف، لكن تأخر توريد المواد يؤثر على المسار الحرج.</p>
+                    </div>
+                </div>
+                <div class="analysis-item">
+                    <div class="divider"></div>
+                    <div class="item-body">
+                        <h3 class="item-title">ملاحظات القرار الإداري</h3>
+                        <p class="item-text">توجيه بزيادة الموارد في بنود التشطيبات وتوسيع ساعات العمل لتعويض التأخير.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="focus-box">
+                <div class="oversized-num">42</div>
+                <div class="num-label">يوم تأخير إجمالي</div>
+                <div class="tag">تنبيه: انحراف حرج</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

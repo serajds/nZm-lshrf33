@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useGetProject, processFetchResponse } from "@workspace/api-client-react";
+import { useGetProject } from "@workspace/api-client-react";
 import { useMyProjectPermissions, useTabAccess } from "@/hooks/use-tab-access";
 import { useAuth } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -26,16 +26,14 @@ import { SiteGeofenceMap } from "@/components/site-geofence-map";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
-async function authFetch(url: string, init?: RequestInit) {
+function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
   const headers: Record<string, string> = { ...((init?.headers as Record<string, string>) ?? {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (init?.body && !(init.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  const response = await fetch(url, { ...init, headers });
-  await processFetchResponse(response);
-  return response;
+  return fetch(url, { ...init, headers });
 }
 
 interface AttendanceRecordWithUser {
@@ -273,14 +271,14 @@ export default function ProjectAttendance() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start gap-3">
-        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <div className="page-hero flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name ?? "المشروع"}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">حضور وانصراف الطاقم</p>
+          <h1 className="relative z-10 text-lg font-bold leading-tight text-white md:text-2xl">{project?.name ?? "المشروع"}</h1>
+          <p className="relative z-10 mt-1 text-sm text-white/65">حضور وانصراف الطاقم</p>
         </div>
       </div>
 
@@ -304,7 +302,7 @@ export default function ProjectAttendance() {
       ) : (
       <Tabs dir="rtl" defaultValue={isManager ? "active" : "my-history"} className="w-full">
         <div className="-mx-4 sm:mx-0 overflow-x-auto">
-          <TabsList className="inline-flex w-max min-w-full sm:w-full sm:min-w-0 sm:flex-wrap h-auto px-4 sm:px-1 gap-1">
+          <TabsList className="inline-flex h-auto min-w-full w-max gap-1 rounded-2xl border border-border/70 bg-card/80 p-1.5 shadow-sm sm:w-full sm:min-w-0 sm:flex-wrap">
             {isManager && <TabsTrigger value="active" className="whitespace-nowrap">الحاضرون الآن</TabsTrigger>}
             {canSelfCheck && <TabsTrigger value="my-history" className="whitespace-nowrap">سجلّي</TabsTrigger>}
             {isManager && <TabsTrigger value="history" className="whitespace-nowrap">سجل المشروع</TabsTrigger>}
@@ -400,7 +398,7 @@ function SelfCheckCard({
   const hasLocation = !!project?.siteLatitude && !!project?.siteLongitude;
 
   return (
-    <Card>
+    <Card className="surface-card surface-card-hover">
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           {isCheckedIn ? (
@@ -469,10 +467,10 @@ function ActiveTab({
   onShowPhoto: (url: string) => void;
   onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
 }) {
-  if (loading) return <Card><CardContent className="py-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin inline-block" /></CardContent></Card>;
+  if (loading) return <Card className="surface-card surface-card-hover"><CardContent className="py-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin inline-block" /></CardContent></Card>;
 
   return (
-    <Card>
+    <Card className="surface-card surface-card-hover">
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -611,7 +609,7 @@ function MyHistoryTab({ projectId, onShowPhoto, onShowMap }: {
   });
 
   return (
-    <Card>
+    <Card className="surface-card surface-card-hover">
       <CardHeader>
         <CardTitle className="text-base">سجلّي في هذا المشروع</CardTitle>
       </CardHeader>
@@ -677,7 +675,7 @@ function ProjectHistoryTab({ projectId, onShowPhoto, onShowMap }: {
   }, [rows]);
 
   return (
-    <Card>
+    <Card className="surface-card surface-card-hover">
       <CardHeader>
         <CardTitle className="text-base">سجل المشروع</CardTitle>
       </CardHeader>
@@ -1176,7 +1174,7 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
   }
 
   return (
-    <Card>
+    <Card className="surface-card surface-card-hover">
       <CardHeader>
         <CardTitle className="text-base">تقرير حضور موظف</CardTitle>
       </CardHeader>
@@ -1437,7 +1435,7 @@ function SiteSettingsTab({ projectId, onUpdated }: { projectId: number; onUpdate
   })();
 
   return (
-    <Card>
+    <Card className="surface-card surface-card-hover">
       <CardHeader>
         <CardTitle className="text-base">إعدادات موقع المشروع (Geofence)</CardTitle>
       </CardHeader>

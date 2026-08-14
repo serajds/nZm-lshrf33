@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useGetProject, processFetchResponse } from "@workspace/api-client-react";
+import { useGetProject } from "@workspace/api-client-react";
 import { useMyProjectPermissions, useTabAccess } from "@/hooks/use-tab-access";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,9 +38,9 @@ import { fmtDate } from "@/lib/utils";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
-async function authFetch(url: string, init?: RequestInit) {
+function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
-  const response = await fetch(url, {
+  return fetch(url, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -48,8 +48,6 @@ async function authFetch(url: string, init?: RequestInit) {
       ...(init?.headers ?? {}),
     },
   });
-  await processFetchResponse(response);
-  return response;
 }
 
 type FieldType = "text" | "textarea" | "number" | "date" | "select" | "checklist_qty" | "table" | "section";
@@ -195,7 +193,7 @@ function TemplateBuilder({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1600px] space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2">
           <Label className="text-sm font-semibold">اسم النموذج *</Label>
@@ -598,7 +596,7 @@ function FormFiller({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1600px] space-y-6">
       <ProjectInfoHeader project={project} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -909,7 +907,7 @@ function SubmissionViewer({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1600px] space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-lg">{template.name}</h3>
@@ -1277,20 +1275,20 @@ export default function ProjectForms() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start gap-3">
-        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <div className="page-hero flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">النماذج</p>
+          <h1 className="relative z-10 text-lg font-bold leading-tight text-white md:text-2xl">{project?.name}</h1>
+          <p className="relative z-10 mt-1 text-sm text-white/65">النماذج</p>
         </div>
       </div>
 
       <ProjectNav projectId={projectId} />
 
-      <div className="flex gap-2 border-b pb-2">
+      <div className="flex gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-card/80 p-1.5 shadow-sm">
         <Button
           variant={activeTab === "templates" ? "default" : "ghost"}
           size="sm"
@@ -1337,7 +1335,7 @@ export default function ProjectForms() {
           ) : (
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {templates.map(t => (
-                <Card key={t.id} className="hover:shadow-md transition-shadow">
+                <Card key={t.id} className="surface-card surface-card-hover">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-2">
                       <div>
