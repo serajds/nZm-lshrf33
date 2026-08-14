@@ -19,4 +19,4 @@ externalPort = 3000
 [userenv]
 
 [userenv.shared]
-OPENAI_API_BASE = "https://api.openai.com/v1"
+OPENAI_API_BASE = "https://api.groq.com/openai/v1"

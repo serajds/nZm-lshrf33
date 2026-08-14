@@ -111,7 +111,8 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
   const projectId = parseInt(raw, 10);
   const { imageGroups, technicalNotes, recommendations } = req.body;
 
-  if (!process.env.OPENAI_API_KEY) {
+  const aiApiKey = process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY;
+  if (!aiApiKey) {
     res.status(503).json({ error: "خدمة الذكاء الاصطناعي غير مهيأة" });
     return;
   }
@@ -165,15 +166,15 @@ ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendat
 أجب بتنسيق JSON فقط:
 {"workDescription":"...","technicalNotes":"...","recommendations":"..."}`;
 
-    const apiBase = (process.env.OPENAI_API_BASE ?? "https://api.openai.com/v1").replace(/\/$/, "");
+    const apiBase = (process.env.OPENAI_API_BASE ?? "https://api.groq.com/openai/v1").replace(/\/$/, "");
     const response = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${aiApiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "llama-3.3-70b-versatile",
         messages: [
           {
             role: "system",

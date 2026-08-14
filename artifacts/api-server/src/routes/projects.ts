@@ -626,14 +626,16 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
       }
     ];
 
-    const response = await fetch(`${process.env.OPENAI_API_BASE}/chat/completions`, {
+    const aiApiKey = process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY;
+    const apiBase = (process.env.OPENAI_API_BASE ?? "https://api.groq.com/openai/v1").replace(/\/$/, "");
+    const response = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+        "Authorization": `Bearer ${aiApiKey}`
       },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
+        model: "llama-3.3-70b-versatile",
         messages,
         response_format: { type: "json_object" },
         temperature: 0.2,
