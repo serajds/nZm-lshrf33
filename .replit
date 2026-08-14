@@ -16,6 +16,11 @@ externalPort = 3001
 localPort = 22349
 externalPort = 3000
 
+[deployment]
+deploymentTarget = "autoscale"
+build = ["pnpm", "run", "build"]
+run = ["node", "artifacts/api-server/dist/index.mjs"]
+
 [userenv]
 
 [userenv.shared]
