@@ -123580,14 +123580,16 @@ router3.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("p
 \u0623\u0639\u062F JSON \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u0641\u0642\u0637\u060C \u0648\u0627\u062C\u0639\u0644 \u0627\u0644\u062A\u062D\u0644\u064A\u0644 \u0645\u0641\u064A\u062F\u0627\u064B \u0644\u0627\u062A\u062E\u0627\u0630 \u0627\u0644\u0642\u0631\u0627\u0631 \u0648\u0644\u064A\u0633 \u0645\u062C\u0631\u062F \u0625\u0639\u0627\u062F\u0629 \u0639\u0631\u0636 \u0644\u0644\u0623\u0631\u0642\u0627\u0645.`
       }
     ];
-    const response = await fetch(`${process.env.OPENAI_API_BASE}/chat/completions`, {
+    const aiApiKey = process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY;
+    const apiBase = (process.env.OPENAI_API_BASE ?? "https://api.groq.com/openai/v1").replace(/\/$/, "");
+    const response = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+        "Authorization": `Bearer ${aiApiKey}`
       },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
+        model: "llama-3.3-70b-versatile",
         messages,
         response_format: { type: "json_object" },
         temperature: 0.2,
@@ -124248,7 +124250,8 @@ router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proj
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const { imageGroups, technicalNotes, recommendations } = req.body;
-  if (!process.env.OPENAI_API_KEY) {
+  const aiApiKey = process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY;
+  if (!aiApiKey) {
     res.status(503).json({ error: "\u062E\u062F\u0645\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A \u063A\u064A\u0631 \u0645\u0647\u064A\u0623\u0629" });
     return;
   }
@@ -124287,15 +124290,15 @@ ${recommendations}` : ""}
 
 \u0623\u062C\u0628 \u0628\u062A\u0646\u0633\u064A\u0642 JSON \u0641\u0642\u0637:
 {"workDescription":"...","technicalNotes":"...","recommendations":"..."}`;
-    const apiBase = (process.env.OPENAI_API_BASE ?? "https://api.openai.com/v1").replace(/\/$/, "");
+    const apiBase = (process.env.OPENAI_API_BASE ?? "https://api.groq.com/openai/v1").replace(/\/$/, "");
     const response = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+        "Authorization": `Bearer ${aiApiKey}`
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "llama-3.3-70b-versatile",
         messages: [
           {
             role: "system",
