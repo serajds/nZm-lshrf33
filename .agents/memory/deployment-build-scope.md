@@ -1,13 +1,34 @@
 ---
 name: Deployment build scope (pnpm workspace)
-description: What the root `pnpm run build` must and must not build for the autoscale deployment
+description: What the root `pnpm run build` must and must not build for the autoscale deployment, and how the multi-artifact run is configured
 ---
 
-The autoscale deployment (`.replit` [deployment]) runs ONLY the api-server (`node artifacts/api-server/dist/index.mjs`), which serves the built construction-supervision web frontend. Its build command is `pnpm run build`.
+This is a **multi-artifact monorepo**. Each artifact under `artifacts/` has its own `.replit-artifact/artifact.toml` that defines its own `[services.production]` build and run commands. The platform's multi-artifact orchestrator reads these to start each service independently.
 
-Two things break a deploy build and must stay configured:
+## Correct root `.replit` [deployment] section
 
-- **Exclude the Expo mobile artifact from the recursive build.** Root `build` uses `pnpm -r --if-present --filter=!@workspace/mobile run build`. The mobile `build` (`node scripts/build.js`) downloads bundles from a running Metro server and fails in the deploy build env ("Download failed: terminated"). The mobile app ships via Expo Go separately, not through this autoscale build.
-- **Dev-only canvas tool (`mockup-sandbox`) is excluded from the root typecheck.** The root `typecheck` script uses `--filter "!@workspace/mockup-sandbox"` to skip it entirely — it has a duplicate `@types/react` conflict that breaks the build. `construction-supervision` still runs typecheck with `|| true` as a soft gate. After any snapshot import verify both: (1) root `package.json` typecheck filter excludes mockup-sandbox, (2) construction-supervision `package.json` has `|| true`. They emit type errors from a duplicate `@types/react` (19.1.17 from Expo vs 19.2.14 from web/radix), e.g. the `--radix-${string}` CSSProperties index-signature mismatch in shadcn `calendar.tsx`/`tooltip.tsx`/`spinner.tsx`. These are environmental, not real bugs, and Vite build does not typecheck so runtime is unaffected.
+```toml
+[deployment]
+deploymentTarget = "autoscale"
+build = ["pnpm", "run", "build"]
+```
 
-**Why:** a single autoscale service builds and runs one app; pulling the whole monorepo (mobile static export + strict typecheck of dev tools) into that build introduces failures unrelated to what actually gets deployed.
+**DO NOT add a `run` key to the root `[deployment]` section.** Adding `run` overrides the multi-artifact orchestrator and makes the deployment start only that one process, causing health checks on `/mobile/` and `/api` to fail and the promote step to fail with "Creating Autoscale service" error.
+
+The production services are:
+- `artifacts/api-server` → port 8080, path `/api`, run: `node --enable-source-maps artifacts/api-server/dist/index.mjs`
+- `artifacts/construction-supervision` → static, path `/`, publicDir: `artifacts/construction-supervision/dist/public`
+- `artifacts/mobile` → port 18115, path `/mobile/`, run: `pnpm --filter @workspace/mobile run serve`
+
+## Build scope rules
+
+- **Exclude `mockup-sandbox` from root typecheck.** Root `typecheck` uses `--filter "!@workspace/mockup-sandbox"`. It has a duplicate `@types/react` conflict (19.1.17 from Expo vs 19.2.14). `construction-supervision` still runs with `|| true`. After any snapshot import, verify both.
+- The root build (`pnpm run typecheck && pnpm -r --if-present run build`) runs ALL artifact builds including mobile Metro bundler — this is fine and expected.
+
+## After any snapshot import, always verify:
+1. Root `.replit` has `[deployment]` with ONLY `deploymentTarget` + `build` (NO `run`)
+2. Root `package.json` typecheck filter excludes `@workspace/mockup-sandbox`
+3. `artifacts/construction-supervision/package.json` typecheck has `|| true`
+4. Each `artifacts/*/._replit-artifact/artifact.toml` is intact (do not overwrite these)
+
+**Why:** `run` in root deployment was added as a guess but the real run orchestration lives in each artifact's `artifact.toml`. Snapshot imports strip `.replit` and these constraints must be manually restored.
