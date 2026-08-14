@@ -1,4 +1,5 @@
 #!/bin/bash
 set -e
-pnpm install --frozen-lockfile
-pnpm --filter db push
+
+# Install / sync dependencies after every task merge
+pnpm install --frozen-lockfile=false

@@ -23,7 +23,7 @@ The production services are:
 ## Build scope rules
 
 - **Exclude `mockup-sandbox` from root typecheck.** Root `typecheck` uses `--filter "!@workspace/mockup-sandbox"`. It has a duplicate `@types/react` conflict (19.1.17 from Expo vs 19.2.14). `construction-supervision` still runs with `|| true`. After any snapshot import, verify both.
-- The root build (`pnpm run typecheck && pnpm -r --if-present run build`) runs ALL artifact builds including mobile Metro bundler — this is fine and expected.
+- **Exclude `@workspace/mobile` from the root recursive build.** Root `build` must use `pnpm -r --if-present --filter=!@workspace/mobile run build`. The mobile Metro bundler cannot run in the deployment build environment (fails with "Download failed: terminated"); mobile is built separately by its own `artifact.toml` `[services.production]` build command.
 
 ## After any snapshot import, always verify:
 1. Root `.replit` has `[deployment]` with ONLY `deploymentTarget` + `build` (NO `run`)
