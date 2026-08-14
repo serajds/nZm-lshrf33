@@ -122557,8 +122557,8 @@ var bcryptjs_default = {
 };
 
 // src/lib/auth.ts
-var JWT_SECRET = process.env.JWT_SECRET ?? (process.env.NODE_ENV === "production" ? (() => {
-  throw new Error("JWT_SECRET environment variable is required in production");
+var JWT_SECRET = process.env.JWT_SECRET ?? process.env.SESSION_SECRET ?? (process.env.NODE_ENV === "production" ? (() => {
+  throw new Error("JWT_SECRET or SESSION_SECRET environment variable is required in production");
 })() : "engineering-supervision-dev-secret-key");
 var JWT_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
 var JWT_RENEWAL_THRESHOLD_SECONDS = Math.floor(JWT_LIFETIME_SECONDS / 2);

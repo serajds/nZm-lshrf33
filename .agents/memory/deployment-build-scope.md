@@ -25,6 +25,10 @@ The production services are:
 - **Exclude `mockup-sandbox` from root typecheck.** Root `typecheck` uses `--filter "!@workspace/mockup-sandbox"`. It has a duplicate `@types/react` conflict (19.1.17 from Expo vs 19.2.14). `construction-supervision` still runs with `|| true`. After any snapshot import, verify both.
 - **Exclude `@workspace/mobile` from the root recursive build.** Root `build` must use `pnpm -r --if-present --filter=!@workspace/mobile run build`. The mobile Metro bundler cannot run in the deployment build environment (fails with "Download failed: terminated"); mobile is built separately by its own `artifact.toml` `[services.production]` build command.
 
+## Critical: JWT_SECRET in production
+
+`artifacts/api-server/src/lib/auth.ts` throws at startup in production if neither `JWT_SECRET` nor `SESSION_SECRET` is set. The fix already applied: use `SESSION_SECRET` as a fallback (`JWT_SECRET ?? SESSION_SECRET ?? throw`). If the server crashes immediately in production with no port opened and `/api` returns 500, test with: `PORT=8082 NODE_ENV=production node --enable-source-maps artifacts/api-server/dist/index.mjs` from the workspace root.
+
 ## After any snapshot import, always verify:
 1. Root `.replit` has `[deployment]` with ONLY `deploymentTarget` + `build` (NO `run`)
 2. Root `package.json` typecheck filter excludes `@workspace/mockup-sandbox`
