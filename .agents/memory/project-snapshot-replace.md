@@ -15,4 +15,6 @@ When the user asks to replace the current project with a GitHub snapshot that is
 - The snapshot's `pnpm-workspace.yaml` may carry a malformed `onlyBuiltDependencies: sharp` (scalar). pnpm install then dies with `settings.onlyBuiltDependencies.push is not a function`. Fix it to a YAML list (`- sharp` / `- esbuild`) before installing.
 - After copying, run `pnpm install` (package.json/lockfile may change), then restart all workflows. The live file-swap + reinstall throws transient vite/metro errors (missing vite.config, tailwind not found, uv_cwd) under the running servers — a clean restart clears them.
 
+- The `.replit` file is protected from `cp` overwrites (env-managed). However, after a ZIP import the Replit system may silently DROP the `[deployment]` section if the imported archive had a different or missing `.replit`. Always verify `.replit` contains `[deployment]` with `deploymentTarget`, `build`, and `run` after any snapshot import. The correct deployment config is: `deploymentTarget = "autoscale"`, `build = ["pnpm", "run", "build"]`, `run = ["node", "artifacts/api-server/dist/index.mjs"]`. Fix it by writing a new file and calling `verifyAndReplaceDotReplit`.
+
 **Why:** a full `rm -rf` + recopy of the whole workspace destroys the Replit environment (skills, version control, installed deps) and is unrecoverable.
