@@ -5,6 +5,8 @@ import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectManager } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
+import fs from "fs";
+import path from "path";
 
 type ImageGroup = { category: string; urls: string[] };
 
@@ -105,6 +107,115 @@ const flattenImageGroups = (groups: ImageGroup[]): string[] => {
 };
 
 const router: IRouter = Router();
+
+router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
+  const projectId = parseInt(raw, 10);
+  const { imageGroups, technicalNotes, recommendations } = req.body;
+
+  try {
+    const currentActivities = await db.select().from(activitiesTable)
+      .where(and(
+        eq(activitiesTable.projectId, projectId),
+        eq(activitiesTable.status, "in_progress")
+      ))
+      .orderBy(activitiesTable.sortOrder);
+
+    const activitiesText = currentActivities.map(a => `- ${a.name}: (الإنجاز: ${a.actualProgress}%)`).join("\n");
+    
+    const imageUrls: string[] = [];
+    if (Array.isArray(imageGroups)) {
+      for (const group of imageGroups) {
+        if (group.urls && Array.isArray(group.urls)) {
+          imageUrls.push(...group.urls);
+        }
+      }
+    }
+
+    const messages: any[] = [
+      {
+        role: "system",
+        content: "أنت وكيل ذكاء اصطناعي متخصص في الإشراف الهندسي وإدارة المشاريع الإنشائية. مهمتك هي صياغة تقرير مهني باللغة العربية بناءً على البيانات المقدمة."
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `يرجى صياغة تقرير فني للمشروع بناءً على المعلومات التالية:
+            
+البنود الحالية قيد التنفيذ:
+${activitiesText || "لا توجد بنود محددة قيد التنفيذ حالياً."}
+
+ملاحظات فنية إضافية من المستخدم:
+${technicalNotes || "لا توجد ملاحظات إضافية."}
+
+توصيات إضافية من المستخدم:
+${recommendations || "لا توجد توصيات إضافية."}
+
+المطلوب صياغة ثلاثة أقسام:
+1. وصف الأعمال المنجزة (workDescription): صياغة مهنية لما تم إنجازه بناءً على البنود والصور.
+2. الملاحظات الفنية (technicalNotes): تحليل لأي معوقات أو ملاحظات فنية تظهر من البيانات أو الصور.
+3. التوصيات (recommendations): مقترحات لخطوات العمل القادمة.
+
+يجب أن تكون الصياغة مهنية، دقيقة، وباللغة العربية الفصحى المستخدمة في التقارير الهندسية.
+أجب بتنسيق JSON فقط كالتالي:
+{
+  "workDescription": "...",
+  "technicalNotes": "...",
+  "recommendations": "..."
+}`
+          }
+        ]
+      }
+    ];
+
+    // Add images if available
+    if (imageUrls.length > 0) {
+      const uploadsDir = path.join(process.cwd(), "uploads");
+      for (const url of imageUrls.slice(0, 5)) { // Limit to 5 images for the draft
+        const filename = url.split("/").pop();
+        if (filename) {
+          const filePath = path.join(uploadsDir, filename);
+          if (fs.existsSync(filePath)) {
+            const base64Image = fs.readFileSync(filePath).toString("base64");
+            messages[1].content.push({
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${base64Image}`
+              }
+            });
+          }
+        }
+      }
+    }
+
+    const response = await fetch(`${process.env.OPENAI_API_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        messages,
+        response_format: { type: "json_object" }
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`AI API error: ${error}`);
+    }
+
+    const result = (await response.json()) as any;
+    const content = JSON.parse(result.choices[0].message.content);
+    res.json(content);
+  } catch (error) {
+    console.error("AI Draft error:", error);
+    res.status(500).json({ error: "فشل الذكاء الاصطناعي في صياغة التقرير" });
+  }
+});
 
 router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;

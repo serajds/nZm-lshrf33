@@ -25,21 +25,18 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, Edit2, Building2, Upload, Phone, Mail, MapPin, Image } from "lucide-react";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { processFetchResponse } from "@workspace/api-client-react";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
-async function authFetch(url: string, init?: RequestInit) {
+function authFetch(url: string, init?: RequestInit) {
   const token = localStorage.getItem("auth_token");
-  const response = await fetch(url, {
+  return fetch(url, {
     ...init,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   });
-  await processFetchResponse(response);
-  return response;
 }
 
 interface Company {
@@ -206,20 +203,20 @@ export default function Companies() {
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-amber-500/10 rounded-xl">
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <div className="page-hero flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="rounded-2xl bg-white/10 p-3 text-amber-200 ring-1 ring-white/10">
             <Building2 className="h-6 w-6 text-amber-600" />
           </div>
           <div>
-            <h1 className="text-lg md:text-2xl font-bold">إدارة الشركات</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">الشركات المالكة والمقاولين وجهات الإشراف</p>
+            <h1 className="relative z-10 text-lg font-bold text-white md:text-2xl">إدارة الشركات</h1>
+            <p className="relative z-10 mt-1 text-sm text-white/65">الشركات المالكة والمقاولين وجهات الإشراف</p>
           </div>
         </div>
         <div className="flex gap-2 items-center">
           <Select value={typeFilter ?? "all"} onValueChange={(v) => setTypeFilter(v === "all" ? null : v)} dir="rtl">
-            <SelectTrigger className="w-[140px]"><SelectValue placeholder="الكل" /></SelectTrigger>
+            <SelectTrigger className="relative z-10 w-[140px] border-white/20 bg-white/10 text-white"><SelectValue placeholder="الكل" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">الكل</SelectItem>
               <SelectItem value="owner">مالك</SelectItem>
@@ -227,7 +224,7 @@ export default function Companies() {
               <SelectItem value="supervisor">إشراف</SelectItem>
             </SelectContent>
           </Select>
-          <Button className="gap-2" onClick={openCreate}>
+          <Button className="relative z-10 gap-2 bg-white text-primary shadow-lg hover:bg-white/90" onClick={openCreate}>
             <Plus className="h-4 w-4" />
             شركة جديدة
           </Button>
@@ -239,7 +236,7 @@ export default function Companies() {
         if (!open) { setEditingCompany(null); form.reset(); setLogoFile(null); setLogoPreview(null); }
       }}>
         <DialogContent className="sm:max-w-[650px] p-0 overflow-hidden" dir="rtl">
-          <div className="bg-gradient-to-br from-amber-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+          <div className="bg-amber-500/5 p-6 pb-4 border-b border-border/50">
             <DialogHeader>
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-amber-500/10 rounded-xl">
@@ -259,7 +256,7 @@ export default function Companies() {
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-4 space-y-8">
                 
-                <div className="flex flex-col items-center justify-center p-6 bg-gradient-to-br from-muted/30 to-background rounded-2xl border shadow-sm">
+                <div className="flex flex-col items-center justify-center p-6 bg-muted/30 rounded-2xl border shadow-sm">
                   <div className="flex flex-col items-center gap-4">
                     <div
                       className="w-28 h-28 rounded-2xl border-2 border-dashed border-border/60 hover:border-amber-500/50 flex items-center justify-center cursor-pointer transition-all overflow-hidden bg-background hover:bg-amber-500/5 shadow-sm group"
@@ -294,7 +291,7 @@ export default function Companies() {
                     البيانات الأساسية
                   </h3>
                   
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-muted/30 shadow-sm">
                     <FormField
                       control={form.control}
                       name="name"
@@ -396,7 +393,7 @@ export default function Companies() {
       {isLoading ? (
         <LoadingSpinner text="جاري تحميل الشركات..." />
       ) : filtered.length === 0 ? (
-        <Card>
+        <Card className="surface-card surface-card-hover">
           <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <Building2 className="h-12 w-12 mb-4" />
             <p className="text-lg font-semibold">لا توجد شركات</p>
@@ -406,7 +403,7 @@ export default function Companies() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((company) => (
-            <Card key={company.id} className="relative group hover:shadow-md transition-shadow">
+            <Card key={company.id} className="surface-card surface-card-hover relative group">
               <CardContent className="p-5">
                 <div className="flex items-start gap-4">
                   <div className="w-16 h-16 rounded-xl border bg-gray-50 flex items-center justify-center flex-shrink-0 overflow-hidden">

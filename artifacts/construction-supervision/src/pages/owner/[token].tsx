@@ -155,7 +155,7 @@ export default function OwnerPortal() {
     const hasLogos = !!(ownerLogo?.logoUrl || supervisorLogo?.logoUrl);
 
     return (
-      <div className="min-h-screen flex" dir="rtl">
+      <div className="min-h-screen flex bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/.12),transparent_34%),linear-gradient(135deg,hsl(var(--background)),hsl(var(--muted)/.28))]" dir="rtl">
         <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 30%, #d1fae5 60%, #a7f3d0 100%)' }}>
           <div className="absolute inset-0 opacity-[0.4]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='%2310b981' fill-opacity='0.06'%3E%3Cpath d='M0 0h40v40H0V0zm40 40h40v40H40V40zm0-40h2l-2 2V0zm0 4l4-4h2l-6 6V4zm0 4l8-8h2L40 10V8zm0 4L52 0h2L40 14v-2zm0 4L56 0h2L40 18v-2zm0 4L60 0h2L40 22v-2zm0 4L64 0h2L40 26v-2zm0 4L68 0h2L40 30v-2zm0 4L72 0h2L40 34v-2zm0 4L76 0h2L40 38v-2zm0 4L80 0v2L42 40h-2zm4 0L80 4v2L46 40h-2zm4 0L80 8v2L50 40h-2zm4 0l28-28v2L54 40h-2zm4 0l24-24v2L58 40h-2zm4 0l20-20v2L62 40h-2zm4 0l16-16v2L66 40h-2zm4 0l12-12v2L70 40h-2zm4 0l8-8v2l-6 6h-2zm4 0l4-4v2l-2 2h-2z'/%3E%3C/g%3E%3C/svg%3E")` }} />
 
@@ -207,7 +207,7 @@ export default function OwnerPortal() {
           </div>
         </div>
 
-        <div className="w-full lg:w-[45%] bg-white flex flex-col">
+        <div className="surface-card w-full lg:w-[45%] rounded-none border-0 shadow-2xl shadow-primary/10 flex flex-col">
           <div className="lg:hidden bg-gradient-to-b from-emerald-50 to-white border-b border-emerald-100/50 px-6 py-8 text-center">
             {hasLogos && (
               <div className="flex items-center justify-center gap-6 mb-5">
@@ -227,33 +227,33 @@ export default function OwnerPortal() {
             <h1 className="text-2xl font-black text-emerald-950">{projectInfo?.projectName || "بوابة المالك"}</h1>
           </div>
 
-          <div className="flex-1 flex items-center justify-center px-6 sm:px-10 py-12">
+          <div className="flex flex-1 items-center justify-center px-6 py-12 sm:px-10">
             <div className="w-full max-w-[380px]">
               <div className="mb-10">
-                <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mb-6">
+                <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/15">
                   <Lock className="w-5 h-5 text-emerald-600" />
                 </div>
-                <h2 className="text-[22px] font-bold text-gray-900 mb-2">تسجيل الدخول</h2>
-                <p className="text-gray-400 text-[14px]">أدخل كلمة المرور المزودة من قبل جهة الإشراف</p>
+                <h2 className="mb-2 text-[22px] font-bold text-foreground">تسجيل الدخول</h2>
+                <p className="text-[14px] text-muted-foreground">أدخل كلمة المرور المزودة من قبل جهة الإشراف</p>
               </div>
 
               <form onSubmit={handleLogin} className="space-y-6">
                 <div className="space-y-2.5">
                   <Label className="text-[13px] font-semibold text-gray-500 tracking-wide">كلمة المرور</Label>
                   <div className="relative group">
-                    <Lock className="absolute end-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-300 pointer-events-none transition-colors group-focus-within:text-emerald-500" />
+                    <Lock className="pointer-events-none absolute end-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
                     <Input
                       type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="h-[52px] pe-11 ps-11 text-right rounded-xl border-gray-200 bg-gray-50/60 text-gray-800 placeholder:text-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 focus:bg-white transition-all text-[15px]"
+                      className="h-[52px] rounded-xl border-border/70 bg-muted/30 pe-11 ps-11 text-right text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/10 focus:bg-background transition-all text-[15px]"
                       dir="ltr"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute start-4 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors"
+                      className="absolute start-4 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                     >
                       <Eye className="h-4 w-4" />
                     </button>

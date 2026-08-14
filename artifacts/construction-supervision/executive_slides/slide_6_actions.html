@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@300;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+      .slide-container {
+        width: 1280px;
+        min-height: 720px;
+        background: #F8FAFC;
+        padding-top: 60px; /* keep upper padding */
+        padding-left: 80px;
+        padding-right: 80px;
+        font-family: 'Noto Sans Arabic', sans-serif;
+        box-sizing: border-box;
+        position: relative;
+      }
+      .section-title {
+        font-weight: 800;
+        font-size: 48px;
+        color: #0F172A;
+        margin-bottom: 24px; /* reduced from 40 to save height */
+        border-right: 8px solid #0D9488;
+        padding-right: 20px;
+      }
+      .main-content {
+        display: flex;
+        gap: 24px; /* reduced from 40 */
+        margin-top: 24px; /* reduced from 40 */
+        align-items: flex-start;
+      }
+      .column {
+        flex: 1;
+      }
+      .dashed-divider {
+        width: 1px;
+        border-left: 2px dashed #CBD5E1;
+        height: auto;
+      }
+      .action-item {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 10px; /* reduced from 14 */
+        margin-bottom: 8px; /* reduced from 12 */
+        display: flex;
+        align-items: center;
+        gap: 12px; /* slightly smaller gap */
+      }
+      .action-icon {
+        width: 40px;
+        height: 40px;
+        background: #F1F5F9;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #E11D48;
+        font-size: 18px;
+        flex-shrink: 0;
+      }
+      .action-text {
+        font-weight: 300;
+        font-size: 18px; /* keep font size */
+        color: #334155;
+        line-height: 1.6;
+      }
+      .focus-box {
+        background: #0F172A;
+        color: #FFFFFF;
+        border-radius: 10px;
+        padding: 10px; /* reduced from 12 */
+        height: auto;
+      }
+      .focus-title {
+        font-weight: 800;
+        font-size: 24px;
+        margin-bottom: 8px; /* reduced from 12 */
+        color: #0D9488;
+      }
+      .focus-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .focus-list li {
+        font-weight: 300;
+        font-size: 18px;
+        margin-bottom: 8px; /* reduced from 12 */
+        display: flex;
+        gap: 12px;
+      }
+      .focus-list li i {
+        color: #0D9488;
+        margin-top: 4px;
+      }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <h2 class="section-title">الإجراءات التصحيحية وتوجيهات الإدارة العليا</h2>
+        <div class="main-content">
+            <div class="column">
+                <div class="action-item">
+                    <div class="action-icon"><i class="fas fa-bolt"></i></div>
+                    <div class="action-text">تكثيف العمالة والمعدات في البنود الحرجة لتقليص فجوة الانحراف الزمني.</div>
+                </div>
+                <div class="action-item">
+                    <div class="action-icon"><i class="fas fa-check-double"></i></div>
+                    <div class="action-text">اعتماد خطة زمنية تعويضية (Recovery Plan) ملزمة للمقاول خلال أسبوع.</div>
+                </div>
+                <div class="action-item">
+                    <div class="action-icon"><i class="fas fa-file-signature"></i></div>
+                    <div class="action-text">سرعة البت في أوامر التغيير العالقة لضمان استمرارية التدفقات النقدية.</div>
+                </div>
+                <div class="action-item">
+                    <div class="action-icon"><i class="fas fa-shield-alt"></i></div>
+                    <div class="action-text">تفعيل غرامات التأخير في حال عدم الالتزام بالجدول الزمني التعويضي.</div>
+                </div>
+            </div>
+            <div class="dashed-divider"></div>
+            <div class="column">
+                <div class="focus-box">
+                    <h3 class="focus-title">محاور المتابعة الاستراتيجية</h3>
+                    <ul class="focus-list">
+                        <li><i class="fas fa-crosshairs"></i> التركيز على توريد المواد طويلة الأمد (Long Lead Items) لتجنب توقفات مستقبلية.</li>
+                        <li><i class="fas fa-chart-line"></i> مراقبة مؤشر الأداء الأسبوعي ومقارنته بالمستهدفات التعويضية.</li>
+                        <li><i class="fas fa-users-cog"></i> تعزيز التنسيق بين جهة الإشراف والمقاول لتذليل العقبات الفنية فوراً.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@300;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+      /* remove default body margin so top offset is 0 (helps keep total below min-height overflow) */
+      body { margin: 0; }
+      .slide-container {
+        width: 1280px;
+        min-height: 720px; /* keep as required */
+        background: #F8FAFC;
+        padding-top: 60px; /* must not be changed */
+        padding-left: 80px;
+        padding-right: 80px;
+        font-family: 'Noto Sans Arabic', sans-serif;
+        box-sizing: border-box;
+        position: relative;
+        top: -2px; /* small upward shift so overall bottom < 720px while keeping min-height */
+      }
+      .section-title {
+        font-weight: 800;
+        font-size: 48px;
+        color: #0F172A;
+        margin-bottom: 24px; /* reduced to save vertical space */
+        border-right: 8px solid #0D9488;
+        padding-right: 20px;
+      }
+      .grid-container {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px; /* tightened gap */
+        margin-top: 32px; /* slightly reduced */
+      }
+      .data-box {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 14px; /* further reduced but font sizes kept */
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .divider {
+        width: 1px;
+        border-left: 1px dashed #CBD5E1;
+        height: 40px; /* slightly smaller */
+        align-self: center;
+      }
+      .data-content {
+        flex: 1;
+      }
+      .label {
+        font-weight: 300;
+        font-size: 18px; /* keep font sizes unchanged */
+        color: #64748B;
+        margin-bottom: 6px;
+      }
+      .value {
+        font-weight: 800;
+        font-size: 24px; /* keep font sizes unchanged */
+        color: #0F172A;
+      }
+      .icon-circle {
+        width: 44px;
+        height: 44px;
+        background: #F1F5F9;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #0D9488;
+        font-size: 18px;
+        flex-shrink: 0;
+      }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <h2 class="section-title">معلومات العقد والبيانات التأسيسية</h2>
+        <div class="grid-container">
+            <div class="data-box">
+                <div class="icon-circle"><i class="fas fa-user-tie"></i></div>
+                <div class="divider"></div>
+                <div class="data-content">
+                    <div class="label">المالك والجهة المستفيدة</div>
+                    <div class="value">سجل المالك الرسمي للمشروع</div>
+                </div>
+            </div>
+            <div class="data-box">
+                <div class="icon-circle"><i class="fas fa-hard-hat"></i></div>
+                <div class="divider"></div>
+                <div class="data-content">
+                    <div class="label">المقاول والجهة المنفذة</div>
+                    <div class="value">شركة المقاولات المعتمدة</div>
+                </div>
+            </div>
+            <div class="data-box">
+                <div class="icon-circle"><i class="fas fa-microscope"></i></div>
+                <div class="divider"></div>
+                <div class="data-content">
+                    <div class="label">جهة الإشراف الهندسي</div>
+                    <div class="value">المكتب الاستشاري المشرف</div>
+                </div>
+            </div>
+            <div class="data-box">
+                <div class="icon-circle"><i class="fas fa-calendar-check"></i></div>
+                <div class="divider"></div>
+                <div class="data-content">
+                    <div class="label">التواريخ العقدية والمدد</div>
+                    <div class="value">البدء: أغسطس 2026 | النهاية: ديسمبر 2027</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

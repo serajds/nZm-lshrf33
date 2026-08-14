@@ -14,6 +14,7 @@ import { processFetchResponse } from "@workspace/api-client-react";
 import { useMyProjectPermissions } from "@/hooks/use-tab-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
+import type { ExecutiveSummaryAI } from "@/lib/report-pdf";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -23,7 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Building2, MapPin, Calendar, ActivitySquare, CheckCircle2,
-  AlertTriangle, ArrowRight, Share2, Copy, Clock, PauseCircle, FileText,
+  AlertTriangle, ArrowRight, Share2, Copy, Clock, PauseCircle, FileText, Presentation,
   Settings2, LayoutDashboard
 } from "lucide-react";
 import { ProjectNav } from "@/components/project-nav";
@@ -49,6 +50,25 @@ interface ProjectExtension {
   newEndDate: string;
   reason: string | null;
   documentRef: string | null;
+}
+
+function plannedProgressForReport(activity: any): number {
+  if (typeof activity.plannedProgress === "number" && Number.isFinite(activity.plannedProgress)) {
+    return Math.min(100, Math.max(0, activity.plannedProgress));
+  }
+  if (!activity.plannedStartDate || !activity.plannedEndDate) return 0;
+  const start = new Date(activity.plannedStartDate);
+  const end = new Date(activity.plannedEndDate);
+  const today = new Date();
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  const duration = end.getTime() - start.getTime();
+  if (duration <= 0) return today >= end ? 100 : 0;
+  const elapsed = today.getTime() - start.getTime();
+  if (elapsed <= 0) return 0;
+  if (elapsed >= duration) return 100;
+  return Math.round((elapsed / duration) * 1000) / 10;
 }
 
 async function authFetch(url: string, opts?: RequestInit) {
@@ -94,6 +114,8 @@ export default function ProjectDetails() {
   const [ownerLink, setOwnerLink] = useState("");
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [showRegenerateForm, setShowRegenerateForm] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isGeneratingSlides, setIsGeneratingSlides] = useState(false);
 
   // The project record itself rarely changes during a session and is read
   // by every project sub-page (overview, reports, activities, files…). A
@@ -234,6 +256,43 @@ export default function ProjectDetails() {
 
   const handleExecutiveSummary = async () => {
     if (!project) return;
+    setIsGeneratingSummary(true);
+
+    let aiSummary: ExecutiveSummaryAI | null = null;
+    try {
+      const res = await authFetch(`/api/projects/${projectId}/ai-executive-summary`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.summary && typeof data.summary === "object") {
+          aiSummary = {
+            headline: typeof data.summary.headline === "string" ? data.summary.headline : "المشروع قيد المتابعة وفق البيانات الحالية.",
+            status: typeof data.summary.status === "string" ? data.summary.status : "على المسار",
+            progressNote: typeof data.summary.progressNote === "string" ? data.summary.progressNote : "لا توجد ملاحظة كمية إضافية موثقة.",
+            decisionNote: typeof data.summary.decisionNote === "string" ? data.summary.decisionNote : "لا توجد ملاحظة قرار إضافية؛ يعتمد التقييم على المؤشرات الرقمية المعروضة.",
+            scheduleOutlook: typeof data.summary.scheduleOutlook === "string" ? data.summary.scheduleOutlook : "لا يتوفر توقع زمني موثق.",
+            highlights: Array.isArray(data.summary.highlights) ? data.summary.highlights.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
+            risks: Array.isArray(data.summary.risks) ? data.summary.risks.filter((item: unknown): item is string => typeof item === "string").slice(0, 3) : [],
+            nextActions: Array.isArray(data.summary.nextActions) ? data.summary.nextActions.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
+            managementFocus: Array.isArray(data.summary.managementFocus) ? data.summary.managementFocus.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
+          };
+        } else if (typeof data?.summary === "string" && data.summary.trim()) {
+          aiSummary = {
+            headline: data.summary.trim(),
+            status: "على المسار",
+            progressNote: "",
+            decisionNote: "",
+            scheduleOutlook: "",
+            highlights: [],
+            risks: [],
+            nextActions: [],
+            managementFocus: [],
+          };
+        }
+      }
+    } catch (err) {
+      console.error("AI Summary fetch failed", err);
+    }
+
     const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
     const token = localStorage.getItem("auth_token");
     let companyLogos: any;
@@ -243,11 +302,18 @@ export default function ProjectDetails() {
     } catch {}
     const actList: ActivityForReport[] = (activities as any[]).map((a: any) => ({
       name: a.name,
-      plannedProgress: a.plannedProgress ?? 0,
-      actualProgress: a.actualProgress ?? 0,
+      plannedProgress: plannedProgressForReport(a),
+      actualProgress: Number(a.actualProgress) || 0,
       status: a.status ?? "not_started",
+      plannedStartDate: a.plannedStartDate ?? null,
+      plannedEndDate: a.plannedEndDate ?? null,
+      actualEndDate: a.actualEndDate ?? null,
+      delayed: Boolean(a.delayed),
     }));
     const { previewExecutiveSummary } = await import("@/lib/report-pdf");
+    
+    setIsGeneratingSummary(false);
+    
     previewExecutiveSummary({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -267,7 +333,72 @@ export default function ProjectDetails() {
       apiBase: import.meta.env.BASE_URL.replace(/\/$/, ""),
       suspensionDays: summary?.suspensionDays ?? 0,
       extensionDays: totalExtDays,
+      noSchedule: Boolean((project as any).noSchedule),
+      aiSummary: aiSummary,
     });
+  };
+
+  const handleExecutiveSlides = async () => {
+    if (!project) return;
+    setIsGeneratingSlides(true);
+    let aiSummary: ExecutiveSummaryAI | null = null;
+    try {
+      const res = await authFetch(`/api/projects/${projectId}/ai-executive-summary`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.summary && typeof data.summary === "object") {
+          aiSummary = {
+            headline: typeof data.summary.headline === "string" ? data.summary.headline : "المشروع قيد المتابعة وفق البيانات الحالية.",
+            status: typeof data.summary.status === "string" ? data.summary.status : "على المسار",
+            progressNote: typeof data.summary.progressNote === "string" ? data.summary.progressNote : "لا توجد ملاحظة كمية إضافية موثقة.",
+            decisionNote: typeof data.summary.decisionNote === "string" ? data.summary.decisionNote : "لا توجد ملاحظة قرار إضافية؛ يعتمد التقييم على المؤشرات الرقمية المعروضة.",
+            scheduleOutlook: typeof data.summary.scheduleOutlook === "string" ? data.summary.scheduleOutlook : "لا يتوفر توقع زمني موثق.",
+            highlights: Array.isArray(data.summary.highlights) ? data.summary.highlights.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
+            risks: Array.isArray(data.summary.risks) ? data.summary.risks.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
+            nextActions: Array.isArray(data.summary.nextActions) ? data.summary.nextActions.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
+            managementFocus: Array.isArray(data.summary.managementFocus) ? data.summary.managementFocus.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
+          };
+        }
+      }
+
+      const actList: ActivityForReport[] = (activities as any[]).map((a: any) => ({
+        name: a.name,
+        plannedProgress: plannedProgressForReport(a),
+        actualProgress: Number(a.actualProgress) || 0,
+        status: a.status ?? "not_started",
+        plannedStartDate: a.plannedStartDate ?? null,
+        plannedEndDate: a.plannedEndDate ?? null,
+        actualEndDate: a.actualEndDate ?? null,
+        delayed: Boolean(a.delayed),
+      }));
+      const { previewExecutiveSlides } = await import("@/lib/report-pdf");
+      previewExecutiveSlides({
+        projectName: project.name,
+        ownerEntity: project.ownerEntity,
+        contractor: project.contractor,
+        supervisorEntity: project.supervisorEntity,
+        location: project.location,
+        startDate: project.startDate,
+        expectedEndDate: project.expectedEndDate,
+        actualEndDate: (project as any).actualEndDate,
+        status: project.status,
+        overallProgress: summary?.overallProgress ?? 0,
+        plannedProgress: summary?.plannedProgress ?? 0,
+        activities: actList,
+        reportsCount: summary?.reportsCount ?? 0,
+        contractValue: (project as any).contractValue,
+        apiBase: import.meta.env.BASE_URL.replace(/\/$/, ""),
+        suspensionDays: summary?.suspensionDays ?? 0,
+        extensionDays: totalExtDays,
+        noSchedule: Boolean((project as any).noSchedule),
+        aiSummary,
+      });
+    } catch (err) {
+      console.error("Executive slides generation failed", err);
+      toast({ variant: "destructive", title: "تعذر إنشاء العرض التقديمي" });
+    } finally {
+      setIsGeneratingSlides(false);
+    }
   };
 
   const handleGenerateLink = async () => {
@@ -338,28 +469,28 @@ export default function ProjectDetails() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto max-w-[1600px] space-y-5">
       <ProjectQuickViewDialog
         projectId={projectId}
         widgets={widgets}
         enabled={!!projectId}
       />
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start gap-3">
+      <div className="page-hero flex flex-wrap items-start gap-3">
         <Button
           variant="ghost"
           size="icon"
-          className="shrink-0 mt-0.5"
+          className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white"
           onClick={() => setLocation("/projects")}
         >
           <ArrowRight className="h-5 w-5" />
         </Button>
 
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project.name}</h1>
-          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+          <h1 className="relative z-10 text-lg font-bold leading-tight text-white md:text-2xl">{project.name}</h1>
+          <div className="relative z-10 mt-1.5 flex flex-wrap items-center gap-2">
             {getStatusBadge(project.status)}
-            <span className="text-sm text-muted-foreground flex items-center gap-1">
+            <span className="flex items-center gap-1 text-sm text-white/65">
               <MapPin className="h-3.5 w-3.5 shrink-0" />
               {project.location}
             </span>
@@ -376,12 +507,35 @@ export default function ProjectDetails() {
               setOwnerSlug((project as any)?.ownerAccessToken || "");
             }
           }}>
-            <Button variant="outline" size="sm" className="gap-2" onClick={handleExecutiveSummary}>
-              <FileText className="h-4 w-4" />
-              <span className="hidden sm:inline">ملخص تنفيذي</span>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="relative z-10 gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white" 
+              onClick={handleExecutiveSummary}
+              disabled={isGeneratingSummary}
+            >
+              {isGeneratingSummary ? (
+                <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">
+                {isGeneratingSummary ? "جاري التحليل..." : "ملخص تنفيذي"}
+              </span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="relative z-10 gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              onClick={handleExecutiveSlides}
+              disabled={isGeneratingSlides}
+              title="فتح تقرير حالة المشروع كعرض تقديمي"
+            >
+              {isGeneratingSlides ? <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Presentation className="h-4 w-4" />}
+              <span className="hidden sm:inline">{isGeneratingSlides ? "جاري تجهيز العرض..." : "عرض تقديمي"}</span>
             </Button>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
+              <Button variant="outline" size="sm" className="relative z-10 gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white">
                 <Share2 className="h-4 w-4" />
                 <span className="hidden sm:inline">رابط المالك</span>
               </Button>
@@ -487,7 +641,7 @@ export default function ProjectDetails() {
       <div className="space-y-5">
         {/* Progress + KPIs */}
         <div className="grid gap-4 md:grid-cols-2">
-          <Card>
+          <Card className="surface-card surface-card-hover">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">نسبة الإنجاز</CardTitle>
             </CardHeader>
@@ -502,7 +656,7 @@ export default function ProjectDetails() {
                   </div>
                 )}
               </div>
-              <div className="relative w-full h-2.5 bg-secondary rounded-full overflow-hidden">
+              <div className="relative h-3 w-full overflow-hidden rounded-full bg-secondary/80">
                 {!summary?.noSchedule && (
                   <div
                     className="absolute top-0 right-0 h-full bg-primary/25 rounded-full"
@@ -556,7 +710,7 @@ export default function ProjectDetails() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="surface-card surface-card-hover">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">مؤشرات الأداء</CardTitle>
             </CardHeader>
@@ -711,7 +865,7 @@ export default function ProjectDetails() {
         </Dialog>
 
         {/* Contract Details */}
-        <Card>
+        <Card className="surface-card surface-card-hover">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">تفاصيل العقد</CardTitle>
           </CardHeader>
@@ -755,7 +909,7 @@ export default function ProjectDetails() {
 
         {/* Project Site Location (read-only map with geofence circle) */}
         {project.siteLatitude != null && project.siteLongitude != null && (
-          <Card>
+          <Card className="surface-card surface-card-hover">
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
                 <MapPin className="h-4 w-4" />
