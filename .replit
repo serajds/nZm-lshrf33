@@ -16,6 +16,10 @@ externalPort = 3001
 localPort = 22349
 externalPort = 3000
 
+[[ports]]
+localPort = 22350
+externalPort = 3002
+
 [deployment]
 deploymentTarget = "autoscale"
 build = ["pnpm", "run", "build"]
@@ -24,3 +28,7 @@ build = ["pnpm", "run", "build"]
 
 [userenv.shared]
 OPENAI_API_BASE = "https://api.groq.com/openai/v1"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 120000
