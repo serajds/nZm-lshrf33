@@ -422,6 +422,7 @@ export default function ProjectReports() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [isAiDrafting, setIsAiDrafting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState<string>("");
@@ -924,25 +925,61 @@ export default function ProjectReports() {
     form.setValue("imageGroups", current, { shouldDirty: true });
   };
 
+  const handleAiDraft = async () => {
+    try {
+      setIsAiDrafting(true);
+      const token = localStorage.getItem("auth_token");
+      const values = form.getValues();
+      
+      const res = await fetch(`${API_BASE}/projects/${projectId}/reports/ai-draft`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          imageGroups: values.imageGroups,
+          technicalNotes: values.technicalNotes,
+          recommendations: values.recommendations,
+        }),
+      });
+
+      if (!res.ok) throw new Error("AI draft failed");
+      
+      const data = await res.json();
+      
+      if (data.workDescription) form.setValue("workDescription", data.workDescription, { shouldDirty: true });
+      if (data.technicalNotes) form.setValue("technicalNotes", data.technicalNotes, { shouldDirty: true });
+      if (data.recommendations) form.setValue("recommendations", data.recommendations, { shouldDirty: true });
+      
+      toast({ title: "تمت صياغة التقرير بنجاح بواسطة الذكاء الاصطناعي" });
+    } catch (err) {
+      console.error("AI Draft error:", err);
+      toast({ variant: "destructive", title: "فشل الذكاء الاصطناعي في صياغة التقرير" });
+    } finally {
+      setIsAiDrafting(false);
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start gap-3">
-        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <div className="page-hero flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">التقارير</p>
+          <h1 className="relative z-10 text-lg font-bold leading-tight text-white md:text-2xl">{project?.name}</h1>
+          <p className="relative z-10 mt-1 text-sm text-white/65">التقارير</p>
         </div>
       </div>
 
       <ProjectNav projectId={projectId} />
 
-      <div className="bg-card p-3 sm:p-4 rounded-lg border shadow-sm space-y-3">
+      <div className="surface-card space-y-3 p-3 sm:p-4">
         <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
           <div className="w-full sm:w-40">
             <Select value={typeFilter ?? "all"} onValueChange={(v) => setTypeFilter(v)}>
-              <SelectTrigger>
+              <SelectTrigger className="h-11 rounded-xl">
                 <SelectValue placeholder="نوع التقرير" />
               </SelectTrigger>
               <SelectContent dir="rtl">
@@ -954,9 +991,9 @@ export default function ProjectReports() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground whitespace-nowrap">من</span>
-            <Input type="date" className="flex-1 min-w-0 text-sm" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <Input type="date" className="h-11 min-w-0 flex-1 rounded-xl text-sm" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
             <span className="text-xs text-muted-foreground whitespace-nowrap">إلى</span>
-            <Input type="date" className="flex-1 min-w-0 text-sm" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            <Input type="date" className="h-11 min-w-0 flex-1 rounded-xl text-sm" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
             {(dateFrom || dateTo) && (
               <Button variant="ghost" size="sm" className="h-8 px-2 text-xs shrink-0" onClick={() => { setDateFrom(""); setDateTo(""); }}>مسح</Button>
             )}
@@ -1166,10 +1203,32 @@ export default function ProjectReports() {
 
                   {/* Section 2: Text Fields */}
                   <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-indigo-600/80 uppercase tracking-wide flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
-                      التفاصيل والملاحظات
-                    </h3>
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-indigo-600/80 uppercase tracking-wide flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                        التفاصيل والملاحظات
+                      </h3>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 border-indigo-200 bg-indigo-50/50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 dark:border-indigo-900/30 dark:bg-indigo-950/20 dark:text-indigo-400"
+                        onClick={handleAiDraft}
+                        disabled={isAiDrafting}
+                      >
+                        {isAiDrafting ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            جاري الصياغة...
+                          </>
+                        ) : (
+                          <>
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                            صياغة بالذكاء الاصطناعي
+                          </>
+                        )}
+                      </Button>
+                    </div>
                     
                     <div className="p-4 sm:p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
                       <FormField

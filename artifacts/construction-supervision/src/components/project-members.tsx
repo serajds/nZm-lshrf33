@@ -221,7 +221,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                 </Button>
               </DialogTrigger>
               <DialogContent dir="rtl" className="sm:max-w-[550px] p-0 overflow-hidden">
-                <div className="bg-gradient-to-br from-primary/10 via-background to-background p-6 pb-4 border-b border-border/50">
+                <div className="bg-primary/5 p-6 pb-4 border-b border-border/50">
                   <DialogHeader>
                     <div className="flex items-center gap-3">
                       <div className="p-2.5 bg-primary/10 rounded-xl">
@@ -241,7 +241,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                         <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
                         بيانات العضو والدور
                       </h3>
-                      <div className="grid grid-cols-1 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                      <div className="grid grid-cols-1 gap-5 p-5 rounded-2xl border bg-muted/30 shadow-sm">
                         <div className="space-y-2">
                           <Label className="text-foreground/90 font-semibold">المستخدم</Label>
                           <Select value={selectedUserId} onValueChange={setSelectedUserId}>
@@ -291,7 +291,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                           <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
                           المجموعات المسموحة (للمهندس)
                         </h3>
-                        <div className="space-y-3 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+                        <div className="space-y-3 p-5 rounded-2xl border bg-muted/30 shadow-sm">
                           <p className="text-xs text-muted-foreground bg-amber-50/50 border border-amber-200/50 p-3 rounded-xl flex items-center gap-2">
                             <Shield className="h-4 w-4 text-amber-500 shrink-0" />
                             إذا لم تختر أي مجموعة، سيتمكن المهندس من تعديل جميع البنود.
@@ -487,7 +487,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
       />
       <Dialog open={editingGroupsMemberId !== null} onOpenChange={(open) => { if (!open) setEditingGroupsMemberId(null); }}>
         <DialogContent dir="rtl" className="sm:max-w-[480px] p-0 overflow-hidden">
-          <div className="bg-gradient-to-br from-indigo-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+          <div className="bg-indigo-500/5 p-6 pb-4 border-b border-border/50">
             <DialogHeader>
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-indigo-500/10 rounded-xl">
@@ -504,7 +504,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
             <p className="text-sm text-foreground bg-indigo-50/50 border border-indigo-200/50 p-4 rounded-2xl leading-relaxed">
               إذا لم تحدد أي مجموعة، <strong className="text-indigo-700">سيتمكن المهندس من تعديل جميع البنود</strong> في المشروع كصلاحية افتراضية.
             </p>
-            <div className="space-y-2 max-h-[240px] overflow-y-auto border bg-gradient-to-br from-muted/20 to-background rounded-2xl p-3 shadow-inner">
+            <div className="space-y-2 max-h-[240px] overflow-y-auto border bg-muted/20 rounded-2xl p-3 shadow-inner">
               {sortedGroups.map(g => (
                 <label key={g.id} className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-background transition-colors border border-transparent hover:border-border/50 hover:shadow-sm">
                   <Checkbox
@@ -626,7 +626,7 @@ function TabPermissionsDialog({ projectId, memberId, memberName, onClose }: TabP
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent dir="rtl" className="sm:max-w-[650px] p-0 overflow-hidden">
-        <div className="bg-gradient-to-br from-teal-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+        <div className="bg-teal-500/5 p-6 pb-4 border-b border-border/50">
           <DialogHeader>
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-teal-500/10 rounded-xl">

@@ -1,0 +1,78 @@
+{
+  "project_info": {
+    "title": "العرض التقديمي لحالة المشروع الإنشائي والملخص التنفيذي الاستراتيجي",
+    "created": 1786684273.563,
+    "last_updated": 1786684532.195,
+    "total_slides": 6
+  },
+  "slides": [
+    {
+      "id": "slide_1_title",
+      "state": "edited",
+      "pageNum": 1
+    },
+    {
+      "id": "slide_2_contract",
+      "state": "edited",
+      "pageNum": 2
+    },
+    {
+      "id": "slide_3_kpis",
+      "state": "edited",
+      "pageNum": 3
+    },
+    {
+      "id": "slide_4_analysis",
+      "state": "edited",
+      "pageNum": 4
+    },
+    {
+      "id": "slide_5_risks",
+      "state": "edited",
+      "pageNum": 5
+    },
+    {
+      "id": "slide_6_actions",
+      "state": "edited",
+      "pageNum": 6
+    }
+  ],
+  "outline": [
+    {
+      "id": "slide_1_title",
+      "title": "العرض التقديمي لحالة المشروع الإنشائي والملخص التنفيذي الاستراتيجي",
+      "summary": "شريحة العنوان التي تعرض الموضوع الرئيسي للتقرير التنفيذي والتركيز على الأداء الهندسي والتشغيلي.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "slide_2_contract",
+      "title": "معلومات العقد والبيانات التأسيسية للمشروع",
+      "summary": "استعراض البيانات الأساسية للمشروع، جهات الإشراف، المقاول، والتواريخ العقدية المعتمدة.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "slide_3_kpis",
+      "title": "لوحة مؤشرات الأداء الرئيسية (KPIs) وتحليل التقدم",
+      "summary": "عرض نسب الإنجاز الفعلي والمخطط، تحليل الانحراف الزمني، وتوزيع حالة بنود الأعمال.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "slide_4_analysis",
+      "title": "قراءة الأداء والتحليل التنفيذي للمسار الزمني",
+      "summary": "تقييم كمي للفجوة الزمنية، ملاحظات القرار الإداري، وأثر التوقفات على الجدول الزمني.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "slide_5_risks",
+      "title": "تحليل المخاطر والقيود والبنود الحرجة في التنفيذ",
+      "summary": "رصد التحديات التشغيلية، المخاطر الموثقة، وتحليل أثرها على تاريخ التسليم النهائي.",
+      "image_plan": "Use a suitable image if needed"
+    },
+    {
+      "id": "slide_6_actions",
+      "title": "الإجراءات التصحيحية وتوجيهات الإدارة العليا للفترة القادمة",
+      "summary": "قائمة الإجراءات ذات الأولوية، محاور المتابعة، وخطة العمل لضمان الالتزام بالمستهدفات.",
+      "image_plan": "Use a suitable image if needed"
+    }
+  ]
+}

@@ -144,7 +144,7 @@ export default function PublicForm() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center" dir="rtl">
+      <div className="min-h-screen flex items-center justify-center bg-background" dir="rtl">
         <div className="text-center space-y-3">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
           <p className="text-sm text-muted-foreground">جاري تحميل النموذج...</p>
@@ -155,13 +155,13 @@ export default function PublicForm() {
 
   if (error || !template) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-        <Card className="max-w-md w-full">
+      <div className="min-h-screen flex items-center justify-center bg-background p-4" dir="rtl">
+        <Card className="surface-card surface-card-hover w-full max-w-md rounded-[2rem]">
           <CardContent className="p-8 text-center space-y-4">
-            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/10 text-red-600 ring-8 ring-red-500/5">
               <X className="h-8 w-8 text-red-600" />
             </div>
-            <h2 className="text-xl font-bold text-gray-800">رابط غير صالح</h2>
+            <h2 className="text-xl font-bold text-foreground">رابط غير صالح</h2>
             <p className="text-sm text-muted-foreground">{error || "هذا الرابط غير صالح أو تم تعطيله"}</p>
           </CardContent>
         </Card>
@@ -171,13 +171,13 @@ export default function PublicForm() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-        <Card className="max-w-md w-full">
+      <div className="min-h-screen flex items-center justify-center bg-background p-4" dir="rtl">
+        <Card className="surface-card surface-card-hover w-full max-w-md rounded-[2rem]">
           <CardContent className="p-8 text-center space-y-4">
-            <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 ring-8 ring-emerald-500/5">
               <CheckCircle className="h-8 w-8 text-emerald-600" />
             </div>
-            <h2 className="text-xl font-bold text-gray-800">تم الإرسال بنجاح</h2>
+            <h2 className="text-xl font-bold text-foreground">تم الإرسال بنجاح</h2>
             <p className="text-sm text-muted-foreground">شكراً لك، تم استلام النموذج بنجاح</p>
             <Button
               variant="outline"
@@ -197,26 +197,26 @@ export default function PublicForm() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6 px-4" dir="rtl">
+    <div className="min-h-screen bg-background px-4 py-8" dir="rtl">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Noto Kufi Arabic', sans-serif; }
       `}</style>
-      <div className="max-w-2xl mx-auto space-y-4">
-        <Card>
-          <CardContent className="p-6">
+      <div className="mx-auto max-w-3xl space-y-5">
+        <Card className="surface-card surface-card-hover overflow-hidden">
+          <CardContent className="p-6 md:p-8">
             <div className="flex items-start gap-3 mb-4">
-              <div className="p-2.5 rounded-xl bg-blue-500/10 shrink-0">
+              <div className="rounded-2xl bg-primary/10 p-3 text-primary ring-1 ring-primary/10 shrink-0">
                 <FileText className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-gray-800">{template.name}</h1>
+                <h1 className="text-lg font-bold text-foreground">{template.name}</h1>
                 {template.description && (
                   <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg bg-muted/40 border">
+            <div className="grid grid-cols-1 gap-3 rounded-2xl border border-border/70 bg-muted/30 p-4 sm:grid-cols-2">
               <div className="flex items-center gap-2">
                 <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="text-xs text-muted-foreground">المشروع:</span>
@@ -241,8 +241,8 @@ export default function PublicForm() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-6 space-y-5">
+        <Card className="surface-card surface-card-hover">
+          <CardContent className="space-y-5 p-6 md:p-8">
             <div>
               <Label>تاريخ التقرير *</Label>
               <Input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="mt-1 max-w-xs" />

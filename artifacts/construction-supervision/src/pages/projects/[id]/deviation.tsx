@@ -190,14 +190,14 @@ export default function ProjectDeviation() {
 
   if (isNoSchedule) {
     return (
-      <motion.div initial="hidden" animate="visible" variants={containerVariants} className="space-y-6">
-        <div className="flex flex-wrap items-start gap-3">
-          <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
+      <motion.div initial="hidden" animate="visible" variants={containerVariants} className="mx-auto max-w-[1600px] space-y-6">
+        <div className="page-hero flex flex-wrap items-start gap-3">
+          <Button variant="ghost" size="icon" className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => setLocation("/projects")}>
             <ArrowRight className="h-5 w-5" />
           </Button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">تحليل الانحراف عن الجدول الزمني</p>
+            <h1 className="relative z-10 text-lg font-bold leading-tight text-white md:text-2xl">{project?.name}</h1>
+            <p className="relative z-10 mt-1 text-sm text-white/65">تحليل الانحراف عن الجدول الزمني</p>
           </div>
         </div>
         <ProjectNav projectId={projectId} />
@@ -252,18 +252,18 @@ export default function ProjectDeviation() {
   const spiColor = spi == null ? 'text-muted-foreground' : spi >= 1 ? 'text-emerald-600 dark:text-emerald-400' : spi >= 0.9 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400';
 
   return (
-    <motion.div initial="hidden" animate="visible" variants={containerVariants} className="space-y-6 relative pb-10">
+    <motion.div initial="hidden" animate="visible" variants={containerVariants} className="mx-auto max-w-[1600px] space-y-6 relative pb-10">
       {/* Decorative Orbs */}
       <div className="absolute top-0 left-0 w-96 h-96 bg-primary/5 rounded-full blur-[100px] pointer-events-none -z-10" />
       <div className="absolute top-40 right-10 w-72 h-72 bg-blue-500/5 rounded-full blur-[80px] pointer-events-none -z-10" />
 
-      <div className="flex flex-wrap items-start gap-3">
-        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
+      <div className="page-hero flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">تحليل الانحراف والتنبؤ الزمني (EVM)</p>
+          <h1 className="relative z-10 text-lg font-bold leading-tight text-white md:text-2xl">{project?.name}</h1>
+          <p className="relative z-10 mt-1 text-sm text-white/65">تحليل الانحراف والتنبؤ الزمني (EVM)</p>
         </div>
       </div>
 

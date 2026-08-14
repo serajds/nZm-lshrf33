@@ -17,30 +17,30 @@ export default function PendingAssignment() {
   return (
     <div
       dir="rtl"
-      className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-amber-50/40 px-4"
+      className="flex min-h-screen items-center justify-center bg-background px-4 py-8"
     >
-      <div className="w-full max-w-lg bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 p-8 text-center">
-        <div className="mx-auto w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mb-5">
-          <Clock className="h-8 w-8 text-amber-600" />
+      <div className="surface-card w-full max-w-lg rounded-[2rem] p-8 text-center shadow-2xl shadow-primary/10 md:p-10">
+        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/12 text-amber-600 ring-8 ring-amber-500/5">
+          <Clock className="h-8 w-8" />
         </div>
-        <h1 className="text-xl font-bold text-slate-800 mb-2">
+        <h1 className="mb-2 text-xl font-bold text-foreground">
           مرحباً {user?.fullName}
         </h1>
-        <p className="text-sm text-slate-600 leading-7 mb-6">
+        <p className="mb-6 text-sm leading-7 text-muted-foreground">
           تم إنشاء حسابك بنجاح. حسابك الآن بانتظار التعيين من قبل مسؤول النظام،
           حيث سيتم إضافتك إلى الشركة والمشاريع المناسبة.
           <br />
           يرجى التواصل مع المسؤول لتفعيل صلاحياتك.
         </p>
 
-        <div className="rounded-lg bg-slate-50 border border-slate-100 p-4 text-right text-sm text-slate-600 mb-6">
+        <div className="mb-6 rounded-2xl border border-border/70 bg-muted/30 p-4 text-right text-sm text-muted-foreground">
           <div className="flex justify-between py-1">
-            <span className="text-slate-500">الاسم:</span>
-            <span className="font-medium">{user?.fullName}</span>
+            <span className="text-muted-foreground">الاسم:</span>
+            <span className="font-semibold text-foreground">{user?.fullName}</span>
           </div>
           <div className="flex justify-between py-1">
-            <span className="text-slate-500">رقم الهاتف:</span>
-            <span className="font-medium" dir="ltr">{user?.phone}</span>
+            <span className="text-muted-foreground">رقم الهاتف:</span>
+            <span className="font-semibold text-foreground" dir="ltr">{user?.phone}</span>
           </div>
         </div>
 
@@ -49,7 +49,7 @@ export default function PendingAssignment() {
             <RefreshCw className="h-4 w-4" />
             تحديث الحالة
           </Button>
-          <Button onClick={logout} variant="ghost" className="gap-2 text-slate-600">
+          <Button onClick={logout} variant="ghost" className="gap-2 text-muted-foreground">
             <LogOut className="h-4 w-4" />
             تسجيل الخروج
           </Button>

@@ -1,31 +1,22 @@
-import { motion } from "framer-motion";
+import { Building2 } from "lucide-react";
 
 export function FullScreenLoader() {
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-[100]">
-      <motion.div
-        className="relative w-16 h-16"
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-      >
-        <motion.span
-          className="absolute inset-0 block rounded-full border-4 border-primary/20"
-        ></motion.span>
-        <motion.span
-          className="absolute inset-0 block rounded-full border-4 border-primary border-t-transparent"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, ease: "linear", repeat: Infinity }}
-        ></motion.span>
-      </motion.div>
-      <motion.p
-        className="mt-6 text-sm font-medium text-muted-foreground animate-pulse"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-      >
-        جاري التحميل...
-      </motion.p>
+      <div className="page-loader-enter relative flex items-center justify-center h-20 w-20">
+        {/* Outer Spinner */}
+        <span className="absolute inset-0 block rounded-2xl border-2 border-primary/10" />
+        <span className="loader-spinner absolute inset-0 block rounded-2xl border-2 border-primary border-t-transparent" />
+        
+        {/* Center Icon - Matching Login Screen */}
+        <div className="relative z-10 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-sm">
+          <Building2 className="h-8 w-8" strokeWidth={1.5} />
+        </div>
+      </div>
+      
+      <p className="page-loader-text-enter mt-8 text-sm font-bold tracking-widest text-primary/80 uppercase animate-pulse">
+        جاري تهيئة النظام...
+      </p>
     </div>
   );
 }
@@ -33,18 +24,39 @@ export function FullScreenLoader() {
 export function PageFallback() {
   return (
     <div className="fixed top-0 left-0 right-0 z-[100] h-1 pointer-events-none bg-primary/10 overflow-hidden">
-      <motion.div
-        className="h-full bg-primary"
-        initial={{ x: "-100%" }}
-        animate={{
-          x: ["-100%", "100%"],
-        }}
-        transition={{
-          duration: 1.5,
-          ease: "easeInOut",
-          repeat: Infinity,
-        }}
-      />
+      <div className="page-fallback-bar h-full bg-primary" />
+    </div>
+  );
+}
+
+
+export function DashboardSkeleton() {
+  return (
+    <div className="mx-auto max-w-[1600px] space-y-6" aria-label="جاري تحميل لوحة التحكم" role="status">
+      <div className="h-32 animate-pulse rounded-3xl border border-border/60 bg-muted/60" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="h-32 animate-pulse rounded-2xl border border-border/60 bg-card/80 p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-3">
+                <div className="h-3 w-24 rounded-full bg-muted" />
+                <div className="h-8 w-16 rounded-xl bg-muted" />
+                <div className="h-2.5 w-28 rounded-full bg-muted/70" />
+              </div>
+              <div className="h-12 w-12 rounded-2xl bg-muted" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-6 lg:grid-cols-5">
+        <div className="h-72 animate-pulse rounded-2xl border border-border/60 bg-card/80 lg:col-span-2" />
+        <div className="h-72 animate-pulse rounded-2xl border border-border/60 bg-card/80 lg:col-span-3" />
+      </div>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="h-72 animate-pulse rounded-2xl border border-border/60 bg-card/80 lg:col-span-2" />
+        <div className="h-72 animate-pulse rounded-2xl border border-border/60 bg-card/80" />
+      </div>
+      <span className="sr-only">جاري تحميل لوحة التحكم...</span>
     </div>
   );
 }

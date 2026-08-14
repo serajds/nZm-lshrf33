@@ -353,20 +353,20 @@ export default function Projects() {
   const isSubmitting = createProject.isPending || updateProject.isPending;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <div className="page-hero flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-blue-500/10 rounded-xl">
-            <Building2 className="h-6 w-6 text-blue-600" />
+          <div className="relative z-10 rounded-2xl border border-white/15 bg-white/10 p-3">
+            <Building2 className="h-6 w-6 text-cyan-200" />
           </div>
           <div>
-            <h1 className="text-lg md:text-2xl font-bold">المشاريع</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">إدارة ومتابعة جميع المشاريع</p>
+            <h1 className="relative z-10 text-lg font-bold tracking-tight text-white md:text-2xl">المشاريع</h1>
+            <p className="relative z-10 mt-1 text-sm text-white/65">إدارة ومتابعة جميع المشاريع</p>
           </div>
         </div>
         
         {canManageProjects && (
-          <Button className="gap-2" onClick={openCreate}>
+          <Button className="relative z-10 gap-2 rounded-xl border-0 bg-white text-slate-900 shadow-lg shadow-slate-950/10 hover:bg-white/90" onClick={openCreate}>
             <Plus className="h-4 w-4" />
             مشروع جديد
           </Button>
@@ -656,19 +656,19 @@ export default function Projects() {
         </Dialog>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 bg-card p-4 rounded-lg border shadow-sm">
+      <div className="surface-card flex flex-col gap-3 p-3 sm:flex-row sm:gap-4">
         <div className="relative flex-1">
           <Search className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input 
             placeholder="بحث عن مشروع..." 
-            className="pr-9"
+            className="h-11 rounded-xl pr-10"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <div className="w-full sm:w-48">
           <Select value={statusFilter || "all"} onValueChange={(v) => setStatusFilter(v)}>
-            <SelectTrigger>
+            <SelectTrigger className="h-11 rounded-xl">
               <SelectValue placeholder="حالة المشروع" />
             </SelectTrigger>
             <SelectContent dir="rtl">
@@ -697,11 +697,11 @@ export default function Projects() {
           {projects?.map((project) => (
             <Card
               key={project.id}
-              className="hover:shadow-md transition-shadow flex flex-col h-full"
+              className="surface-card surface-card-hover flex h-full flex-col overflow-hidden"
               onMouseEnter={() => prefetchProject(project.id)}
               onTouchStart={() => prefetchProject(project.id)}
             >
-              <CardHeader className="pb-3 border-b border-border/50">
+              <CardHeader className="border-b border-border/60 bg-gradient-to-l from-primary/[0.04] to-transparent pb-4">
                 <div className="flex justify-between items-start gap-2">
                   <CardTitle className="text-lg line-clamp-2 flex-1">
                     <Link href={getProjectLink(project.id)} className="hover:text-primary transition-colors">
@@ -723,7 +723,7 @@ export default function Projects() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="pt-4 flex-1 flex flex-col justify-between space-y-4">
+              <CardContent className="flex flex-1 flex-col justify-between space-y-4 pt-5">
                 <div className="space-y-3 text-sm">
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <MapPin className="h-4 w-4 shrink-0" />
@@ -751,7 +751,7 @@ export default function Projects() {
                     <span>نسبة الإنجاز</span>
                     <span>%{(project.overallProgress ?? 0).toFixed(1)}</span>
                   </div>
-                  <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-secondary/80">
                     <div 
                       className={`h-full ${project.overallProgress < 30 ? 'bg-destructive' : project.overallProgress < 70 ? 'bg-orange-500' : 'bg-emerald-500'}`}
                       style={{ width: `${project.overallProgress}%` }}

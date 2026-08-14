@@ -101,9 +101,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             }
           }}
         >
-          {/* Active Gradient Background */}
+          {/* Active navigation state */}
           {isActive && (
-            <div className="absolute inset-0 bg-gradient-to-r from-primary via-primary/90 to-primary/80 opacity-20 -z-10" />
+            <div className="absolute inset-0 bg-primary/15 -z-10" />
           )}
           {isActive && (
             <span
@@ -142,7 +142,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           borderBottom: "1px solid hsl(var(--sidebar-border))",
         }}
       >
-        <img src={`${import.meta.env.BASE_URL}app-icon.png`} alt="Logo" className="w-9 h-9 rounded-lg shrink-0" />
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary-foreground shrink-0 shadow-sm ring-1 ring-white/10">
+          <Building2 className="h-5 w-5 text-primary" strokeWidth={2} />
+        </div>
 
         {!collapsed && (
           <div className="flex-1 min-w-0 mr-3">
@@ -269,13 +271,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex h-[100dvh] w-full bg-[#020617] text-slate-100 overflow-hidden" dir="rtl">
+    <div className="flex h-[100dvh] w-full bg-[hsl(var(--sidebar))] text-slate-100 overflow-hidden" dir="rtl">
 
       {/* ===== DESKTOP SIDEBAR ===== */}
       <aside
-        className="hidden md:flex flex-col h-full shrink-0"
+        className="hidden h-full shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10 shadow-2xl shadow-slate-950/20 md:flex md:py-2 md:pr-2"
         style={{
           width: sidebarWidth,
+          backgroundColor: "hsl(var(--sidebar))",
           transition: "width 250ms cubic-bezier(.4,0,.2,1)",
         }}
       >
@@ -307,10 +310,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* ===== MAIN CONTENT CARD ===== */}
       <div className="flex-1 flex flex-col h-[100dvh] md:py-2 md:pl-2 min-w-0 transition-all duration-300">
-        <main className="flex-1 min-h-0 bg-background text-foreground md:rounded-r-[2.5rem] shadow-none md:shadow-[-10px_0_40px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col relative md:border border-white/10 dark:md:border-white/5">
+        <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground shadow-none md:rounded-r-2xl md:border md:border-border/70 md:shadow-[-8px_0_24px_rgba(15,23,42,0.08)] dark:md:border-border">
           {/* ---- Top Header ── */}
           <header
-            className="h-16 flex items-center px-4 md:px-6 gap-3 shrink-0 backdrop-blur-xl bg-background/80 border-b border-border/50 transition-all duration-300 z-10"
+            className="z-10 flex h-[4.5rem] shrink-0 items-center gap-3 border-b border-border/60 bg-background px-4 transition-colors duration-200 md:px-7"
           >
             {/* Hamburger — mobile only */}
             <button
@@ -330,13 +333,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               {currentPage?.name || "إدارة الإشراف والمتابعة"}
             </h1>
             <div className="mr-auto flex items-center gap-2">
+              <span className="hidden lg:inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/70 px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
+                <span className="status-dot bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.12)]" />
+                النظام يعمل بشكل طبيعي
+              </span>
               <NotificationToggle />
               <InstallButton />
             </div>
           </header>
 
           {/* ---- Page Content ---- */}
-          <div className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 z-0">
+          <div className="z-0 flex-1 overflow-auto bg-background p-3 sm:p-5 lg:p-7">
             {children}
           </div>
         </main>

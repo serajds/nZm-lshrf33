@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@300;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+      .slide-container {
+        width: 1280px;
+        min-height: 720px;
+        background: #F8FAFC;
+        display: flex;
+        align-items: center;
+        padding: 0 80px;
+        position: relative;
+        font-family: 'Noto Sans Arabic', sans-serif;
+        overflow: hidden;
+      }
+      .accent-block {
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 35%;
+        height: 100%;
+        background: #0D9488;
+        clip-path: polygon(20% 0, 100% 0, 100% 100%, 0% 100%);
+        z-index: 1;
+      }
+      .content {
+        z-index: 2;
+        width: 60%;
+      }
+      .title {
+        font-weight: 800;
+        font-size: 72px;
+        color: #0F172A;
+        line-height: 1.2;
+        margin-bottom: 24px;
+      }
+      .subtitle {
+        font-weight: 300;
+        font-size: 28px;
+        color: #334155;
+        margin-bottom: 48px;
+        max-width: 600px;
+      }
+      .footer-info {
+        display: flex;
+        gap: 32px;
+        color: #64748B;
+        font-size: 18px;
+        border-top: 1px dashed #CBD5E1;
+        padding-top: 24px;
+      }
+      .icon-box {
+        color: #E11D48;
+        margin-left: 12px;
+      }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="accent-block"></div>
+        <div class="content">
+            <h1 class="title">ملخص حالة المشروع الإنشائي التنفيذي</h1>
+            <p class="subtitle">تقرير الأداء الهندسي والتشغيلي بناءً على السجل الموثق ومؤشرات التقدم الاستراتيجية.</p>
+            <div class="footer-info">
+                <div><i class="fas fa-building icon-box"></i>إدارة الإشراف والمتابعة</div>
+                <div><i class="fas fa-calendar-alt icon-box"></i>أغسطس 2026</div>
+                <div><i class="fas fa-robot icon-box"></i>Manus AI</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

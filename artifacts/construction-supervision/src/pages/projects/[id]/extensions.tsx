@@ -147,14 +147,14 @@ export default function ProjectExtensions() {
     : project?.expectedEndDate;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start gap-3">
-        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <div className="page-hero flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">التمديدات الزمنية</p>
+          <h1 className="relative z-10 text-lg font-bold leading-tight text-white md:text-2xl">{project?.name}</h1>
+          <p className="relative z-10 mt-1 text-sm text-white/65">التمديدات الزمنية</p>
         </div>
       </div>
 
@@ -173,7 +173,7 @@ export default function ProjectExtensions() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="surface-card surface-card-hover">
           <CardContent className="pt-5">
             <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5" /> إجمالي أيام التمديد
@@ -184,7 +184,7 @@ export default function ProjectExtensions() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="surface-card surface-card-hover">
           <CardContent className="pt-5">
             <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
               <Calendar className="h-3.5 w-3.5" /> عدد التمديدات
@@ -197,7 +197,7 @@ export default function ProjectExtensions() {
       </div>
 
       {/* Extensions table */}
-      <Card>
+      <Card className="surface-card surface-card-hover">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-base">سجل التمديدات الرسمية</CardTitle>

@@ -3,6 +3,10 @@ export interface ActivityForReport {
   plannedProgress: number;
   actualProgress: number;
   status: string;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  actualEndDate?: string | null;
+  delayed?: boolean;
 }
 
 export interface CompanyLogo {
@@ -209,7 +213,7 @@ function buildPrintHTML(data: ReportPdfData): string {
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: 'Noto Kufi Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
+    font-family: 'Latin Digits', 'Noto Kufi Arabic', 'Noto Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
     font-size: 14px;
     line-height: 1.6;
     color: #1e293b;
@@ -274,7 +278,7 @@ function buildPrintHTML(data: ReportPdfData): string {
 
   /* ── HEADER ── */
   .header {
-    background: linear-gradient(135deg, #1e293b, #334155, #475569);
+    background: #1e293b;
     color: #fff;
     padding: 24px 28px 20px;
     border-radius: 10px;
@@ -318,8 +322,8 @@ function buildPrintHTML(data: ReportPdfData): string {
   .dp-row:last-child { margin-bottom: 0; }
   .dp-lbl { font-size: 12px; font-weight: 600; color: #64748b; width: 45px; }
   .dp-track { flex: 1; height: 16px; background: #e2e8f0; border-radius: 8px; overflow: hidden; }
-  .dp-fill-blue { height: 100%; border-radius: 8px; background: linear-gradient(90deg, #2563eb, #60a5fa); }
-  .dp-fill-gray { height: 100%; border-radius: 8px; background: linear-gradient(90deg, #94a3b8, #cbd5e1); }
+  .dp-fill-blue { height: 100%; border-radius: 8px; background: #2563eb; }
+  .dp-fill-gray { height: 100%; border-radius: 8px; background: #94a3b8; }
   .dp-val { font-size: 16px; font-weight: 800; width: 50px; text-align: left; }
 
   /* ── STATS ── */
@@ -335,7 +339,7 @@ function buildPrintHTML(data: ReportPdfData): string {
   .tl-title { font-size: 14px; font-weight: 700; color: #334155; margin-bottom: 8px; }
   .tl-dates { display: flex; justify-content: space-between; font-size: 12px; color: #475569; margin-bottom: 8px; }
   .tl-track { height: 12px; background: #e2e8f0; border-radius: 6px; overflow: hidden; margin-bottom: 6px; }
-  .tl-fill { height: 100%; background: linear-gradient(90deg, #1e40af, #3b82f6); border-radius: 6px; }
+  .tl-fill { height: 100%; background: #1e40af; border-radius: 6px; }
   .tl-legend { display: flex; gap: 20px; font-size: 10px; color: #64748b; }
 
   /* ── ACTIVITY SUMMARY ── */
@@ -365,7 +369,7 @@ function buildPrintHTML(data: ReportPdfData): string {
   .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; }
 
   /* ── TOOLBAR ── */
-  .toolbar { position: sticky; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e293b, #334155); padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+  .toolbar { position: sticky; top: 0; left: 0; right: 0; background: #1e293b; padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
   .btn-print { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
   .btn-print:hover { background: #1d4ed8; }
   .btn-close { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
@@ -595,6 +599,19 @@ export function previewReport(data: ReportPdfData): void {
   win.document.close();
 }
 
+export interface ExecutiveSummaryAI {
+  headline: string;
+  status: string;
+  progressNote: string;
+  decisionNote?: string;
+  scheduleOutlook?: string;
+  highlights: string[];
+  risks: string[];
+  nextActions: string[];
+  executiveAssessment?: string;
+  managementFocus?: string[];
+}
+
 export interface ExecutiveSummaryData {
   projectName: string;
   ownerEntity?: string | null;
@@ -618,187 +635,191 @@ export interface ExecutiveSummaryData {
   apiBase?: string;
   suspensionDays?: number;
   extensionDays?: number;
+  aiSummary?: ExecutiveSummaryAI | null;
+  noSchedule?: boolean;
+}
+
+function startOfExecutiveDay(value?: string | Date | null): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function daysLateForExecutiveActivity(
+  activity: ActivityForReport,
+  noSchedule = false,
+  today = new Date(),
+): number {
+  if (noSchedule) return 0;
+  const plannedStart = startOfExecutiveDay(activity.plannedStartDate);
+  const plannedEnd = startOfExecutiveDay(activity.plannedEndDate);
+  const actualEnd = startOfExecutiveDay(activity.actualEndDate);
+  const currentDay = startOfExecutiveDay(today)!;
+  const daysBetweenDates = (from: Date, to: Date) => Math.max(0, Math.ceil((to.getTime() - from.getTime()) / 86400000));
+
+  if (activity.status === "completed" || activity.actualProgress >= 100) {
+    return plannedEnd ? daysBetweenDates(plannedEnd, actualEnd ?? currentDay) : 0;
+  }
+  if (activity.status === "not_started" && activity.actualProgress <= 0) {
+    return plannedStart ? daysBetweenDates(plannedStart, currentDay) : 0;
+  }
+  return plannedEnd ? daysBetweenDates(plannedEnd, currentDay) : 0;
+}
+
+function isExecutiveActivityDelayed(
+  activity: ActivityForReport,
+  noSchedule = false,
+  today = new Date(),
+): boolean {
+  return daysLateForExecutiveActivity(activity, noSchedule, today) > 0;
+}
+
+function executivePriorityScore(activity: ActivityForReport, noSchedule = false): number {
+  const delayDays = daysLateForExecutiveActivity(activity, noSchedule);
+  const varianceGap = Math.max(0, (activity.plannedProgress ?? 0) - (activity.actualProgress ?? 0));
+  const statusWeight = activity.status === "in_progress" ? 20 : activity.status === "not_started" ? 10 : activity.status === "completed" ? 5 : 0;
+  return delayDays * 100 + varianceGap * 2 + statusWeight;
 }
 
 function buildExecutiveSummaryHTML(data: ExecutiveSummaryData): string {
-  const deviation = data.overallProgress - data.plannedProgress;
+  const clampPct = (value: number) => Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0));
+  const actual = clampPct(data.overallProgress);
+  const planned = clampPct(data.plannedProgress);
+  const deviation = actual - planned;
   const totalDays = daysBetween(data.startDate, data.expectedEndDate);
-  const elapsed = daysBetween(data.startDate, new Date().toISOString());
-  const remaining = totalDays != null && elapsed != null ? Math.max(0, totalDays - elapsed) : null;
-  const overrunDays = data.expectedEndDate && data.overallProgress < 100
-    ? (() => {
-        const t = new Date();
-        const e = new Date(data.expectedEndDate);
-        const tu = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
-        const eu = Date.UTC(e.getUTCFullYear(), e.getUTCMonth(), e.getUTCDate());
-        return Math.max(0, Math.floor((tu - eu) / 86400000));
-      })()
-    : 0;
-  const scheduleDeviation = deviation < 0 ? Math.abs(deviation) : 0;
+  const elapsedDays = daysBetween(data.startDate, new Date().toISOString());
+  const remainingRaw = daysBetween(new Date().toISOString(), data.expectedEndDate);
+  const remainingDays = remainingRaw == null ? null : Math.max(0, remainingRaw);
+  const overrunDays = remainingRaw != null && remainingRaw < 0 && actual < 100 ? Math.abs(remainingRaw) : 0;
+  const elapsedPct = totalDays && elapsedDays != null ? clampPct((elapsedDays / totalDays) * 100) : null;
+  const scheduleGap = Math.max(0, -deviation);
 
-  const completed = data.activities.filter(a => a.status === "completed").length;
-  const inProgress = data.activities.filter(a => a.status === "in_progress").length;
-  const delayed = data.activities.filter(a => a.status === "delayed").length;
-  const notStarted = data.activities.filter(a => a.status === "not_started").length;
-  const total = data.activities.length;
+  const acts = data.activities ?? [];
+  const isDelayed = (a: ActivityForReport) => isExecutiveActivityDelayed(a, data.noSchedule);
+  const completed = acts.filter(a => a.status === 'completed').length;
+  const inProgress = acts.filter(a => a.status === 'in_progress').length;
+  const delayed = acts.filter(isDelayed).length;
+  const notStarted = acts.filter(a => a.status === 'not_started').length;
+  const total = acts.length;
+  const statusLbl = ({ active: 'نشط', completed: 'مكتمل', delayed: 'متأخر', suspended: 'معلّق', on_hold: 'معلّق' } as Record<string, string>)[data.status ?? ''] ?? data.status ?? 'غير محددة';
+  const statusTone = data.status === 'completed' || actual >= 100 ? 'good' : overrunDays > 0 || delayed > 0 || deviation < -5 ? 'risk' : 'neutral';
+  const statusColor = statusTone === 'good' ? '#047857' : statusTone === 'risk' ? '#b91c1c' : '#1d4ed8';
+  const statusBg = statusTone === 'good' ? '#ecfdf5' : statusTone === 'risk' ? '#fef2f2' : '#eff6ff';
 
-  const statusLbl = ({ active: "نشط", completed: "مكتمل", delayed: "متأخر", suspended: "معلّق" } as Record<string, string>)[data.status ?? ""] ?? data.status ?? "—";
+  const escValue = (value: unknown) => esc(String(value ?? ''));
+  const optionalMeta = [
+    data.ownerEntity ? ['المالك', data.ownerEntity] : null,
+    data.contractor ? ['المقاول', data.contractor] : null,
+    data.supervisorEntity ? ['جهة الإشراف', data.supervisorEntity] : null,
+    data.location ? ['الموقع', data.location] : null,
+    data.startDate ? ['تاريخ البدء', fmtDate(data.startDate)] : null,
+    data.expectedEndDate ? ['النهاية المعتمدة', fmtDate(data.expectedEndDate)] : null,
+    data.contractValue != null ? ['قيمة العقد', `${fmtMoney(data.contractValue)} ر.س`] : null,
+  ].filter(Boolean) as string[][];
 
-  const logosHtml = data.companyLogos ? (() => {
-    const entries = [data.companyLogos.owner, data.companyLogos.supervisor, data.companyLogos.contractor].filter(l => l?.logoUrl);
-    if (entries.length === 0) return "";
-    return `<div style="display:flex;justify-content:center;gap:40px;margin-bottom:20px;padding:12px 0">
-      ${entries.map(l => `<div style="text-align:center"><img src="${escAttr(l!.logoUrl!.startsWith("/") && data.apiBase ? data.apiBase + l!.logoUrl! : l!.logoUrl!)}" style="max-height:55px;max-width:120px;object-fit:contain" onerror="this.style.display='none'" /><div style="font-size:9px;color:#94a3b8;margin-top:4px">${esc(l!.name)}</div></div>`).join("")}
-    </div>`;
-  })() : "";
+  const logoItems = [data.companyLogos?.owner, data.companyLogos?.supervisor, data.companyLogos?.contractor]
+    .filter((logo): logo is CompanyLogo => Boolean(logo?.logoUrl));
+  const logosHtml = logoItems.length > 0 ? `<div class="logos-strip no-print-break">${logoItems.map(logo => {
+    const url = logo.logoUrl!.startsWith('/') && data.apiBase ? data.apiBase + logo.logoUrl! : logo.logoUrl!;
+    return `<div class="logo-item"><img src="${escAttr(url)}" alt="${escValue(logo.name)}"/><span>${escValue(logo.name)}</span></div>`;
+  }).join('')}</div>` : '';
+
+  const safeList = (items: string[] | undefined, limit = 4) => (items ?? [])
+    .filter(item => typeof item === 'string' && item.trim())
+    .slice(0, limit);
+  const renderList = (items: string[] | undefined, limit = 4) => safeList(items, limit).map(item => `<li>${esc(item)}</li>`).join('');
+  const hasList = (items: string[] | undefined) => safeList(items).length > 0;
+
+  const orderedActivities = [...acts].sort((a, b) => {
+    const scoreGap = executivePriorityScore(b, data.noSchedule) - executivePriorityScore(a, data.noSchedule);
+    if (scoreGap !== 0) return scoreGap;
+    const aEnd = startOfExecutiveDay(a.plannedEndDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    const bEnd = startOfExecutiveDay(b.plannedEndDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    return aEnd - bEnd;
+  });
+  const attentionActivities = orderedActivities.filter(a => {
+    const delayedFlag = isDelayed(a);
+    const varianceGap = (a.plannedProgress ?? 0) - (a.actualProgress ?? 0);
+    return delayedFlag || varianceGap >= 5;
+  });
+  const stableActivitiesCount = Math.max(0, total - attentionActivities.length);
+  const compactActivities = attentionActivities.length > 0 ? `<div class="activity-table-wrap"><table class="activity-table">
+    <thead><tr><th>#</th><th>البند ذو الأولوية</th><th>التأخير</th><th>الإنجاز فعلي/مخطط</th><th>الفارق</th><th>الحالة</th></tr></thead>
+    <tbody>${attentionActivities.map((a, index) => {
+      const diff = (a.actualProgress ?? 0) - (a.plannedProgress ?? 0);
+      const delayedFlag = isDelayed(a);
+      const delayDays = daysLateForExecutiveActivity(a, data.noSchedule);
+      const tone = delayedFlag || diff < 0 ? '#b91c1c' : '#047857';
+      return `<tr><td style="font-weight:800;color:#64748b">${index + 1}</td><td>${esc(a.name)}</td><td style="color:${delayedFlag ? '#b91c1c' : '#64748b'};font-weight:800">${delayedFlag ? `${delayDays} يوم` : 'فجوة أداء'}</td><td>${(a.actualProgress ?? 0).toFixed(1)}% / ${(a.plannedProgress ?? 0).toFixed(1)}%</td><td style="color:${tone};font-weight:800">${diff > 0 ? '+' : ''}${diff.toFixed(1)}%</td><td><span class="status-pill" style="color:${statusColorForActivity(a.status, delayedFlag)};background:${statusBgForActivity(a.status, delayedFlag)}">${esc(statusLabelForActivity(a.status, delayedFlag))}</span></td></tr>`;
+    }).join('')}</tbody>
+  </table></div>` : `<div class="empty-note">لا توجد استثناءات تشغيلية تستدعي الإدراج؛ البنود المستقرة مدمجة في المؤشرات أعلاه.</div>`;
+
+  function statusLabelForActivity(status: string, delayedFlag: boolean): string {
+    if (delayedFlag) return 'متأخر';
+    return ({ completed: 'مكتمل', in_progress: 'قيد التنفيذ', not_started: 'لم يبدأ', suspended: 'معلّق' } as Record<string, string>)[status] ?? status;
+  }
+  function statusColorForActivity(status: string, delayedFlag: boolean): string {
+    if (delayedFlag) return '#b91c1c';
+    return ({ completed: '#047857', in_progress: '#1d4ed8', not_started: '#64748b', suspended: '#b45309' } as Record<string, string>)[status] ?? '#475569';
+  }
+  function statusBgForActivity(status: string, delayedFlag: boolean): string {
+    if (delayedFlag) return '#fef2f2';
+    return ({ completed: '#ecfdf5', in_progress: '#eff6ff', not_started: '#f8fafc', suspended: '#fffbeb' } as Record<string, string>)[status] ?? '#f8fafc';
+  }
+
+  const ai = data.aiSummary;
+  const aiHtml = ai ? `<section class="decision-section avoid-break">
+    <div class="section-kicker">القراءة التنفيذية</div>
+    <div class="decision-head"><div><h2>${esc(ai.headline)}</h2><p class="source-note">تحليل مولّد من سجل المشروع ومؤشرات التقدم الحالية فقط</p></div><span class="status-badge" style="color:${statusColor};background:${statusBg};border-color:${statusColor}">${esc(ai.status)}</span></div>
+    <div class="decision-grid">
+      <div class="decision-card primary"><div class="card-label">قراءة الأداء</div><p>${esc(ai.progressNote || 'لا توجد قراءة كمية إضافية موثقة.')}</p></div>
+      <div class="decision-card"><div class="card-label">القرار / المتابعة المطلوبة</div><p>${esc(ai.decisionNote || 'لا توجد ملاحظة قرار إضافية؛ يعتمد التقييم على المؤشرات الرقمية.')}</p></div>
+      <div class="decision-card schedule"><div class="card-label">المسار الزمني</div><p>${esc(ai.scheduleOutlook || 'لا يتوفر توقع زمني موثق.')}</p></div>
+    </div>
+  </section>` : '';
+
+  const listSection = (title: string, className: string, items: string[] | undefined, limit = 4) => hasList(items) ? `<div class="list-card ${className} avoid-break"><div class="card-label">${title}</div><ul>${renderList(items, limit)}</ul></div>` : '';
 
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-<title>ملخص تنفيذي — ${esc(data.projectName)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<title>ملخص حالة المشروع — ${esc(data.projectName)}</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Noto Kufi Arabic',sans-serif;direction:rtl;background:#fff;color:#1e293b;font-size:13px;line-height:1.7}
-@media print{@page{size:A4 portrait;margin:15mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none!important}}
-.container{max-width:750px;margin:0 auto;padding:20px}
-.toolbar{position:sticky;top:0;left:0;right:0;background:rgba(15,23,42,.95);backdrop-filter:blur(8px);padding:10px 16px;display:flex;gap:10px;z-index:999;justify-content:center;align-items:center;box-shadow:0 4px 16px rgba(0,0,0,0.3)}
-.toolbar button{color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap}
-.toolbar button:first-child{background:#2563eb}
-.toolbar button:first-child:hover{background:#1d4ed8}
-.toolbar button:last-child{background:rgba(255,255,255,.15)}
-.toolbar button:last-child:hover{background:rgba(255,255,255,.25)}
-.header{text-align:center;margin-bottom:24px;padding:20px 0;border-bottom:3px solid #1e3a5f}
-.header h1{font-size:22px;font-weight:800;color:#1e3a5f;margin-bottom:4px}
-.header p{font-size:13px;color:#64748b}
-.section{margin-bottom:20px}
-.section-title{font-size:14px;font-weight:700;color:#1e3a5f;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e2e8f0;display:flex;align-items:center;gap:8px}
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px}
-.info-item{display:flex;justify-content:space-between;padding:6px 10px;background:#f8fafc;border-radius:6px;font-size:12px}
-.info-item span:first-child{color:#64748b;font-weight:500}
-.info-item span:last-child{font-weight:600}
-.metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
-.metric{text-align:center;padding:16px 10px;border-radius:10px;border:1px solid #e2e8f0}
-.metric .value{font-size:28px;font-weight:800;line-height:1.2}
-.metric .label{font-size:11px;color:#64748b;margin-top:4px}
-.progress-bar{height:14px;background:#f1f5f9;border-radius:8px;overflow:hidden;margin:6px 0;position:relative}
-.progress-fill{height:100%;border-radius:8px;transition:width .3s}
-.activity-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
-.activity-table th{background:#1e3a5f;color:#fff;padding:8px 10px;text-align:right;font-weight:600}
-.activity-table td{padding:7px 10px;border-bottom:1px solid #e2e8f0}
-.activity-table tr:nth-child(even){background:#f8fafc}
-.status-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}
-.footer{text-align:center;padding:16px 0;margin-top:24px;border-top:2px solid #e2e8f0;color:#94a3b8;font-size:10px}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Latin Digits','Noto Kufi Arabic','Noto Sans Arabic','Segoe UI',Tahoma,Arial,sans-serif;direction:rtl;background:#e5e7eb;color:#172033;font-size:10.5px;line-height:1.75;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:11mm 12mm 10mm}.no-print{position:sticky;top:0;z-index:10;display:flex;justify-content:center;gap:8px;padding:10px;background:#172033}.no-print button{font:600 12px inherit;color:#fff;border:1px solid #334155;background:#24344d;border-radius:4px;padding:7px 16px;cursor:pointer}.no-print button:first-child{background:#1d4ed8;border-color:#1d4ed8}.brand-bar{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #1d4ed8;padding-bottom:9px;margin-bottom:9px}.brand-title{font-size:8px;letter-spacing:1.5px;color:#64748b;font-weight:800}.report-code{font-size:9px;color:#64748b}.hero{display:grid;grid-template-columns:1fr 118px;gap:14px;align-items:stretch;background:#172033;color:#fff;padding:16px 18px;border-radius:5px;margin-bottom:9px}.hero h1{font-size:20px;line-height:1.45;font-weight:800;margin-bottom:4px}.hero p{font-size:10px;color:#cbd5e1}.hero-side{border-right:1px solid #475569;padding-right:14px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:5px}.hero-side .label{font-size:8px;color:#94a3b8}.hero-side .status{font-size:13px;font-weight:800;border:1px solid #93c5fd;padding:4px 11px;border-radius:4px;color:#dbeafe;background:#263a5e}.logos-strip{display:flex;justify-content:center;gap:22px;align-items:center;margin-bottom:8px}.logo-item{display:flex;align-items:center;gap:5px;color:#64748b;font-size:8px}.logo-item img{max-width:55px;max-height:28px;object-fit:contain}.meta-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:9px}.meta-item{border:1px solid #dbe2ea;padding:5px 7px;border-radius:3px;min-width:0}.meta-item .key{display:block;font-size:7.5px;color:#64748b;margin-bottom:1px}.meta-item .value{display:block;font-size:9px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.section{margin-top:9px}.section-title{font-size:11px;font-weight:800;color:#172033;border-right:3px solid #1d4ed8;padding-right:7px;margin-bottom:6px}.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.kpi{border:1px solid #dbe2ea;border-top:3px solid #1d4ed8;border-radius:3px;padding:7px 6px;text-align:center;min-height:58px}.kpi.good{border-top-color:#059669}.kpi.risk{border-top-color:#dc2626}.kpi .value{font-size:18px;font-weight:800;line-height:1.25;color:#172033}.kpi .label{font-size:7.5px;color:#64748b;line-height:1.45;margin-top:2px}.meter{height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;margin-top:5px}.meter span{height:100%;display:block}.progress-compare{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}.compare-row{display:flex;align-items:center;gap:6px;font-size:8px;color:#475569}.compare-row b{width:42px;color:#172033}.compare-line{height:6px;flex:1;background:#e5e7eb;overflow:hidden;border-radius:2px}.compare-line span{height:100%;display:block}.decision-section{margin-top:10px;border:1px solid #cbd5e1;border-radius:4px;padding:10px;background:#f8fafc}.section-kicker{font-size:8px;color:#1d4ed8;font-weight:800;letter-spacing:.5px;margin-bottom:3px}.decision-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;border-bottom:1px solid #dbe2ea;padding-bottom:7px}.decision-head h2{font-size:13px;line-height:1.65;color:#172033}.source-note{font-size:7.5px;color:#64748b;margin-top:2px}.status-badge{font-size:9px;font-weight:800;border:1px solid;padding:3px 8px;border-radius:3px;white-space:nowrap}.decision-grid{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:6px;margin-top:7px}.decision-card{background:#fff;border:1px solid #dbe2ea;border-right:3px solid #64748b;padding:7px 8px;border-radius:3px;min-height:76px}.decision-card.primary{border-right-color:#1d4ed8}.decision-card.schedule{border-right-color:#047857}.card-label{font-size:8.5px;font-weight:800;color:#334155;margin-bottom:3px}.decision-card p{font-size:8.5px;line-height:1.8;color:#475569}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}.list-card{background:#fff;border:1px solid #dbe2ea;border-top:3px solid #64748b;border-radius:3px;padding:7px 8px}.list-card ul{padding:0 15px 0 0;margin:0;color:#475569;font-size:8.5px;line-height:1.75}.list-card li{margin:1px 0}.list-card.risk{border-top-color:#dc2626}.list-card.action{border-top-color:#1d4ed8}.list-card.success{border-top-color:#059669}.list-card.focus{border-top-color:#7c3aed}.activities-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:6px}.activity-count{border:1px solid #dbe2ea;border-radius:3px;padding:5px;text-align:center}.activity-count b{display:block;font-size:15px;line-height:1.2}.activity-count span{font-size:7.5px;color:#64748b}.activity-table-wrap{border:1px solid #dbe2ea;border-radius:3px;overflow:visible}.activity-table{width:100%;border-collapse:collapse;font-size:8px;break-inside:auto;page-break-inside:auto}.activity-table th{background:#172033;color:#fff;padding:5px 6px;text-align:right;font-weight:700}.activity-table td{padding:5px 6px;border-bottom:1px solid #e5e7eb;vertical-align:middle}.activity-table tr:nth-child(even){background:#f8fafc}.activity-table td:not(:first-child),.activity-table th:not(:first-child){text-align:center}.activity-table td:first-child{font-weight:600;max-width:245px}.status-pill{display:inline-block;border-radius:3px;padding:1px 5px;font-size:7px;font-weight:700;white-space:nowrap}.empty-note{border:1px dashed #cbd5e1;padding:10px;text-align:center;color:#64748b;font-size:9px}.coverage{display:flex;justify-content:space-between;gap:8px;border-top:1px solid #dbe2ea;margin-top:8px;padding-top:5px;color:#64748b;font-size:7.5px}.footer{border-top:1px solid #cbd5e1;margin-top:9px;padding-top:5px;display:flex;justify-content:space-between;color:#64748b;font-size:7px}@media print{body{background:#fff}.page{margin:0;width:auto;min-height:0;padding:0}.no-print{display:none!important}.avoid-break{break-inside:avoid;page-break-inside:avoid}.activity-table-wrap{break-inside:auto;page-break-inside:auto}.activity-table thead{display:table-header-group}.activity-table tr{break-inside:avoid;page-break-inside:avoid}}@media(max-width:800px){body{background:#fff}.page{width:100%;padding:16px}.meta-grid{grid-template-columns:repeat(2,1fr)}.kpi-grid{grid-template-columns:repeat(2,1fr)}.decision-grid,.two-col{grid-template-columns:1fr}.hero{grid-template-columns:1fr}.hero-side{border-right:0;border-top:1px solid #475569;padding:7px 0 0;align-items:flex-start}.activities-summary{grid-template-columns:repeat(2,1fr)}}
 </style></head><body>
-<div class="toolbar no-print">
-  <button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
-  <button onclick="window.close()">✕ إغلاق</button>
-</div>
-<div class="container">
+<div class="no-print"><button onclick="window.print()">طباعة / حفظ PDF</button><button onclick="window.close()">إغلاق</button></div>
+<main class="page">
+  <div class="brand-bar"><span class="brand-title">CONSTRUCTION SUPERVISION · PROJECT STATUS REPORT</span><span class="report-code">تقرير حالة تنفيذي · ${fmtDate(new Date().toISOString())}</span></div>
   ${logosHtml}
-  <div class="header">
-    <h1>ملخص تنفيذي</h1>
-    <p style="font-size:16px;font-weight:700;margin-top:6px">${esc(data.projectName)}</p>
-    <p>تاريخ الإعداد: ${fmtDate(new Date().toISOString())}</p>
-  </div>
+  <section class="hero"><div><h1>${esc(data.projectName)}</h1><p>${esc(data.location ?? 'الموقع غير مسجل')} · ملخص تنفيذي مبني على السجل التشغيلي الحالي</p></div><div class="hero-side"><span class="label">الحالة الحالية</span><span class="status">${esc(statusLbl)}</span></div></section>
+  ${optionalMeta.length > 0 ? `<section class="meta-grid">${optionalMeta.map(([key, value]) => `<div class="meta-item"><span class="key">${esc(key)}</span><span class="value">${esc(value)}</span></div>`).join('')}</section>` : ''}
 
-  <div class="section">
-    <div class="section-title">📋 معلومات المشروع</div>
-    <div class="info-grid">
-      <div class="info-item"><span>المالك</span><span>${esc(data.ownerEntity ?? "—")}</span></div>
-      <div class="info-item"><span>المقاول</span><span>${esc(data.contractor ?? "—")}</span></div>
-      <div class="info-item"><span>جهة الإشراف</span><span>${esc(data.supervisorEntity ?? "—")}</span></div>
-      <div class="info-item"><span>الموقع</span><span>${esc(data.location ?? "—")}</span></div>
-      <div class="info-item"><span>تاريخ البدء</span><span>${fmtDate(data.startDate)}</span></div>
-      <div class="info-item"><span>تاريخ الانتهاء المتوقع</span><span>${fmtDate(data.expectedEndDate)}</span></div>
-      <div class="info-item"><span>حالة المشروع</span><span>${esc(statusLbl)}</span></div>
-      ${data.contractValue ? `<div class="info-item"><span>قيمة العقد</span><span>${fmtMoney(data.contractValue)} ر.س</span></div>` : ""}
-    </div>
-  </div>
+  <section class="section avoid-break"><div class="section-title">لوحة المؤشرات الأساسية</div><div class="kpi-grid">
+    <div class="kpi good"><div class="value">${actual.toFixed(1)}%</div><div class="label">الإنجاز الفعلي</div><div class="meter"><span style="width:${actual}%;background:#059669"></span></div></div>
+    <div class="kpi"><div class="value">${planned.toFixed(1)}%</div><div class="label">الإنجاز المخطط</div><div class="meter"><span style="width:${planned}%;background:#2563eb"></span></div></div>
+    <div class="kpi ${deviation < 0 ? 'risk' : 'good'}"><div class="value" style="color:${deviation < 0 ? '#b91c1c' : '#047857'}">${deviation > 0 ? '+' : ''}${deviation.toFixed(1)}%</div><div class="label">الانحراف عن الخطة</div></div>
+    <div class="kpi ${delayed > 0 ? 'risk' : 'good'}"><div class="value" style="color:${delayed > 0 ? '#b91c1c' : '#047857'}">${delayed}</div><div class="label">بنود متأخرة فعلياً</div></div>
+    <div class="kpi ${overrunDays > 0 ? 'risk' : ''}"><div class="value" style="color:${overrunDays > 0 ? '#b91c1c' : '#172033'}">${overrunDays > 0 ? overrunDays : (remainingDays ?? '—')}</div><div class="label">${overrunDays > 0 ? 'تجاوز النهاية بالأيام' : 'أيام متبقية'}</div></div>
+  </div><div class="progress-compare"><div class="compare-row"><b>فعلي</b><div class="compare-line"><span style="width:${actual}%;background:#059669"></span></div><strong>${actual.toFixed(1)}%</strong></div><div class="compare-row"><b>مخطط</b><div class="compare-line"><span style="width:${planned}%;background:#2563eb"></span></div><strong>${planned.toFixed(1)}%</strong></div></div></section>
 
-  <div class="section">
-    <div class="section-title">📊 مؤشرات الأداء الرئيسية</div>
-    <div class="metric-grid">
-      <div class="metric" style="border-color:#10b981">
-        <div class="value" style="color:#10b981">${data.overallProgress.toFixed(1)}%</div>
-        <div class="label">الإنجاز الفعلي</div>
-        <div class="progress-bar"><div class="progress-fill" style="width:${data.overallProgress}%;background:#10b981"></div></div>
-      </div>
-      <div class="metric" style="border-color:#3b82f6">
-        <div class="value" style="color:#3b82f6">${data.plannedProgress.toFixed(1)}%</div>
-        <div class="label">الإنجاز المخطط</div>
-        <div class="progress-bar"><div class="progress-fill" style="width:${data.plannedProgress}%;background:#3b82f6"></div></div>
-      </div>
-      <div class="metric" style="border-color:${deviation >= 0 ? '#10b981' : '#ef4444'}">
-        <div class="value" style="color:${deviation >= 0 ? '#10b981' : '#ef4444'}">${deviation > 0 ? '+' : ''}${deviation.toFixed(1)}%</div>
-        <div class="label">${deviation >= 0 ? 'متقدم عن الخطة' : 'انحراف عن الخطة'}</div>
-      </div>
-    </div>
-    <div class="metric-grid">
-      <div class="metric">
-        <div class="value" style="color:#1e3a5f">${totalDays ?? "—"}</div>
-        <div class="label">إجمالي أيام المشروع</div>
-      </div>
-      <div class="metric">
-        <div class="value" style="color:${overrunDays > 0 ? '#ef4444' : '#3b82f6'}">${overrunDays > 0 ? overrunDays : (remaining ?? '—')}</div>
-        <div class="label">${overrunDays > 0 ? 'تجاوز المدة التعاقدية (يوم)' : 'أيام متبقية'}</div>
-      </div>
-      <div class="metric">
-        <div class="value" style="color:${scheduleDeviation > 0 ? '#ef4444' : '#10b981'}">${scheduleDeviation > 0 ? scheduleDeviation.toFixed(1) + '%' : '—'}</div>
-        <div class="label">${scheduleDeviation > 0 ? 'فجوة الانحراف عن الخطة' : 'لا يوجد انحراف عن الخطة'}</div>
-      </div>
-      <div class="metric">
-        <div class="value" style="color:#1e3a5f">${data.reportsCount}</div>
-        <div class="label">عدد التقارير</div>
-      </div>
-    </div>
-    ${data.suspensionDays ? `<div class="info-item" style="margin-top:8px"><span>أيام التوقف المعتمدة</span><span>${data.suspensionDays} يوم</span></div>` : ""}
-    ${data.extensionDays ? `<div class="info-item" style="margin-top:4px"><span>أيام التمديد</span><span>${data.extensionDays} يوم</span></div>` : ""}
-  </div>
+  ${aiHtml}
 
-  <div class="section">
-    <div class="section-title">📈 ملخص بنود الأعمال (${total} بند)</div>
-    <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
-      <div class="metric" style="border-color:#10b981;padding:10px">
-        <div class="value" style="color:#10b981;font-size:22px">${completed}</div>
-        <div class="label">مكتمل</div>
-      </div>
-      <div class="metric" style="border-color:#3b82f6;padding:10px">
-        <div class="value" style="color:#3b82f6;font-size:22px">${inProgress}</div>
-        <div class="label">قيد التنفيذ</div>
-      </div>
-      <div class="metric" style="border-color:#ef4444;padding:10px">
-        <div class="value" style="color:#ef4444;font-size:22px">${delayed}</div>
-        <div class="label">متأخر</div>
-      </div>
-      <div class="metric" style="border-color:#94a3b8;padding:10px">
-        <div class="value" style="color:#94a3b8;font-size:22px">${notStarted}</div>
-        <div class="label">لم يبدأ</div>
-      </div>
-    </div>
+  <section class="section avoid-break"><div class="section-title">المدة والضبط الزمني</div><div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi"><div class="value">${totalDays ?? '—'}</div><div class="label">إجمالي المدة بالأيام</div></div>
+    <div class="kpi"><div class="value">${elapsedDays != null ? Math.max(0, elapsedDays) : '—'}</div><div class="label">الأيام المنقضية</div></div>
+    <div class="kpi"><div class="value">${data.suspensionDays ?? 0}</div><div class="label">توقفات مسجلة بالأيام</div></div>
+    <div class="kpi"><div class="value">${data.extensionDays ?? 0}</div><div class="label">تمديدات مسجلة بالأيام</div></div>
+  </div>${elapsedPct != null ? `<div class="compare-row" style="margin-top:6px"><b>استهلاك الزمن</b><div class="compare-line"><span style="width:${elapsedPct}%;background:#475569"></span></div><strong>${elapsedPct.toFixed(0)}%</strong></div>` : ''}</section>
 
-    ${total > 0 ? `<table class="activity-table">
-      <thead><tr><th>#</th><th>اسم البند</th><th>المخطط</th><th>الفعلي</th><th>الفرق</th><th>الحالة</th></tr></thead>
-      <tbody>${data.activities.map((a, i) => {
-        const diff = a.actualProgress - a.plannedProgress;
-        return `<tr>
-          <td style="text-align:center;color:#94a3b8">${i + 1}</td>
-          <td>${esc(a.name)}</td>
-          <td style="text-align:center">${(a.plannedProgress ?? 0).toFixed(1)}%</td>
-          <td style="text-align:center">${(a.actualProgress ?? 0).toFixed(1)}%</td>
-          <td style="text-align:center;color:${diff >= 0 ? '#10b981' : '#ef4444'};font-weight:600">${diff > 0 ? '+' : ''}${diff.toFixed(1)}%</td>
-          <td style="text-align:center"><span class="status-badge" style="color:${statusColor(a.status)};background:${statusBg(a.status)}">${statusLabel(a.status)}</span></td>
-        </tr>`;
-      }).join("")}</tbody>
-    </table>` : ""}
-  </div>
+  ${(hasList(ai?.highlights) || hasList(ai?.risks) || hasList(ai?.nextActions) || hasList(ai?.managementFocus)) ? `<section class="two-col">${listSection('إشارات إيجابية موثقة', 'success', ai?.highlights)}${listSection('المخاطر والقيود الموثقة', 'risk', ai?.risks)}${listSection('الإجراءات المطلوبة', 'action', ai?.nextActions)}${listSection('محاور المتابعة', 'focus', ai?.managementFocus, 3)}</section>` : ''}
 
-  <div class="footer">
-    <span>تم إنشاؤه آلياً بواسطة إدارة الإشراف والمتابعة — ${fmtDate(new Date().toISOString())}</span>
-  </div>
-</div>
-</body></html>`;
+  <section class="section"><div class="section-title avoid-break">الاستثناءات التشغيلية وأولوية المتابعة</div><div class="activities-summary avoid-break"><div class="activity-count"><b style="color:#b91c1c">${delayed}</b><span>متأخر فعلياً</span></div><div class="activity-count"><b style="color:#b45309">${Math.max(0, attentionActivities.length - delayed)}</b><span>فجوة أداء</span></div><div class="activity-count"><b style="color:#047857">${stableActivitiesCount}</b><span>مستقر ومدمج</span></div><div class="activity-count"><b style="color:#64748b">${total}</b><span>إجمالي البنود</span></div></div>${compactActivities}<div class="coverage avoid-break"><span>إجمالي البنود المسجلة: ${total}</span><span>المعروض تفصيلياً: ${attentionActivities.length} استثناء؛ البنود المستقرة مدمجة في الرقم الإجمالي</span></div></section>
+
+  <footer class="footer"><span>هذا الملخص يعرض البيانات المسجلة في النظام دون إضافة معلومات غير موثقة.</span><span>التقارير المسجلة: ${data.reportsCount}</span></footer>
+</main></body></html>`;
 }
-
 export function previewExecutiveSummary(data: ExecutiveSummaryData): void {
   const html = buildExecutiveSummaryHTML(data);
   const win = window.open("", "_blank", "width=900,height=780,scrollbars=yes");
@@ -811,7 +832,113 @@ export function previewExecutiveSummary(data: ExecutiveSummaryData): void {
   win.document.close();
 }
 
-/* ────────────────── Attendance employee report ────────────────── */
+
+function buildExecutiveSlidesHTML(data: ExecutiveSummaryData): string {
+  const clampPct = (value: number) => Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0));
+  const actual = clampPct(data.overallProgress);
+  const planned = clampPct(data.plannedProgress);
+  const deviation = actual - planned;
+  const acts = data.activities ?? [];
+  const isDelayed = (a: ActivityForReport) => isExecutiveActivityDelayed(a, data.noSchedule);
+  const completed = acts.filter(a => a.status === "completed").length;
+  const inProgress = acts.filter(a => a.status === "in_progress").length;
+  const delayed = acts.filter(isDelayed).length;
+  const notStarted = acts.filter(a => a.status === "not_started").length;
+  const total = acts.length;
+  const totalDays = daysBetween(data.startDate, data.expectedEndDate);
+  const elapsedDays = daysBetween(data.startDate, new Date().toISOString());
+  const remainingRaw = daysBetween(new Date().toISOString(), data.expectedEndDate);
+  const remainingDays = remainingRaw == null ? null : Math.max(0, remainingRaw);
+  const overrunDays = remainingRaw != null && remainingRaw < 0 && actual < 100 ? Math.abs(remainingRaw) : 0;
+  const elapsedPct = totalDays && elapsedDays != null ? clampPct((elapsedDays / totalDays) * 100) : null;
+  const statusLabel = ({ active: "نشط", completed: "مكتمل", delayed: "متأخر", suspended: "متوقف", on_hold: "متوقف" } as Record<string, string>)[data.status ?? ""] ?? "غير محددة";
+  const statusTone = data.status === "completed" || actual >= 100 ? "good" : overrunDays > 0 || delayed > 0 || deviation < -5 ? "risk" : "neutral";
+  const statusText = statusTone === "good" ? "مستقر" : statusTone === "risk" ? "يتطلب تدخلاً" : "تحت المتابعة";
+  const statusColor = statusTone === "good" ? "#047857" : statusTone === "risk" ? "#be123c" : "#1d4ed8";
+  const ai = data.aiSummary ?? null;
+  const escValue = (value: unknown) => esc(String(value ?? ""));
+  const safeList = (items: unknown, limit: number) => Array.isArray(items) ? items.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, limit) : [];
+  const listItems = (items: unknown, empty = "لا توجد بيانات موثقة لهذا القسم.") => {
+    const values = safeList(items, 4);
+    return values.length ? `<ul>${values.map(item => `<li>${escValue(item)}</li>`).join("")}</ul>` : `<p class="muted">${empty}</p>`;
+  };
+  const progressBar = (value: number, color: string) => `<div class="bar"><span style="width:${clampPct(value)}%;background:${color}"></span></div>`;
+  const isExecutiveDelayed = (a: ActivityForReport) => isExecutiveActivityDelayed(a, data.noSchedule);
+  const priorityActivities = [...acts]
+    .sort((a, b) => {
+      const scoreGap = executivePriorityScore(b, data.noSchedule) - executivePriorityScore(a, data.noSchedule);
+      if (scoreGap !== 0) return scoreGap;
+      const aEnd = startOfExecutiveDay(a.plannedEndDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const bEnd = startOfExecutiveDay(b.plannedEndDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      return aEnd - bEnd;
+    })
+    .filter(a => isExecutiveDelayed(a) || (a.plannedProgress ?? 0) - (a.actualProgress ?? 0) >= 5);
+  const activityPageSize = 8;
+  const activityPages = [];
+  for (let offset = 0; offset < priorityActivities.length; offset += activityPageSize) {
+    activityPages.push(priorityActivities.slice(offset, offset + activityPageSize));
+  }
+  if (activityPages.length === 0) activityPages.push([]);
+  const activityPageCount = activityPages.length;
+  const stableActivities = Math.max(0, total - priorityActivities.length);
+  const deckTotal = 5 + activityPageCount;
+  const activitySlides = activityPages.map((page, pageIndex) => {
+    const rows = page.length ? page.map((a, index) => {
+      const globalIndex = pageIndex * activityPageSize + index + 1;
+      const gap = (a.actualProgress ?? 0) - (a.plannedProgress ?? 0);
+      const delayedFlag = isExecutiveDelayed(a);
+      const delayDays = daysLateForExecutiveActivity(a, data.noSchedule);
+      const tone = delayedFlag || gap < 0 ? "risk" : "neutral";
+      return `<tr><td><b>${globalIndex}</b></td><td>${escValue(a.name)}</td><td>${delayedFlag ? `${delayDays} يوم` : "فجوة أداء"}</td><td>${(a.actualProgress ?? 0).toFixed(1)}% / ${(a.plannedProgress ?? 0).toFixed(1)}%</td><td class="${tone}">${gap > 0 ? "+" : ""}${gap.toFixed(1)}%</td><td class="${tone}">${escValue(statusLabelForActivity(a.status, delayedFlag))}</td></tr>`;
+    }).join("") : `<tr><td colspan="6" class="muted center">لا توجد استثناءات تشغيلية تستدعي الإدراج؛ البنود المستقرة مدمجة في المؤشرات.</td></tr>`;
+    const pageLabel = activityPageCount > 1 ? ` · صفحة ${pageIndex + 1} من ${activityPageCount}` : "";
+    const title = pageIndex === 0 ? "الاستثناءات التشغيلية وأولوية المتابعة" : "استكمال الاستثناءات ذات الأثر";
+    const attentionCount = priorityActivities.length;
+    return `<section class="slide"><div class="slide-head"><div><div class="section-label">02 · جدول الاستثناءات${pageLabel}</div><h2>${title}</h2><p>لا تظهر البنود المستقرة تفصيلياً؛ الترتيب يبدأ بالتأخير الأعلى ثم فجوة الإنجاز.</p></div><div class="kicker">الاستثناءات ${attentionCount ? pageIndex * activityPageSize + 1 : 0}–${Math.min((pageIndex + 1) * activityPageSize, attentionCount)} من ${attentionCount}</div></div><div class="slide-inner"><div class="grid-4"><div class="panel metric"><div class="value risk">${delayed}</div><div class="label">متأخر فعلياً</div></div><div class="panel metric"><div class="value neutral">${Math.max(0, attentionCount - delayed)}</div><div class="label">فجوة أداء</div></div><div class="panel metric"><div class="value good">${stableActivities}</div><div class="label">مستقر ومدمج</div></div><div class="panel metric"><div class="value muted">${total}</div><div class="label">إجمالي البنود</div></div></div><div class="table-wrap"><table><thead><tr><th>#</th><th>البند ذو الأولوية</th><th>التأخير</th><th>فعلي / مخطط</th><th>الفارق</th><th>الحالة</th></tr></thead><tbody>${rows}</tbody></table></div><div class="callout ${delayed > 0 ? "risk-callout" : attentionCount > 0 ? "risk-callout" : "good-callout"}">${delayed > 0 ? `تم إدراج جميع البنود المتأخرة (${delayed})، مع ترتيبها حسب أيام التأخير والفجوة المسجلة.` : attentionCount > 0 ? `توجد ${attentionCount} استثناءات أداء تحتاج متابعة؛ لا توجد بنود متأخرة زمنياً.` : "لا توجد استثناءات تشغيلية؛ البنود المستقرة مدمجة في المؤشرات."}</div></div><div class="footer"><span>الأولوية مبنية على التواريخ، أيام التأخير، وفجوة الفعلي عن المخطط</span><span>${String(3 + pageIndex).padStart(2, "0")} / ${String(deckTotal).padStart(2, "0")}</span></div></section>`;
+  }).join("\n");
+  const meta = [
+    data.ownerEntity ? ["المالك", data.ownerEntity] : null,
+    data.contractor ? ["المقاول", data.contractor] : null,
+    data.supervisorEntity ? ["الإشراف", data.supervisorEntity] : null,
+    data.location ? ["الموقع", data.location] : null,
+  ].filter(Boolean) as string[][];
+  const metaHtml = meta.length ? meta.map(([label, value]) => `<div><span>${escValue(label)}</span><b>${escValue(value)}</b></div>`).join("") : `<p class="muted">لا توجد بيانات تعريفية إضافية مسجلة.</p>`;
+  const aiHeadline = ai?.headline?.trim() || "لا توجد قراءة تحليلية مولدة؛ يعتمد التقييم على المؤشرات الرقمية الموثقة.";
+  const aiStatus = ai?.status?.trim() || statusText;
+  const decisionNote = ai?.decisionNote?.trim() || "لا توجد ملاحظة قرار إضافية موثقة.";
+  const scheduleOutlook = ai?.scheduleOutlook?.trim() || (remainingDays == null ? "لا يتوفر توقع زمني مسجل." : overrunDays > 0 ? `يوجد تجاوز زمني مسجل قدره ${overrunDays} يوم.` : `المتبقي وفق التاريخ المتوقع ${remainingDays} يوم.`);
+  const title = escValue(data.projectName);
+  const generatedAt = new Date().toLocaleDateString("ar-SA-u-nu-latn", { year: "numeric", month: "2-digit", day: "2-digit" });
+
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>العرض التنفيذي — ${title}</title><style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap');@font-face{font-family:'Latin Digits';src:local('Arial'),local('Helvetica Neue'),local('sans-serif');unicode-range:U+0030-0039,U+002E,U+002C,U+0025,U+002B,U+002D}:root{--navy:#102a43;--blue:#1d4ed8;--ink:#16202a;--muted:#64748b;--line:#d9e2ec;--paper:#fff;--soft:#f6f8fb;--risk:#be123c;--good:#047857}
+  *{box-sizing:border-box}body{margin:0;background:#e2e8f0;color:var(--ink);font-family:'Latin Digits','Noto Kufi Arabic','Noto Sans Arabic','Segoe UI',Tahoma,Arial,sans-serif}.toolbar{position:sticky;top:0;z-index:4;display:flex;justify-content:center;gap:10px;padding:12px;background:#102a43;color:#fff}.toolbar button{border:1px solid #486581;background:#1f466b;color:#fff;border-radius:6px;padding:8px 14px;font:inherit;cursor:pointer}.toolbar button:hover{background:#2f5f8c}.deck{display:grid;gap:20px;padding:24px}.slide{width:min(1280px,calc(100vw - 48px));aspect-ratio:16/9;min-height:540px;margin:0 auto;background:var(--paper);border:1px solid #cbd5e1;box-shadow:0 16px 36px rgba(15,23,42,.12);position:relative;display:flex;flex-direction:column;page-break-after:always}.slide.dark{background:var(--navy);color:#fff}.slide-inner{padding:42px 56px;flex:1;display:flex;flex-direction:column;gap:24px}.eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#7dd3fc;font-weight:700}.dark .eyebrow{color:#93c5fd}.title{font-size:clamp(28px,4vw,52px);line-height:1.15;margin:0;font-weight:800;max-width:900px}.subtitle{font-size:clamp(16px,1.7vw,23px);line-height:1.7;color:#cbd5e1;max-width:820px}.slide:not(.dark) .subtitle{color:var(--muted)}.slide-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:1px solid var(--line);padding:32px 56px 18px}.slide-head h2{font-size:clamp(22px,2.5vw,34px);margin:0 0 5px;font-weight:800}.slide-head p{margin:0;color:var(--muted);font-size:14px}.section-label{font-size:12px;font-weight:800;letter-spacing:.1em;color:var(--blue);text-transform:uppercase}.status{display:inline-flex;align-items:center;gap:8px;border:1px solid currentColor;color:${statusColor};padding:7px 12px;font-size:14px;font-weight:800;white-space:nowrap}.status i{width:8px;height:8px;background:currentColor;display:inline-block;border-radius:50%}.grid-2{display:grid;grid-template-columns:1.15fr .85fr;gap:28px;min-height:0}.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.panel{border:1px solid var(--line);padding:18px;background:#fff;min-width:0}.soft-panel{background:var(--soft);border:1px solid var(--line);padding:18px}.metric .value{font-size:34px;font-weight:800;line-height:1.1}.metric .label{font-size:12px;color:var(--muted);margin-top:6px}.metric .note{font-size:12px;color:var(--muted);margin-top:8px}.bar{height:10px;background:#e2e8f0;overflow:hidden}.bar span{display:block;height:100%}.compare{display:grid;grid-template-columns:100px 1fr 80px;align-items:center;gap:10px;font-size:13px}.compare+.compare{margin-top:14px}.compare strong{font-size:13px;text-align:left}.meta{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid var(--line);border-right:1px solid var(--line)}.meta div{padding:12px;border-left:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:3px}.meta span{font-size:11px;color:var(--muted)}.meta b{font-size:14px}.kicker{font-size:12px;color:var(--muted);font-weight:700}.big-number{font-size:74px;line-height:1;font-weight:800;color:var(--blue)}.statement{font-size:22px;line-height:1.65;font-weight:700;margin:0}.muted{color:var(--muted)}.risk{color:var(--risk)}.good{color:var(--good)}.neutral{color:var(--blue)}.center{text-align:center}ul{margin:0;padding-right:20px;line-height:2;font-size:15px}li::marker{color:var(--blue)}.table-wrap{border:1px solid var(--line);overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px}th{background:var(--navy);color:#fff;text-align:right;padding:10px 12px;font-weight:700;white-space:nowrap}td{border-bottom:1px solid var(--line);padding:10px 12px;vertical-align:middle}tr:last-child td{border-bottom:0}.callout{border-right:4px solid var(--blue);background:#eff6ff;padding:16px 18px;line-height:1.8}.callout.risk-callout{border-color:var(--risk);background:#fff1f2}.callout.good-callout{border-color:var(--good);background:#ecfdf5}.footer{font-size:11px;color:var(--muted);border-top:1px solid var(--line);padding:12px 56px;display:flex;justify-content:space-between;gap:12px}.dark .footer{border-color:#486581;color:#bcccdc}.dark .meta{border-color:#486581}.dark .meta div{border-color:#486581}.dark .meta span{color:#bcccdc}.dark .meta b{color:#fff}.source{font-size:11px;color:var(--muted);margin-top:auto}.dark .source{color:#bcccdc}@media(max-width:800px){.deck{padding:10px}.slide{width:100%;aspect-ratio:auto;min-height:680px}.slide-inner,.slide-head{padding:28px 24px}.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}.meta{grid-template-columns:1fr}.footer{padding:12px 24px;flex-direction:column}.title{font-size:34px}.big-number{font-size:56px}}@media print{body{background:#fff}.toolbar{display:none}.deck{padding:0;display:block}.slide{width:297mm;height:210mm;min-height:0;aspect-ratio:auto;border:0;box-shadow:none;margin:0;page-break-after:always}.slide:last-child{page-break-after:auto}}
+  </style></head><body><div class="toolbar"><button onclick="window.print()">طباعة / حفظ PDF</button><button onclick="window.close()">إغلاق</button></div><main class="deck">
+  <section class="slide dark"><div class="slide-inner"><div class="eyebrow">تقرير حالة المشروع · عرض تنفيذي</div><h1 class="title">${title}</h1><p class="subtitle">قراءة مركزة لحالة التنفيذ، مؤشرات الجدول الزمني، البنود ذات الأولوية، والمطلوب متابعته بناءً على السجلات الحالية في النظام.</p><div class="grid-2" style="margin-top:auto;align-items:end"><div class="meta">${metaHtml}</div><div><div class="kicker">الحالة المسجلة</div><div style="font-size:30px;font-weight:800;margin-top:8px">${escValue(statusLabel)}</div><div style="color:#bcccdc;margin-top:6px">${escValue(aiStatus)}</div></div></div><div class="source">تاريخ إنشاء العرض: ${generatedAt} · البيانات المعروضة من سجلات المشروع الحالية فقط</div></div><div class="footer"><span>ملخص حالة المشروع</span><span>01 / ${String(deckTotal).padStart(2, "0")}</span></div></section>
+  <section class="slide"><div class="slide-head"><div><div class="section-label">01 · لوحة المؤشرات</div><h2>الوضع التنفيذي في لقطة واحدة</h2><p>مقارنة الإنجاز الفعلي بالمخطط، مع قراءة زمنية مباشرة.</p></div><div class="status"><i></i>${escValue(statusText)}</div></div><div class="slide-inner"><div class="grid-4"><div class="panel metric"><div class="value">${actual.toFixed(1)}%</div><div class="label">الإنجاز الفعلي</div><div class="note">${actual >= 100 ? "اكتمل التنفيذ المسجل" : "آخر نسبة إنجاز مسجلة"}</div></div><div class="panel metric"><div class="value">${planned.toFixed(1)}%</div><div class="label">الإنجاز المخطط</div><div class="note">${deviation >= 0 ? "متقدم عن الخطة" : "أقل من الخطة"}</div></div><div class="panel metric"><div class="value ${deviation < 0 ? "risk" : "good"}">${deviation > 0 ? "+" : ""}${deviation.toFixed(1)}%</div><div class="label">الانحراف عن الخطة</div><div class="note">فرق الفعلي عن المخطط</div></div><div class="panel metric"><div class="value ${overrunDays > 0 ? "risk" : "neutral"}">${remainingDays == null ? "—" : remainingDays}</div><div class="label">الأيام المتبقية</div><div class="note">${overrunDays > 0 ? `تجاوز ${overrunDays} يوم` : "وفق التاريخ المتوقع"}</div></div></div><div class="panel"><div class="kicker">مقارنة الإنجاز</div><div class="compare" style="margin-top:18px"><span>فعلي</span>${progressBar(actual,"#1d4ed8")}<strong>${actual.toFixed(1)}%</strong></div><div class="compare"><span>مخطط</span>${progressBar(planned,"#94a3b8")}<strong>${planned.toFixed(1)}%</strong></div>${elapsedPct == null ? "" : `<div class="compare"><span>استهلاك الزمن</span>${progressBar(elapsedPct,"#475569")}<strong>${elapsedPct.toFixed(0)}%</strong></div>`}</div><div class="grid-3"><div class="soft-panel"><div class="kicker">التقارير</div><div class="metric"><div class="value">${data.reportsCount}</div><div class="label">تقارير مسجلة</div></div></div><div class="soft-panel"><div class="kicker">التوقفات</div><div class="metric"><div class="value">${data.suspensionDays ?? 0}</div><div class="label">يوم مسجل</div></div></div><div class="soft-panel"><div class="kicker">التمديدات</div><div class="metric"><div class="value">${data.extensionDays ?? 0}</div><div class="label">يوم مضاف</div></div></div></div></div><div class="footer"><span>المؤشرات الرقمية الموثقة</span><span>02 / ${String(deckTotal).padStart(2, "0")}</span></div></section>
+  ${activitySlides}
+  <section class="slide"><div class="slide-head"><div><div class="section-label">03 · قراءة تنفيذية</div><h2>الاستنتاج التنفيذي</h2><p>صياغة الذكاء الاصطناعي مقيدة بالبيانات المرسلة من النظام.</p></div><div class="status"><i></i>${escValue(aiStatus)}</div></div><div class="slide-inner"><div class="callout"><p class="kicker">الخلاصة</p><p class="statement">${escValue(aiHeadline)}</p></div><div class="grid-2"><div class="panel"><div class="section-label">قراءة التقدم</div><p style="line-height:1.9;margin:12px 0 0">${escValue(ai?.progressNote || `الإنجاز الفعلي ${actual.toFixed(1)}% مقابل مخطط ${planned.toFixed(1)}%، بفارق ${deviation > 0 ? "+" : ""}${deviation.toFixed(1)} نقطة مئوية.`)}</p></div><div class="panel"><div class="section-label">الرؤية الزمنية</div><p style="line-height:1.9;margin:12px 0 0">${escValue(scheduleOutlook)}</p></div></div><div class="panel"><div class="section-label">ملاحظة القرار</div><p style="line-height:1.9;margin:12px 0 0">${escValue(decisionNote)}</p></div><div class="source">لا تُعد العبارات التحليلية بديلاً عن مراجعة السجلات والمستندات الأصلية.</div></div><div class="footer"><span>التحليل التنفيذي</span><span>${String(3 + activityPageCount).padStart(2, "0")} / ${String(deckTotal).padStart(2, "0")}</span></div></section>
+  <section class="slide"><div class="slide-head"><div><div class="section-label">04 · المخاطر والإجراءات</div><h2>ما يحتاج إلى متابعة مباشرة</h2><p>قائمة مختصرة قابلة للتحويل إلى اجتماع متابعة أو محضر قرار.</p></div><div class="status"><i></i>${escValue(statusText)}</div></div><div class="slide-inner"><div class="grid-2"><div class="panel"><div class="section-label risk">المخاطر والقيود</div>${listItems(ai?.risks, delayed > 0 ? `تأخير مسجل في ${delayed} بند؛ يلزم الرجوع إلى تفاصيل البنود.` : "لا توجد مخاطر إضافية موثقة في الملخص الحالي.")}</div><div class="panel"><div class="section-label neutral">الإجراءات التالية</div>${listItems(ai?.nextActions, "لا توجد إجراءات إضافية مولدة؛ راجع البنود ذات الأولوية.")}</div></div><div class="grid-2"><div class="panel"><div class="section-label good">الإشارات الإيجابية</div>${listItems(ai?.highlights, completed > 0 ? `تم تسجيل ${completed} بند مكتمل.` : "لا توجد إشارات إيجابية إضافية موثقة.")}</div><div class="panel"><div class="section-label">محاور المتابعة</div>${listItems(ai?.managementFocus, "لا توجد محاور متابعة إضافية موثقة.")}</div></div><div class="callout ${overrunDays > 0 || delayed > 0 ? "risk-callout" : "good-callout"}">${overrunDays > 0 ? `المؤشر الزمني الأبرز: تجاوز مسجل قدره ${overrunDays} يوم.` : delayed > 0 ? `المؤشر التشغيلي الأبرز: ${delayed} بنود متأخرة.` : "لا يظهر في البيانات الحالية مؤشر تأخير صريح."}</div></div><div class="footer"><span>إجراءات مبنية على المؤشرات المتاحة</span><span>${String(4 + activityPageCount).padStart(2, "0")} / ${String(deckTotal).padStart(2, "0")}</span></div></section>
+  <section class="slide dark"><div class="slide-head" style="border-color:#486581"><div><div class="eyebrow">05 · موجز القرار</div><h2>ملخص قابل للعرض على الإدارة</h2><p style="color:#bcccdc">المؤشرات الأساسية في صفحة واحدة، دون بيانات غير مسجلة.</p></div></div><div class="slide-inner"><div class="grid-2"><div><div class="big-number" style="color:#7dd3fc">${actual.toFixed(1)}%</div><div style="font-size:20px;font-weight:700;margin-top:10px">الإنجاز الفعلي</div><p class="subtitle" style="font-size:16px;margin-top:16px">${escValue(ai?.decisionNote || `الفارق عن الخطة ${deviation > 0 ? "+" : ""}${deviation.toFixed(1)} نقطة مئوية.`)}</p></div><div class="meta">${metaHtml}</div></div><div class="grid-3" style="margin-top:auto"><div><div class="kicker" style="color:#bcccdc">بنود متأخرة</div><div style="font-size:28px;font-weight:800;color:${delayed > 0 ? "#fda4af" : "#86efac"};margin-top:6px">${delayed}</div></div><div><div class="kicker" style="color:#bcccdc">صافي المؤشر الزمني</div><div style="font-size:28px;font-weight:800;color:${overrunDays > 0 ? "#fda4af" : "#86efac"};margin-top:6px">${overrunDays > 0 ? `+${overrunDays}` : "0"} يوم</div></div><div><div class="kicker" style="color:#bcccdc">التقارير المسجلة</div><div style="font-size:28px;font-weight:800;color:#fff;margin-top:6px">${data.reportsCount}</div></div></div><div class="source">إعداد العرض: ${generatedAt} · للمراجعة التنفيذية والرجوع إلى تفاصيل المشروع الأصلية</div></div><div class="footer"><span>نهاية العرض</span><span>${String(5 + activityPageCount).padStart(2, "0")} / ${String(deckTotal).padStart(2, "0")}</span></div></section>
+  </main></body></html>`;
+}
+
+function statusLabelForActivity(status: string, delayed: boolean): string {
+  if (delayed) return "متأخر";
+  return ({ completed: "مكتمل", in_progress: "قيد التنفيذ", not_started: "لم يبدأ" } as Record<string, string>)[status] ?? status;
+}
+
+export function previewExecutiveSlides(data: ExecutiveSummaryData): void {
+  const html = buildExecutiveSlidesHTML(data);
+  const win = window.open("", "_blank", "width=1280,height=820,scrollbars=yes");
+  if (!win) {
+    alert("يرجى السماح بالنوافذ المنبثقة لاستخدام العرض التقديمي");
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
 
 export type AttendanceSessionStatus = "closed" | "open" | "auto_closed";
 
@@ -970,7 +1097,7 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: 'Noto Kufi Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
+    font-family: 'Latin Digits', 'Noto Kufi Arabic', 'Noto Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
     font-size: 14px;
     line-height: 1.6;
     color: #1e293b;
@@ -1013,7 +1140,7 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
   .logo-name { font-size: 12px; font-weight: 700; color: #1e293b; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .header {
-    background: linear-gradient(135deg, #1e293b, #334155, #475569);
+    background: #1e293b;
     color: #fff;
     padding: 24px 28px 20px;
     border-radius: 10px;
@@ -1069,7 +1196,7 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
 
   .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: 11px; color: #94a3b8; }
 
-  .toolbar { position: sticky; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #1e293b, #334155); padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+  .toolbar { position: sticky; top: 0; left: 0; right: 0; background: #1e293b; padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
   .btn-print { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
   .btn-print:hover { background: #1d4ed8; }
   .btn-close { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }

@@ -203,14 +203,14 @@ export default function ProjectFiles() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start gap-3">
-        <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => setLocation("/projects")}>
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <div className="page-hero flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg md:text-2xl font-bold leading-tight">{project?.name}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">الملفات والمستندات</p>
+          <h1 className="relative z-10 text-lg font-bold leading-tight text-white md:text-2xl">{project?.name}</h1>
+          <p className="relative z-10 mt-1 text-sm text-white/65">الملفات والمستندات</p>
         </div>
       </div>
 
@@ -219,7 +219,7 @@ export default function ProjectFiles() {
       {!isLoading && (allFiles ?? []).length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <Card 
-            className={`cursor-pointer transition-all hover:shadow-md ${!categoryFilter || categoryFilter === 'all' ? 'ring-2 ring-primary shadow-md' : ''}`}
+            className={`surface-card surface-card-hover cursor-pointer ${!categoryFilter || categoryFilter === 'all' ? 'ring-2 ring-primary shadow-md' : ''}`}
             onClick={() => setCategoryFilter("all")}
           >
             <CardContent className="p-3 flex items-center gap-3">
@@ -240,7 +240,7 @@ export default function ProjectFiles() {
             return (
               <Card 
                 key={key}
-                className={`cursor-pointer transition-all hover:shadow-md ${isActive ? `ring-2 ring-primary shadow-md` : ''}`}
+                className={`surface-card surface-card-hover cursor-pointer ${isActive ? `ring-2 ring-primary shadow-md` : ''}`}
                 onClick={() => setCategoryFilter(isActive ? "all" : key)}
               >
                 <CardContent className="p-3 flex items-center gap-3">
@@ -263,7 +263,7 @@ export default function ProjectFiles() {
           <Search className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input 
             placeholder="بحث في الملفات..." 
-            className="pr-9"
+            className="h-11 rounded-xl pr-9"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />

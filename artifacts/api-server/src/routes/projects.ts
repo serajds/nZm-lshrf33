@@ -1,10 +1,21 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, usersTable, formSubmissionsTable, formTemplatesTable } from "@workspace/db";
+import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, usersTable, formSubmissionsTable, formTemplatesTable, projectSuspensionsTable } from "@workspace/db";
 import { eq, ilike, or, sql, inArray, and } from "drizzle-orm";
 import { requireAuth, requireEngineerOrAdmin, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
+import {
+  calcActivityPlannedProgress,
+  calcActualProgressForProject,
+  calcDelayDays,
+  calcForecastCompletionDate,
+  calcPlannedProgressForProject,
+  calcSPI,
+  calcOverrunDays,
+  isActivityDelayed,
+  roundPercent,
+} from "../lib/progress";
 
 const router: IRouter = Router();
 
@@ -482,3 +493,197 @@ router.put("/projects/:id/summary-widgets", requireProjectAccess("id"), async (r
 });
 
 export default router;
+
+router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
+  const projectId = parseInt(raw, 10);
+
+  try {
+    const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+    if (!project) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
+
+    const activities = await db.select().from(activitiesTable)
+      .where(eq(activitiesTable.projectId, projectId))
+      .orderBy(activitiesTable.sortOrder);
+
+    const reportsCountResult = await db.select({ count: sql<number>`count(*)` }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
+    const reportsCount = reportsCountResult[0]?.count ?? 0;
+
+    const statusCounts = activities.reduce<Record<string, number>>((counts, activity) => {
+      const status = activity.status ?? "not_started";
+      counts[status] = (counts[status] ?? 0) + 1;
+      return counts;
+    }, {});
+
+    const [suspensions] = await Promise.all([
+      db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId)),
+    ]);
+    const today = new Date();
+    const hasSchedule = project.noSchedule !== true && !!project.startDate && !!project.expectedEndDate;
+    const startDate = new Date(project.startDate ?? today);
+    const endDate = new Date(project.expectedEndDate ?? today);
+    const totalDays = hasSchedule ? Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000)) : 0;
+    const daysElapsed = hasSchedule ? Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / 86400000)) : 0;
+    const plannedProgress = hasSchedule
+      ? roundPercent(calcPlannedProgressForProject(activities, daysElapsed, totalDays, today))
+      : 0;
+    const actualProgress = activities.length > 0
+      ? roundPercent(calcActualProgressForProject(activities))
+      : roundPercent(project.overallProgress);
+    const progressDeviation = roundPercent(actualProgress - plannedProgress);
+    const grossDelayDays = hasSchedule ? calcDelayDays(plannedProgress, actualProgress, totalDays) : 0;
+    const suspensionDays = suspensions.reduce((sum, item) => sum + (item.type !== "contractor_delay" ? item.calendarDays : 0), 0);
+    const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
+    const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualProgress) : 0;
+    const spi = hasSchedule ? calcSPI(plannedProgress, actualProgress) : null;
+    const forecastCompletion = hasSchedule
+      ? calcForecastCompletionDate(startDate, endDate, today, plannedProgress, actualProgress)
+      : null;
+    const forecastCompletionDate = forecastCompletion ? forecastCompletion.toISOString().slice(0, 10) : null;
+    const forecastDelayDays = forecastCompletion && project.expectedEndDate
+      ? Math.ceil((forecastCompletion.getTime() - endDate.getTime()) / 86400000)
+      : 0;
+    const delayedActivities = activities.filter(activity => isActivityDelayed(activity, today, !hasSchedule));
+    const activitySummary = (a: typeof activities[number]) => ({
+      name: a.name,
+      status: a.status,
+      actualProgress: roundPercent(a.actualProgress),
+      plannedProgress: roundPercent(calcActivityPlannedProgress(a, today)),
+      variance: roundPercent(a.actualProgress - calcActivityPlannedProgress(a, today)),
+      plannedStartDate: a.plannedStartDate,
+      plannedEndDate: a.plannedEndDate,
+      actualEndDate: a.actualEndDate,
+      delayed: isActivityDelayed(a, today, !hasSchedule),
+    });
+    const exceptionActivities = activities
+      .filter(activity => {
+        const planned = calcActivityPlannedProgress(activity, today);
+        const variance = activity.actualProgress - planned;
+        return isActivityDelayed(activity, today, !hasSchedule) || variance <= -5;
+      })
+      .sort((a, b) => {
+        const aDelayed = isActivityDelayed(a, today, !hasSchedule);
+        const bDelayed = isActivityDelayed(b, today, !hasSchedule);
+        if (aDelayed !== bDelayed) return Number(bDelayed) - Number(aDelayed);
+        const aVariance = a.actualProgress - calcActivityPlannedProgress(a, today);
+        const bVariance = b.actualProgress - calcActivityPlannedProgress(b, today);
+        return aVariance - bVariance;
+      });
+    // تُرسل جميع البنود المتأخرة، بينما تُرسل البنود غير المتأخرة فقط إذا كانت فجوتها >= 5 نقاط.
+    const activitiesSummary = exceptionActivities.map(activitySummary);
+    const criticalActivities = activitiesSummary.slice(0, 5).map(activity => ({
+      name: activity.name,
+      variance: activity.variance,
+      delayed: activity.delayed,
+    }));
+
+    const messages = [
+      {
+        role: "system",
+        content: `أنت مهندس تخطيط وإشراف إنشائي تعد تقرير حالة تنفيذي مبنياً على أدلة رقمية واضحة.
+استخدم البيانات الواردة فقط، ولا تفترض وجود اجتماعات أو قرارات أو موارد أو أسباب تأخير أو التزامات مالية لم ترد صراحةً. لا تُنشئ تقييماً إدارياً أو مؤسسياً مستقلاً؛ اربط كل توصية ببند أو رقم أو تاريخ، وإذا غابت البيانات فاكتب: غير متاح في السجل الحالي.
+استخدم أسلوب تقرير الاستثناءات: ابدأ بما يهدد الموعد أو يملك فجوة إنجاز واضحة، ولا تعيد سرد البنود المستقرة. حلل الفرق بين الإنجاز الفعلي والمخطط، SPI، التأخير الإجمالي والصافي بعد التوقفات، التجاوز، تاريخ الإكمال المتوقع، وتوزيع البنود. اعتبر delayed مرجع التأخير النهائي للبند، بما في ذلك البند المكتمل الذي أنجز بعد نهايته المخططة.
+أخرج JSON صالحاً فقط وبالمفاتيح التالية حصراً:
+{
+  "headline": "عنوان حالة مهني من 8 إلى 16 كلمة، بلا مبالغة",
+  "status": "واحد من: على المسار، متأخر، متقدم، معلق، مكتمل",
+  "progressNote": "فقرة كمية من 20 إلى 32 كلمة تربط الفعلي بالمخطط والانحراف وSPI إن توفر، دون إعادة سرد قائمة البنود",
+  "decisionNote": "فقرة عملية من 18 إلى 30 كلمة تحدد الإجراء أو المتابعة ذات الأولوية، مبنية على رقم أو بند متأخر فقط",
+  "scheduleOutlook": "فقرة من 20 إلى 32 كلمة تشرح أثر الاستثناءات على الموعد المتوقع أو تذكر أن التنبؤ غير متاح",
+  "highlights": ["0 إلى 3 نقاط موثقة عن إنجاز مؤثر أو استقرار قابل للقياس، كل نقطة 6 إلى 14 كلمة"],
+  "risks": ["0 إلى 4 مخاطر موثقة، كل نقطة 6 إلى 16 كلمة، مع الأثر الرقمي إن توفر"],
+  "nextActions": ["1 إلى 4 إجراءات مباشرة، كل إجراء مرتبط باستثناء أو مؤشر محدد"],
+  "managementFocus": ["0 إلى 2 محاور متابعة مرتبطة مباشرة بأعلى استثناءين فقط"]
+}
+القواعد: اكتب بالعربية المهنية المكثفة. لا تكرر اسم البند أو نفس الرقم في أكثر من قسم إلا عند الضرورة. لا تملأ أي قسم بمحتوى إنشائي، ولا تستخدم عبارات مثل "تحسين التنسيق" أو "رفع الكفاءة" دون مؤشر محدد. إذا لم توجد بيانات مالية فلا تذكر الميزانية أو التكلفة. إذا لم توجد بيانات موارد فلا تذكر العمالة أو الإنتاجية. إذا لم توجد بيانات مالك/مقاول/مشرف فلا تستنتج أدواراً. يجب أن يكون كل استنتاج قابلاً للتتبع إلى رقم أو حالة أو تاريخ وارد في البيانات.`
+      },
+      {
+        role: "user",
+        content: `حلل مشروع "${project.name}" في ${project.location ?? "موقع غير محدد"}.
+البيانات الأساسية:
+- حالة المشروع: ${project.status ?? "غير محددة"}
+- تاريخ البدء: ${project.startDate ?? "غير محدد"}
+- تاريخ النهاية التعاقدي/الحالي: ${project.expectedEndDate ?? "غير محدد"}
+- الإنجاز الفعلي المحسوب: ${actualProgress}%
+- الإنجاز المخطط المحسوب: ${plannedProgress}%
+- الانحراف عن الخطة: ${progressDeviation}%
+- مؤشر الأداء الزمني SPI: ${spi == null ? "غير متاح" : spi}
+- إجمالي مدة المشروع: ${totalDays || "غير متاحة"} يوم
+- الأيام المنقضية: ${daysElapsed}
+- التأخير الإجمالي التقديري: ${grossDelayDays} يوم
+- التوقفات المعتمدة المخصومة: ${suspensionDays} يوم
+- التأخير الصافي: ${netDelayDays} يوم
+- التجاوز الحالي: ${overrunDays} يوم
+- تاريخ الإكمال المتوقع: ${forecastCompletionDate ?? "غير متاح"}
+- فرق التوقع عن النهاية التعاقدية: ${forecastDelayDays} يوم
+- عدد التقارير: ${reportsCount}
+- توزيع حالات البنود: ${JSON.stringify(statusCounts)}
+- عدد البنود المتأخرة فعلياً: ${delayedActivities.length}
+- أعلى الاستثناءات حسب الفجوة: ${JSON.stringify(criticalActivities)}
+- التوقفات: ${JSON.stringify(suspensions.map(item => ({ type: item.type, calendarDays: item.calendarDays })))}
+- قائمة الاستثناءات الكاملة (جميع المتأخرة وفجوة أداء لا تقل عن 5 نقاط): ${JSON.stringify(activitiesSummary)}
+أعد JSON المطلوب فقط، واجعل التحليل مفيداً لاتخاذ القرار وليس مجرد إعادة عرض للأرقام.`
+      }
+    ];
+
+    const response = await fetch(`${process.env.OPENAI_API_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        messages,
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+        max_tokens: 700
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`AI API error: ${error}`);
+    }
+
+    const result = (await response.json()) as any;
+    const rawContent = result?.choices?.[0]?.message?.content;
+    if (!rawContent || typeof rawContent !== "string") {
+      throw new Error("AI returned an empty executive summary");
+    }
+
+    let summary: unknown;
+    try {
+      summary = JSON.parse(rawContent);
+    } catch {
+      throw new Error("AI returned invalid executive summary JSON");
+    }
+
+    if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+      throw new Error("AI returned an invalid executive summary shape");
+    }
+
+    const candidate = summary as Record<string, unknown>;
+    const cleanList = (value: unknown) => Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 4)
+      : [];
+    const cleanText = (value: unknown, fallback: string) => typeof value === "string" && value.trim() ? value.trim() : fallback;
+
+    res.json({
+      summary: {
+        headline: cleanText(candidate.headline, "المشروع قيد المتابعة وفق البيانات التشغيلية الحالية."),
+        status: cleanText(candidate.status, "على المسار"),
+        progressNote: cleanText(candidate.progressNote, "لا توجد ملاحظة كمية إضافية موثقة في البيانات الحالية."),
+        decisionNote: cleanText(candidate.decisionNote, "لا توجد ملاحظة قرار إضافية؛ يعتمد التقييم على المؤشرات الرقمية المعروضة."),
+        scheduleOutlook: cleanText(candidate.scheduleOutlook, "لا يمكن إصدار توقع زمني موثوق قبل توفر خط أساس زمني وبيانات تقدم كافية."),
+        highlights: cleanList(candidate.highlights),
+        risks: cleanList(candidate.risks),
+        nextActions: cleanList(candidate.nextActions),
+        managementFocus: cleanList(candidate.managementFocus),
+      },
+    });
+  } catch (error) {
+    console.error("AI Executive Summary error:", error);
+    res.status(500).json({ error: "فشل الذكاء الاصطناعي في صياغة الملخص" });
+  }
+});
