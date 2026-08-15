@@ -16,7 +16,39 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Loader2, Phone, Lock, Eye, EyeOff, User as UserIcon, ArrowLeft } from "lucide-react";
+import { Loader2, Phone, Lock, Eye, EyeOff, User as UserIcon, ArrowLeft, RefreshCw } from "lucide-react";
+
+/**
+ * Rescue hatch for users stuck on a stale/corrupted app version: unregisters
+ * every service worker, deletes all Cache Storage entries, and removes local
+ * auth state, then does a full reload from the server.
+ *
+ * Deliberately does NOT touch IndexedDB — the offline attendance queue
+ * ("attendance-offline") may hold check-ins that were captured offline and
+ * not yet sent; wiping it would silently lose them.
+ */
+async function clearCachesAndReload(): Promise<void> {
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister().catch(() => false)));
+    }
+  } catch { /* non-fatal */ }
+  try {
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k).catch(() => false)));
+    }
+  } catch { /* non-fatal */ }
+  try {
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_user_cache");
+  } catch { /* non-fatal */ }
+  try {
+    sessionStorage.clear();
+  } catch { /* non-fatal */ }
+  window.location.reload();
+}
 
 const loginSchema = z.object({
   phone: z.string().min(1, "رقم الهاتف مطلوب"),
@@ -42,6 +74,17 @@ export default function Login() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<"login" | "register">("login");
+  const [isClearingCache, setIsClearingCache] = useState(false);
+
+  async function onClearCache() {
+    setIsClearingCache(true);
+    try {
+      await clearCachesAndReload();
+    } catch {
+      // If anything unexpected fails, still force a full reload.
+      window.location.reload();
+    }
+  }
 
   useEffect(() => {
     try {
@@ -315,6 +358,23 @@ export default function Login() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Cache rescue hatch */}
+        <div className="page-surface-enter mt-6 text-center">
+          <button
+            type="button"
+            onClick={onClearCache}
+            disabled={isClearingCache}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60"
+          >
+            {isClearingCache ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            التطبيق لا يعمل بشكل صحيح؟ مسح البيانات المؤقتة وإعادة التحميل
+          </button>
         </div>
 
         {/* Developer Credit */}

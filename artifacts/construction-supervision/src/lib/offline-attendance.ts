@@ -30,6 +30,26 @@ export interface QueuedAttendance {
   attempts: number;
   /** ms epoch of last attempt, or 0. */
   lastAttemptAt: number;
+  /**
+   * ID of the user who captured this entry. Stamped at enqueue time from the
+   * JWT so a later login by a DIFFERENT user on the same device never flushes
+   * (and thus never gets attributed) someone else's attendance. `undefined`
+   * only on legacy entries created before this field existed.
+   */
+  userId?: number;
+}
+
+/** Decode the userId from the stored JWT without verifying it (client-side
+ *  attribution only — the server always re-authenticates the request). */
+export function currentUserIdFromToken(): number | undefined {
+  try {
+    const token = localStorage.getItem("auth_token");
+    if (!token) return undefined;
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload?.userId === "number" ? payload.userId : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -83,7 +103,8 @@ export function newClientId(): string {
 }
 
 export async function enqueueAttendance(entry: Omit<QueuedAttendance, "attempts" | "lastAttemptAt">): Promise<void> {
-  await withStore("readwrite", (s) => reqAsPromise(s.put({ ...entry, attempts: 0, lastAttemptAt: 0 })));
+  const userId = entry.userId ?? currentUserIdFromToken();
+  await withStore("readwrite", (s) => reqAsPromise(s.put({ ...entry, userId, attempts: 0, lastAttemptAt: 0 })));
   notifyListeners();
 }
 
@@ -239,7 +260,14 @@ export async function flushQueue(): Promise<FlushResult> {
       // Not logged in — keep entries until the user signs back in.
       return { attempted: 0, succeeded: 0, stillPending: await queueCount(), dropped: 0 };
     }
-    const items = await listQueue();
+    const currentUserId = currentUserIdFromToken();
+    const all = await listQueue();
+    // Only flush entries captured by the CURRENTLY logged-in user. Entries
+    // belonging to someone else stay queued until their owner signs back in
+    // on this device — sending them under another account would attribute
+    // attendance to the wrong person. Legacy entries without a userId are
+    // also held back when we can't prove ownership.
+    const items = all.filter((e) => e.userId !== undefined && e.userId === currentUserId);
     for (const item of items) {
       attempted += 1;
       const outcome = await sendOrQueue(item);
