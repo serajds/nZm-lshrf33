@@ -78,8 +78,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) writeCachedUser(user);
   }, [user]);
 
+  // Only a REAL 401/403 from the server means the token is invalid. Network
+  // failures, 5xx responses, or malformed payloads must NOT log the user out —
+  // doing so previously caused a login loop when a transient error hit
+  // /auth/me right after login (the token was wiped and the user bounced
+  // straight back to /login).
   useEffect(() => {
-    if (error) {
+    if (!error) return;
+    const status = (error as { status?: number }).status;
+    if (status === 401 || status === 403) {
       localStorage.removeItem("auth_token");
       writeCachedUser(null);
       setToken(null);
