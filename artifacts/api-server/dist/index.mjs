@@ -58992,6 +58992,7 @@ var init_activities = __esm({
       status: text("status", { enum: ["not_started", "in_progress", "completed", "delayed"] }).notNull().default("not_started"),
       groupId: integer("group_id"),
       sortOrder: integer("sort_order").notNull().default(0),
+      progressUpdatedAt: timestamp("progress_updated_at", { withTimezone: true }),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
     }, (t) => [
       index("activities_project_sort_idx").on(t.projectId, t.sortOrder),
@@ -123915,7 +123916,10 @@ router4.post("/projects/:projectId/activities", requireProjectAccess("projectId"
     })(),
     status: status ?? "not_started",
     groupId: groupId ?? null,
-    sortOrder: sortOrder ?? 0
+    sortOrder: sortOrder ?? 0,
+    // Stamp execution-state timestamp when the activity is created already in motion,
+    // so period-scoped reports can pick it up.
+    progressUpdatedAt: (actualProgress ?? 0) > 0 || status && status !== "not_started" || actualStartDate || actualEndDate ? /* @__PURE__ */ new Date() : null
   }).returning();
   await syncProjectProgress(projectId);
   await recalcExpectedEndDate(projectId);
@@ -123982,6 +123986,9 @@ router4.patch("/projects/:projectId/activities/:id", requireProjectAccess("proje
   }
   const todayStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
   const [existing] = await db.select().from(activitiesTable).where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
+  if (body.actualProgress !== void 0 || body.status !== void 0 || body.actualStartDate !== void 0 || body.actualEndDate !== void 0) {
+    updateData.progressUpdatedAt = /* @__PURE__ */ new Date();
+  }
   if (existing) {
     if (body.actualProgress !== void 0) {
       const newProgress = Number(body.actualProgress);
@@ -124249,30 +124256,66 @@ var router5 = (0, import_express5.Router)();
 router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
-  const { imageGroups, technicalNotes, recommendations } = req.body;
+  const { imageGroups, technicalNotes, recommendations, periodStart, periodEnd } = req.body;
+  const isValidCalendarDate2 = (s) => {
+    if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+    const d = /* @__PURE__ */ new Date(`${s}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  };
+  if (!isValidCalendarDate2(periodStart) || !isValidCalendarDate2(periodEnd)) {
+    res.status(400).json({ error: "\u064A\u062C\u0628 \u062A\u062D\u062F\u064A\u062F \u062A\u0627\u0631\u064A\u062E \u0628\u062F\u0627\u064A\u0629 \u0648\u0646\u0647\u0627\u064A\u0629 \u0641\u062A\u0631\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0642\u0628\u0644 \u0627\u0644\u0635\u064A\u0627\u063A\u0629 \u0628\u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A" });
+    return;
+  }
+  if (periodStart > periodEnd) {
+    res.status(400).json({ error: "\u062A\u0627\u0631\u064A\u062E \u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629 \u064A\u062C\u0628 \u0623\u0646 \u064A\u0633\u0628\u0642 \u062A\u0627\u0631\u064A\u062E \u0646\u0647\u0627\u064A\u062A\u0647\u0627" });
+    return;
+  }
   const aiApiKey = process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY;
   if (!aiApiKey) {
     res.status(503).json({ error: "\u062E\u062F\u0645\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A \u063A\u064A\u0631 \u0645\u0647\u064A\u0623\u0629" });
     return;
   }
   try {
-    const [inProgressActivities, allActivities] = await Promise.all([
-      db.select().from(activitiesTable).where(and(eq(activitiesTable.projectId, projectId), eq(activitiesTable.status, "in_progress"))).orderBy(activitiesTable.sortOrder),
+    const periodStartTs = /* @__PURE__ */ new Date(`${periodStart}T00:00:00+02:00`);
+    const periodEndTs = /* @__PURE__ */ new Date(`${periodEnd}T23:59:59.999+02:00`);
+    const periodCondition = or(
+      and(
+        isNotNull(activitiesTable.actualStartDate),
+        lte(activitiesTable.actualStartDate, periodEnd),
+        or(isNull(activitiesTable.actualEndDate), gte(activitiesTable.actualEndDate, periodStart))
+      ),
+      and(
+        gte(activitiesTable.progressUpdatedAt, periodStartTs),
+        lte(activitiesTable.progressUpdatedAt, periodEndTs)
+      )
+    );
+    const [periodActivities, allActivities] = await Promise.all([
+      db.select().from(activitiesTable).where(and(eq(activitiesTable.projectId, projectId), periodCondition)).orderBy(activitiesTable.sortOrder),
       db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder)
     ]);
-    const inProgressText = inProgressActivities.length > 0 ? inProgressActivities.map((a) => `- ${a.name}: (\u0627\u0644\u0625\u0646\u062C\u0627\u0632 \u0627\u0644\u0641\u0639\u0644\u064A: ${a.actualProgress ?? 0}%)`).join("\n") : "\u0644\u0627 \u062A\u0648\u062C\u062F \u0628\u0646\u0648\u062F \u0642\u064A\u062F \u0627\u0644\u062A\u0646\u0641\u064A\u0630 \u062D\u0627\u0644\u064A\u0627\u064B.";
+    const statusLabel2 = {
+      not_started: "\u0644\u0645 \u064A\u0628\u062F\u0623",
+      in_progress: "\u0642\u064A\u062F \u0627\u0644\u062A\u0646\u0641\u064A\u0630",
+      completed: "\u0645\u0643\u062A\u0645\u0644",
+      delayed: "\u0645\u062A\u0623\u062E\u0631"
+    };
+    const periodActivitiesText = periodActivities.length > 0 ? periodActivities.map((a) => {
+      const updatedInPeriod = a.progressUpdatedAt && a.progressUpdatedAt >= periodStartTs && a.progressUpdatedAt <= periodEndTs;
+      return `- ${a.name}: \u0627\u0644\u062D\u0627\u0644\u0629: ${statusLabel2[a.status] ?? a.status}\u060C \u0627\u0644\u0625\u0646\u062C\u0627\u0632 \u0627\u0644\u0641\u0639\u0644\u064A: ${a.actualProgress ?? 0}%${updatedInPeriod ? " (\u062A\u0645 \u062A\u062D\u062F\u064A\u062B \u062A\u0642\u062F\u0645\u0647 \u062E\u0644\u0627\u0644 \u0647\u0630\u0647 \u0627\u0644\u0641\u062A\u0631\u0629)" : ""}`;
+    }).join("\n") : "\u0644\u0627 \u062A\u0648\u062C\u062F \u0628\u0646\u0648\u062F \u062C\u0631\u0649 \u0627\u0644\u0639\u0645\u0644 \u0639\u0644\u064A\u0647\u0627 \u0623\u0648 \u062A\u062D\u062F\u064A\u062B\u0647\u0627 \u062E\u0644\u0627\u0644 \u0647\u0630\u0647 \u0627\u0644\u0641\u062A\u0631\u0629.";
     const completedCount = allActivities.filter((a) => a.status === "completed").length;
     const delayedCount = allActivities.filter((a) => a.status === "delayed").length;
     const totalCount = allActivities.length;
     const imageGroupsSummary = Array.isArray(imageGroups) && imageGroups.length > 0 ? imageGroups.filter((g) => g.category && Array.isArray(g.urls) && g.urls.length > 0).map((g) => `- ${g.category} (${g.urls.length} \u0635\u0648\u0631\u0629)`).join("\n") : null;
-    const prompt = `\u064A\u0631\u062C\u0649 \u0635\u064A\u0627\u063A\u0629 \u062A\u0642\u0631\u064A\u0631 \u0641\u0646\u064A \u0645\u0647\u0646\u064A \u0644\u0644\u0645\u0634\u0631\u0648\u0639 \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062A\u0627\u0644\u064A\u0629:
+    const prompt = `\u064A\u0631\u062C\u0649 \u0635\u064A\u0627\u063A\u0629 \u062A\u0642\u0631\u064A\u0631 \u0641\u0646\u064A \u0645\u0647\u0646\u064A \u0644\u0644\u0645\u0634\u0631\u0648\u0639 \u0639\u0646 \u0627\u0644\u0641\u062A\u0631\u0629 \u0645\u0646 ${periodStart} \u0625\u0644\u0649 ${periodEnd} \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062A\u0627\u0644\u064A\u0629:
 
+\u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u0639\u0627\u0645\u0629 \u0644\u0644\u0645\u0634\u0631\u0648\u0639 (\u0644\u0644\u0633\u064A\u0627\u0642 \u0641\u0642\u0637):
 \u0625\u062C\u0645\u0627\u0644\u064A \u0628\u0646\u0648\u062F \u0627\u0644\u0623\u0639\u0645\u0627\u0644: ${totalCount}
 \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u0643\u062A\u0645\u0644\u0629: ${completedCount}
 \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0629: ${delayedCount}
 
-\u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u062D\u0627\u0644\u064A\u0629 \u0642\u064A\u062F \u0627\u0644\u062A\u0646\u0641\u064A\u0630:
-${inProgressText}
+\u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u062A\u064A \u062C\u0631\u0649 \u0627\u0644\u0639\u0645\u0644 \u0639\u0644\u064A\u0647\u0627 \u0623\u0648 \u062A\u062D\u062F\u064A\u062B\u0647\u0627 \u062E\u0644\u0627\u0644 \u0641\u062A\u0631\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 (${periodStart} \u0625\u0644\u0649 ${periodEnd}):
+${periodActivitiesText}
 ${imageGroupsSummary ? `
 \u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0635\u0648\u0631 \u0627\u0644\u0645\u0631\u0641\u0642\u0629 \u0641\u064A \u0627\u0644\u062A\u0642\u0631\u064A\u0631:
 ${imageGroupsSummary}` : ""}
@@ -124284,7 +124327,7 @@ ${recommendations ? `
 ${recommendations}` : ""}
 
 \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u0635\u064A\u0627\u063A\u0629 \u062B\u0644\u0627\u062B\u0629 \u0623\u0642\u0633\u0627\u0645 \u0628\u0623\u0633\u0644\u0648\u0628 \u0645\u0647\u0646\u064A \u0631\u0633\u0645\u064A:
-1. workDescription: \u0648\u0635\u0641 \u0634\u0627\u0645\u0644 \u0644\u0644\u0623\u0639\u0645\u0627\u0644 \u0627\u0644\u0645\u0646\u062C\u0632\u0629 \u062E\u0644\u0627\u0644 \u0627\u0644\u0641\u062A\u0631\u0629 \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0628\u0646\u0648\u062F \u0627\u0644\u062A\u0646\u0641\u064A\u0630.
+1. workDescription: \u0648\u0635\u0641 \u0634\u0627\u0645\u0644 \u0644\u0644\u0623\u0639\u0645\u0627\u0644 \u0627\u0644\u0645\u0646\u062C\u0632\u0629 \u062E\u0644\u0627\u0644 \u0627\u0644\u0641\u062A\u0631\u0629 \u0645\u0646 ${periodStart} \u0625\u0644\u0649 ${periodEnd} \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0628\u0646\u0648\u062F \u0627\u0644\u0641\u062A\u0631\u0629 \u0623\u0639\u0644\u0627\u0647 \u0641\u0642\u0637\u060C \u0645\u0639 \u0627\u0644\u0625\u0634\u0627\u0631\u0629 \u0627\u0644\u0635\u0631\u064A\u062D\u0629 \u0625\u0644\u0649 \u0627\u0644\u0641\u062A\u0631\u0629. \u0644\u0627 \u062A\u0630\u0643\u0631 \u0623\u0639\u0645\u0627\u0644\u0627\u064B \u062E\u0627\u0631\u062C \u0647\u0630\u0647 \u0627\u0644\u0641\u062A\u0631\u0629.
 2. technicalNotes: \u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0627\u0644\u0641\u0646\u064A\u0629 \u0648\u0627\u0644\u0645\u0639\u0648\u0642\u0627\u062A \u0627\u0644\u0645\u064A\u062F\u0627\u0646\u064A\u0629 \u0625\u0646 \u0648\u064F\u062C\u062F\u062A\u060C \u0623\u0648 "\u0644\u0627 \u062A\u0648\u062C\u062F \u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0641\u0646\u064A\u0629" \u0625\u0646 \u0644\u0645 \u062A\u0643\u0646 \u0647\u0646\u0627\u0643 \u0628\u064A\u0627\u0646\u0627\u062A \u0643\u0627\u0641\u064A\u0629.
 3. recommendations: \u0627\u0644\u062A\u0648\u0635\u064A\u0627\u062A \u0648\u0627\u0644\u062E\u0637\u0648\u0627\u062A \u0627\u0644\u0645\u0642\u062A\u0631\u062D\u0629 \u0644\u0644\u0641\u062A\u0631\u0629 \u0627\u0644\u0642\u0627\u062F\u0645\u0629.
 

@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [[ports]]
 localPort = 8080
@@ -32,3 +32,6 @@ OPENAI_API_BASE = "https://api.groq.com/openai/v1"
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
+
+[nix]
+channel = "stable-25_05"
