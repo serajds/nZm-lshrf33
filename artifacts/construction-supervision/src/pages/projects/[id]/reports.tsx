@@ -927,9 +927,13 @@ export default function ProjectReports() {
 
   const handleAiDraft = async () => {
     try {
+      const values = form.getValues();
+      if (!values.periodStart || !values.periodEnd) {
+        toast({ variant: "destructive", title: "حدد فترة التقرير أولاً", description: "يرجى تحديد تاريخ بداية ونهاية الفترة قبل الصياغة بالذكاء الاصطناعي" });
+        return;
+      }
       setIsAiDrafting(true);
       const token = localStorage.getItem("auth_token");
-      const values = form.getValues();
       
       const res = await fetch(`${API_BASE}/projects/${projectId}/reports/ai-draft`, {
         method: "POST",
@@ -941,6 +945,8 @@ export default function ProjectReports() {
           imageGroups: values.imageGroups,
           technicalNotes: values.technicalNotes,
           recommendations: values.recommendations,
+          periodStart: values.periodStart,
+          periodEnd: values.periodEnd,
         }),
       });
 

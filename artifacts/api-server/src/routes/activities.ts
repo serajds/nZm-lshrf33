@@ -122,6 +122,11 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     status: status ?? "not_started",
     groupId: groupId ?? null,
     sortOrder: sortOrder ?? 0,
+    // Stamp execution-state timestamp when the activity is created already in motion,
+    // so period-scoped reports can pick it up.
+    progressUpdatedAt: ((actualProgress ?? 0) > 0 || (status && status !== "not_started") || actualStartDate || actualEndDate)
+      ? new Date()
+      : null,
   }).returning();
 
   await syncProjectProgress(projectId);
@@ -199,6 +204,13 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   const todayStr = new Date().toISOString().split("T")[0];
   const [existing] = await db.select().from(activitiesTable)
     .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
+
+  // Stamp when the activity's execution state moved (progress, status, actual dates)
+  // so reports can scope "what happened during the period".
+  if (body.actualProgress !== undefined || body.status !== undefined
+      || body.actualStartDate !== undefined || body.actualEndDate !== undefined) {
+    updateData.progressUpdatedAt = new Date();
+  }
 
   if (existing) {
     if (body.actualProgress !== undefined) {

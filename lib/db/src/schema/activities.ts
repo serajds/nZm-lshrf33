@@ -16,6 +16,7 @@ export const activitiesTable = pgTable("activities", {
   status: text("status", { enum: ["not_started", "in_progress", "completed", "delayed"] }).notNull().default("not_started"),
   groupId: integer("group_id"),
   sortOrder: integer("sort_order").notNull().default(0),
+  progressUpdatedAt: timestamp("progress_updated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("activities_project_sort_idx").on(t.projectId, t.sortOrder),

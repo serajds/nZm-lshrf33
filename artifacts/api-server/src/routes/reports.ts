@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { reportsTable, activitiesTable } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, and, or, desc, sql, gte, lte, isNull, isNotNull } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectManager } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
@@ -109,7 +109,21 @@ const router: IRouter = Router();
 router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
-  const { imageGroups, technicalNotes, recommendations } = req.body;
+  const { imageGroups, technicalNotes, recommendations, periodStart, periodEnd } = req.body;
+
+  const isValidCalendarDate = (s: unknown): s is string => {
+    if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+    const d = new Date(`${s}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  };
+  if (!isValidCalendarDate(periodStart) || !isValidCalendarDate(periodEnd)) {
+    res.status(400).json({ error: "يجب تحديد تاريخ بداية ونهاية فترة التقرير قبل الصياغة بالذكاء الاصطناعي" });
+    return;
+  }
+  if (periodStart > periodEnd) {
+    res.status(400).json({ error: "تاريخ بداية الفترة يجب أن يسبق تاريخ نهايتها" });
+    return;
+  }
 
   const aiApiKey = process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY;
   if (!aiApiKey) {
@@ -118,20 +132,48 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
   }
 
   try {
-    // Fetch project activities in parallel — in_progress ones for main context,
-    // all for overall progress picture.
-    const [inProgressActivities, allActivities] = await Promise.all([
+    // Period bounds for timestamp comparison (dates are Libya-local calendar days;
+    // a small margin on the timestamp side keeps edge check-ins inside the day).
+    const periodStartTs = new Date(`${periodStart}T00:00:00+02:00`);
+    const periodEndTs = new Date(`${periodEnd}T23:59:59.999+02:00`);
+
+    // Activities relevant to the report period:
+    //  - actively running during it (actual start <= period end, and not finished before it), OR
+    //  - had their progress/status updated during it.
+    const periodCondition = or(
+      and(
+        isNotNull(activitiesTable.actualStartDate),
+        lte(activitiesTable.actualStartDate, periodEnd),
+        or(isNull(activitiesTable.actualEndDate), gte(activitiesTable.actualEndDate, periodStart)),
+      ),
+      and(
+        gte(activitiesTable.progressUpdatedAt, periodStartTs),
+        lte(activitiesTable.progressUpdatedAt, periodEndTs),
+      ),
+    );
+
+    const [periodActivities, allActivities] = await Promise.all([
       db.select().from(activitiesTable)
-        .where(and(eq(activitiesTable.projectId, projectId), eq(activitiesTable.status, "in_progress")))
+        .where(and(eq(activitiesTable.projectId, projectId), periodCondition))
         .orderBy(activitiesTable.sortOrder),
       db.select().from(activitiesTable)
         .where(eq(activitiesTable.projectId, projectId))
         .orderBy(activitiesTable.sortOrder),
     ]);
 
-    const inProgressText = inProgressActivities.length > 0
-      ? inProgressActivities.map(a => `- ${a.name}: (الإنجاز الفعلي: ${a.actualProgress ?? 0}%)`).join("\n")
-      : "لا توجد بنود قيد التنفيذ حالياً.";
+    const statusLabel: Record<string, string> = {
+      not_started: "لم يبدأ",
+      in_progress: "قيد التنفيذ",
+      completed: "مكتمل",
+      delayed: "متأخر",
+    };
+
+    const periodActivitiesText = periodActivities.length > 0
+      ? periodActivities.map(a => {
+          const updatedInPeriod = a.progressUpdatedAt && a.progressUpdatedAt >= periodStartTs && a.progressUpdatedAt <= periodEndTs;
+          return `- ${a.name}: الحالة: ${statusLabel[a.status] ?? a.status}، الإنجاز الفعلي: ${a.actualProgress ?? 0}%${updatedInPeriod ? " (تم تحديث تقدمه خلال هذه الفترة)" : ""}`;
+        }).join("\n")
+      : "لا توجد بنود جرى العمل عليها أو تحديثها خلال هذه الفترة.";
 
     const completedCount = allActivities.filter(a => a.status === "completed").length;
     const delayedCount  = allActivities.filter(a => a.status === "delayed").length;
@@ -146,20 +188,21 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
           .join("\n")
       : null;
 
-    const prompt = `يرجى صياغة تقرير فني مهني للمشروع بناءً على البيانات التالية:
+    const prompt = `يرجى صياغة تقرير فني مهني للمشروع عن الفترة من ${periodStart} إلى ${periodEnd} بناءً على البيانات التالية:
 
+الصورة العامة للمشروع (للسياق فقط):
 إجمالي بنود الأعمال: ${totalCount}
 البنود المكتملة: ${completedCount}
 البنود المتأخرة: ${delayedCount}
 
-البنود الحالية قيد التنفيذ:
-${inProgressText}
+البنود التي جرى العمل عليها أو تحديثها خلال فترة التقرير (${periodStart} إلى ${periodEnd}):
+${periodActivitiesText}
 ${imageGroupsSummary ? `\nأقسام الصور المرفقة في التقرير:\n${imageGroupsSummary}` : ""}
 ${technicalNotes ? `\nملاحظات فنية أولية من المشرف:\n${technicalNotes}` : ""}
 ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendations}` : ""}
 
 المطلوب صياغة ثلاثة أقسام بأسلوب مهني رسمي:
-1. workDescription: وصف شامل للأعمال المنجزة خلال الفترة بناءً على بنود التنفيذ.
+1. workDescription: وصف شامل للأعمال المنجزة خلال الفترة من ${periodStart} إلى ${periodEnd} بناءً على بنود الفترة أعلاه فقط، مع الإشارة الصريحة إلى الفترة. لا تذكر أعمالاً خارج هذه الفترة.
 2. technicalNotes: الملاحظات الفنية والمعوقات الميدانية إن وُجدت، أو "لا توجد ملاحظات فنية" إن لم تكن هناك بيانات كافية.
 3. recommendations: التوصيات والخطوات المقترحة للفترة القادمة.
 
