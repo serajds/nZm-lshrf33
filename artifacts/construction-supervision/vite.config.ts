@@ -51,7 +51,10 @@ export default defineConfig({
         // is resolved relative to the SW's scope, which is always `basePath`,
         // so we strip the leading slash and let the browser join it correctly
         // even when basePath ≠ "/".
-        importScripts: [(basePath.endsWith("/") ? basePath : basePath + "/") + "push-handler.js"],
+        importScripts: [
+          (basePath.endsWith("/") ? basePath : basePath + "/") + "push-handler.js",
+          (basePath.endsWith("/") ? basePath : basePath + "/") + "cache-cleanup.js",
+        ],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         runtimeCaching: [
@@ -65,15 +68,11 @@ export default defineConfig({
               expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 30 },
             },
           },
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith("/api"),
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "api-cache",
-              networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
-            },
-          },
+          // NOTE: /api responses are deliberately NOT cached. A previously
+          // cached 401 from /auth/me being replayed after a deploy caused a
+          // login loop (user logs in → stale 401 served → token cleared →
+          // bounced back to /login). API traffic must always hit the network;
+          // public/cache-cleanup.js deletes the legacy "api-cache" on activate.
           {
             urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
             handler: "CacheFirst",
