@@ -124285,8 +124285,10 @@ router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proj
     }
   ].filter(Boolean);
   if (aiProviders.length === 0) {
-    res.status(503).json({ error: "\u062E\u062F\u0645\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A \u063A\u064A\u0631 \u0645\u0647\u064A\u0623\u0629" });
-    return;
+    if (!process.env.GEMINI_API_KEY) {
+      res.status(503).json({ error: "\u062E\u062F\u0645\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A \u063A\u064A\u0631 \u0645\u0647\u064A\u0623\u0629" });
+      return;
+    }
   }
   try {
     const periodStartTs = /* @__PURE__ */ new Date(`${periodStart}T00:00:00+02:00`);
@@ -124347,8 +124349,38 @@ ${recommendations}` : ""}
 \u0623\u062C\u0628 \u0628\u062A\u0646\u0633\u064A\u0642 JSON \u0641\u0642\u0637:
 {"workDescription":"...","technicalNotes":"...","recommendations":"..."}`;
     let result;
+    let contentText;
+    if (process.env.GEMINI_API_KEY) {
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{
+                text: "\u0623\u0646\u062A \u0648\u0643\u064A\u0644 \u0630\u0643\u0627\u0621 \u0627\u0635\u0637\u0646\u0627\u0639\u064A \u0645\u062A\u062E\u0635\u0635 \u0641\u064A \u0627\u0644\u0625\u0634\u0631\u0627\u0641 \u0627\u0644\u0647\u0646\u062F\u0633\u064A \u0648\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639 \u0627\u0644\u0625\u0646\u0634\u0627\u0626\u064A\u0629. \u062A\u064F\u0635\u062F\u0631 \u062A\u0642\u0627\u0631\u064A\u0631 \u0645\u0647\u0646\u064A\u0629 \u0628\u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0641\u0635\u062D\u0649 \u0641\u0642\u0637. \u0644\u0627 \u062A\u062E\u062A\u0631\u0639 \u0628\u064A\u0627\u0646\u0627\u062A \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0627\u0644\u0645\u062F\u062E\u0644\u0627\u062A."
+              }]
+            },
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.2
+            }
+          })
+        }
+      );
+      if (geminiResponse.ok) {
+        const geminiResult = await geminiResponse.json();
+        contentText = geminiResult?.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("");
+      } else {
+        const errText = await geminiResponse.text();
+        req.log.warn({ status: geminiResponse.status, body: errText }, "Gemini request failed; trying configured fallback");
+      }
+    }
     let lastProviderError;
     for (const provider of aiProviders) {
+      if (contentText) break;
       const response = await fetch(`${provider.apiBase}/chat/completions`, {
         method: "POST",
         headers: {
@@ -124376,12 +124408,15 @@ ${recommendations}` : ""}
       lastProviderError = { provider: provider.name, status: response.status, body: errText };
       req.log.warn({ provider: provider.name, status: response.status, body: errText }, "AI provider request failed; trying fallback if available");
     }
-    if (!result) {
+    if (!contentText && result) {
+      contentText = result?.choices?.[0]?.message?.content;
+    }
+    if (!contentText) {
       req.log.error(lastProviderError, "All AI providers failed");
       res.status(502).json({ error: "\u062E\u0637\u0623 \u0641\u064A \u062E\u062F\u0645\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A" });
       return;
     }
-    const content = JSON.parse(result.choices[0].message.content);
+    const content = JSON.parse(contentText);
     res.json(content);
   } catch (error40) {
     req.log.error({ error: error40 }, "AI draft generation failed");
