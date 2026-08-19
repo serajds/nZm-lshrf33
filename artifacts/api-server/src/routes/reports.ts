@@ -126,6 +126,12 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
   }
 
   const aiProviders = [
+    process.env.PERPLEXITY_API_KEY && {
+      name: "Perplexity",
+      apiBase: "https://api.perplexity.ai",
+      apiKey: process.env.PERPLEXITY_API_KEY,
+      model: "sonar",
+    },
     process.env.GROQ_API_KEY && {
       name: "Groq",
       apiBase: "https://api.groq.com/openai/v1",
