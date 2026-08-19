@@ -950,7 +950,10 @@ export default function ProjectReports() {
         }),
       });
 
-      if (!res.ok) throw new Error("AI draft failed");
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.error || "تعذر الاتصال بخدمة الذكاء الاصطناعي");
+      }
       
       const data = await res.json();
       
@@ -961,7 +964,11 @@ export default function ProjectReports() {
       toast({ title: "تمت صياغة التقرير بنجاح بواسطة الذكاء الاصطناعي" });
     } catch (err) {
       console.error("AI Draft error:", err);
-      toast({ variant: "destructive", title: "فشل الذكاء الاصطناعي في صياغة التقرير" });
+      toast({
+        variant: "destructive",
+        title: "فشل الذكاء الاصطناعي في صياغة التقرير",
+        description: err instanceof Error ? err.message : "تعذر الاتصال بخدمة الذكاء الاصطناعي",
+      });
     } finally {
       setIsAiDrafting(false);
     }
