@@ -626,8 +626,13 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
       }
     ];
 
-    const aiApiKey = process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY;
-    const apiBase = (process.env.OPENAI_API_BASE ?? "https://api.groq.com/openai/v1").replace(/\/$/, "");
+    const aiApiKey = process.env.PERPLEXITY_API_KEY;
+    if (!aiApiKey) {
+      res.status(503).json({ error: "خدمة الملخص التنفيذي غير مهيأة" });
+      return;
+    }
+
+    const apiBase = "https://api.perplexity.ai";
     const response = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
       headers: {
@@ -635,9 +640,8 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
         "Authorization": `Bearer ${aiApiKey}`
       },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
+        model: "sonar",
         messages,
-        response_format: { type: "json_object" },
         temperature: 0.2,
         max_tokens: 700
       })
@@ -672,6 +676,7 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
     const cleanText = (value: unknown, fallback: string) => typeof value === "string" && value.trim() ? value.trim() : fallback;
 
     res.json({
+      provider: "Perplexity Sonar",
       summary: {
         headline: cleanText(candidate.headline, "المشروع قيد المتابعة وفق البيانات التشغيلية الحالية."),
         status: cleanText(candidate.status, "على المسار"),

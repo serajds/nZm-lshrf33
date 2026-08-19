@@ -123581,8 +123581,12 @@ router3.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("p
 \u0623\u0639\u062F JSON \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u0641\u0642\u0637\u060C \u0648\u0627\u062C\u0639\u0644 \u0627\u0644\u062A\u062D\u0644\u064A\u0644 \u0645\u0641\u064A\u062F\u0627\u064B \u0644\u0627\u062A\u062E\u0627\u0630 \u0627\u0644\u0642\u0631\u0627\u0631 \u0648\u0644\u064A\u0633 \u0645\u062C\u0631\u062F \u0625\u0639\u0627\u062F\u0629 \u0639\u0631\u0636 \u0644\u0644\u0623\u0631\u0642\u0627\u0645.`
       }
     ];
-    const aiApiKey = process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY;
-    const apiBase = (process.env.OPENAI_API_BASE ?? "https://api.groq.com/openai/v1").replace(/\/$/, "");
+    const aiApiKey = process.env.PERPLEXITY_API_KEY;
+    if (!aiApiKey) {
+      res.status(503).json({ error: "\u062E\u062F\u0645\u0629 \u0627\u0644\u0645\u0644\u062E\u0635 \u0627\u0644\u062A\u0646\u0641\u064A\u0630\u064A \u063A\u064A\u0631 \u0645\u0647\u064A\u0623\u0629" });
+      return;
+    }
+    const apiBase = "https://api.perplexity.ai";
     const response = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
       headers: {
@@ -123590,9 +123594,8 @@ router3.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("p
         "Authorization": `Bearer ${aiApiKey}`
       },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
+        model: "sonar",
         messages,
-        response_format: { type: "json_object" },
         temperature: 0.2,
         max_tokens: 700
       })
@@ -123619,6 +123622,7 @@ router3.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("p
     const cleanList = (value) => Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 4) : [];
     const cleanText = (value, fallback) => typeof value === "string" && value.trim() ? value.trim() : fallback;
     res.json({
+      provider: "Perplexity Sonar",
       summary: {
         headline: cleanText(candidate.headline, "\u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0642\u064A\u062F \u0627\u0644\u0645\u062A\u0627\u0628\u0639\u0629 \u0648\u0641\u0642 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062A\u0634\u063A\u064A\u0644\u064A\u0629 \u0627\u0644\u062D\u0627\u0644\u064A\u0629."),
         status: cleanText(candidate.status, "\u0639\u0644\u0649 \u0627\u0644\u0645\u0633\u0627\u0631"),
