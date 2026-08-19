@@ -635,7 +635,7 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
         "Authorization": `Bearer ${aiApiKey}`
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "llama-3.1-8b-instant",
         messages,
         response_format: { type: "json_object" },
         temperature: 0.2,
