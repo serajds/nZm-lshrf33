@@ -141,8 +141,10 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
   ].filter(Boolean) as Array<{ name: string; apiBase: string; apiKey: string; model: string }>;
 
   if (aiProviders.length === 0) {
+    if (!process.env.GEMINI_API_KEY) {
     res.status(503).json({ error: "خدمة الذكاء الاصطناعي غير مهيأة" });
     return;
+    }
   }
 
   try {
@@ -224,8 +226,43 @@ ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendat
 {"workDescription":"...","technicalNotes":"...","recommendations":"..."}`;
 
     let result: any;
+    let contentText: string | undefined;
+
+    if (process.env.GEMINI_API_KEY) {
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{
+                text: "أنت وكيل ذكاء اصطناعي متخصص في الإشراف الهندسي وإدارة المشاريع الإنشائية. تُصدر تقارير مهنية باللغة العربية الفصحى فقط. لا تخترع بيانات غير موجودة في المدخلات.",
+              }],
+            },
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.2,
+            },
+          }),
+        },
+      );
+
+      if (geminiResponse.ok) {
+        const geminiResult = await geminiResponse.json() as any;
+        contentText = geminiResult?.candidates?.[0]?.content?.parts
+          ?.map((part: { text?: string }) => part.text ?? "")
+          .join("");
+      } else {
+        const errText = await geminiResponse.text();
+        req.log.warn({ status: geminiResponse.status, body: errText }, "Gemini request failed; trying configured fallback");
+      }
+    }
+
     let lastProviderError: { provider: string; status: number; body: string } | undefined;
     for (const provider of aiProviders) {
+      if (contentText) break;
       const response = await fetch(`${provider.apiBase}/chat/completions`, {
         method: "POST",
         headers: {
@@ -256,13 +293,17 @@ ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendat
       req.log.warn({ provider: provider.name, status: response.status, body: errText }, "AI provider request failed; trying fallback if available");
     }
 
-    if (!result) {
+    if (!contentText && result) {
+      contentText = result?.choices?.[0]?.message?.content;
+    }
+
+    if (!contentText) {
       req.log.error(lastProviderError, "All AI providers failed");
       res.status(502).json({ error: "خطأ في خدمة الذكاء الاصطناعي" });
       return;
     }
 
-    const content = JSON.parse(result.choices[0].message.content) as {
+    const content = JSON.parse(contentText) as {
       workDescription?: string;
       technicalNotes?: string;
       recommendations?: string;
