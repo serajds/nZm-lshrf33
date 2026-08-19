@@ -125,8 +125,22 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
     return;
   }
 
-  const aiApiKey = process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY;
-  if (!aiApiKey) {
+  const aiProviders = [
+    process.env.GROQ_API_KEY && {
+      name: "Groq",
+      apiBase: "https://api.groq.com/openai/v1",
+      apiKey: process.env.GROQ_API_KEY,
+      model: "llama-3.1-8b-instant",
+    },
+    process.env.OPENAI_API_KEY && {
+      name: "OpenAI",
+      apiBase: (process.env.OPENAI_API_BASE ?? "https://api.openai.com/v1").replace(/\/$/, ""),
+      apiKey: process.env.OPENAI_API_KEY,
+      model: "gpt-4o-mini",
+    },
+  ].filter(Boolean) as Array<{ name: string; apiBase: string; apiKey: string; model: string }>;
+
+  if (aiProviders.length === 0) {
     res.status(503).json({ error: "خدمة الذكاء الاصطناعي غير مهيأة" });
     return;
   }
@@ -209,35 +223,45 @@ ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendat
 أجب بتنسيق JSON فقط:
 {"workDescription":"...","technicalNotes":"...","recommendations":"..."}`;
 
-    const apiBase = (process.env.OPENAI_API_BASE ?? "https://api.groq.com/openai/v1").replace(/\/$/, "");
-    const response = await fetch(`${apiBase}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${aiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        messages: [
-          {
-            role: "system",
-            content: "أنت وكيل ذكاء اصطناعي متخصص في الإشراف الهندسي وإدارة المشاريع الإنشائية. تُصدر تقارير مهنية باللغة العربية الفصحى فقط. لا تخترع بيانات غير موجودة في المدخلات.",
-          },
-          { role: "user", content: prompt },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.2,
-      }),
-    });
+    let result: any;
+    let lastProviderError: { provider: string; status: number; body: string } | undefined;
+    for (const provider of aiProviders) {
+      const response = await fetch(`${provider.apiBase}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${provider.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          messages: [
+            {
+              role: "system",
+              content: "أنت وكيل ذكاء اصطناعي متخصص في الإشراف الهندسي وإدارة المشاريع الإنشائية. تُصدر تقارير مهنية باللغة العربية الفصحى فقط. لا تخترع بيانات غير موجودة في المدخلات.",
+            },
+            { role: "user", content: prompt },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.2,
+        }),
+      });
 
-    if (!response.ok) {
+      if (response.ok) {
+        result = await response.json();
+        break;
+      }
+
       const errText = await response.text();
-      req.log.error({ status: response.status, body: errText }, "OpenAI API error");
+      lastProviderError = { provider: provider.name, status: response.status, body: errText };
+      req.log.warn({ provider: provider.name, status: response.status, body: errText }, "AI provider request failed; trying fallback if available");
+    }
+
+    if (!result) {
+      req.log.error(lastProviderError, "All AI providers failed");
       res.status(502).json({ error: "خطأ في خدمة الذكاء الاصطناعي" });
       return;
     }
 
-    const result = (await response.json()) as any;
     const content = JSON.parse(result.choices[0].message.content) as {
       workDescription?: string;
       technicalNotes?: string;

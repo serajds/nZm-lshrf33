@@ -124270,8 +124270,21 @@ router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proj
     res.status(400).json({ error: "\u062A\u0627\u0631\u064A\u062E \u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629 \u064A\u062C\u0628 \u0623\u0646 \u064A\u0633\u0628\u0642 \u062A\u0627\u0631\u064A\u062E \u0646\u0647\u0627\u064A\u062A\u0647\u0627" });
     return;
   }
-  const aiApiKey = process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY;
-  if (!aiApiKey) {
+  const aiProviders = [
+    process.env.GROQ_API_KEY && {
+      name: "Groq",
+      apiBase: "https://api.groq.com/openai/v1",
+      apiKey: process.env.GROQ_API_KEY,
+      model: "llama-3.1-8b-instant"
+    },
+    process.env.OPENAI_API_KEY && {
+      name: "OpenAI",
+      apiBase: (process.env.OPENAI_API_BASE ?? "https://api.openai.com/v1").replace(/\/$/, ""),
+      apiKey: process.env.OPENAI_API_KEY,
+      model: "gpt-4o-mini"
+    }
+  ].filter(Boolean);
+  if (aiProviders.length === 0) {
     res.status(503).json({ error: "\u062E\u062F\u0645\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A \u063A\u064A\u0631 \u0645\u0647\u064A\u0623\u0629" });
     return;
   }
@@ -124333,33 +124346,41 @@ ${recommendations}` : ""}
 
 \u0623\u062C\u0628 \u0628\u062A\u0646\u0633\u064A\u0642 JSON \u0641\u0642\u0637:
 {"workDescription":"...","technicalNotes":"...","recommendations":"..."}`;
-    const apiBase = (process.env.OPENAI_API_BASE ?? "https://api.groq.com/openai/v1").replace(/\/$/, "");
-    const response = await fetch(`${apiBase}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${aiApiKey}`
-      },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        messages: [
-          {
-            role: "system",
-            content: "\u0623\u0646\u062A \u0648\u0643\u064A\u0644 \u0630\u0643\u0627\u0621 \u0627\u0635\u0637\u0646\u0627\u0639\u064A \u0645\u062A\u062E\u0635\u0635 \u0641\u064A \u0627\u0644\u0625\u0634\u0631\u0627\u0641 \u0627\u0644\u0647\u0646\u062F\u0633\u064A \u0648\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639 \u0627\u0644\u0625\u0646\u0634\u0627\u0626\u064A\u0629. \u062A\u064F\u0635\u062F\u0631 \u062A\u0642\u0627\u0631\u064A\u0631 \u0645\u0647\u0646\u064A\u0629 \u0628\u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0641\u0635\u062D\u0649 \u0641\u0642\u0637. \u0644\u0627 \u062A\u062E\u062A\u0631\u0639 \u0628\u064A\u0627\u0646\u0627\u062A \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0627\u0644\u0645\u062F\u062E\u0644\u0627\u062A."
-          },
-          { role: "user", content: prompt }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.2
-      })
-    });
-    if (!response.ok) {
+    let result;
+    let lastProviderError;
+    for (const provider of aiProviders) {
+      const response = await fetch(`${provider.apiBase}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${provider.apiKey}`
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          messages: [
+            {
+              role: "system",
+              content: "\u0623\u0646\u062A \u0648\u0643\u064A\u0644 \u0630\u0643\u0627\u0621 \u0627\u0635\u0637\u0646\u0627\u0639\u064A \u0645\u062A\u062E\u0635\u0635 \u0641\u064A \u0627\u0644\u0625\u0634\u0631\u0627\u0641 \u0627\u0644\u0647\u0646\u062F\u0633\u064A \u0648\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639 \u0627\u0644\u0625\u0646\u0634\u0627\u0626\u064A\u0629. \u062A\u064F\u0635\u062F\u0631 \u062A\u0642\u0627\u0631\u064A\u0631 \u0645\u0647\u0646\u064A\u0629 \u0628\u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0641\u0635\u062D\u0649 \u0641\u0642\u0637. \u0644\u0627 \u062A\u062E\u062A\u0631\u0639 \u0628\u064A\u0627\u0646\u0627\u062A \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0627\u0644\u0645\u062F\u062E\u0644\u0627\u062A."
+            },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.2
+        })
+      });
+      if (response.ok) {
+        result = await response.json();
+        break;
+      }
       const errText = await response.text();
-      req.log.error({ status: response.status, body: errText }, "OpenAI API error");
+      lastProviderError = { provider: provider.name, status: response.status, body: errText };
+      req.log.warn({ provider: provider.name, status: response.status, body: errText }, "AI provider request failed; trying fallback if available");
+    }
+    if (!result) {
+      req.log.error(lastProviderError, "All AI providers failed");
       res.status(502).json({ error: "\u062E\u0637\u0623 \u0641\u064A \u062E\u062F\u0645\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A" });
       return;
     }
-    const result = await response.json();
     const content = JSON.parse(result.choices[0].message.content);
     res.json(content);
   } catch (error40) {
