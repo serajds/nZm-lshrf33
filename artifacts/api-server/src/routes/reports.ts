@@ -234,7 +234,9 @@ ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendat
     let result: any;
     let contentText: string | undefined;
 
-    if (process.env.GEMINI_API_KEY) {
+    // When Perplexity is configured, use it as the selected provider rather than
+    // spending a request on an older Gemini configuration first.
+    if (process.env.GEMINI_API_KEY && !process.env.PERPLEXITY_API_KEY) {
       const geminiResponse = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,
         {
@@ -309,7 +311,10 @@ ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendat
 
     if (!contentText) {
       req.log.error(lastProviderError, "All AI providers failed");
-      res.status(502).json({ error: "خطأ في خدمة الذكاء الاصطناعي" });
+      const error = lastProviderError?.status === 401
+        ? "تعذر التحقق من مفتاح مزود الذكاء الاصطناعي"
+        : "خطأ في خدمة الذكاء الاصطناعي";
+      res.status(502).json({ error });
       return;
     }
 
