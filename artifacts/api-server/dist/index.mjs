@@ -124356,7 +124356,7 @@ ${recommendations}` : ""}
 {"workDescription":"...","technicalNotes":"...","recommendations":"..."}`;
     let result;
     let contentText;
-    if (process.env.GEMINI_API_KEY) {
+    if (process.env.GEMINI_API_KEY && !process.env.PERPLEXITY_API_KEY) {
       const geminiResponse = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,
         {
@@ -124421,7 +124421,8 @@ ${recommendations}` : ""}
     }
     if (!contentText) {
       req.log.error(lastProviderError, "All AI providers failed");
-      res.status(502).json({ error: "\u062E\u0637\u0623 \u0641\u064A \u062E\u062F\u0645\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A" });
+      const error40 = lastProviderError?.status === 401 ? "\u062A\u0639\u0630\u0631 \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u0645\u0641\u062A\u0627\u062D \u0645\u0632\u0648\u062F \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A" : "\u062E\u0637\u0623 \u0641\u064A \u062E\u062F\u0645\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A";
+      res.status(502).json({ error: error40 });
       return;
     }
     const content = JSON.parse(contentText);
