@@ -124402,7 +124402,9 @@ ${recommendations}` : ""}
             },
             { role: "user", content: prompt }
           ],
-          response_format: { type: "json_object" },
+          // Perplexity currently rejects json_object; the prompt still requires
+          // JSON and the response is parsed and validated below.
+          ...provider.name !== "Perplexity" ? { response_format: { type: "json_object" } } : {},
           temperature: 0.2
         })
       });
