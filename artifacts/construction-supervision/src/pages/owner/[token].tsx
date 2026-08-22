@@ -570,7 +570,7 @@ export default function OwnerPortal() {
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <Gauge className="h-4 w-4" />
-                <span className="text-xs font-medium">الإنجاز الفعلي</span>
+                <span className="text-xs font-medium">مؤشر تقدم الأنشطة</span>
               </div>
               <div className="text-3xl font-black text-emerald-600">{(sm.overallProgress ?? 0).toFixed(1)}%</div>
               <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden" dir="ltr">
@@ -746,7 +746,7 @@ export default function OwnerPortal() {
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">الإنجاز الفعلي</span>
+                    <span className="text-muted-foreground">مؤشر تقدم الأنشطة</span>
                     <span className="font-medium">{(sm.overallProgress ?? 0).toFixed(1)}%</span>
                   </div>
                   <div className="h-2.5 rounded-full bg-muted overflow-hidden" dir="ltr">
@@ -923,7 +923,7 @@ export default function OwnerPortal() {
                   </div>
                   <div className="text-center p-4 rounded-lg bg-emerald-50 border border-emerald-100">
                     <div className="text-3xl font-black text-emerald-600">{(sm.overallProgress ?? 0).toFixed(1)}%</div>
-                    <div className="text-sm text-emerald-600/80 mt-1">الإنجاز الفعلي</div>
+                    <div className="text-sm text-emerald-600/80 mt-1">مؤشر تقدم الأنشطة</div>
                   </div>
                   <div className={`text-center p-4 rounded-lg ${progressDiff >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
                     <div className={`text-3xl font-black ${progressDiff >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -979,7 +979,7 @@ export default function OwnerPortal() {
                       <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-xs font-medium text-muted-foreground">نسبة الإنجاز الكلي حتى إعداد التقرير</span>
+                            <span className="text-xs font-medium text-muted-foreground">مؤشر تقدم الأنشطة حتى إعداد التقرير</span>
                             <span className="text-sm font-bold text-primary">{report.progressPercentage}%</span>
                           </div>
                           <div className="h-2 bg-muted rounded-full overflow-hidden" dir="ltr">

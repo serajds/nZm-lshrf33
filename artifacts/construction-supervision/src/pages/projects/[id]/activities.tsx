@@ -805,7 +805,7 @@ export default function ProjectActivities() {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           {[
             { label: "إجمالي البنود", value: allActivityRows.length, note: `${groups.length} مجموعة`, icon: ListChecks, tone: "text-primary", dot: "bg-primary" },
-            { label: "نسبة الإنجاز", value: `${actualProgress}%`, note: progressDelta >= 0 ? `+${progressDelta}% عن المخطط` : `${progressDelta}% عن المخطط`, icon: TrendingUp, tone: progressDelta < 0 ? "text-destructive" : "text-emerald-600", dot: progressDelta < 0 ? "bg-destructive" : "bg-emerald-500" },
+            { label: "مؤشر تقدم الأنشطة", value: `${actualProgress}%`, note: progressDelta >= 0 ? `+${progressDelta}% عن المخطط` : `${progressDelta}% عن المخطط`, icon: TrendingUp, tone: progressDelta < 0 ? "text-destructive" : "text-emerald-600", dot: progressDelta < 0 ? "bg-destructive" : "bg-emerald-500" },
             { label: "مكتمل", value: completedCount, note: allActivityRows.length ? `${Math.round((completedCount / allActivityRows.length) * 100)}% من البنود` : "لا توجد بيانات", icon: CheckCircle2, tone: "text-emerald-600", dot: "bg-emerald-500" },
             { label: "قيد التنفيذ", value: inProgressCount, note: "تحتاج متابعة دورية", icon: Timer, tone: "text-blue-600", dot: "bg-blue-500" },
             { label: "متأخر", value: delayedCount, note: delayedCount > 0 ? "تحتاج إجراءً تصحيحياً" : "لا توجد حالات متأخرة", icon: AlertTriangle, tone: delayedCount > 0 ? "text-destructive" : "text-muted-foreground", dot: delayedCount > 0 ? "bg-destructive" : "bg-muted-foreground" },
@@ -1327,7 +1327,7 @@ export default function ProjectActivities() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-base">بنود الأعمال</CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">انقر على الحالة أو نسبة الإنجاز لتحديثها مباشرةً</p>
+                <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">انقر على الحالة أو نسبة تقدم البند لتحديثها مباشرةً</p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
