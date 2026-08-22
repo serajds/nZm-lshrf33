@@ -39,7 +39,9 @@ import {
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { UserPlus, Trash2, Shield, Users, FolderOpen, Building2, ShieldCheck, RotateCcw } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Check, ChevronsUpDown, UserPlus, Trash2, Shield, Users, FolderOpen, Building2, ShieldCheck, RotateCcw } from "lucide-react";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -71,6 +73,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isUserPickerOpen, setIsUserPickerOpen] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [selectedRole, setSelectedRole] = useState<string>("engineer");
@@ -213,14 +216,20 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
             فريق العمل
           </CardTitle>
           {canManageMembers && (
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) setIsUserPickerOpen(false);
+            }}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2">
                   <UserPlus className="h-4 w-4" />
                   إضافة عضو
                 </Button>
               </DialogTrigger>
-              <DialogContent dir="rtl" className="sm:max-w-[550px] p-0 overflow-hidden">
+              <DialogContent
+                dir="rtl"
+                className="flex w-[calc(100%-1rem)] max-h-[calc(100dvh-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[550px] sm:max-h-[90vh]"
+              >
                 <div className="bg-primary/5 p-6 pb-4 border-b border-border/50">
                   <DialogHeader>
                     <div className="flex items-center gap-3">
@@ -234,7 +243,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                     </div>
                   </DialogHeader>
                 </div>
-                <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                   <div className="px-6 py-4 space-y-6">
                     <div className="space-y-4">
                       <h3 className="text-sm font-semibold text-primary/80 uppercase tracking-wide flex items-center gap-2">
@@ -244,30 +253,54 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                       <div className="grid grid-cols-1 gap-5 p-5 rounded-2xl border bg-muted/30 shadow-sm">
                         <div className="space-y-2">
                           <Label className="text-foreground/90 font-semibold">المستخدم</Label>
-                          <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                            <SelectTrigger dir="rtl" className="w-full bg-background">
-                              <span className="truncate block text-right">
-                                {selectedUserId
-                                  ? (() => {
-                                      const u = availableUsers.find(u => String(u.id) === selectedUserId);
-                                      return u ? u.fullName : "اختر مستخدم";
-                                    })()
-                                  : "اختر مستخدم"}
-                              </span>
-                            </SelectTrigger>
-                            <SelectContent dir="rtl" className="max-w-[400px]">
-                              {availableUsers.map(u => (
-                                <SelectItem key={u.id} value={String(u.id)} className="max-w-full">
-                                  <span className="font-medium">{u.fullName}</span>
-                                </SelectItem>
-                              ))}
-                              {availableUsers.length === 0 && (
-                                <div className="p-4 text-sm text-muted-foreground text-center">
-                                  لا يوجد مستخدمين متاحين
-                                </div>
-                              )}
-                            </SelectContent>
-                          </Select>
+                          <Popover open={isUserPickerOpen} onOpenChange={setIsUserPickerOpen}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={isUserPickerOpen}
+                                className="w-full justify-between bg-background font-normal"
+                              >
+                                <span className="truncate text-right">
+                                  {selectedUserId
+                                    ? availableUsers.find(u => String(u.id) === selectedUserId)?.fullName ?? "اختر مستخدم"
+                                    : "اختر مستخدم"}
+                                </span>
+                                <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              dir="rtl"
+                              align="start"
+                              className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0"
+                            >
+                              <Command>
+                                <CommandInput placeholder="ابحث باسم المستخدم..." />
+                                <CommandList className="max-h-[min(50vh,320px)]">
+                                  <CommandEmpty>لا يوجد مستخدم مطابق.</CommandEmpty>
+                                  <CommandGroup>
+                                    {availableUsers.map(u => (
+                                      <CommandItem
+                                        key={u.id}
+                                        value={u.fullName}
+                                        onSelect={() => {
+                                          setSelectedUserId(String(u.id));
+                                          setIsUserPickerOpen(false);
+                                        }}
+                                      >
+                                        <Check className={cn(
+                                          "h-4 w-4 shrink-0",
+                                          selectedUserId === String(u.id) ? "opacity-100" : "opacity-0",
+                                        )} />
+                                        <span className="truncate font-medium">{u.fullName}</span>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
                         </div>
                         <div className="space-y-2">
                           <Label className="text-foreground/90 font-semibold">الدور في المشروع</Label>
