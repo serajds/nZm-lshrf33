@@ -643,7 +643,7 @@ export default function ProjectDetails() {
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="surface-card surface-card-hover">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">نسبة الإنجاز</CardTitle>
+              <CardTitle className="text-base">مؤشر تقدم الأنشطة</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-end justify-between mb-3">
