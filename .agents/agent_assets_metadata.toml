@@ -1,8 +1,14 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "3DQzpH9iPW8CpJ-eF6qod"
 uri = "file://artifacts/mobile/assets/images/icon.png"
 type = "image"
 title = "construction supervision icon"
+
+[[outputs]]
+id = "7V_TEWIOKRZqf8VYAwwlg"
+uri = "file://attached_assets/production-database-snapshot.sql"
+type = "unspecified"
+title = "نسخة قاعدة بيانات الإنتاج"
+description = "ملف SQL قابل للاستيراد يحتوي بيانات جداول الإنتاج الحالية ويحافظ على المعرّفات والعلاقات."
