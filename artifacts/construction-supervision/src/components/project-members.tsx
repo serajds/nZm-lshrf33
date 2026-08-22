@@ -283,7 +283,8 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                                     {availableUsers.map(u => (
                                       <CommandItem
                                         key={u.id}
-                                        value={u.fullName}
+                                        value={String(u.id)}
+                                        keywords={[u.fullName]}
                                         onSelect={() => {
                                           setSelectedUserId(String(u.id));
                                           setIsUserPickerOpen(false);
