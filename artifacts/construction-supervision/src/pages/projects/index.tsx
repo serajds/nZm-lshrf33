@@ -421,7 +421,7 @@ export default function Projects() {
                         render={({ field }) => (
                           <FormItem className="sm:col-span-2">
                             <FormLabel className="text-foreground/90">موقع المشروع</FormLabel>
-                            <FormControl><Input {...field} className="h-11 bg-background" placeholder="مثال: الرياض، حي الملقا" /></FormControl>
+                            <FormControl><Input {...field} className="h-11 bg-background" placeholder="ليبيا - مصراتة" /></FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
