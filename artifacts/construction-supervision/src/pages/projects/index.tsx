@@ -30,7 +30,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2, CalendarOff, Folder, FolderOpen, ChevronRight, ArrowUp, Loader2, FlaskConical, X, FileText } from "lucide-react";
+import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2, CalendarOff, Folder, FolderOpen, ChevronRight, ArrowUp, Loader2, FlaskConical, X, FileText, TriangleAlert } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -113,6 +113,21 @@ const projectSchema = z.object({
 
 type ProjectFormValues = z.infer<typeof projectSchema>;
 
+const createDeleteChallenge = () => {
+  const firstNumber = Math.floor(Math.random() * 16) + 12;
+  const secondNumber = Math.floor(Math.random() * 12) + 5;
+
+  return {
+    firstNumber,
+    secondNumber,
+    answer: firstNumber + secondNumber,
+  };
+};
+
+const normalizeArabicDigits = (value: string) => value
+  .replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+  .replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)));
+
 export default function Projects() {
   usePageTitle("المشاريع");
   const [search, setSearch] = useState("");
@@ -121,6 +136,8 @@ export default function Projects() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [deleteChallenge, setDeleteChallenge] = useState(createDeleteChallenge);
+  const [deleteAnswer, setDeleteAnswer] = useState("");
   const [folderBrowserOpen, setFolderBrowserOpen] = useState(false);
   const [folderBrowserItems, setFolderBrowserItems] = useState<any[]>([]);
   const [folderBrowserLoading, setFolderBrowserLoading] = useState(false);
@@ -329,6 +346,10 @@ export default function Projects() {
 
   const confirmDelete = async () => {
     if (!deletingProject) return;
+    if (Number(normalizeArabicDigits(deleteAnswer.trim())) !== deleteChallenge.answer) {
+      toast({ variant: "destructive", title: "إجابة المسألة غير صحيحة", description: "لن يتم حذف المشروع قبل إدخال الإجابة الصحيحة." });
+      return;
+    }
     try {
       await deleteProject.mutateAsync({ id: deletingProject.id });
       queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() });
@@ -337,8 +358,17 @@ export default function Projects() {
       toast({ variant: "destructive", title: "فشل حذف المشروع" });
     } finally {
       setDeletingProject(null);
+      setDeleteAnswer("");
     }
   };
+
+  const openDeleteConfirmation = (project: Project) => {
+    setDeleteChallenge(createDeleteChallenge());
+    setDeleteAnswer("");
+    setDeletingProject(project);
+  };
+
+  const isDeleteAnswerCorrect = Number(normalizeArabicDigits(deleteAnswer.trim())) === deleteChallenge.answer;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -715,7 +745,7 @@ export default function Projects() {
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(project)}>
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeletingProject(project)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => openDeleteConfirmation(project)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </>
@@ -764,12 +794,47 @@ export default function Projects() {
         </div>
       )}
 
-      <AlertDialog open={!!deletingProject} onOpenChange={(open) => { if (!open) setDeletingProject(null); }}>
+      <AlertDialog open={!!deletingProject} onOpenChange={(open) => {
+        if (!open) {
+          setDeletingProject(null);
+          setDeleteAnswer("");
+        }
+      }}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
-            <AlertDialogTitle>حذف المشروع</AlertDialogTitle>
-            <AlertDialogDescription>
-              هل أنت متأكد من حذف مشروع "{deletingProject?.name}"؟ لا يمكن التراجع عن هذا الإجراء.
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <TriangleAlert className="h-5 w-5" />
+              تحذير شديد: حذف نهائي للمشروع
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm leading-6 text-foreground">
+                  سيُحذف مشروع <strong>«{deletingProject?.name}»</strong> نهائياً، بما في ذلك الأنشطة والتقارير والملفات والأعضاء والبيانات المرتبطة به.
+                  <strong className="mt-2 block text-destructive">لا يمكن التراجع عن هذا الإجراء أو استعادة البيانات بعد الحذف.</strong>
+                </div>
+                <div className="rounded-lg border bg-muted/40 p-4">
+                  <label htmlFor="delete-project-math" className="mb-2 block text-sm font-semibold text-foreground">
+                    للتأكيد، أجب عن المسألة التالية:
+                  </label>
+                  <p className="mb-3 text-lg font-bold text-foreground" dir="ltr">
+                    {deleteChallenge.firstNumber} + {deleteChallenge.secondNumber} = ?
+                  </p>
+                  <Input
+                    id="delete-project-math"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={deleteAnswer}
+                    onChange={(event) => setDeleteAnswer(event.target.value)}
+                    placeholder="اكتب الناتج"
+                    className="bg-background"
+                    aria-describedby="delete-project-math-help"
+                  />
+                  <p id="delete-project-math-help" className="mt-2 text-xs text-muted-foreground">
+                    لن يتفعّل الحذف إلا بعد إدخال الإجابة الصحيحة.
+                  </p>
+                </div>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row-reverse gap-2">
@@ -777,7 +842,7 @@ export default function Projects() {
             <AlertDialogAction 
               onClick={confirmDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={deleteProject.isPending}
+              disabled={deleteProject.isPending || !isDeleteAnswerCorrect}
             >
               {deleteProject.isPending ? "جاري الحذف..." : "حذف المشروع"}
             </AlertDialogAction>
