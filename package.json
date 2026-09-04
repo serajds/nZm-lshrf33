@@ -5,6 +5,7 @@
   "scripts": {
     "build": "pnpm run typecheck && pnpm -r --if-present --filter=!@workspace/mobile run build",
     "test:session-cache": "node --test --experimental-strip-types tests/*.test.mjs",
+    "test:session-cache:browser": "node --test tests/browser-session-cache.test.mjs",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --filter \"!@workspace/mockup-sandbox\" --if-present run typecheck"
   },

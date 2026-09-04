@@ -22,8 +22,13 @@ The production services are:
 
 ## Build scope rules
 
-- **Exclude `mockup-sandbox` from root typecheck.** Root `typecheck` uses `--filter "!@workspace/mockup-sandbox"`. It has a duplicate `@types/react` conflict (19.1.17 from Expo vs 19.2.14). `construction-supervision` still runs with `|| true`. After any snapshot import, verify both.
+- **Keep the web TypeScript check mandatory.** React type packages are aligned through the workspace catalog so third-party declarations resolve one type identity. Do not restore `|| true` or otherwise make web type errors non-blocking.
 - **Exclude `@workspace/mobile` from the root recursive build.** Root `build` must use `pnpm -r --if-present --filter=!@workspace/mobile run build`. The mobile Metro bundler cannot run in the deployment build environment (fails with "Download failed: terminated"); mobile is built separately by its own `artifact.toml` `[services.production]` build command.
+- **Keep mobile React type packages on the shared catalog version.** With Expo 54 / React Native 0.81, `react-native-gesture-handler` 2.28 may lose `children` in JSX under the shared React 19.2 types; use a narrow local `PropsWithChildren` component wrapper rather than pinning mobile to React types 19.1.
+
+**Why:** Multiple React type versions in the workspace leaked through hoisted third-party declarations and produced false incompatibilities in the web app. Pinning mobile back to 19.1 fixes one mobile declaration but reintroduces the web failures; alignment plus a local compatibility wrapper keeps both checks sound.
+
+**How to apply:** Keep React and React DOM type packages on the shared catalog version across artifacts, and run the root typecheck after dependency changes.
 
 ## Critical: JWT_SECRET in production
 
@@ -32,7 +37,7 @@ The production services are:
 ## After any snapshot import, always verify:
 1. Root `.replit` has `[deployment]` with ONLY `deploymentTarget` + `build` (NO `run`)
 2. Root `package.json` typecheck filter excludes `@workspace/mockup-sandbox`
-3. `artifacts/construction-supervision/package.json` typecheck has `|| true`
+3. `artifacts/construction-supervision/package.json` typecheck remains mandatory (no `|| true`)
 4. Each `artifacts/*/._replit-artifact/artifact.toml` is intact (do not overwrite these)
 
 **Why:** `run` in root deployment was added as a guess but the real run orchestration lives in each artifact's `artifact.toml`. Snapshot imports strip `.replit` and these constraints must be manually restored.
