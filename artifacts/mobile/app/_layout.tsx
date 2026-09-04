@@ -21,6 +21,10 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { startGeofenceReminder, stopGeofenceReminder } from "@/lib/geofenceReminder";
 import { flushQueue } from "@/lib/offlineQueue";
 
+const TypedGestureHandlerRootView = GestureHandlerRootView as React.ComponentType<
+  React.PropsWithChildren<React.ComponentProps<typeof GestureHandlerRootView>>
+>;
+
 SplashScreen.preventAutoHideAsync();
 
 if (Platform.OS !== "web" && !I18nManager.isRTL) {
@@ -135,7 +139,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <GestureHandlerRootView style={{ flex: 1 }}>
+        <TypedGestureHandlerRootView style={{ flex: 1 }}>
           <KeyboardProvider>
             <AuthProvider>
               <IdentityQueryProvider>
@@ -145,7 +149,7 @@ export default function RootLayout() {
               </IdentityQueryProvider>
             </AuthProvider>
           </KeyboardProvider>
-        </GestureHandlerRootView>
+        </TypedGestureHandlerRootView>
       </ErrorBoundary>
     </SafeAreaProvider>
   );
