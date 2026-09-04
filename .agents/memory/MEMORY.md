@@ -2,7 +2,7 @@
 - [Web manual-fetch rolling-session renewal](web-manual-fetch-renewal.md) — every hand-rolled authFetch in the web app must call processFetchResponse or active users get intermittently logged out.
 - [Edge-safe upload transport](edge-safe-upload-transport.md) — file uploads must be base64 over text/plain JSON, not multipart; Replit Autoscale edge CSRF intermittently blocks header-stripped multipart with HTML 403.
 - [Project snapshot replace](project-snapshot-replace.md) — overwriting the repl with a GitHub export of itself: cp source dirs, preserve .git/.local/.cache/.config/node_modules/.agents/attached_assets; no rsync; .replit protected.
-- [Deployment build scope](deployment-build-scope.md) — root `pnpm run build` must exclude @workspace/mobile (Metro download fails) and keep web typecheck non-blocking (duplicate @types/react errors); autoscale runs api-server only.
+- [Deployment build scope](deployment-build-scope.md) — root build excludes the mobile bundle, while web TypeScript remains mandatory; multi-artifact production uses each artifact’s service config.
 - [Prod write-401 logout bug](prod-write-401.md) — eliminated causes (edge, Origin, bundle, SW); authDiag 401 logging + probe-before-logout shipped; check deployment logs after republish.
 - [Vite workspace export cache](vite-workspace-export-cache.md) — after adding exports to an optimized workspace package, clear the web artifact’s Vite cache before restarting.
 - [Session generations and authenticated caches](session-generation-cache.md) — bind responses to request tokens; never shared-cache protected API or upload responses.
