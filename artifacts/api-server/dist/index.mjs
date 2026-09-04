@@ -122567,6 +122567,23 @@ function signToken(payload) {
   const { userId, phone, role } = payload;
   return import_jsonwebtoken.default.sign({ userId, phone, role }, JWT_SECRET, { expiresIn: JWT_LIFETIME_SECONDS });
 }
+function diagnoseRejectedToken(token, nowSec = Math.floor(Date.now() / 1e3)) {
+  try {
+    const decoded = import_jsonwebtoken.default.decode(token);
+    if (!decoded || typeof decoded === "string") return { reason: "invalid" };
+    const issuedAt = typeof decoded.iat === "number" ? decoded.iat : void 0;
+    const expiresAt = typeof decoded.exp === "number" ? decoded.exp : void 0;
+    return {
+      reason: expiresAt !== void 0 && expiresAt <= nowSec ? "expired" : "invalid",
+      issuedAt,
+      expiresAt,
+      ageSeconds: issuedAt === void 0 ? void 0 : Math.max(0, nowSec - issuedAt),
+      expiredBySeconds: expiresAt !== void 0 && expiresAt <= nowSec ? nowSec - expiresAt : void 0
+    };
+  } catch {
+    return { reason: "invalid" };
+  }
+}
 function verifyToken(token) {
   try {
     return import_jsonwebtoken.default.verify(token, JWT_SECRET);
@@ -122588,11 +122605,29 @@ async function comparePassword(password, hash2) {
   return bcryptjs_default.compare(password, hash2);
 }
 
+// src/lib/logger.ts
+var import_pino = __toESM(require_pino(), 1);
+var isProduction = process.env.NODE_ENV === "production";
+var logger = (0, import_pino.default)({
+  level: process.env.LOG_LEVEL ?? "info",
+  redact: [
+    "req.headers.authorization",
+    "req.headers.cookie",
+    "res.headers['set-cookie']"
+  ],
+  ...isProduction ? {} : {
+    transport: {
+      target: "pino-pretty",
+      options: { colorize: true }
+    }
+  }
+});
+
 // src/middlewares/auth.ts
 init_src();
 init_src();
 init_drizzle_orm();
-function maybeRenewToken(token, res) {
+function verifyAndMaybeRenewToken(token, res) {
   const claims = verifyTokenWithClaims(token);
   if (!claims) return null;
   const nowSec = Math.floor(Date.now() / 1e3);
@@ -122610,13 +122645,24 @@ function maybeRenewToken(token, res) {
 }
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader) {
+    logger.warn({ method: req.method, path: req.path, authRejection: "missing_header" }, "Authentication rejected");
     res.status(401).json({ error: "\u063A\u064A\u0631 \u0645\u0635\u0631\u062D" });
     return;
   }
+  if (!authHeader.startsWith("Bearer ") || authHeader.length <= 7) {
+    logger.warn({ method: req.method, path: req.path, authRejection: "malformed_header" }, "Authentication rejected");
+    res.status(401).json({ error: "\u0635\u064A\u063A\u0629 \u062A\u0631\u0648\u064A\u0633\u0629 \u0627\u0644\u062F\u062E\u0648\u0644 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629" });
+    return;
+  }
   const token = authHeader.slice(7);
-  const payload = maybeRenewToken(token, res);
+  const payload = verifyAndMaybeRenewToken(token, res);
   if (!payload) {
+    logger.warn({
+      method: req.method,
+      path: req.path,
+      authRejection: diagnoseRejectedToken(token)
+    }, "Authentication rejected");
     res.status(401).json({ error: "\u0631\u0645\u0632 \u0627\u0644\u062F\u062E\u0648\u0644 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D \u0623\u0648 \u0645\u0646\u062A\u0647\u064A \u0627\u0644\u0635\u0644\u0627\u062D\u064A\u0629" });
     return;
   }
@@ -127699,26 +127745,6 @@ var activity_groups_default = router17;
 var import_express18 = __toESM(require_express2(), 1);
 init_src();
 init_src();
-
-// src/lib/logger.ts
-var import_pino = __toESM(require_pino(), 1);
-var isProduction = process.env.NODE_ENV === "production";
-var logger = (0, import_pino.default)({
-  level: process.env.LOG_LEVEL ?? "info",
-  redact: [
-    "req.headers.authorization",
-    "req.headers.cookie",
-    "res.headers['set-cookie']"
-  ],
-  ...isProduction ? {} : {
-    transport: {
-      target: "pino-pretty",
-      options: { colorize: true }
-    }
-  }
-});
-
-// src/routes/setup.ts
 init_drizzle_orm();
 var router18 = (0, import_express18.Router)();
 var SETUP_SECRET = process.env.SETUP_SECRET;
@@ -129833,7 +129859,7 @@ app.use("/api/uploads", (req, res, next) => {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     const tokenParam = typeof req.query.token === "string" ? req.query.token : null;
     if (tokenParam) {
-      if (verifyToken(tokenParam)) return next();
+      if (verifyAndMaybeRenewToken(tokenParam, res)) return next();
       try {
         const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
         const decoded = import_jsonwebtoken4.default.verify(tokenParam, ownerSecret);
@@ -129841,17 +129867,27 @@ app.use("/api/uploads", (req, res, next) => {
       } catch {
       }
     }
+    logger.warn({
+      method: req.method,
+      path: req.path,
+      authRejection: authHeader ? "malformed_header" : "missing_header"
+    }, "Upload authentication rejected");
     res.status(401).json({ error: "\u063A\u064A\u0631 \u0645\u0635\u0631\u062D" });
     return;
   }
   const token = authHeader.slice(7);
-  if (verifyToken(token)) return next();
+  if (verifyAndMaybeRenewToken(token, res)) return next();
   try {
     const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
     const decoded = import_jsonwebtoken4.default.verify(token, ownerSecret);
     if (decoded.ownerToken && decoded.projectId) return next();
   } catch {
   }
+  logger.warn({
+    method: req.method,
+    path: req.path,
+    authRejection: diagnoseRejectedToken(token)
+  }, "Upload authentication rejected");
   res.status(401).json({ error: "\u0631\u0645\u0632 \u0627\u0644\u062F\u062E\u0648\u0644 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
 }, (req, res, next) => {
   const filename = decodeURIComponent(req.path).replace(/^\//, "");

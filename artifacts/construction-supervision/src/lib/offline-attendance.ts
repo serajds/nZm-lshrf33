@@ -138,11 +138,6 @@ async function bumpAttempt(clientId: string): Promise<void> {
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
-function authHeader(): Record<string, string> {
-  const token = localStorage.getItem("auth_token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 /** Encode a Blob as bare base64 (no data: prefix), chunked to avoid blowing
  *  the call stack on large images. */
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -198,11 +193,15 @@ export async function sendOrQueue(entry: Omit<QueuedAttendance, "attempts" | "la
   const url = `${API_BASE}/attendance/projects/${entry.projectId}/${entry.type === "check_in" ? "check-in" : "check-out"}`;
 
   let response: Response;
+  const requestToken = localStorage.getItem("auth_token");
   try {
     response = await fetch(url, {
       method: "POST",
       body,
-      headers: { ...authHeader(), "Content-Type": "text/plain" },
+      headers: {
+        ...(requestToken ? { Authorization: `Bearer ${requestToken}` } : {}),
+        "Content-Type": "text/plain",
+      },
     });
   } catch {
     // Network unreachable / DNS / TLS error / aborted by browser offline.
@@ -210,7 +209,7 @@ export async function sendOrQueue(entry: Omit<QueuedAttendance, "attempts" | "la
     return { kind: "queued", reason: "network-error" };
   }
 
-  await processFetchResponse(response);
+  await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(response, requestToken);
 
   if (response.ok) {
     const record = await response.json().catch(() => ({}));

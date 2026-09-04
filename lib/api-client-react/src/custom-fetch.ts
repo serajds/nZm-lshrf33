@@ -7,8 +7,13 @@ export type ErrorType<T = unknown> = ApiError<T>;
 export type BodyType<T> = T;
 
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
-export type AuthTokenSaver = (token: string) => Promise<void> | void;
-export type UnauthorizedHandler = (response: Response) => void;
+export type AuthTokenSaver = (token: string, requestToken: string | null) => Promise<void> | void;
+export type UnauthorizedHandler = (response: Response, requestToken: string | null) => Promise<void> | void;
+export type ConfirmedUnauthorizedOptions = {
+  getCurrentToken: () => string | null;
+  confirmRejected: (token: string) => Promise<boolean>;
+  onConfirmed: (token: string) => Promise<void> | void;
+};
 
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
@@ -74,6 +79,40 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
 }
 
 /**
+ * Build a race-safe 401 handler. A single response is treated as a hint, not
+ * proof: the current token is checked once more, concurrent confirmations are
+ * merged, and stale responses cannot terminate a newer session.
+ */
+export function createConfirmedUnauthorizedHandler(
+  options: ConfirmedUnauthorizedOptions,
+): UnauthorizedHandler {
+  let inFlight: { token: string; promise: Promise<void> } | null = null;
+
+  return async (_response, requestToken) => {
+    if (!requestToken || options.getCurrentToken() !== requestToken) return;
+    if (inFlight?.token === requestToken) {
+      await inFlight.promise;
+      return;
+    }
+
+    const entry = {
+      token: requestToken,
+      promise: Promise.resolve(),
+    };
+    entry.promise = (async () => {
+      const rejected = await options.confirmRejected(requestToken);
+      if (rejected && options.getCurrentToken() === requestToken) {
+        await options.onConfirmed(requestToken);
+      }
+    })().finally(() => {
+      if (inFlight === entry) inFlight = null;
+    });
+    inFlight = entry;
+    await entry.promise;
+  };
+}
+
+/**
  * Run the same renewed-token + unauthorized-handler pipeline that
  * `customFetch` runs internally, but against a `Response` produced by a
  * manual `fetch` call.  Use this from one-off query functions that cannot
@@ -81,12 +120,15 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
  * session renewal and the centralized 401 redirect instead of swallowing
  * auth failures as empty data.
  */
-export async function processFetchResponse(response: Response): Promise<void> {
+export async function processFetchResponse(
+  response: Response,
+  requestToken: string | null = null,
+): Promise<void> {
   if (_authTokenSaver) {
     const renewed = response.headers.get(RENEWED_TOKEN_HEADER);
     if (renewed) {
       try {
-        await _authTokenSaver(renewed);
+        await _authTokenSaver(renewed, requestToken);
       } catch {
         // Persisting the renewed token is best-effort; never fail the call.
       }
@@ -95,7 +137,7 @@ export async function processFetchResponse(response: Response): Promise<void> {
 
   if (response.status === 401 && _unauthorizedHandler) {
     try {
-      _unauthorizedHandler(response);
+      await _unauthorizedHandler(response, requestToken);
     } catch {
       // Handler errors must not break the caller's error flow.
     }
@@ -415,32 +457,15 @@ export async function customFetch<T = unknown>(
       headers.set("authorization", `Bearer ${token}`);
     }
   }
+  const authorization = headers.get("authorization");
+  const requestToken =
+    authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
 
   const requestInfo = { method, url: resolveUrl(input) };
 
   const response = await fetch(input, { ...init, method, headers });
 
-  // Pick up any rolling-session token the server may have issued and hand it
-  // to the saver before we throw on errors, so even a non-2xx response can
-  // refresh the stored credential.
-  if (_authTokenSaver) {
-    const renewed = response.headers.get(RENEWED_TOKEN_HEADER);
-    if (renewed) {
-      try {
-        await _authTokenSaver(renewed);
-      } catch {
-        // Persisting the renewed token is best-effort; never fail the call.
-      }
-    }
-  }
-
-  if (response.status === 401 && _unauthorizedHandler) {
-    try {
-      _unauthorizedHandler(response);
-    } catch {
-      // Handler errors must not break the caller's error flow.
-    }
-  }
+  await processFetchResponse(response, requestToken);
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

@@ -5,7 +5,9 @@ import {
   signToken,
   JWT_RENEWAL_THRESHOLD_SECONDS,
   JwtPayload,
+  diagnoseRejectedToken,
 } from "../lib/auth";
+import { logger } from "../lib/logger";
 import { db } from "@workspace/db";
 import { projectMembersTable, userCompaniesTable, projectsTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
@@ -14,7 +16,7 @@ import { eq, and, inArray } from "drizzle-orm";
 // remaining, and return it in the X-Renewed-Token response header so the
 // client can transparently replace its stored token. This gives active users
 // a rolling session without ever forcing them through a hard re-login.
-function maybeRenewToken(token: string, res: Response): JwtPayload | null {
+export function verifyAndMaybeRenewToken(token: string, res: Response): JwtPayload | null {
   const claims = verifyTokenWithClaims(token);
   if (!claims) return null;
   const nowSec = Math.floor(Date.now() / 1000);
@@ -43,14 +45,25 @@ declare global {
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader) {
+    logger.warn({ method: req.method, path: req.path, authRejection: "missing_header" }, "Authentication rejected");
     res.status(401).json({ error: "غير مصرح" });
+    return;
+  }
+  if (!authHeader.startsWith("Bearer ") || authHeader.length <= 7) {
+    logger.warn({ method: req.method, path: req.path, authRejection: "malformed_header" }, "Authentication rejected");
+    res.status(401).json({ error: "صيغة ترويسة الدخول غير صالحة" });
     return;
   }
 
   const token = authHeader.slice(7);
-  const payload = maybeRenewToken(token, res);
+  const payload = verifyAndMaybeRenewToken(token, res);
   if (!payload) {
+    logger.warn({
+      method: req.method,
+      path: req.path,
+      authRejection: diagnoseRejectedToken(token),
+    }, "Authentication rejected");
     res.status(401).json({ error: "رمز الدخول غير صالح أو منتهي الصلاحية" });
     return;
   }

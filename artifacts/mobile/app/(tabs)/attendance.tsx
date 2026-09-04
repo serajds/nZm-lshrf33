@@ -55,19 +55,29 @@ export default function AttendanceScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState<"check_in" | "check_out" | null>(null);
   const [queueCount, setQueueCount] = useState(0);
+  const activeUserIdRef = React.useRef<number | null>(user?.id ?? null);
+  activeUserIdRef.current = user?.id ?? null;
 
   const blocked = !!user && ROLES_BLOCKED.has(user.role);
 
-  React.useEffect(() => subscribeQueue(setQueueCount), []);
+  React.useEffect(() => {
+    if (!user) {
+      setQueueCount(0);
+      return;
+    }
+    return subscribeQueue(user.id, setQueueCount);
+  }, [user]);
 
   // On focus / re-mount, opportunistically flush the offline queue.
   useFocusEffect(
     useCallback(() => {
-      flushQueue().then(({ sent }) => {
+      if (!user) return;
+      const ownerUserId = user.id;
+      flushQueue(ownerUserId, () => activeUserIdRef.current === ownerUserId).then(({ sent }) => {
         if (sent > 0) statusQuery.refetch();
       }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []),
+    }, [user?.id]),
   );
 
   // Auto-flush as soon as connectivity returns, even without a re-focus.
@@ -75,14 +85,16 @@ export default function AttendanceScreen() {
     let prevConnected: boolean | null = null;
     const unsub = NetInfo.addEventListener((state) => {
       const connected = !!state.isConnected && state.isInternetReachable !== false;
-      if (connected && prevConnected === false) {
-        flushQueue().then(({ sent }) => { if (sent > 0) statusQuery.refetch(); }).catch(() => {});
+      if (connected && prevConnected === false && user) {
+        const ownerUserId = user.id;
+        flushQueue(ownerUserId, () => activeUserIdRef.current === ownerUserId)
+          .then(({ sent }) => { if (sent > 0) statusQuery.refetch(); }).catch(() => {});
       }
       prevConnected = connected;
     });
     return () => unsub();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id]);
 
   const statusQuery = useQuery({
     queryKey: ["my-attendance-status", user?.id ?? null],
@@ -183,7 +195,7 @@ export default function AttendanceScreen() {
   }
 
   async function doCheck(type: "check_in" | "check_out") {
-    if (!selected) return;
+    if (!selected || !user) return;
     if (busy) return;
     setBusy(type);
     try {
@@ -194,6 +206,7 @@ export default function AttendanceScreen() {
       if (!loc) { setBusy(null); return; }
 
       const outcome = await sendOrQueue({
+        ownerUserId: user.id,
         clientId: newClientId(),
         projectId: selected.projectId,
         type,

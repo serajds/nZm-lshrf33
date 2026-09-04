@@ -26,7 +26,7 @@ async function authFetch(url: string, opts?: RequestInit) {
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const response = await fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> || {}) } });
-  await processFetchResponse(response);
+  await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(response, token);
   return response;
 }
 

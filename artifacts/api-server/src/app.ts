@@ -8,6 +8,8 @@ import jwt from "jsonwebtoken";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { verifyToken } from "./lib/auth";
+import { diagnoseRejectedToken } from "./lib/auth";
+import { verifyAndMaybeRenewToken } from "./middlewares/auth";
 import { streamFromCloud, migrateExistingUploads } from "./lib/fileStorage";
 import { db } from "@workspace/db";
 import { usersTable, userCompaniesTable, projectMembersTable, projectsTable } from "@workspace/db";
@@ -81,23 +83,33 @@ app.use("/api/uploads", (req: Request, res: Response, next: NextFunction) => {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     const tokenParam = typeof req.query.token === "string" ? req.query.token : null;
     if (tokenParam) {
-      if (verifyToken(tokenParam)) return next();
+      if (verifyAndMaybeRenewToken(tokenParam, res)) return next();
       try {
         const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
         const decoded = jwt.verify(tokenParam, ownerSecret) as any;
         if (decoded.ownerToken && decoded.projectId) return next();
       } catch {}
     }
+    logger.warn({
+      method: req.method,
+      path: req.path,
+      authRejection: authHeader ? "malformed_header" : "missing_header",
+    }, "Upload authentication rejected");
     res.status(401).json({ error: "غير مصرح" });
     return;
   }
   const token = authHeader.slice(7);
-  if (verifyToken(token)) return next();
+  if (verifyAndMaybeRenewToken(token, res)) return next();
   try {
     const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
     const decoded = jwt.verify(token, ownerSecret) as any;
     if (decoded.ownerToken && decoded.projectId) return next();
   } catch {}
+  logger.warn({
+    method: req.method,
+    path: req.path,
+    authRejection: diagnoseRejectedToken(token),
+  }, "Upload authentication rejected");
   res.status(401).json({ error: "رمز الدخول غير صالح" });
 }, (req: Request, res: Response, next: NextFunction) => {
   const filename = decodeURIComponent(req.path).replace(/^\//, "");

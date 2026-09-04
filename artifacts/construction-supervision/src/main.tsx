@@ -9,9 +9,11 @@ setAuthTokenGetter(() => localStorage.getItem("auth_token"));
 // the fresh token immediately so the next request (and the next page load)
 // uses it. AuthProvider also listens on the storage event to sync its
 // in-memory token state.
-setAuthTokenSaver((token) => {
+setAuthTokenSaver((token, requestToken) => {
   try {
-    if (localStorage.getItem("auth_token") !== token) {
+    // Compare-and-swap: a late response may only renew the exact credential
+    // it used. It must never overwrite a newer login or renewal.
+    if (requestToken && localStorage.getItem("auth_token") === requestToken) {
       localStorage.setItem("auth_token", token);
       window.dispatchEvent(new CustomEvent("auth-token-renewed", { detail: token }));
     }

@@ -5,7 +5,8 @@ import {
   useListFiles,
   useDeleteFile,
   useGetProject,
-  getListFilesQueryKey 
+  getListFilesQueryKey,
+  customFetch,
 } from "@workspace/api-client-react";
 import { useTabAccess } from "@/hooks/use-tab-access";
 import type { ProjectFile } from "@workspace/api-client-react";
@@ -136,14 +137,10 @@ export default function ProjectFiles() {
         formData.append("description", uploadDescription);
       }
 
-      const token = localStorage.getItem("auth_token");
-      const res = await fetch(`/api/projects/${projectId}/files`, {
+      await customFetch(`/api/projects/${projectId}/files`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
-
-      if (!res.ok) throw new Error("Upload failed");
 
       queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) });
       setIsDialogOpen(false);

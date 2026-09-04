@@ -80,7 +80,7 @@ async function authFetch(url: string, opts?: RequestInit) {
   // Funnel renewed tokens and 401s through the shared pipeline so this
   // page participates in rolling session renewal AND the centralized
   // "session expired" redirect instead of swallowing 401 as empty data.
-  await processFetchResponse(response);
+  await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(response, token);
   return response;
 }
 
@@ -298,6 +298,7 @@ export default function ProjectDetails() {
     let companyLogos: any;
     try {
       const r = await fetch(`${API_BASE}/projects/${projectId}/company-logos`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(r, token);
       if (r.ok) companyLogos = await r.json();
     } catch {}
     const actList: ActivityForReport[] = (activities as any[]).map((a: any) => ({

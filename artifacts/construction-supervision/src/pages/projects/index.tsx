@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useListProjects, useCreateProject, useUpdateProject, useDeleteProject, getListProjectsQueryKey, getGetProjectQueryKey, getGetProjectSummaryQueryKey, getProject, getProjectSummary } from "@workspace/api-client-react";
+import { useListProjects, useCreateProject, useUpdateProject, useDeleteProject, getListProjectsQueryKey, getGetProjectQueryKey, getGetProjectSummaryQueryKey, getProject, getProjectSummary, customFetch } from "@workspace/api-client-react";
 import type { Project } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,36 +38,6 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-
-async function authFetchJson(url: string) {
-  const token = localStorage.getItem("auth_token");
-  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-  // Surface a renewed session token to the central saver so this manual
-  // fetch keeps the rolling session alive too.
-  const renewed = res.headers.get("X-Renewed-Token");
-  if (renewed && renewed !== token) {
-    try {
-      localStorage.setItem("auth_token", renewed);
-      window.dispatchEvent(new CustomEvent("auth-token-renewed", { detail: renewed }));
-    } catch { /* ignore */ }
-  }
-  if (res.status === 401) {
-    // Let the central handler clear credentials and redirect to /login,
-    // instead of silently rendering an empty list as if the user simply
-    // had no data.
-    try {
-      const here = window.location.pathname + window.location.search;
-      if (!here.endsWith("/login")) sessionStorage.setItem("auth_return_to", here);
-      sessionStorage.setItem("auth_session_expired", "1");
-    } catch { /* ignore */ }
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("auth_user_cache");
-    window.location.assign((import.meta.env.BASE_URL.replace(/\/$/, "") || "") + "/login");
-    throw new Error("unauthorized");
-  }
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
 
 interface CompanyOption {
   id: number;
@@ -152,7 +122,7 @@ export default function Projects() {
   // network round-trip just to populate the dialog dropdowns.
   const { data: companies = [] } = useQuery<CompanyOption[]>({
     queryKey: ["companies"],
-    queryFn: () => authFetchJson(`${API_BASE}/companies`),
+    queryFn: () => customFetch<CompanyOption[]>(`${API_BASE}/companies`, { responseType: "json" }),
     staleTime: 1000 * 60 * 10,
   });
 
@@ -232,15 +202,14 @@ export default function Projects() {
   const browseFolders = async (folderId?: string) => {
     setFolderBrowserLoading(true);
     try {
-      const token = localStorage.getItem("auth_token");
       const url = folderId
         ? `${API_BASE}/onedrive/browse?folderId=${folderId}`
         : `${API_BASE}/onedrive/browse`;
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error("failed");
-      const data = await res.json();
+      const data = await customFetch<{
+        items?: any[];
+        parentId: string | null;
+        currentFolderId: string;
+      }>(url, { responseType: "json" });
       setFolderBrowserItems(data.items || []);
       setFolderBrowserParentId(data.parentId);
       setFolderBrowserCurrentId(data.currentFolderId);

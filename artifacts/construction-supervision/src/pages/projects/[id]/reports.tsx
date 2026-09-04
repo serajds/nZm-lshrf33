@@ -16,6 +16,8 @@ import {
   getGetReportQueryKey,
   useUpdateProject,
   getGetProjectQueryKey,
+  customFetch,
+  processFetchResponse,
 } from "@workspace/api-client-react";
 import type { ReportAuditLogEntry } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
@@ -58,11 +60,6 @@ import { Progress } from "@/components/ui/progress";
 import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-
-function authFetchJson(url: string) {
-  const token = localStorage.getItem("auth_token");
-  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.ok ? r.json() : {});
-}
 
 const imageGroupSchema = z.object({
   category: z.string().min(1),
@@ -453,7 +450,10 @@ export default function ProjectReports() {
 
   const { data: companyLogos } = useQuery<Record<string, CompanyLogo>>({
     queryKey: ["project-company-logos", projectId],
-    queryFn: () => authFetchJson(`${API_BASE}/projects/${projectId}/company-logos`),
+    queryFn: () => customFetch<Record<string, CompanyLogo>>(
+      `${API_BASE}/projects/${projectId}/company-logos`,
+      { responseType: "json" },
+    ),
     enabled: !!projectId,
   });
   
@@ -786,7 +786,20 @@ export default function ProjectReports() {
             return { ...prev, [groupIndex]: { ...cur, loaded: cur.loaded + delta } };
           });
         };
-        xhr.onload = () => {
+        xhr.onload = async () => {
+          if (xhr.status >= 200 && xhr.status <= 599) {
+            const responseHeaders = new Headers();
+            const renewed = xhr.getResponseHeader("X-Renewed-Token");
+            if (renewed) responseHeaders.set("X-Renewed-Token", renewed);
+            await processFetchResponse(
+              new Response(xhr.responseText, {
+                status: xhr.status,
+                statusText: xhr.statusText,
+                headers: responseHeaders,
+              }),
+              token,
+            );
+          }
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const data = JSON.parse(xhr.responseText) as { fileUrl?: string };
@@ -933,14 +946,12 @@ export default function ProjectReports() {
         return;
       }
       setIsAiDrafting(true);
-      const token = localStorage.getItem("auth_token");
-      
-      const res = await fetch(`${API_BASE}/projects/${projectId}/reports/ai-draft`, {
+      const data = await customFetch<{
+        workDescription?: string;
+        technicalNotes?: string;
+        recommendations?: string;
+      }>(`${API_BASE}/projects/${projectId}/reports/ai-draft`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
         body: JSON.stringify({
           imageGroups: values.imageGroups,
           technicalNotes: values.technicalNotes,
@@ -948,14 +959,8 @@ export default function ProjectReports() {
           periodStart: values.periodStart,
           periodEnd: values.periodEnd,
         }),
+        responseType: "json",
       });
-
-      if (!res.ok) {
-        const errorBody = await res.json().catch(() => null);
-        throw new Error(errorBody?.error || "تعذر الاتصال بخدمة الذكاء الاصطناعي");
-      }
-      
-      const data = await res.json();
       
       if (data.workDescription) form.setValue("workDescription", data.workDescription, { shouldDirty: true });
       if (data.technicalNotes) form.setValue("technicalNotes", data.technicalNotes, { shouldDirty: true });

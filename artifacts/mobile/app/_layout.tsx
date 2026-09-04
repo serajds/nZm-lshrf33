@@ -5,11 +5,12 @@ import {
   useFonts,
 } from "@expo-google-fonts/cairo";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import NetInfo from "@react-native-community/netinfo";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { I18nManager, Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -18,10 +19,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { startGeofenceReminder, stopGeofenceReminder } from "@/lib/geofenceReminder";
+import { flushQueue } from "@/lib/offlineQueue";
 
 SplashScreen.preventAutoHideAsync();
-
-const queryClient = new QueryClient();
 
 if (Platform.OS !== "web" && !I18nManager.isRTL) {
   try {
@@ -41,6 +41,39 @@ function GeofenceReminderBoot() {
     }
     return () => stopGeofenceReminder();
   }, [ready, token]);
+  return null;
+}
+
+function IdentityQueryProvider({ children }: { children: React.ReactNode }) {
+  const { ready, user } = useAuth();
+  const identity = ready ? (user ? `user:${user.id}` : "anonymous") : "loading";
+  // A separate client makes it impossible for a same-key query from the
+  // previous account to render while the new account's request is in flight.
+  const queryClient = useMemo(() => new QueryClient(), [identity]);
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+}
+
+function OfflineAttendanceBoot() {
+  const { ready, user } = useAuth();
+  const activeUserId = useRef<number | null>(user?.id ?? null);
+  activeUserId.current = user?.id ?? null;
+
+  useEffect(() => {
+    if (!ready || !user) return;
+    const ownerUserId = user.id;
+    const flush = () => {
+      void flushQueue(ownerUserId, () => activeUserId.current === ownerUserId).catch(() => {});
+    };
+    flush();
+    let wasConnected: boolean | null = null;
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const connected = !!state.isConnected && state.isInternetReachable !== false;
+      if (connected && wasConnected === false) flush();
+      wasConnected = connected;
+    });
+    return unsubscribe;
+  }, [ready, user?.id]);
+
   return null;
 }
 
@@ -102,16 +135,17 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <AuthProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <KeyboardProvider>
+            <AuthProvider>
+              <IdentityQueryProvider>
                 <GeofenceReminderBoot />
+                <OfflineAttendanceBoot />
                 <RootLayoutNav />
-              </AuthProvider>
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
+              </IdentityQueryProvider>
+            </AuthProvider>
+          </KeyboardProvider>
+        </GestureHandlerRootView>
       </ErrorBoundary>
     </SafeAreaProvider>
   );
