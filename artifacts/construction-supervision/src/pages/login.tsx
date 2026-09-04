@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Loader2, Phone, Lock, Eye, EyeOff, User as UserIcon, ArrowLeft, RefreshCw } from "lucide-react";
+import { clearAuthSession } from "@/lib/auth-session";
 
 /**
  * Rescue hatch for users stuck on a stale/corrupted app version: unregisters
@@ -41,7 +42,7 @@ async function clearCachesAndReload(): Promise<void> {
     }
   } catch { /* non-fatal */ }
   try {
-    localStorage.removeItem("auth_token");
+    clearAuthSession();
     localStorage.removeItem("auth_user_cache");
   } catch { /* non-fatal */ }
   try {

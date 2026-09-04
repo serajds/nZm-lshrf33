@@ -45,6 +45,7 @@ async function confirmUnauthorized(tokenUsed: string): Promise<void> {
   _confirmingUnauthorizedToken = tokenUsed;
   try {
     const res = await fetch(`${BASE_URL}/api/auth/me`, {
+      cache: "no-store",
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${tokenUsed}`,
@@ -244,7 +245,8 @@ export class ApiError extends Error {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${path}`;
   const headers = new Headers(init.headers);
-  const token = _tokenGetter();
+  const publicAuthRequest = /^\/api\/auth\/(?:login|register)\/?$/.test(path);
+  const token = publicAuthRequest ? null : _tokenGetter();
   if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
   // Send JSON bodies as text/plain to bypass Replit Autoscale's edge CSRF
   // check, which rejects application/json POSTs missing Origin/Referer
@@ -255,7 +257,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!headers.has("X-Requested-With")) headers.set("X-Requested-With", "XMLHttpRequest");
 
   let res: Response;
-  try { res = await fetch(url, { ...init, headers }); }
+  try { res = await fetch(url, { ...init, headers, cache: "no-store" }); }
   catch { throw new ApiError("تعذّر الاتصال بالخادم. تأكد من اتصالك بالإنترنت.", 0, null); }
 
   processResponse(res, token);

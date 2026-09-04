@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useGetProject, processFetchResponse } from "@workspace/api-client-react";
+import { useGetProject, fetchWithSession } from "@workspace/api-client-react";
 import { useTabAccess } from "@/hooks/use-tab-access";
 import type { ProjectSuspension } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,20 +31,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, ArrowRight, Calendar, FileText, Umbrella, Wind, AlertTriangle, CalendarClock, Loader2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { fmtDate } from "@/lib/utils";
-
-async function authFetch(url: string, init?: RequestInit) {
-  const token = localStorage.getItem("auth_token");
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-  await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(response, token);
-  return response;
-}
 
 const suspensionSchema = z.object({
   type: z.enum(["official_holiday", "force_majeure", "contractor_delay"]),
@@ -111,7 +97,7 @@ export default function ProjectSuspensions() {
   const { data: suspensions = [], isLoading } = useQuery<ProjectSuspension[]>({
     queryKey,
     queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/suspensions`);
+      const r = await fetchWithSession(`/api/projects/${projectId}/suspensions`);
       if (!r.ok) throw new Error("فشل تحميل التوقفات");
       return r.json();
     },
@@ -120,7 +106,7 @@ export default function ProjectSuspensions() {
 
   const createSusp = useMutation({
     mutationFn: async (data: SuspensionFormValues) => {
-      const r = await authFetch(`/api/projects/${projectId}/suspensions`, {
+      const r = await fetchWithSession(`/api/projects/${projectId}/suspensions`, {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -148,7 +134,7 @@ export default function ProjectSuspensions() {
 
   const deleteSusp = useMutation({
     mutationFn: async (id: number) => {
-      const r = await authFetch(`/api/projects/${projectId}/suspensions/${id}`, { method: "DELETE" });
+      const r = await fetchWithSession(`/api/projects/${projectId}/suspensions/${id}`, { method: "DELETE" });
       if (!r.ok) throw new Error("فشل حذف التوقف");
     },
     onSuccess: () => {

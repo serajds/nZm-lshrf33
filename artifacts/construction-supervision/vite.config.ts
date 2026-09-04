@@ -58,6 +58,15 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         runtimeCaching: [
+          // Make the API boundary explicit. React Query may cache parsed data
+          // in memory, but the service worker must always go to the network.
+          {
+            urlPattern: ({ url, sameOrigin }) =>
+              sameOrigin &&
+              (url.pathname === "/api" || url.pathname.startsWith("/api/")),
+            handler: "NetworkOnly",
+            method: "GET",
+          },
           // Per-page + vendor JS chunks: cache on first use. Subsequent visits
           // are instant.
           {

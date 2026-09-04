@@ -16,6 +16,7 @@ import {
   getGetReportQueryKey,
   useUpdateProject,
   getGetProjectQueryKey,
+  fetchWithSession,
   customFetch,
   processFetchResponse,
 } from "@workspace/api-client-react";
@@ -58,6 +59,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Progress } from "@/components/ui/progress";
 import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
+import { getAuthToken } from "@/lib/auth-session";
+import {
+  ProtectedImage,
+  openProtectedAsset,
+  protectedAssetToDataUrl,
+} from "@/components/protected-image";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -450,10 +457,13 @@ export default function ProjectReports() {
 
   const { data: companyLogos } = useQuery<Record<string, CompanyLogo>>({
     queryKey: ["project-company-logos", projectId],
-    queryFn: () => customFetch<Record<string, CompanyLogo>>(
-      `${API_BASE}/projects/${projectId}/company-logos`,
-      { responseType: "json" },
-    ),
+    queryFn: async () => {
+      const response = await fetchWithSession(
+        `${API_BASE}/projects/${projectId}/company-logos`,
+      );
+      if (!response.ok) throw new Error("فشل تحميل شعارات الشركات");
+      return response.json() as Promise<Record<string, CompanyLogo>>;
+    },
     enabled: !!projectId,
   });
   
@@ -692,12 +702,22 @@ export default function ProjectReports() {
     } finally {
       setPreviewLoadingId(null);
     }
-    const token = localStorage.getItem("auth_token");
-    const withToken = (url: string) => (url.includes("?") ? url : `${url}?token=${token}`);
-    const imageUrls = (fullReport.imageUrls ?? []).map(withToken);
+    const loadPreviewImage = async (url: string) => {
+      try {
+        return await protectedAssetToDataUrl(url);
+      } catch {
+        return "";
+      }
+    };
+    const imageUrls = (await Promise.all(
+      (fullReport.imageUrls ?? []).map(loadPreviewImage),
+    )).filter(Boolean);
     const rawGroups = (fullReport.imageGroups as ImageGroup[] | null | undefined) ?? null;
     const imageGroups = rawGroups && rawGroups.length > 0
-      ? rawGroups.map(g => ({ category: g.category, urls: (g.urls ?? []).map(withToken) }))
+      ? await Promise.all(rawGroups.map(async (group) => ({
+          category: group.category,
+          urls: (await Promise.all((group.urls ?? []).map(loadPreviewImage))).filter(Boolean),
+        })))
       : null;
     // Prefer the saved snapshot — that's the timeline as it was when the
     // report was created. Only fall back to current activities for legacy
@@ -746,7 +766,7 @@ export default function ProjectReports() {
     if (!files || files.length === 0) return;
     const fileList = Array.from(files);
     e.target.value = "";
-    const token = localStorage.getItem("auth_token");
+    const token = getAuthToken();
     const totalBytes = fileList.reduce((s, f) => s + f.size, 0);
 
     // Track per-file loaded bytes so the aggregated progress for this
@@ -1509,8 +1529,8 @@ export default function ProjectReports() {
                                         <div className="flex flex-wrap gap-3">
                                           {group.urls.map((url, idx) => (
                                             <div key={idx} className="relative group w-24 h-24 rounded-xl overflow-hidden border-2 border-transparent hover:border-primary/50 shadow-sm transition-all">
-                                              <img
-                                                src={url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`}
+                                              <ProtectedImage
+                                                src={url}
                                                 alt={`صورة ${idx + 1}`}
                                                 loading="lazy"
                                                 decoding="async"
@@ -1729,19 +1749,17 @@ export default function ProjectReports() {
                       </h4>
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                         {group.urls.map((url, idx) => {
-                          const authUrl = url.includes("?") ? url : `${url}?token=${localStorage.getItem("auth_token")}`;
                           runningCounter += 1;
                           const positionLabel = `${runningCounter}/${totalImages}`;
                           return (
-                            <a
+                            <button
+                              type="button"
                               key={idx}
-                              href={authUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              onClick={() => void openProtectedAsset(url)}
                               className="group relative aspect-video rounded-lg overflow-hidden border-2 border-muted hover:border-primary/40 transition-all shadow-sm hover:shadow-md block"
                             >
-                              <img
-                                src={authUrl}
+                              <ProtectedImage
+                                src={url}
                                 alt={`صورة ${idx + 1}`}
                                 loading="lazy"
                                 decoding="async"
@@ -1754,7 +1772,7 @@ export default function ProjectReports() {
                               <div className="absolute bottom-1.5 right-1.5 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">
                                 {positionLabel}
                               </div>
-                            </a>
+                            </button>
                           );
                         })}
                       </div>

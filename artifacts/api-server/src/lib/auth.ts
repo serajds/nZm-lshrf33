@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import { createHash } from "node:crypto";
 
 const JWT_SECRET =
   process.env.JWT_SECRET ??
@@ -35,6 +36,7 @@ export interface VerifiedToken extends JwtPayload {
 
 export type TokenRejectionReason = "expired" | "invalid";
 export type TokenDiagnostic = {
+  tokenId: string;
   reason: TokenRejectionReason;
   issuedAt?: number;
   expiresAt?: number;
@@ -42,13 +44,23 @@ export type TokenDiagnostic = {
   expiredBySeconds?: number;
 };
 
+/**
+ * A short, irreversible identifier used only to correlate token issuance,
+ * renewal and rejection in logs. The bearer credential itself is never logged.
+ */
+export function fingerprintToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex").slice(0, 12);
+}
+
 export function diagnoseRejectedToken(token: string, nowSec = Math.floor(Date.now() / 1000)): TokenDiagnostic {
+  const tokenId = fingerprintToken(token);
   try {
     const decoded = jwt.decode(token);
-    if (!decoded || typeof decoded === "string") return { reason: "invalid" };
+    if (!decoded || typeof decoded === "string") return { tokenId, reason: "invalid" };
     const issuedAt = typeof decoded.iat === "number" ? decoded.iat : undefined;
     const expiresAt = typeof decoded.exp === "number" ? decoded.exp : undefined;
     return {
+      tokenId,
       reason: expiresAt !== undefined && expiresAt <= nowSec ? "expired" : "invalid",
       issuedAt,
       expiresAt,
@@ -57,7 +69,7 @@ export function diagnoseRejectedToken(token: string, nowSec = Math.floor(Date.no
         expiresAt !== undefined && expiresAt <= nowSec ? nowSec - expiresAt : undefined,
     };
   } catch {
-    return { reason: "invalid" };
+    return { tokenId, reason: "invalid" };
   }
 }
 

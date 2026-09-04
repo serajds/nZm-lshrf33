@@ -1,9 +1,16 @@
-import { createContext, useContext, useEffect, useMemo, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback, ReactNode } from "react";
 import { createConfirmedUnauthorizedHandler, useGetMe, useLogin, useLogout, useRegister, setUnauthorizedHandler, processFetchResponse } from "@workspace/api-client-react";
 import type { User, LoginBody, RegisterBody } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AUTH_SESSION_EVENT,
+  AUTH_SESSION_STORAGE_KEYS,
+  clearAuthSession,
+  getAuthToken,
+  replaceAuthToken,
+} from "@/lib/auth-session";
 
 const SESSION_EXPIRED_FLAG = "auth_session_expired";
 
@@ -66,7 +73,8 @@ function writeCachedUser(user: User | null, token?: string | null) {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(localStorage.getItem("auth_token"));
+  const [token, setToken] = useState<string | null>(getAuthToken());
+  const authOperationRef = useRef(0);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -99,13 +107,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) writeCachedUser(user, token);
   }, [user, token]);
 
-  // Keep the in-memory token in sync with the storage layer. The HTTP client
-  // dispatches `auth-token-renewed` whenever the server rolls the session
-  // forward via X-Renewed-Token; the standard `storage` event covers the
-  // multi-tab case where another tab logged in / out.
+  // Keep the in-memory token in sync with the central storage layer. Its
+  // same-tab event covers login/logout/renewal here, while the browser's
+  // storage event covers changes made by another tab.
   useEffect(() => {
     const sync = () => {
-      const stored = localStorage.getItem("auth_token");
+      const stored = getAuthToken();
       setToken((current) => {
         if (current === stored) return current;
         // A token changed by another tab may belong to a different account.
@@ -114,15 +121,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return stored;
       });
     };
-    const onRenewed = (e: Event) => {
-      const detail = (e as CustomEvent<string>).detail;
-      if (typeof detail === "string") setToken(detail);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && !AUTH_SESSION_STORAGE_KEYS.includes(event.key as never)) return;
+      authOperationRef.current++;
+      sync();
     };
-    window.addEventListener("storage", sync);
-    window.addEventListener("auth-token-renewed", onRenewed);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(AUTH_SESSION_EVENT, sync);
     return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener("auth-token-renewed", onRenewed);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(AUTH_SESSION_EVENT, sync);
     };
   }, [queryClient]);
 
@@ -133,9 +141,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // when the JWT expired mid-session.
   useEffect(() => {
     setUnauthorizedHandler(createConfirmedUnauthorizedHandler({
-      getCurrentToken: () => localStorage.getItem("auth_token"),
+      getCurrentToken: getAuthToken,
       confirmRejected: confirmCurrentTokenRejected,
-      onConfirmed: () => {
+      onConfirmed: (rejectedToken) => {
+        authOperationRef.current++;
+        if (!clearAuthSession(rejectedToken)) return;
         try {
           const here = window.location.pathname + window.location.search;
           // Don't store /login itself as a return path.
@@ -146,7 +156,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch {
           // sessionStorage may be unavailable — non-fatal.
         }
-        localStorage.removeItem("auth_token");
         writeCachedUser(null);
         setToken(null);
         queryClient.clear();
@@ -180,12 +189,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isAuthLoading]);
 
   const login = useCallback(async (data: LoginBody) => {
+    const operation = ++authOperationRef.current;
     try {
+      const previousToken = getAuthToken();
+      if (previousToken) clearAuthSession(previousToken);
+      writeCachedUser(null);
+      setToken(null);
+      await queryClient.cancelQueries();
+      queryClient.clear();
       const result = await loginMutation.mutateAsync({ data });
+      if (operation !== authOperationRef.current) return;
       // Login can switch accounts without an explicit logout. Remove every
       // identity-scoped query before exposing the new token/user.
       queryClient.clear();
-      localStorage.setItem("auth_token", result.token);
+      replaceAuthToken(result.token);
       // Seed the cache from the login response so the post-login redirect
       // doesn't flash a loading screen.
       if (result.user) writeCachedUser(result.user, result.token);
@@ -256,7 +273,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [registerMutation, toast]);
 
   const logout = useCallback(async () => {
-    localStorage.removeItem("auth_token");
+    authOperationRef.current++;
+    const sessionToken = getAuthToken();
+    clearAuthSession(sessionToken);
     writeCachedUser(null);
     setToken(null);
     queryClient.clear();

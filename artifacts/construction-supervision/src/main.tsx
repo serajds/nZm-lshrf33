@@ -3,23 +3,17 @@ import App from "./App";
 import "./index.css";
 import { setAuthTokenGetter, setAuthTokenSaver } from "@workspace/api-client-react";
 import { registerSW } from "virtual:pwa-register";
+import { getAuthToken, renewAuthToken } from "@/lib/auth-session";
 
-setAuthTokenGetter(() => localStorage.getItem("auth_token"));
+setAuthTokenGetter(getAuthToken);
 // When the server rolls our session forward via X-Renewed-Token, persist
 // the fresh token immediately so the next request (and the next page load)
 // uses it. AuthProvider also listens on the storage event to sync its
 // in-memory token state.
 setAuthTokenSaver((token, requestToken) => {
-  try {
-    // Compare-and-swap: a late response may only renew the exact credential
-    // it used. It must never overwrite a newer login or renewal.
-    if (requestToken && localStorage.getItem("auth_token") === requestToken) {
-      localStorage.setItem("auth_token", token);
-      window.dispatchEvent(new CustomEvent("auth-token-renewed", { detail: token }));
-    }
-  } catch {
-    // localStorage may be unavailable (private mode) — non-fatal.
-  }
+  // Compare-and-swap: a late response may only renew the exact credential it
+  // used. The shared store also emits the same-tab synchronization event.
+  renewAuthToken(token, requestToken);
 });
 
 const rootEl = document.getElementById("root")!;
@@ -58,5 +52,20 @@ function dismissSplash() {
 (window as unknown as { __dismissAppSplash?: () => void }).__dismissAppSplash = dismissSplash;
 
 if (import.meta.env.PROD) {
-  registerSW({ immediate: true });
+  let reloadingForUpdate = false;
+  navigator.serviceWorker?.addEventListener("controllerchange", () => {
+    if (reloadingForUpdate) return;
+    reloadingForUpdate = true;
+    window.location.reload();
+  });
+  registerSW({
+    immediate: true,
+    onRegisteredSW(_url, registration) {
+      // Keep long-lived tabs and installed PWAs aligned with the deployed
+      // session code instead of waiting for a navigation to discover updates.
+      window.setInterval(() => {
+        void registration?.update();
+      }, 5 * 60 * 1000);
+    },
+  });
 }

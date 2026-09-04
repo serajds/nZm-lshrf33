@@ -12,7 +12,12 @@ const DB_NAME = "attendance-offline";
 const STORE = "queue";
 const DB_VERSION = 1;
 
-import { processFetchResponse } from "@workspace/api-client-react";
+import { fetchWithSession } from "@workspace/api-client-react";
+import { getAuthToken } from "@/lib/auth-session";
+import {
+  isAttendanceSessionCurrent,
+  shouldRetainAttendanceResponse,
+} from "@/lib/offline-attendance-policy";
 
 export interface QueuedAttendance {
   /** UUID v4 generated client-side; doubles as idempotency key + queue PK. */
@@ -43,7 +48,7 @@ export interface QueuedAttendance {
  *  attribution only — the server always re-authenticates the request). */
 export function currentUserIdFromToken(): number | undefined {
   try {
-    const token = localStorage.getItem("auth_token");
+    const token = getAuthToken();
     if (!token) return undefined;
     const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
     return typeof payload?.userId === "number" ? payload.userId : undefined;
@@ -152,7 +157,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 
 export type SendOutcome =
   | { kind: "ok"; record: unknown; offline: false }
-  | { kind: "queued"; reason: "offline" | "network-error" }
+  | { kind: "queued"; reason: "offline" | "network-error" | "auth-changed" | "server-error" }
   | { kind: "error"; status: number; message: string };
 
 /**
@@ -161,7 +166,10 @@ export type SendOutcome =
  * On HTTP 4xx/5xx the server is reachable but rejected the request — the
  * caller should surface the error and NOT re-queue it.
  */
-export async function sendOrQueue(entry: Omit<QueuedAttendance, "attempts" | "lastAttemptAt">): Promise<SendOutcome> {
+export async function sendOrQueue(
+  entry: Omit<QueuedAttendance, "attempts" | "lastAttemptAt">,
+  expectedToken?: string,
+): Promise<SendOutcome> {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     await enqueueAttendance(entry);
     return { kind: "queued", reason: "offline" };
@@ -191,16 +199,32 @@ export async function sendOrQueue(entry: Omit<QueuedAttendance, "attempts" | "la
   });
 
   const url = `${API_BASE}/attendance/projects/${entry.projectId}/${entry.type === "check_in" ? "check-in" : "check-out"}`;
+  const requestToken = getAuthToken();
+  const requestUserId = currentUserIdFromToken();
+  const ownerUserId = entry.userId ?? requestUserId;
+  const ownedEntry = { ...entry, userId: ownerUserId };
+
+  // Bind the request to both the queue owner and the exact credential observed
+  // by the caller. A cross-tab account switch must stop the flush; it must
+  // never cause this entry to be sent under the replacement account.
+  if (
+    !requestToken ||
+    ownerUserId === undefined ||
+    requestUserId !== ownerUserId ||
+    (expectedToken !== undefined && requestToken !== expectedToken)
+  ) {
+    await enqueueAttendance(ownedEntry);
+    return { kind: "queued", reason: "auth-changed" };
+  }
 
   let response: Response;
-  const requestToken = localStorage.getItem("auth_token");
   try {
-    response = await fetch(url, {
+    response = await fetchWithSession(url, {
       method: "POST",
       body,
       headers: {
-        ...(requestToken ? { Authorization: `Bearer ${requestToken}` } : {}),
         "Content-Type": "text/plain",
+        Authorization: `Bearer ${requestToken}`,
       },
     });
   } catch {
@@ -209,11 +233,17 @@ export async function sendOrQueue(entry: Omit<QueuedAttendance, "attempts" | "la
     return { kind: "queued", reason: "network-error" };
   }
 
-  await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(response, requestToken);
-
   if (response.ok) {
     const record = await response.json().catch(() => ({}));
     return { kind: "ok", record, offline: false };
+  }
+
+  if (shouldRetainAttendanceResponse(response.status)) {
+    await enqueueAttendance(ownedEntry);
+    return {
+      kind: "queued",
+      reason: response.status === 401 ? "auth-changed" : "server-error",
+    };
   }
 
   // Reachable but server-side error. Surface to caller — do NOT queue,
@@ -255,7 +285,8 @@ export async function flushQueue(): Promise<FlushResult> {
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       return { attempted: 0, succeeded: 0, stillPending: await queueCount(), dropped: 0 };
     }
-    if (!localStorage.getItem("auth_token")) {
+    const flushToken = getAuthToken();
+    if (!flushToken) {
       // Not logged in — keep entries until the user signs back in.
       return { attempted: 0, succeeded: 0, stillPending: await queueCount(), dropped: 0 };
     }
@@ -268,13 +299,27 @@ export async function flushQueue(): Promise<FlushResult> {
     // also held back when we can't prove ownership.
     const items = all.filter((e) => e.userId !== undefined && e.userId === currentUserId);
     for (const item of items) {
+      if (
+        item.userId === undefined ||
+        !isAttendanceSessionCurrent(
+          flushToken,
+          getAuthToken(),
+          item.userId,
+          currentUserIdFromToken(),
+        )
+      ) {
+        // Another tab changed the account/session while this flush was in
+        // progress. Leave this and all remaining entries untouched.
+        break;
+      }
       attempted += 1;
-      const outcome = await sendOrQueue(item);
+      const outcome = await sendOrQueue(item, flushToken);
       if (outcome.kind === "ok") {
         await removeFromQueue(item.clientId);
         succeeded += 1;
       } else if (outcome.kind === "queued") {
-        // Still offline / network keeps failing — stop trying for now.
+        // Still offline, auth changed, or the server is transiently failing.
+        // Retain the entry and stop trying for now.
         await bumpAttempt(item.clientId);
         break;
       } else {

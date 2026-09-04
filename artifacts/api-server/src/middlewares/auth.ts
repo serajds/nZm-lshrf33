@@ -6,6 +6,7 @@ import {
   JWT_RENEWAL_THRESHOLD_SECONDS,
   JwtPayload,
   diagnoseRejectedToken,
+  fingerprintToken,
 } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { db } from "@workspace/db";
@@ -26,6 +27,13 @@ export function verifyAndMaybeRenewToken(token: string, res: Response): JwtPaylo
       const fresh = signToken({ userId: claims.userId, phone: claims.phone, role: claims.role });
       if (!res.headersSent) {
         res.setHeader("X-Renewed-Token", fresh);
+        logger.info({
+          userId: claims.userId,
+          authRenewal: {
+            previousTokenId: fingerprintToken(token),
+            tokenId: fingerprintToken(fresh),
+          },
+        }, "Authentication token renewed");
       }
     } catch {
       // Renewal is best-effort — never let a signing failure break the request.

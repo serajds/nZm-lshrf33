@@ -2,8 +2,9 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable, userCompaniesTable, projectsTable, projectMembersTable, companiesTable } from "@workspace/db";
 import { eq, inArray, count } from "drizzle-orm";
-import { signToken, hashPassword, comparePassword } from "../lib/auth";
+import { signToken, hashPassword, comparePassword, fingerprintToken } from "../lib/auth";
 import { requireAuth } from "../middlewares/auth";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -65,6 +66,10 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
 
   const token = signToken({ userId: user.id, phone: user.phone, role: user.role });
+  logger.info({
+    userId: user.id,
+    authToken: { tokenId: fingerprintToken(token) },
+  }, "Authentication token issued");
 
   const companiesWithNames = await db.select({
     companyId: userCompaniesTable.companyId,

@@ -6,7 +6,7 @@ import {
   useDeleteFile,
   useGetProject,
   getListFilesQueryKey,
-  customFetch,
+  fetchWithSession,
 } from "@workspace/api-client-react";
 import { useTabAccess } from "@/hooks/use-tab-access";
 import type { ProjectFile } from "@workspace/api-client-react";
@@ -39,6 +39,7 @@ import {
   FileCheck2, Eye, HardDrive, Loader2
 } from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
+import { ProtectedImage, downloadProtectedAsset } from "@/components/protected-image";
 
 const CATEGORY_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string; bg: string; border: string }> = {
   image:       { label: "صور",            icon: FileImage,       color: "text-blue-600",    bg: "bg-blue-50",     border: "border-blue-200" },
@@ -96,16 +97,11 @@ export default function ProjectFiles() {
   const totalSize = (allFiles ?? []).reduce((s: number, f: ProjectFile) => s + f.fileSize, 0);
 
   const handleDownload = async (file: ProjectFile) => {
-    const token = localStorage.getItem("auth_token");
-    const url = token ? `${file.fileUrl}?token=${encodeURIComponent(token)}` : file.fileUrl;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = file.originalName;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    try {
+      await downloadProtectedAsset(file.fileUrl, file.originalName);
+    } catch {
+      toast({ variant: "destructive", title: "فشل تحميل الملف" });
+    }
   };
 
   const handleDelete = async () => {
@@ -137,10 +133,11 @@ export default function ProjectFiles() {
         formData.append("description", uploadDescription);
       }
 
-      await customFetch(`/api/projects/${projectId}/files`, {
+      const response = await fetchWithSession(`/api/projects/${projectId}/files`, {
         method: "POST",
         body: formData,
       });
+      if (!response.ok) throw new Error(`Upload failed with HTTP ${response.status}`);
 
       queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) });
       setIsDialogOpen(false);
@@ -192,11 +189,6 @@ export default function ProjectFiles() {
 
   const isImageFile = (file: ProjectFile) => {
     return file.category === 'image' || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.originalName);
-  };
-
-  const getFileUrl = (file: ProjectFile) => {
-    const token = localStorage.getItem("auth_token");
-    return token ? `${file.fileUrl}?token=${encodeURIComponent(token)}` : file.fileUrl;
   };
 
   return (
@@ -417,8 +409,8 @@ export default function ProjectFiles() {
                     className="h-36 bg-muted/30 flex items-center justify-center overflow-hidden cursor-pointer relative"
                     onClick={() => setPreviewFile(file)}
                   >
-                    <img 
-                      src={getFileUrl(file)} 
+                    <ProtectedImage
+                      src={file.fileUrl}
                       alt={file.originalName}
                       className="w-full h-full object-cover"
                       loading="lazy"
@@ -477,8 +469,8 @@ export default function ProjectFiles() {
           {previewFile && (
             <>
               <div className="bg-black flex items-center justify-center max-h-[70vh] min-h-[300px]">
-                <img 
-                  src={getFileUrl(previewFile)} 
+                <ProtectedImage
+                  src={previewFile.fileUrl}
                   alt={previewFile.originalName} 
                   loading="lazy"
                   decoding="async"

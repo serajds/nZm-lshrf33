@@ -1,7 +1,7 @@
 export * from "./generated/api";
 export * from "./generated/api.schemas";
-export { setBaseUrl, setAuthTokenGetter, setAuthTokenSaver, setUnauthorizedHandler, createConfirmedUnauthorizedHandler, processFetchResponse, customFetch, ApiError, ResponseParseError, } from "./custom-fetch";
-export type { AuthTokenGetter, AuthTokenSaver, UnauthorizedHandler, ConfirmedUnauthorizedOptions, CustomFetchOptions, ErrorType, BodyType, } from "./custom-fetch";
+export { setBaseUrl, setAuthTokenGetter, setAuthTokenSaver, setUnauthorizedHandler, createConfirmedUnauthorizedHandler, processFetchResponse, fetchWithSession, customFetch, ApiError, ResponseParseError, } from "./custom-fetch";
+export type { AuthTokenGetter, AuthTokenSaver, UnauthorizedHandler, ConfirmedUnauthorizedOptions, SessionFetchOptions, CustomFetchOptions, ErrorType, BodyType, } from "./custom-fetch";
 export interface ProjectExtension {
     id: number;
     projectId: number;
