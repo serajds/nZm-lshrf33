@@ -4,6 +4,7 @@ import "./index.css";
 import { setAuthTokenGetter, setAuthTokenSaver } from "@workspace/api-client-react";
 import { registerSW } from "virtual:pwa-register";
 import { getAuthToken, renewAuthToken } from "@/lib/auth-session";
+import { reloadOnceOnServiceWorkerUpdate } from "@/lib/pwa-update";
 
 setAuthTokenGetter(getAuthToken);
 // When the server rolls our session forward via X-Renewed-Token, persist
@@ -52,12 +53,7 @@ function dismissSplash() {
 (window as unknown as { __dismissAppSplash?: () => void }).__dismissAppSplash = dismissSplash;
 
 if (import.meta.env.PROD) {
-  let reloadingForUpdate = false;
-  navigator.serviceWorker?.addEventListener("controllerchange", () => {
-    if (reloadingForUpdate) return;
-    reloadingForUpdate = true;
-    window.location.reload();
-  });
+  if (navigator.serviceWorker) reloadOnceOnServiceWorkerUpdate();
   registerSW({
     immediate: true,
     onRegisteredSW(_url, registration) {
