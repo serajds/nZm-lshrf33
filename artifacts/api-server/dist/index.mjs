@@ -122558,6 +122558,7 @@ var bcryptjs_default = {
 };
 
 // src/lib/auth.ts
+import { createHash } from "node:crypto";
 var JWT_SECRET = process.env.JWT_SECRET ?? process.env.SESSION_SECRET ?? (process.env.NODE_ENV === "production" ? (() => {
   throw new Error("JWT_SECRET or SESSION_SECRET environment variable is required in production");
 })() : "engineering-supervision-dev-secret-key");
@@ -122567,13 +122568,18 @@ function signToken(payload) {
   const { userId, phone, role } = payload;
   return import_jsonwebtoken.default.sign({ userId, phone, role }, JWT_SECRET, { expiresIn: JWT_LIFETIME_SECONDS });
 }
+function fingerprintToken(token) {
+  return createHash("sha256").update(token).digest("hex").slice(0, 12);
+}
 function diagnoseRejectedToken(token, nowSec = Math.floor(Date.now() / 1e3)) {
+  const tokenId = fingerprintToken(token);
   try {
     const decoded = import_jsonwebtoken.default.decode(token);
-    if (!decoded || typeof decoded === "string") return { reason: "invalid" };
+    if (!decoded || typeof decoded === "string") return { tokenId, reason: "invalid" };
     const issuedAt = typeof decoded.iat === "number" ? decoded.iat : void 0;
     const expiresAt = typeof decoded.exp === "number" ? decoded.exp : void 0;
     return {
+      tokenId,
       reason: expiresAt !== void 0 && expiresAt <= nowSec ? "expired" : "invalid",
       issuedAt,
       expiresAt,
@@ -122581,7 +122587,7 @@ function diagnoseRejectedToken(token, nowSec = Math.floor(Date.now() / 1e3)) {
       expiredBySeconds: expiresAt !== void 0 && expiresAt <= nowSec ? nowSec - expiresAt : void 0
     };
   } catch {
-    return { reason: "invalid" };
+    return { tokenId, reason: "invalid" };
   }
 }
 function verifyToken(token) {
@@ -122637,6 +122643,13 @@ function verifyAndMaybeRenewToken(token, res) {
       const fresh = signToken({ userId: claims.userId, phone: claims.phone, role: claims.role });
       if (!res.headersSent) {
         res.setHeader("X-Renewed-Token", fresh);
+        logger.info({
+          userId: claims.userId,
+          authRenewal: {
+            previousTokenId: fingerprintToken(token),
+            tokenId: fingerprintToken(fresh)
+          }
+        }, "Authentication token renewed");
       }
     } catch {
     }
@@ -122840,6 +122853,10 @@ router2.post("/auth/login", async (req, res) => {
     return;
   }
   const token = signToken({ userId: user.id, phone: user.phone, role: user.role });
+  logger.info({
+    userId: user.id,
+    authToken: { tokenId: fingerprintToken(token) }
+  }, "Authentication token issued");
   const companiesWithNames = await db.select({
     companyId: userCompaniesTable.companyId,
     companyName: companiesTable.name
@@ -129835,6 +129852,12 @@ app.use(
     }
   })
 );
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+});
 app.use((0, import_cors.default)({ exposedHeaders: ["X-Renewed-Token"] }));
 app.use((0, import_compression.default)({ threshold: 1024 }));
 app.use(import_express26.default.json({ limit: "10mb" }));
@@ -129893,11 +129916,13 @@ app.use("/api/uploads", (req, res, next) => {
   const filename = decodeURIComponent(req.path).replace(/^\//, "");
   const localPath = path6.join(uploadsDir4, filename);
   if (fs6.existsSync(localPath)) {
+    const isPublicLogo = filename.startsWith("logo-");
     return import_express26.default.static(uploadsDir4, {
-      maxAge: "30d",
-      immutable: true,
       setHeaders: (res2) => {
-        res2.setHeader("Cache-Control", "public, max-age=2592000, immutable");
+        res2.setHeader(
+          "Cache-Control",
+          isPublicLogo ? "public, max-age=2592000, immutable" : "private, no-store, no-cache, must-revalidate"
+        );
       }
     })(req, res, next);
   }
@@ -129909,7 +129934,10 @@ app.use("/api/uploads", (req, res, next) => {
     if (result.contentType) {
       res.setHeader("Content-Type", result.contentType);
     }
-    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.setHeader(
+      "Cache-Control",
+      filename.startsWith("logo-") ? "public, max-age=86400" : "private, no-store, no-cache, must-revalidate"
+    );
     const readable = result.stream;
     readable.on("error", () => {
       if (!res.headersSent) {

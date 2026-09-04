@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useGetProject, processFetchResponse } from "@workspace/api-client-react";
+import { useGetProject, fetchWithSession } from "@workspace/api-client-react";
 import { useMyProjectPermissions, useTabAccess } from "@/hooks/use-tab-access";
 import { useAuth } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -18,25 +18,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { SelfieCameraDialog } from "@/components/selfie-camera-dialog";
-import { fmtLibyaDateTime, fmtLibyaTime, fmtLibyaDate, getCurrentPosition, withAuthToken } from "@/lib/attendance-utils";
+import { fmtLibyaDateTime, fmtLibyaTime, fmtLibyaDate, getCurrentPosition } from "@/lib/attendance-utils";
+import { ProtectedImage } from "@/components/protected-image";
 import { Loader2, MapPin, LogIn, LogOut, Camera, Printer, AlertTriangle, CheckCircle2, Crosshair, Image as ImageIcon, ArrowRight } from "lucide-react";
 import { previewAttendanceReport, type CompanyLogo, type AttendanceReportData } from "@/lib/report-pdf";
 import { AttendanceLocationMapDialog, type AttendanceMapPoint } from "@/components/attendance-location-map-dialog";
 import { SiteGeofenceMap } from "@/components/site-geofence-map";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-
-async function authFetch(url: string, init?: RequestInit) {
-  const token = localStorage.getItem("auth_token");
-  const headers: Record<string, string> = { ...((init?.headers as Record<string, string>) ?? {}) };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (init?.body && !(init.body instanceof FormData) && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
-  }
-  const response = await fetch(url, { ...init, headers });
-  await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(response, token);
-  return response;
-}
 
 interface AttendanceRecordWithUser {
   id: number;
@@ -182,7 +171,7 @@ export default function ProjectAttendance() {
   const { data: myStatusList = [], refetch: refetchMyStatus } = useQuery<MyStatusItem[]>({
     queryKey: ["/api/attendance/my-status"],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/attendance/my-status`);
+      const r = await fetchWithSession(`${API_BASE}/attendance/my-status`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -200,7 +189,7 @@ export default function ProjectAttendance() {
   const { data: active, refetch: refetchActive, isLoading: activeLoading } = useQuery<ActiveResponse>({
     queryKey: [`/api/attendance/projects/${projectId}/active`],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/attendance/projects/${projectId}/active`);
+      const r = await fetchWithSession(`${API_BASE}/attendance/projects/${projectId}/active`);
       if (!r.ok) return { activeCount: 0, members: [] };
       return r.json();
     },
@@ -244,7 +233,7 @@ export default function ProjectAttendance() {
       if (Number.isFinite(pos.coords.accuracy)) fd.append("accuracy", String(pos.coords.accuracy));
 
       const url = `${API_BASE}/attendance/projects/${projectId}/${pendingType === "check_in" ? "check-in" : "check-out"}`;
-      const r = await authFetch(url, { method: "POST", body: fd });
+       const r = await fetchWithSession(url, { method: "POST", body: fd });
       if (!r.ok) {
         const text = await r.text().catch(() => "");
         let serverMsg = "";
@@ -370,7 +359,7 @@ export default function ProjectAttendance() {
             <DialogTitle>صورة الحضور</DialogTitle>
           </DialogHeader>
           {photoModalUrl ? (
-            <img src={withAuthToken(photoModalUrl)} alt="صورة سيلفي" loading="lazy" decoding="async" className="w-full h-auto rounded-md" />
+            <ProtectedImage src={photoModalUrl} alt="صورة سيلفي" loading="lazy" decoding="async" className="w-full h-auto rounded-md" />
           ) : null}
         </DialogContent>
       </Dialog>
@@ -603,7 +592,7 @@ function MyHistoryTab({ projectId, onShowPhoto, onShowMap }: {
   const { data: rows = [], isLoading } = useQuery<(AttendanceRecordWithUser & { projectId: number; projectName: string | null })[]>({
     queryKey: ["/api/attendance/my-history", projectId],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/attendance/my-history?projectId=${projectId}`);
+      const r = await fetchWithSession(`${API_BASE}/attendance/my-history?projectId=${projectId}`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -658,7 +647,7 @@ function ProjectHistoryTab({ projectId, onShowPhoto, onShowMap }: {
   const { data: rows = [], isLoading } = useQuery<AttendanceRecordWithUser[]>({
     queryKey,
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/attendance/projects/${projectId}/records?${params}`);
+      const r = await fetchWithSession(`${API_BASE}/attendance/projects/${projectId}/records?${params}`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -928,7 +917,7 @@ function EditRecordDialog({ record, onClose, onSaved }: {
     }
     setSaving(true);
     try {
-      const r = await authFetch(`${API_BASE}/attendance/records/${record.id}`, {
+      const r = await fetchWithSession(`${API_BASE}/attendance/records/${record.id}`, {
         method: "PATCH",
         body: JSON.stringify({
           type,
@@ -1015,7 +1004,7 @@ function DeleteRecordDialog({ record, onClose, onDeleted }: {
     }
     setBusy(true);
     try {
-      const r = await authFetch(`${API_BASE}/attendance/records/${record.id}`, {
+      const r = await fetchWithSession(`${API_BASE}/attendance/records/${record.id}`, {
         method: "DELETE",
         body: JSON.stringify({ reason: reason.trim() }),
       });
@@ -1084,7 +1073,7 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
   const { data: companyLogos } = useQuery<Record<string, CompanyLogo>>({
     queryKey: ["project-company-logos", projectId],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/projects/${projectId}/company-logos`);
+      const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/company-logos`);
       return r.ok ? r.json() : {};
     },
     enabled: !!projectId,
@@ -1093,7 +1082,7 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
   const { data: members = [] } = useQuery<ProjectMember[]>({
     queryKey: [`/api/projects/${projectId}/members`],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/projects/${projectId}/members`);
+      const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/members`);
       if (!r.ok) return [];
       const data = await r.json();
       // Response shape from /projects/:id/members:
@@ -1133,7 +1122,7 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
   const { data: report, refetch, isFetching, error: reportError } = useQuery<EmployeeReport>({
     queryKey: [`/api/attendance/projects/${projectId}/users/${employeeId}/report`, params],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/attendance/projects/${projectId}/users/${employeeId}/report?${params}`);
+      const r = await fetchWithSession(`${API_BASE}/attendance/projects/${projectId}/users/${employeeId}/report?${params}`);
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
         const msg = (err && typeof err === "object" && "error" in err && typeof err.error === "string")
@@ -1404,7 +1393,7 @@ function SiteSettingsTab({ projectId, onUpdated }: { projectId: number; onUpdate
         toast({ variant: "destructive", title: "حد اليوم الطويل يجب أن يكون بين 1 و 24" });
         return;
       }
-      const r = await authFetch(`${API_BASE}/projects/${projectId}`, {
+      const r = await fetchWithSession(`${API_BASE}/projects/${projectId}`, {
         method: "PATCH",
         body: JSON.stringify({
           siteLatitude: latNum,

@@ -16,19 +16,10 @@ import {
   queueCount,
   subscribeQueue,
 } from "@/lib/offline-attendance";
-import { processFetchResponse } from "@workspace/api-client-react";
+import { fetchWithSession } from "@workspace/api-client-react";
 import { startGeofenceWatch, chimeAndVibrate } from "@/lib/geofence-watcher";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-
-async function authFetch(url: string, opts?: RequestInit) {
-  const token = localStorage.getItem("auth_token");
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  const response = await fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> || {}) } });
-  await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(response, token);
-  return response;
-}
 
 interface MyStatus {
   projectId: number;
@@ -68,7 +59,7 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
   const { data: list = [], refetch } = useQuery<MyStatus[]>({
     queryKey: ["/api/attendance/my-status"],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/attendance/my-status`);
+      const r = await fetchWithSession(`${API_BASE}/attendance/my-status`);
       if (!r.ok) return [];
       return r.json();
     },

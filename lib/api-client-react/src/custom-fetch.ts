@@ -1,4 +1,12 @@
-export type CustomFetchOptions = RequestInit & {
+export type SessionFetchOptions = RequestInit & {
+  /**
+   * Whether the configured bearer token should be attached automatically.
+   * Login and registration are always treated as public even when omitted.
+   */
+  auth?: boolean;
+};
+
+export type CustomFetchOptions = SessionFetchOptions & {
   responseType?: "json" | "text" | "blob" | "auto";
 };
 
@@ -176,6 +184,44 @@ function resolveUrl(input: RequestInfo | URL): string {
   if (typeof input === "string") return input;
   if (isUrl(input)) return input.toString();
   return input.url;
+}
+
+function isApiUrl(input: RequestInfo | URL): boolean {
+  const raw = resolveUrl(input);
+  try {
+    const pathname = new URL(raw, "http://session.local").pathname;
+    return pathname === "/api" || pathname.startsWith("/api/");
+  } catch {
+    return raw === "/api" || raw.startsWith("/api/");
+  }
+}
+
+function isPublicAuthUrl(input: RequestInfo | URL): boolean {
+  const raw = resolveUrl(input);
+  try {
+    const pathname = new URL(raw, "http://session.local").pathname;
+    return /\/api\/auth\/(?:login|register)\/?$/.test(pathname);
+  } catch {
+    return /\/api\/auth\/(?:login|register)\/?$/.test(raw);
+  }
+}
+
+function isTrustedApiUrl(input: RequestInfo | URL): boolean {
+  const raw = resolveUrl(input);
+  if (raw.startsWith("/")) return isApiUrl(input);
+  try {
+    const parsed = new URL(raw);
+    const trustedOrigin = _baseUrl
+      ? new URL(_baseUrl).origin
+      : typeof window !== "undefined"
+        ? window.location.origin
+        : null;
+    return trustedOrigin !== null &&
+      parsed.origin === trustedOrigin &&
+      (parsed.pathname === "/api" || parsed.pathname.startsWith("/api/"));
+  } catch {
+    return false;
+  }
 }
 
 function mergeHeaders(...sources: Array<HeadersInit | undefined>): Headers {
@@ -422,12 +468,60 @@ async function parseSuccessBody(
   }
 }
 
+/**
+ * Fetch a response through the shared rolling-session pipeline without
+ * parsing its body. This is the canonical transport for manual requests,
+ * uploads and downloads that need direct access to Response.
+ */
+export async function fetchWithSession(
+  input: RequestInfo | URL,
+  options: SessionFetchOptions = {},
+): Promise<Response> {
+  input = applyBaseUrl(input);
+  const { auth, headers: headersInit, ...init } = options;
+  const method = resolveMethod(input, init.method);
+
+  if (init.body != null && (method === "GET" || method === "HEAD")) {
+    throw new TypeError(`fetchWithSession: ${method} requests cannot have a body.`);
+  }
+
+  const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
+  if (
+    typeof init.body === "string" &&
+    !headers.has("content-type") &&
+    looksLikeJson(init.body)
+  ) {
+    headers.set("content-type", "application/json");
+  }
+
+  const shouldAttachAuth = auth ?? (isTrustedApiUrl(input) && !isPublicAuthUrl(input));
+  if (shouldAttachAuth && _authTokenGetter && !headers.has("authorization")) {
+    const token = await _authTokenGetter();
+    if (token) headers.set("authorization", `Bearer ${token}`);
+  }
+
+  const authorization = headers.get("authorization");
+  const requestToken =
+    authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+
+  const response = await fetch(input, {
+    ...init,
+    method,
+    headers,
+    // React Query owns API response caching. Bypass the browser HTTP cache so
+    // a prior 401/304 can never become authentication state.
+    cache: init.cache ?? (isApiUrl(input) ? "no-store" : undefined),
+  });
+  await processFetchResponse(response, requestToken);
+  return response;
+}
+
 export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
 ): Promise<T> {
   input = applyBaseUrl(input);
-  const { responseType = "auto", headers: headersInit, ...init } = options;
+  const { responseType = "auto", auth, headers: headersInit, ...init } = options;
 
   const method = resolveMethod(input, init.method);
 
@@ -449,23 +543,8 @@ export async function customFetch<T = unknown>(
     headers.set("accept", DEFAULT_JSON_ACCEPT);
   }
 
-  // Attach bearer token when an auth getter is configured and no
-  // Authorization header has been explicitly provided.
-  if (_authTokenGetter && !headers.has("authorization")) {
-    const token = await _authTokenGetter();
-    if (token) {
-      headers.set("authorization", `Bearer ${token}`);
-    }
-  }
-  const authorization = headers.get("authorization");
-  const requestToken =
-    authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
-
   const requestInfo = { method, url: resolveUrl(input) };
-
-  const response = await fetch(input, { ...init, method, headers });
-
-  await processFetchResponse(response, requestToken);
+  const response = await fetchWithSession(input, { ...init, method, headers, auth });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

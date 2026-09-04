@@ -43,13 +43,6 @@ export function todayLibyaISO(): string {
   return fmtLibyaDate(new Date());
 }
 
-export function withAuthToken(url: string): string {
-  if (!url) return url;
-  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-  if (!token) return url;
-  return url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token);
-}
-
 export function getCurrentPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {

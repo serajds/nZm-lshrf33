@@ -36,6 +36,15 @@ app.use(
     },
   }),
 );
+// Authentication and business data are cached by the clients at the query
+// layer, never by browsers, proxies or service workers. This prevents an old
+// 401/304 response from becoming session state after a login or deployment.
+app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+});
 // Expose the X-Renewed-Token response header so the browser's fetch wrapper
 // can read it and silently roll the user's session forward.
 app.use(cors({ exposedHeaders: ["X-Renewed-Token"] }));
@@ -116,18 +125,15 @@ app.use("/api/uploads", (req: Request, res: Response, next: NextFunction) => {
   const localPath = path.join(uploadsDir, filename);
 
   if (fs.existsSync(localPath)) {
-    // Uploaded filenames are content-addressed (timestamp + random suffix),
-    // so the same URL always points to the same bytes. Without an explicit
-    // maxAge, express.static sends `Cache-Control: public, max-age=0` and
-    // every <img> on every page revalidates with a 304 round-trip — the
-    // logs were full of 304s for thumbnails. 30-day immutable caching
-    // turns repeat views (and tab-switches) into pure browser-cache hits
-    // with zero network activity.
+    const isPublicLogo = filename.startsWith("logo-");
     return express.static(uploadsDir, {
-      maxAge: "30d",
-      immutable: true,
       setHeaders: (res) => {
-        res.setHeader("Cache-Control", "public, max-age=2592000, immutable");
+        res.setHeader(
+          "Cache-Control",
+          isPublicLogo
+            ? "public, max-age=2592000, immutable"
+            : "private, no-store, no-cache, must-revalidate",
+        );
       },
     })(req, res, next);
   }
@@ -140,7 +146,12 @@ app.use("/api/uploads", (req: Request, res: Response, next: NextFunction) => {
     if (result.contentType) {
       res.setHeader("Content-Type", result.contentType);
     }
-    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.setHeader(
+      "Cache-Control",
+      filename.startsWith("logo-")
+        ? "public, max-age=86400"
+        : "private, no-store, no-cache, must-revalidate",
+    );
     const readable = result.stream as NodeJS.ReadableStream;
     readable.on("error", () => {
       if (!res.headersSent) {

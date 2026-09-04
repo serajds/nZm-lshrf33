@@ -1,4 +1,11 @@
-export type CustomFetchOptions = RequestInit & {
+export type SessionFetchOptions = RequestInit & {
+    /**
+     * Whether the configured bearer token should be attached automatically.
+     * Login and registration are always treated as public even when omitted.
+     */
+    auth?: boolean;
+};
+export type CustomFetchOptions = SessionFetchOptions & {
     responseType?: "json" | "text" | "blob" | "auto";
 };
 export type ErrorType<T = unknown> = ApiError<T>;
@@ -93,5 +100,11 @@ export declare class ResponseParseError extends Error {
         url: string;
     });
 }
+/**
+ * Fetch a response through the shared rolling-session pipeline without
+ * parsing its body. This is the canonical transport for manual requests,
+ * uploads and downloads that need direct access to Response.
+ */
+export declare function fetchWithSession(input: RequestInfo | URL, options?: SessionFetchOptions): Promise<Response>;
 export declare function customFetch<T = unknown>(input: RequestInfo | URL, options?: CustomFetchOptions): Promise<T>;
 //# sourceMappingURL=custom-fetch.d.ts.map

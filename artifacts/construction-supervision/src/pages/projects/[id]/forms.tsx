@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useGetProject, processFetchResponse } from "@workspace/api-client-react";
+import { useGetProject, fetchWithSession } from "@workspace/api-client-react";
 import { useMyProjectPermissions, useTabAccess } from "@/hooks/use-tab-access";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,20 +37,6 @@ import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { fmtDate } from "@/lib/utils";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-
-async function authFetch(url: string, init?: RequestInit) {
-  const token = localStorage.getItem("auth_token");
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-  await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(response, token);
-  return response;
-}
 
 type FieldType = "text" | "textarea" | "number" | "date" | "select" | "checklist_qty" | "table" | "section";
 
@@ -1031,7 +1017,7 @@ export default function ProjectForms() {
   const { data: templates = [], isLoading: templatesLoading } = useQuery<FormTemplate[]>({
     queryKey: [`/api/projects/${projectId}/form-templates`],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/projects/${projectId}/form-templates`);
+      const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/form-templates`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -1041,7 +1027,7 @@ export default function ProjectForms() {
   const { data: submissions = [], isLoading: submissionsLoading } = useQuery<FormSubmission[]>({
     queryKey: [`/api/projects/${projectId}/form-submissions`],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/projects/${projectId}/form-submissions`);
+      const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/form-submissions`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -1051,7 +1037,7 @@ export default function ProjectForms() {
   const { data: submissionStats } = useQuery<{ total: number; pending: number; reviewed: number; overdue: number }>({
     queryKey: [`/api/projects/${projectId}/submission-stats`],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/projects/${projectId}/submission-stats`);
+      const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/submission-stats`);
       if (!r.ok) return { total: 0, pending: 0, reviewed: 0, overdue: 0 };
       return r.json();
     },
@@ -1061,7 +1047,7 @@ export default function ProjectForms() {
   const { data: dailyGaps = [] } = useQuery<Array<{ templateId: number; templateName: string; date: string }>>({
     queryKey: [`/api/projects/${projectId}/daily-gaps`],
     queryFn: async () => {
-      const r = await authFetch(`${API_BASE}/projects/${projectId}/daily-gaps`);
+      const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/daily-gaps`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -1081,7 +1067,7 @@ export default function ProjectForms() {
       : `${API_BASE}/projects/${projectId}/form-templates`;
     const method = editingTemplate ? "PUT" : "POST";
 
-    const r = await authFetch(url, { method, body: JSON.stringify(data) });
+    const r = await fetchWithSession(url, { method, body: JSON.stringify(data) });
     if (r.ok) {
       toast({ title: editingTemplate ? "تم تحديث النموذج" : "تم إنشاء النموذج" });
       invalidate();
@@ -1094,7 +1080,7 @@ export default function ProjectForms() {
 
   const handleDeleteTemplate = async () => {
     if (!deletingTemplateId) return;
-    const r = await authFetch(`${API_BASE}/projects/${projectId}/form-templates/${deletingTemplateId}`, { method: "DELETE" });
+    const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/form-templates/${deletingTemplateId}`, { method: "DELETE" });
     if (r.ok) {
       toast({ title: "تم حذف النموذج" });
       invalidate();
@@ -1116,7 +1102,7 @@ export default function ProjectForms() {
       ? { data: data.data, reportDate: data.reportDate, notes: data.notes }
       : { templateId: fillingTemplate.id, data: data.data, reportDate: data.reportDate, notes: data.notes };
 
-    const r = await authFetch(url, { method, body: JSON.stringify(body) });
+    const r = await fetchWithSession(url, { method, body: JSON.stringify(body) });
     if (r.ok) {
       toast({ title: editingSubmission ? "تم تحديث النموذج" : "تم إرسال النموذج" });
       invalidate();
@@ -1130,7 +1116,7 @@ export default function ProjectForms() {
 
   const handleDeleteSubmission = async () => {
     if (!deletingSubmissionId) return;
-    const r = await authFetch(`${API_BASE}/projects/${projectId}/form-submissions/${deletingSubmissionId}`, { method: "DELETE" });
+    const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/form-submissions/${deletingSubmissionId}`, { method: "DELETE" });
     if (r.ok) {
       toast({ title: "تم حذف النموذج" });
       invalidate();
@@ -1141,7 +1127,7 @@ export default function ProjectForms() {
   };
 
   const handleSkipDay = async (templateId: number, date: string) => {
-    const r = await authFetch(`${API_BASE}/projects/${projectId}/skip-day`, {
+    const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/skip-day`, {
       method: "POST",
       body: JSON.stringify({ templateId, date, reason: "عطلة" }),
     });
@@ -1152,7 +1138,7 @@ export default function ProjectForms() {
   };
 
   const handleMarkReviewed = async (submissionId: number) => {
-    const r = await authFetch(`${API_BASE}/projects/${projectId}/form-submissions/${submissionId}`, {
+    const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/form-submissions/${submissionId}`, {
       method: "PUT",
       body: JSON.stringify({ status: "reviewed" }),
     });
@@ -1220,7 +1206,7 @@ export default function ProjectForms() {
           toast({ variant: "destructive", title: "ملف غير صالح", description: "يجب أن يحتوي على اسم النموذج والحقول" });
           return;
         }
-        const r = await authFetch(`${API_BASE}/projects/${projectId}/form-templates`, {
+        const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/form-templates`, {
           method: "POST",
           body: JSON.stringify({ name: data.name, description: data.description || "", fields: data.fields }),
         });
@@ -1238,7 +1224,7 @@ export default function ProjectForms() {
   };
 
   const handleGeneratePublicLink = async (templateId: number) => {
-    const r = await authFetch(`${API_BASE}/projects/${projectId}/form-templates/${templateId}/public-link`, { method: "POST" });
+    const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/form-templates/${templateId}/public-link`, { method: "POST" });
     if (r.ok) {
       const { publicToken } = await r.json();
       const baseUrl = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1259,7 +1245,7 @@ export default function ProjectForms() {
   };
 
   const handleRemovePublicLink = async (templateId: number) => {
-    const r = await authFetch(`${API_BASE}/projects/${projectId}/form-templates/${templateId}/public-link`, { method: "DELETE" });
+    const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/form-templates/${templateId}/public-link`, { method: "DELETE" });
     if (r.ok) {
       toast({ title: "تم إلغاء الرابط العام" });
       invalidate();

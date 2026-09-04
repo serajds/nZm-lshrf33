@@ -9,8 +9,8 @@ import {
   useListActivities,
   useListProjectMembers,
   useGetEligibleUsers,
+  fetchWithSession,
 } from "@workspace/api-client-react";
-import { processFetchResponse } from "@workspace/api-client-react";
 import { useMyProjectPermissions } from "@/hooks/use-tab-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
@@ -69,19 +69,6 @@ function plannedProgressForReport(activity: any): number {
   if (elapsed <= 0) return 0;
   if (elapsed >= duration) return 100;
   return Math.round((elapsed / duration) * 1000) / 10;
-}
-
-async function authFetch(url: string, opts?: RequestInit) {
-  const token = localStorage.getItem("auth_token");
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (opts?.body) headers["Content-Type"] = "application/json";
-  const response = await fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> || {}) } });
-  // Funnel renewed tokens and 401s through the shared pipeline so this
-  // page participates in rolling session renewal AND the centralized
-  // "session expired" redirect instead of swallowing 401 as empty data.
-  await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(response, token);
-  return response;
 }
 
 interface SummaryWidget {
@@ -161,7 +148,7 @@ export default function ProjectDetails() {
   useQuery<unknown[]>({
     queryKey: [`/api/projects/${projectId}/activity-groups`],
     queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/activity-groups`);
+      const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -172,7 +159,7 @@ export default function ProjectDetails() {
     queryKey: ["/api/attendance/my-status"],
     queryFn: async () => {
       const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-      const r = await authFetch(`${API_BASE}/attendance/my-status`);
+      const r = await fetchWithSession(`${API_BASE}/attendance/my-status`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -183,7 +170,7 @@ export default function ProjectDetails() {
   const { data: extensions = [] } = useQuery<ProjectExtension[]>({
     queryKey: [`/api/projects/${projectId}/extensions`],
     queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/extensions`);
+      const r = await fetchWithSession(`/api/projects/${projectId}/extensions`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -199,7 +186,7 @@ export default function ProjectDetails() {
   const { data: widgets = [], refetch: refetchWidgets } = useQuery<SummaryWidget[]>({
     queryKey: [`/api/projects/${projectId}/summary-widgets`],
     queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/summary-widgets`);
+      const r = await fetchWithSession(`/api/projects/${projectId}/summary-widgets`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -213,7 +200,7 @@ export default function ProjectDetails() {
   const { data: formTemplates = [] } = useQuery<FormTemplateOption[]>({
     queryKey: [`/api/projects/${projectId}/form-templates`],
     queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/form-templates`);
+      const r = await fetchWithSession(`/api/projects/${projectId}/form-templates`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -239,7 +226,7 @@ export default function ProjectDetails() {
   }, [widgetConfigOpen]);
 
   const handleSaveWidgets = async () => {
-    const r = await authFetch(`/api/projects/${projectId}/summary-widgets`, {
+    const r = await fetchWithSession(`/api/projects/${projectId}/summary-widgets`, {
       method: "PUT",
       body: JSON.stringify({ widgets: editWidgets.map(w => ({ id: w.id, templateId: w.templateId, fieldId: w.fieldId })) }),
     });
@@ -260,7 +247,7 @@ export default function ProjectDetails() {
 
     let aiSummary: ExecutiveSummaryAI | null = null;
     try {
-      const res = await authFetch(`/api/projects/${projectId}/ai-executive-summary`);
+      const res = await fetchWithSession(`/api/projects/${projectId}/ai-executive-summary`);
       if (res.ok) {
         const data = await res.json();
         if (data?.summary && typeof data.summary === "object") {
@@ -294,11 +281,9 @@ export default function ProjectDetails() {
     }
 
     const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-    const token = localStorage.getItem("auth_token");
     let companyLogos: any;
     try {
-      const r = await fetch(`${API_BASE}/projects/${projectId}/company-logos`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-      await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(r, token);
+      const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/company-logos`);
       if (r.ok) companyLogos = await r.json();
     } catch {}
     const actList: ActivityForReport[] = (activities as any[]).map((a: any) => ({
@@ -344,7 +329,7 @@ export default function ProjectDetails() {
     setIsGeneratingSlides(true);
     let aiSummary: ExecutiveSummaryAI | null = null;
     try {
-      const res = await authFetch(`/api/projects/${projectId}/ai-executive-summary`);
+      const res = await fetchWithSession(`/api/projects/${projectId}/ai-executive-summary`);
       if (res.ok) {
         const data = await res.json();
         if (data?.summary && typeof data.summary === "object") {

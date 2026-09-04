@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useGetProject, processFetchResponse } from "@workspace/api-client-react";
+import { useGetProject, fetchWithSession } from "@workspace/api-client-react";
 import { useTabAccess } from "@/hooks/use-tab-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,20 +42,6 @@ interface ProjectExtension {
   createdAt: string;
 }
 
-async function authFetch(url: string, init?: RequestInit) {
-  const token = localStorage.getItem("auth_token");
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-  await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(response, token);
-  return response;
-}
-
 const extensionSchema = z.object({
   extensionDate: z.string().min(1, "تاريخ التمديد مطلوب"),
   daysAdded: z.coerce.number().min(1, "يجب أن يكون عدد الأيام أكبر من صفر"),
@@ -88,7 +74,7 @@ export default function ProjectExtensions() {
   const { data: extensions = [], isLoading } = useQuery<ProjectExtension[]>({
     queryKey,
     queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/extensions`);
+      const r = await fetchWithSession(`/api/projects/${projectId}/extensions`);
       if (!r.ok) throw new Error("فشل تحميل التمديدات");
       return r.json();
     },
@@ -97,7 +83,7 @@ export default function ProjectExtensions() {
 
   const createExt = useMutation({
     mutationFn: async (data: ExtensionFormValues) => {
-      const r = await authFetch(`/api/projects/${projectId}/extensions`, {
+      const r = await fetchWithSession(`/api/projects/${projectId}/extensions`, {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -119,7 +105,7 @@ export default function ProjectExtensions() {
 
   const deleteExt = useMutation({
     mutationFn: async (id: number) => {
-      const r = await authFetch(`/api/projects/${projectId}/extensions/${id}`, { method: "DELETE" });
+      const r = await fetchWithSession(`/api/projects/${projectId}/extensions/${id}`, { method: "DELETE" });
       if (!r.ok) throw new Error("فشل حذف التمديد");
     },
     onSuccess: () => {

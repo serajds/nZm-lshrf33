@@ -9,7 +9,7 @@ import {
   useDeleteActivity,
   useGetProject,
   getListActivitiesQueryKey,
-  processFetchResponse,
+  fetchWithSession,
 } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
 import type { Activity, ProjectSuspension, UpdateActivityBodyStatus } from "@workspace/api-client-react";
@@ -79,16 +79,6 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
-
-async function authFetch(url: string, init?: RequestInit) {
-  const token = localStorage.getItem("auth_token");
-  const response = await fetch(url, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
-  });
-  await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(response, token);
-  return response;
-}
 
 interface ActivityGroup {
   id: number;
@@ -368,7 +358,7 @@ export default function ProjectActivities() {
   const { data: groups = [] } = useQuery<ActivityGroup[]>({
     queryKey: groupsQueryKey,
     queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/activity-groups`);
+      const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -389,7 +379,7 @@ export default function ProjectActivities() {
 
   const createGroup = useMutation({
     mutationFn: async (data: { name: string; color: string }) => {
-      const r = await authFetch(`/api/projects/${projectId}/activity-groups`, {
+      const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups`, {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -407,7 +397,7 @@ export default function ProjectActivities() {
 
   const deleteGroup = useMutation({
     mutationFn: async (id: number) => {
-      const r = await authFetch(`/api/projects/${projectId}/activity-groups/${id}`, { method: "DELETE" });
+      const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups/${id}`, { method: "DELETE" });
       if (!r.ok) throw new Error("فشل حذف المجموعة");
     },
     onSuccess: () => {
@@ -419,7 +409,7 @@ export default function ProjectActivities() {
 
   const reorderActivities = useMutation({
     mutationFn: async (items: { id: number; sortOrder: number; groupId: number | null }[]) => {
-      const r = await authFetch(`/api/projects/${projectId}/activities/reorder`, {
+      const r = await fetchWithSession(`/api/projects/${projectId}/activities/reorder`, {
         method: "PUT",
         body: JSON.stringify({ items }),
       });
@@ -446,10 +436,11 @@ export default function ProjectActivities() {
   const assignToGroup = async (activityId: number, groupId: number | null) => {
     setUpdatingId(activityId);
     try {
-      await authFetch(`/api/projects/${projectId}/activities/${activityId}`, {
+      const response = await fetchWithSession(`/api/projects/${projectId}/activities/${activityId}`, {
         method: "PATCH",
         body: JSON.stringify({ groupId }),
       });
+      if (!response.ok) throw new Error(`Update failed with HTTP ${response.status}`);
       invalidate();
     } catch {
       toast({ variant: "destructive", title: "فشل نقل البند" });
@@ -460,7 +451,7 @@ export default function ProjectActivities() {
 
   const reorderGroupsMutation = useMutation({
     mutationFn: async (order: number[]) => {
-      const r = await authFetch(`/api/projects/${projectId}/activity-groups/reorder`, {
+      const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups/reorder`, {
         method: "PUT",
         body: JSON.stringify({ order }),
       });
@@ -505,7 +496,7 @@ export default function ProjectActivities() {
   const { data: suspensions = [] } = useQuery<ProjectSuspension[]>({
     queryKey: [`/api/projects/${projectId}/suspensions`],
     queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/suspensions`);
+      const r = await fetchWithSession(`/api/projects/${projectId}/suspensions`);
       if (!r.ok) return [];
       return r.json();
     },
@@ -582,13 +573,10 @@ export default function ProjectActivities() {
     try {
       const formData = new FormData();
       formData.append("file", importFile);
-      const token = localStorage.getItem("auth_token");
-      const res = await fetch(`/api/projects/${projectId}/activities/import`, {
+      const res = await fetchWithSession(`/api/projects/${projectId}/activities/import`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
-      await (processFetchResponse as (response: Response, requestToken: string | null) => Promise<void>)(res, token);
       const result = await res.json();
       if (!res.ok) {
         const errorMsg = result.errors?.length
