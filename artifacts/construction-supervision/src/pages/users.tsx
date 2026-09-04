@@ -17,6 +17,7 @@ import {
   getListProjectMembersQueryKey,
   getGetMemberTabPermissionsQueryKey,
   getGetMyProjectPermissionsQueryKey,
+  customFetch,
 } from "@workspace/api-client-react";
 import type { User, UpdateUserBody, CreateUserBody, CreateUserBodyRole, TabPermissionsMap, TabAccess } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
@@ -55,14 +56,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 
 const API = import.meta.env.VITE_API_URL || "/api";
-
-function authFetch(url: string, init?: RequestInit) {
-  const token = localStorage.getItem("auth_token");
-  return fetch(url, {
-    ...init,
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
-  });
-}
 
 interface Company {
   id: number;
@@ -143,11 +136,7 @@ export default function Users() {
 
   const { data: companies = [] } = useQuery<Company[]>({
     queryKey: ["companies"],
-    queryFn: async () => {
-      const res = await authFetch(`${API}/companies`);
-      if (!res.ok) return [];
-      return res.json();
-    },
+    queryFn: () => customFetch<Company[]>(`${API}/companies`, { responseType: "json" }),
   });
 
   const { data: projectsList = [] } = useListProjects();
@@ -237,11 +226,10 @@ export default function Users() {
 
   const { data: quickProjectGroups = [] } = useQuery<{ id: number; name: string; color: string; sortOrder: number }[]>({
     queryKey: [`/api/projects/${quickProjectIdNum}/activity-groups`],
-    queryFn: async () => {
-      const r = await authFetch(`${API}/projects/${quickProjectIdNum}/activity-groups`);
-      if (!r.ok) return [];
-      return r.json();
-    },
+    queryFn: () => customFetch<{ id: number; name: string; color: string; sortOrder: number }[]>(
+      `${API}/projects/${quickProjectIdNum}/activity-groups`,
+      { responseType: "json" },
+    ),
     enabled: Number.isFinite(quickProjectIdNum) && quickProjectIdNum > 0,
   });
   const sortedQuickGroups = useMemo(

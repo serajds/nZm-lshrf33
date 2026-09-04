@@ -33,6 +33,34 @@ export interface VerifiedToken extends JwtPayload {
   exp: number;
 }
 
+export type TokenRejectionReason = "expired" | "invalid";
+export type TokenDiagnostic = {
+  reason: TokenRejectionReason;
+  issuedAt?: number;
+  expiresAt?: number;
+  ageSeconds?: number;
+  expiredBySeconds?: number;
+};
+
+export function diagnoseRejectedToken(token: string, nowSec = Math.floor(Date.now() / 1000)): TokenDiagnostic {
+  try {
+    const decoded = jwt.decode(token);
+    if (!decoded || typeof decoded === "string") return { reason: "invalid" };
+    const issuedAt = typeof decoded.iat === "number" ? decoded.iat : undefined;
+    const expiresAt = typeof decoded.exp === "number" ? decoded.exp : undefined;
+    return {
+      reason: expiresAt !== undefined && expiresAt <= nowSec ? "expired" : "invalid",
+      issuedAt,
+      expiresAt,
+      ageSeconds: issuedAt === undefined ? undefined : Math.max(0, nowSec - issuedAt),
+      expiredBySeconds:
+        expiresAt !== undefined && expiresAt <= nowSec ? nowSec - expiresAt : undefined,
+    };
+  } catch {
+    return { reason: "invalid" };
+  }
+}
+
 export function verifyToken(token: string): JwtPayload | null {
   try {
     return jwt.verify(token, JWT_SECRET) as JwtPayload;

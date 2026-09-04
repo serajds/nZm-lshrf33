@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, ReactNode } from "react";
-import { useGetMe, useLogin, useLogout, useRegister, setUnauthorizedHandler } from "@workspace/api-client-react";
+import { createConfirmedUnauthorizedHandler, useGetMe, useLogin, useLogout, useRegister, setUnauthorizedHandler, processFetchResponse } from "@workspace/api-client-react";
 import type { User, LoginBody, RegisterBody } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -24,20 +24,41 @@ const AuthContext = createContext<AuthContextType | null>(null);
 // still revalidates in the background and updates the UI silently if
 // anything changed (or kicks the user to /login if the token expired).
 const USER_CACHE_KEY = "auth_user_cache";
+async function confirmCurrentTokenRejected(token: string): Promise<boolean> {
+  try {
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const response = await fetch(`${base}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (response.status !== 401) {
+      await processFetchResponse(response, token);
+    }
+    return response.status === 401;
+  } catch {
+    // A network failure cannot prove that credentials are invalid.
+    return false;
+  }
+}
 
-function readCachedUser(): User | undefined {
+type CachedUserEnvelope = { token: string; user: User };
+
+function readCachedUser(token: string): User | undefined {
   try {
     const raw = localStorage.getItem(USER_CACHE_KEY);
     if (!raw) return undefined;
-    return JSON.parse(raw) as User;
+    const cached = JSON.parse(raw) as CachedUserEnvelope;
+    return cached?.token === token ? cached.user : undefined;
   } catch {
     return undefined;
   }
 }
 
-function writeCachedUser(user: User | null) {
+function writeCachedUser(user: User | null, token?: string | null) {
   try {
-    if (user) localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+    if (user && token) {
+      localStorage.setItem(USER_CACHE_KEY, JSON.stringify({ token, user } satisfies CachedUserEnvelope));
+    }
     else localStorage.removeItem(USER_CACHE_KEY);
   } catch {
     // localStorage may be full or unavailable (private mode) — non-fatal.
@@ -52,11 +73,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Read once per token change. We don't depend on `user` here — that would
   // create a write/read loop with the cache-update effect below.
   const cachedUser = useMemo<User | undefined>(
-    () => (token ? readCachedUser() : undefined),
+    () => (token ? readCachedUser(token) : undefined),
     [token],
   );
 
-  const { data: user, isLoading: isUserLoading, error } = useGetMe({
+  const { data: user, isLoading: isUserLoading } = useGetMe({
     query: {
       enabled: !!token,
       retry: false,
@@ -75,23 +96,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Persist the freshest /auth/me payload so the next app launch is instant.
   useEffect(() => {
-    if (user) writeCachedUser(user);
-  }, [user]);
-
-  // Only a REAL 401/403 from the server means the token is invalid. Network
-  // failures, 5xx responses, or malformed payloads must NOT log the user out —
-  // doing so previously caused a login loop when a transient error hit
-  // /auth/me right after login (the token was wiped and the user bounced
-  // straight back to /login).
-  useEffect(() => {
-    if (!error) return;
-    const status = (error as { status?: number }).status;
-    if (status === 401 || status === 403) {
-      localStorage.removeItem("auth_token");
-      writeCachedUser(null);
-      setToken(null);
-    }
-  }, [error]);
+    if (user) writeCachedUser(user, token);
+  }, [user, token]);
 
   // Keep the in-memory token in sync with the storage layer. The HTTP client
   // dispatches `auth-token-renewed` whenever the server rolls the session
@@ -100,7 +106,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const sync = () => {
       const stored = localStorage.getItem("auth_token");
-      setToken((current) => (current === stored ? current : stored));
+      setToken((current) => {
+        if (current === stored) return current;
+        // A token changed by another tab may belong to a different account.
+        // Discard identity-scoped query data before rendering with it.
+        queryClient.clear();
+        return stored;
+      });
     };
     const onRenewed = (e: Event) => {
       const detail = (e as CustomEvent<string>).detail;
@@ -112,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("storage", sync);
       window.removeEventListener("auth-token-renewed", onRenewed);
     };
-  }, []);
+  }, [queryClient]);
 
   // Central 401 handler: any time the API rejects us for being unauthorized,
   // we clear local credentials, mark the session as expired so the login
@@ -120,25 +132,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // the silent "empty list" / "project not found" states that used to appear
   // when the JWT expired mid-session.
   useEffect(() => {
-    setUnauthorizedHandler(() => {
-      const hadToken = !!localStorage.getItem("auth_token");
-      if (!hadToken) return;
-      try {
-        const here = window.location.pathname + window.location.search;
-        // Don't store /login itself as a return path.
-        if (!here.endsWith("/login")) {
-          sessionStorage.setItem("auth_return_to", here);
+    setUnauthorizedHandler(createConfirmedUnauthorizedHandler({
+      getCurrentToken: () => localStorage.getItem("auth_token"),
+      confirmRejected: confirmCurrentTokenRejected,
+      onConfirmed: () => {
+        try {
+          const here = window.location.pathname + window.location.search;
+          // Don't store /login itself as a return path.
+          if (!here.endsWith("/login")) {
+            sessionStorage.setItem("auth_return_to", here);
+          }
+          sessionStorage.setItem(SESSION_EXPIRED_FLAG, "1");
+        } catch {
+          // sessionStorage may be unavailable — non-fatal.
         }
-        sessionStorage.setItem(SESSION_EXPIRED_FLAG, "1");
-      } catch {
-        // sessionStorage may be unavailable — non-fatal.
-      }
-      localStorage.removeItem("auth_token");
-      writeCachedUser(null);
-      setToken(null);
-      queryClient.clear();
-      setLocation("/login");
-    });
+        localStorage.removeItem("auth_token");
+        writeCachedUser(null);
+        setToken(null);
+        queryClient.clear();
+        setLocation("/login");
+      },
+    }));
     return () => setUnauthorizedHandler(null);
   }, [queryClient, setLocation]);
 
@@ -168,10 +182,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (data: LoginBody) => {
     try {
       const result = await loginMutation.mutateAsync({ data });
+      // Login can switch accounts without an explicit logout. Remove every
+      // identity-scoped query before exposing the new token/user.
+      queryClient.clear();
       localStorage.setItem("auth_token", result.token);
       // Seed the cache from the login response so the post-login redirect
       // doesn't flash a loading screen.
-      if (result.user) writeCachedUser(result.user);
+      if (result.user) writeCachedUser(result.user, result.token);
       setToken(result.token);
       toast({
         title: "تم تسجيل الدخول بنجاح",
@@ -214,7 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: e?.data?.error || "تأكد من رقم الهاتف وكلمة المرور",
       });
     }
-  }, [loginMutation, setLocation, toast]);
+  }, [loginMutation, queryClient, setLocation, toast]);
 
   const register = useCallback(async (data: RegisterBody) => {
     try {

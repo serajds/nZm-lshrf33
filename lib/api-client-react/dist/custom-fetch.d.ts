@@ -4,8 +4,13 @@ export type CustomFetchOptions = RequestInit & {
 export type ErrorType<T = unknown> = ApiError<T>;
 export type BodyType<T> = T;
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
-export type AuthTokenSaver = (token: string) => Promise<void> | void;
-export type UnauthorizedHandler = (response: Response) => void;
+export type AuthTokenSaver = (token: string, requestToken: string | null) => Promise<void> | void;
+export type UnauthorizedHandler = (response: Response, requestToken: string | null) => Promise<void> | void;
+export type ConfirmedUnauthorizedOptions = {
+    getCurrentToken: () => string | null;
+    confirmRejected: (token: string) => Promise<boolean>;
+    onConfirmed: (token: string) => Promise<void> | void;
+};
 /**
  * Set a base URL that is prepended to every relative request URL
  * (i.e. paths that start with `/`).
@@ -45,6 +50,12 @@ export declare function setAuthTokenSaver(saver: AuthTokenSaver | null): void;
  */
 export declare function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void;
 /**
+ * Build a race-safe 401 handler. A single response is treated as a hint, not
+ * proof: the current token is checked once more, concurrent confirmations are
+ * merged, and stale responses cannot terminate a newer session.
+ */
+export declare function createConfirmedUnauthorizedHandler(options: ConfirmedUnauthorizedOptions): UnauthorizedHandler;
+/**
  * Run the same renewed-token + unauthorized-handler pipeline that
  * `customFetch` runs internally, but against a `Response` produced by a
  * manual `fetch` call.  Use this from one-off query functions that cannot
@@ -52,7 +63,7 @@ export declare function setUnauthorizedHandler(handler: UnauthorizedHandler | nu
  * session renewal and the centralized 401 redirect instead of swallowing
  * auth failures as empty data.
  */
-export declare function processFetchResponse(response: Response): Promise<void>;
+export declare function processFetchResponse(response: Response, requestToken?: string | null): Promise<void>;
 export declare class ApiError<T = unknown> extends Error {
     readonly name = "ApiError";
     readonly status: number;

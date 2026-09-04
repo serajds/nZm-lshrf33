@@ -26,17 +26,45 @@ export function getToken(): string | null { return _tokenGetter(); }
 // expire after its original 7-day TTL and they'd be kicked out.
 const RENEWED_TOKEN_HEADER = "X-Renewed-Token";
 
-let _tokenSaver: (token: string) => void = () => {};
-export function setTokenSaver(s: (token: string) => void): void {
+let _tokenSaver: (token: string, tokenUsed: string) => void = () => {};
+export function setTokenSaver(s: (token: string, tokenUsed: string) => void): void {
   _tokenSaver = s;
 }
 
 // Invoked whenever a response comes back 401 (token missing/invalid/expired).
 // Central place to wire "session expired" behaviour (clear credentials +
 // redirect to login) instead of leaving each screen stuck on an error.
-let _unauthorizedHandler: () => void = () => {};
-export function setUnauthorizedHandler(h: () => void): void {
+let _unauthorizedHandler: (tokenUsed: string) => void = () => {};
+export function setUnauthorizedHandler(h: (tokenUsed: string) => void): void {
   _unauthorizedHandler = h;
+}
+
+let _confirmingUnauthorizedToken: string | null = null;
+async function confirmUnauthorized(tokenUsed: string): Promise<void> {
+  if (_confirmingUnauthorizedToken === tokenUsed) return;
+  _confirmingUnauthorizedToken = tokenUsed;
+  try {
+    const res = await fetch(`${BASE_URL}/api/auth/me`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${tokenUsed}`,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    });
+    if (tokenUsed !== _tokenGetter()) return;
+    const renewed = res.headers.get(RENEWED_TOKEN_HEADER);
+    if (renewed) {
+      try { _tokenSaver(renewed, tokenUsed); } catch { /* best-effort */ }
+      return;
+    }
+    if (res.status === 401 && tokenUsed === _tokenGetter()) {
+      try { _unauthorizedHandler(tokenUsed); } catch { /* never break caller flow */ }
+    }
+  } catch {
+    // A transport failure cannot confirm that credentials are invalid.
+  } finally {
+    if (_confirmingUnauthorizedToken === tokenUsed) _confirmingUnauthorizedToken = null;
+  }
 }
 
 // Run the renewed-token + unauthorized pipeline against any fetch Response,
@@ -53,10 +81,15 @@ function processResponse(res: Response, tokenUsed: string | null): void {
   if (!tokenUsed || tokenUsed !== _tokenGetter()) return;
   const renewed = res.headers.get(RENEWED_TOKEN_HEADER);
   if (renewed) {
-    try { _tokenSaver(renewed); } catch { /* best-effort */ }
+    try { _tokenSaver(renewed, tokenUsed); } catch { /* best-effort */ }
+    // A response carrying a valid replacement token is not evidence that the
+    // session represented by tokenUsed has expired.
+    return;
   }
-  if (res.status === 401) {
-    try { _unauthorizedHandler(); } catch { /* never break caller flow */ }
+  if (res.status === 401 && tokenUsed === _tokenGetter()) {
+    // Revalidate before clearing credentials. This makes the result independent
+    // of whether a concurrent renewed-token response or this 401 arrives first.
+    void confirmUnauthorized(tokenUsed);
   }
 }
 
@@ -418,5 +451,9 @@ export const apiDeleteReportComment = (projectId: number, reportId: number, id: 
 // Push
 export const apiRegisterExpoPushToken = (token: string, platform: string, deviceName: string) =>
   request<{ ok: true }>("/api/push/expo/register", { method: "POST", body: JSON.stringify({ token, platform, deviceName }) });
-export const apiUnregisterExpoPushToken = (token: string) =>
-  request<{ ok: true }>("/api/push/expo/unregister", { method: "POST", body: JSON.stringify({ token }) });
+export const apiUnregisterExpoPushToken = (pushToken: string, sessionToken?: string | null) =>
+  request<{ ok: true }>("/api/push/expo/unregister", {
+    method: "POST",
+    body: JSON.stringify({ token: pushToken }),
+    headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
+  });

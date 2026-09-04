@@ -10,6 +10,7 @@ import {
   getListProjectMembersQueryKey,
   getGetMemberTabPermissionsQueryKey,
   getGetMyProjectPermissionsQueryKey,
+  customFetch,
 } from "@workspace/api-client-react";
 import type { ProjectMember as ApiProjectMember } from "@workspace/api-client-react";
 
@@ -56,14 +57,6 @@ interface ActivityGroup {
   sortOrder: number;
 }
 
-function authFetch(url: string, init?: RequestInit) {
-  const token = localStorage.getItem("auth_token");
-  return fetch(url, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
-  });
-}
-
 interface ProjectMembersProps {
   projectId: number;
 }
@@ -91,11 +84,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
 
   const { data: groups = [] } = useQuery<ActivityGroup[]>({
     queryKey: [`/api/projects/${projectId}/activity-groups`],
-    queryFn: async () => {
-      const r = await authFetch(`/api/projects/${projectId}/activity-groups`);
-      if (!r.ok) return [];
-      return r.json();
-    },
+    queryFn: () => customFetch<ActivityGroup[]>(`/api/projects/${projectId}/activity-groups`, { responseType: "json" }),
     enabled: !!projectId,
   });
 
@@ -113,12 +102,11 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
 
   const updateGroupsMutation = useMutation({
     mutationFn: async ({ memberId, groupIds }: { memberId: number; groupIds: number[] }) => {
-      const r = await authFetch(`/api/projects/${projectId}/members/${memberId}/groups`, {
+      return customFetch(`/api/projects/${projectId}/members/${memberId}/groups`, {
         method: "PUT",
         body: JSON.stringify({ groupIds }),
+        responseType: "json",
       });
-      if (!r.ok) throw new Error("فشل تحديث المجموعات");
-      return r.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: getListProjectMembersQueryKey(projectId) });

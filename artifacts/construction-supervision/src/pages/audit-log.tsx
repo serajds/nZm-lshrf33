@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { customFetch } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,13 +31,7 @@ type AuditEntry = {
 };
 
 async function authFetch(url: string): Promise<AuditEntry[]> {
-  const token = localStorage.getItem("auth_token");
-  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  const data = await res.json();
+  const data = await customFetch<AuditEntry[]>(url, { responseType: "json" });
   return Array.isArray(data) ? data : [];
 }
 

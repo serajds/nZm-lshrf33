@@ -94,13 +94,13 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   }
 }
 
-export async function unregisterCurrentToken(): Promise<void> {
+export async function unregisterCurrentToken(sessionToken?: string | null): Promise<void> {
   // Recover the token from storage if it was registered in a prior session
   // and we haven't re-initialized this module yet — keeps unregister
   // deterministic across app restarts.
   const token = await loadStoredToken();
   if (!token) return;
-  try { await apiUnregisterExpoPushToken(token); } catch { /* ignore */ }
+  try { await apiUnregisterExpoPushToken(token, sessionToken); } catch { /* ignore */ }
   _currentToken = null;
   await persistToken(null);
 }

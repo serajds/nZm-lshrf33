@@ -1,4 +1,4 @@
-import { useGetDashboardSummary, useCreateBackup, useListBackups, useDeleteBackup } from "@workspace/api-client-react";
+import { useGetDashboardSummary, useCreateBackup, useListBackups, useDeleteBackup, customFetch } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -675,11 +675,10 @@ export default function Dashboard() {
                       <div className="flex items-center gap-1 shrink-0">
                         <button
                           onClick={() => {
-                            const token = localStorage.getItem("auth_token");
-                            fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/backup/download/${b.filename}`, {
-                              headers: { Authorization: `Bearer ${token}` },
-                            })
-                              .then(r => r.blob())
+                            customFetch<Blob>(
+                              `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/backup/download/${b.filename}`,
+                              { responseType: "blob" },
+                            )
                               .then(blob => {
                                 const url = URL.createObjectURL(blob);
                                 const a = document.createElement("a");

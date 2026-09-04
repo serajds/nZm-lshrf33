@@ -25,19 +25,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, Edit2, Building2, Upload, Phone, Mail, MapPin, Image } from "lucide-react";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { customFetch } from "@workspace/api-client-react";
 
 const API = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-
-function authFetch(url: string, init?: RequestInit) {
-  const token = localStorage.getItem("auth_token");
-  return fetch(url, {
-    ...init,
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-}
 
 interface Company {
   id: number;
@@ -87,11 +77,7 @@ export default function Companies() {
 
   const { data: companies = [], isLoading } = useQuery<Company[]>({
     queryKey: ["companies"],
-    queryFn: async () => {
-      const res = await authFetch(`${API}/companies`);
-      if (!res.ok) throw new Error("فشل تحميل الشركات");
-      return res.json();
-    },
+    queryFn: () => customFetch<Company[]>(`${API}/companies`, { responseType: "json" }),
   });
 
   const form = useForm<CompanyFormValues>({
@@ -140,9 +126,7 @@ export default function Companies() {
       if (values.address) formData.append("address", values.address);
       if (logoFile) formData.append("logo", logoFile);
 
-      const res = await authFetch(`${API}/companies`, { method: "POST", body: formData });
-      if (!res.ok) throw new Error("فشل إنشاء الشركة");
-      return res.json();
+      return customFetch<Company>(`${API}/companies`, { method: "POST", body: formData, responseType: "json" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["companies"] });
@@ -163,9 +147,7 @@ export default function Companies() {
       if (values.address) formData.append("address", values.address);
       if (logoFile) formData.append("logo", logoFile);
 
-      const res = await authFetch(`${API}/companies/${editingCompany.id}`, { method: "PATCH", body: formData });
-      if (!res.ok) throw new Error("فشل تحديث الشركة");
-      return res.json();
+      return customFetch<Company>(`${API}/companies/${editingCompany.id}`, { method: "PATCH", body: formData, responseType: "json" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["companies"] });
@@ -177,8 +159,7 @@ export default function Companies() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const res = await authFetch(`${API}/companies/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("فشل حذف الشركة");
+      await customFetch(`${API}/companies/${id}`, { method: "DELETE" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["companies"] });

@@ -13,4 +13,8 @@ The API server (`artifacts/api-server/src/middlewares/auth.ts`) issues a 7-day J
 
 **Token-aware guard (critical):** renewal-save and 401-logout must only fire when the bearer token that was sent with THAT request still equals the current token at response time. Without this, a stale in-flight request (old token) resolving after re-login can overwrite the fresh token or force an erroneous logout, and a login call (no session token) returning 401 for bad credentials would wrongly trigger the "session expired" flow.
 
-**How to apply:** capture the token used per request and pass it to the response processor; compare against the live token getter before acting. Offline-queue flush must treat 401 as "keep queued + stop flushing" (re-auth already triggered centrally), never as a permanent drop.
+**Atomic identity rule:** persist the token and its user identity in one credential envelope. During startup validation, the `/auth/me` request may itself return a renewed token; bootstrap must adopt that renewal without treating it as a competing login, then commit the renewed token and validated user together.
+
+**Why:** split token/user writes can expose one account with another account's token after interruption. Separately, incrementing the auth revision for bootstrap's own renewal makes bootstrap abort and can leave the app stuck before `ready=true`.
+
+**How to apply:** capture the token used per request and pass it to the response processor; compare against the live token getter before acting. Give startup hydration ownership of renewals from its validation request, while keeping revision/CAS guards for real login/logout races. Offline-queue flush must treat 401 as "keep queued + stop flushing" (re-auth already triggered centrally), never as a permanent drop.
