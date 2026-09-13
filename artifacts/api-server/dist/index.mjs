@@ -124593,6 +124593,45 @@ router5.post("/projects/:projectId/reports", requireProjectAccess("projectId"), 
   logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "create", entityType: "report", entityId: report.id, entityName: `\u062A\u0642\u0631\u064A\u0631 #${nextNumber}`, projectId });
   res.status(201).json(report);
 });
+router5.post("/projects/:projectId/reports/:id/duplicate", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res) => {
+  const projectId = Number(req.params.projectId);
+  const sourceId = Number(req.params.id);
+  if (!Number.isSafeInteger(sourceId) || sourceId <= 0) {
+    res.status(400).json({ error: "\u0631\u0642\u0645 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
+  const copy = await db.transaction(async (tx) => {
+    await tx.execute(sql`LOCK TABLE reports IN SHARE ROW EXCLUSIVE MODE`);
+    const [source] = await tx.select().from(reportsTable).where(and(eq(reportsTable.id, sourceId), eq(reportsTable.projectId, projectId)));
+    if (!source) return null;
+    const [maximum] = await tx.select({ number: sql`COALESCE(MAX(${reportsTable.reportNumber}), 0)` }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
+    const [created] = await tx.insert(reportsTable).values({
+      projectId,
+      reportNumber: Number(maximum.number) + 1,
+      type: source.type,
+      reportDate: source.reportDate,
+      periodStart: source.periodStart,
+      periodEnd: source.periodEnd,
+      workDescription: source.workDescription,
+      progressPercentage: source.progressPercentage,
+      technicalNotes: source.technicalNotes,
+      recommendations: source.recommendations,
+      imageUrls: source.imageUrls,
+      imageGroups: source.imageGroups,
+      activitiesSnapshot: source.activitiesSnapshot,
+      status: "draft",
+      createdById: req.user?.userId ?? null
+    }).returning();
+    return created;
+  });
+  if (!copy) {
+    res.status(404).json({ error: "\u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    return;
+  }
+  const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
+  logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "create", entityType: "report", entityId: copy.id, entityName: `\u0646\u0633\u062E\u0629 \u0645\u0646 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 #${sourceId}`, projectId });
+  res.status(201).json(copy);
+});
 router5.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, async (req, res) => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;

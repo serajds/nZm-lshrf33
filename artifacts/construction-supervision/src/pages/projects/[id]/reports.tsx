@@ -53,7 +53,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, AlertCircle, Star, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2, Settings2, GripVertical } from "lucide-react";
+import { Copy, Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, AlertCircle, Star, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2, Settings2, GripVertical } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
@@ -426,6 +426,7 @@ export default function ProjectReports() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [copyingId, setCopyingId] = useState<number | null>(null);
   const [isAiDrafting, setIsAiDrafting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
@@ -626,6 +627,26 @@ export default function ProjectReports() {
       toast({ title: "تعذّر تحميل بنود التقرير", variant: "destructive" });
     } finally {
       setIsLoadingSnapshot(false);
+    }
+  };
+
+  const handleDuplicate = async (report: Report) => {
+    if (copyingId !== null) return;
+    setCopyingId(report.id);
+    try {
+      const copy = await customFetch<Report>(
+        `/api/projects/${projectId}/reports/${report.id}/duplicate`,
+        { method: "POST" },
+      );
+      queryClient.setQueryData(getGetReportQueryKey(projectId, copy.id), copy);
+      await queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
+      setSelectedReportId(null);
+      toast({ title: `تم إنشاء نسخة مستقلة برقم ${copy.reportNumber}`, description: "حُفظت كمسودة. يمكنك تعديل بياناتها وتواريخها الآن." });
+      await handleEdit(copy);
+    } catch {
+      toast({ title: "تعذّر نسخ التقرير", description: "يرجى التحقق من الاتصال والصلاحيات والمحاولة مجدداً.", variant: "destructive" });
+    } finally {
+      setCopyingId(null);
     }
   };
 
@@ -1654,6 +1675,9 @@ export default function ProjectReports() {
                 <>
                   <Button variant="outline" size="sm" className={btnClass} onClick={() => handleEdit(report)}>
                     <Edit2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> تعديل
+                  </Button>
+                  <Button variant="outline" size="sm" className={btnClass} onClick={() => handleDuplicate(report)} disabled={copyingId !== null} title="إنشاء نسخة مستقلة كمسودة وفتحها للتعديل">
+                    {copyingId === report.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />} نسخ التقرير
                   </Button>
                   <Button
                     variant="outline" size="sm"
