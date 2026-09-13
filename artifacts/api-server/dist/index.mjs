@@ -126332,12 +126332,21 @@ function ensurePage(doc, neededHeight) {
 router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
+  const requestedReportId = typeof req.query.reportId === "string" ? Number(req.query.reportId) : null;
+  if (requestedReportId !== null && (!Number.isSafeInteger(requestedReportId) || requestedReportId <= 0)) {
+    res.status(400).json({ error: "\u0631\u0642\u0645 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   if (!project) {
     res.status(404).json({ error: "\u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
-  const reports = await db.select().from(reportsTable).where(eq(reportsTable.projectId, projectId)).orderBy(reportsTable.reportDate);
+  const reports = await db.select().from(reportsTable).where(requestedReportId === null ? eq(reportsTable.projectId, projectId) : and(eq(reportsTable.projectId, projectId), eq(reportsTable.id, requestedReportId))).orderBy(reportsTable.reportDate);
+  if (requestedReportId !== null && reports.length === 0) {
+    res.status(404).json({ error: "\u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    return;
+  }
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder);
   const extensions = await db.select().from(projectExtensionsTable).where(eq(projectExtensionsTable.projectId, projectId)).orderBy(projectExtensionsTable.extensionDate);
   const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId)).orderBy(projectSuspensionsTable.startDate);
@@ -126349,7 +126358,9 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
       Title: `\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0634\u0627\u0645\u0644 - ${project.name}`,
       Author: "\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0625\u0634\u0631\u0627\u0641 \u0648\u0627\u0644\u0645\u062A\u0627\u0628\u0639\u0629"
     },
-    bufferPages: true
+    // A single report may contain hundreds of photos. Stream those pages as
+    // they are produced instead of retaining the whole document in memory.
+    bufferPages: requestedReportId === null
   });
   if (hasFont) {
     doc.registerFont("Amiri", AMIRI_FONT);
@@ -126360,7 +126371,8 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
     doc.fontSize(size).fillColor(color);
   };
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''report-${projectId}.pdf`);
+  const downloadName = requestedReportId === null ? `project-${projectId}-reports.pdf` : `report-${reports[0].reportNumber || requestedReportId}.pdf`;
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${downloadName}`);
   doc.pipe(res);
   doc.rect(0, 0, PAGE_W, 90).fill(C.primary);
   setFont(9, C.white);
@@ -126821,12 +126833,14 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
   doc.roundedRect(MARGIN, y, CONTENT_W, 50, 4).fill(C.light).stroke(C.border);
   setFont(9, C.textDark);
   doc.text(`\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0635\u062F\u0627\u0631: ${formatDate(/* @__PURE__ */ new Date())}  |  \u0627\u0644\u0645\u0634\u0631\u0648\u0639: ${project.name}`, MARGIN + 8, y + 27, { width: CONTENT_W - 16, align: "center" });
-  const pageCount = doc._pageBuffer?.length ?? 1;
-  for (let i = 0; i < pageCount; i++) {
-    doc.switchToPage(i);
-    if (hasFont) doc.font("Amiri");
-    doc.rect(0, PAGE_H - 28, PAGE_W, 28).fill(C.primary);
-    doc.fillColor(C.white).fontSize(8).text(`\u0635\u0641\u062D\u0629 ${i + 1} \u0645\u0646 ${pageCount}  |  \u0646\u0638\u0627\u0645 \u0627\u0644\u0625\u0634\u0631\u0627\u0641 \u0627\u0644\u0647\u0646\u062F\u0633\u064A`, MARGIN, PAGE_H - 18, { width: CONTENT_W, align: "center" });
+  if (requestedReportId === null) {
+    const pageCount = doc._pageBuffer?.length ?? 1;
+    for (let i = 0; i < pageCount; i++) {
+      doc.switchToPage(i);
+      if (hasFont) doc.font("Amiri");
+      doc.rect(0, PAGE_H - 28, PAGE_W, 28).fill(C.primary);
+      doc.fillColor(C.white).fontSize(8).text(`\u0635\u0641\u062D\u0629 ${i + 1} \u0645\u0646 ${pageCount}  |  \u0646\u0638\u0627\u0645 \u0627\u0644\u0625\u0634\u0631\u0627\u0641 \u0627\u0644\u0647\u0646\u062F\u0633\u064A`, MARGIN, PAGE_H - 18, { width: CONTENT_W, align: "center" });
+    }
   }
   doc.end();
 });

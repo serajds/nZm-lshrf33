@@ -58,10 +58,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Progress } from "@/components/ui/progress";
-import { downloadReportPdf, previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
+import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
 import { getAuthToken } from "@/lib/auth-session";
 import {
   ProtectedImage,
+  downloadProtectedAsset,
   openProtectedAsset,
   protectedAssetToDataUrl,
 } from "@/components/protected-image";
@@ -702,7 +703,7 @@ export default function ProjectReports() {
     }
   };
 
-  const handlePreview = async (report: Report, download = false) => {
+  const handlePreview = async (report: Report) => {
     if (!project) return;
     // The list endpoint strips the heavy `activitiesSnapshot` column to keep
     // payloads small, so the row we got from `useListReports` doesn't carry
@@ -728,7 +729,6 @@ export default function ProjectReports() {
       try {
         return await protectedAssetToDataUrl(url);
       } catch {
-        if (download) throw new Error("تعذّر تحميل إحدى صور التقرير");
         return "";
       }
     };
@@ -755,8 +755,7 @@ export default function ProjectReports() {
       status: (a.status as ActivityForReport["status"]) ?? "not_started",
     }));
     const apiBase = API_BASE.replace("/api", "");
-    const renderReport = download ? downloadReportPdf : previewReport;
-    await renderReport({
+    previewReport({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
       contractor: project.contractor,
@@ -789,9 +788,13 @@ export default function ProjectReports() {
     if (downloadingId !== null) return;
     setDownloadingId(report.id);
     try {
-      await handlePreview(report, true);
-    } catch {
-      toast({ title: "تعذّر تحميل PDF", description: "تحقق من الاتصال ثم حاول مجدداً. لم يتم تجاهل صور التقرير.", variant: "destructive" });
+      await downloadProtectedAsset(
+        `/api/projects/${projectId}/reports/export-pdf?reportId=${report.id}`,
+        `report-${report.reportNumber || report.id}.pdf`,
+      );
+    } catch (error) {
+      console.error("Report PDF download failed", error);
+      toast({ title: "تعذّر تحميل PDF", description: "تعذّر إنشاء الملف على الخادم. حاول مجدداً.", variant: "destructive" });
     } finally {
       setDownloadingId(null);
     }
