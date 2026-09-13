@@ -732,10 +732,13 @@ export default function ProjectReports() {
         return "";
       }
     };
-    const imageUrls = (await Promise.all(
-      (fullReport.imageUrls ?? []).map(loadPreviewImage),
-    )).filter(Boolean);
     const rawGroups = (fullReport.imageGroups as ImageGroup[] | null | undefined) ?? null;
+    // Reports with named groups also store a flattened imageUrls list for
+    // compatibility. Convert only one representation to avoid holding every
+    // large data URL twice during preview.
+    const imageUrls = rawGroups && rawGroups.length > 0
+      ? []
+      : (await Promise.all((fullReport.imageUrls ?? []).map(loadPreviewImage))).filter(Boolean);
     const imageGroups = rawGroups && rawGroups.length > 0
       ? await Promise.all(rawGroups.map(async (group) => ({
           category: group.category,
