@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable, projectSuspensionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
 import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcActivityPlannedProgress, isActivityDelayed, roundPercent } from "../lib/progress";
 import PDFDocument from "pdfkit";
@@ -97,6 +97,13 @@ function ensurePage(doc: InstanceType<typeof PDFDocument>, neededHeight: number)
 router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
+  const requestedReportId = typeof req.query.reportId === "string"
+    ? Number(req.query.reportId)
+    : null;
+  if (requestedReportId !== null && (!Number.isSafeInteger(requestedReportId) || requestedReportId <= 0)) {
+    res.status(400).json({ error: "رقم التقرير غير صالح" });
+    return;
+  }
 
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   if (!project) {
@@ -105,8 +112,14 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   }
 
   const reports = await db.select().from(reportsTable)
-    .where(eq(reportsTable.projectId, projectId))
+    .where(requestedReportId === null
+      ? eq(reportsTable.projectId, projectId)
+      : and(eq(reportsTable.projectId, projectId), eq(reportsTable.id, requestedReportId)))
     .orderBy(reportsTable.reportDate);
+  if (requestedReportId !== null && reports.length === 0) {
+    res.status(404).json({ error: "التقرير غير موجود" });
+    return;
+  }
 
   const activities = await db.select().from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId))
@@ -129,7 +142,9 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
       Title: `تقرير المشروع الشامل - ${project.name}`,
       Author: "إدارة الإشراف والمتابعة",
     },
-    bufferPages: true,
+    // A single report may contain hundreds of photos. Stream those pages as
+    // they are produced instead of retaining the whole document in memory.
+    bufferPages: requestedReportId === null,
   });
 
   if (hasFont) { doc.registerFont("Amiri", AMIRI_FONT); doc.font("Amiri"); }
@@ -139,7 +154,10 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   };
 
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''report-${projectId}.pdf`);
+  const downloadName = requestedReportId === null
+    ? `project-${projectId}-reports.pdf`
+    : `report-${reports[0].reportNumber || requestedReportId}.pdf`;
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${downloadName}`);
   doc.pipe(res);
 
   // ════════════════════════════════════════════
@@ -721,13 +739,15 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   doc.text(`تاريخ الإصدار: ${formatDate(new Date())}  |  المشروع: ${project.name}`, MARGIN + 8, y + 27, { width: CONTENT_W - 16, align: "center" });
 
   // Page numbers
-  const pageCount = (doc as { _pageBuffer?: unknown[] })._pageBuffer?.length ?? 1;
-  for (let i = 0; i < pageCount; i++) {
-    doc.switchToPage(i);
-    if (hasFont) doc.font("Amiri");
-    doc.rect(0, PAGE_H - 28, PAGE_W, 28).fill(C.primary);
-    doc.fillColor(C.white).fontSize(8)
-      .text(`صفحة ${i + 1} من ${pageCount}  |  نظام الإشراف الهندسي`, MARGIN, PAGE_H - 18, { width: CONTENT_W, align: "center" });
+  if (requestedReportId === null) {
+    const pageCount = (doc as { _pageBuffer?: unknown[] })._pageBuffer?.length ?? 1;
+    for (let i = 0; i < pageCount; i++) {
+      doc.switchToPage(i);
+      if (hasFont) doc.font("Amiri");
+      doc.rect(0, PAGE_H - 28, PAGE_W, 28).fill(C.primary);
+      doc.fillColor(C.white).fontSize(8)
+        .text(`صفحة ${i + 1} من ${pageCount}  |  نظام الإشراف الهندسي`, MARGIN, PAGE_H - 18, { width: CONTENT_W, align: "center" });
+    }
   }
 
   doc.end();
