@@ -64,6 +64,9 @@ function esc(str: string): string {
 
 function escAttr(url: string): string {
   const cleaned = url.replace(/["'<>]/g, "");
+  if (/^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(cleaned)) {
+    return cleaned;
+  }
   if (/^(https?:\/\/|\/)/i.test(cleaned)) return esc(cleaned);
   return "";
 }
@@ -92,7 +95,7 @@ function daysBetween(a: string | null | undefined, b: string | null | undefined)
   return Math.round((db.getTime() - da.getTime()) / 86400000);
 }
 
-function buildPrintHTML(data: ReportPdfData): string {
+export function buildPrintHTML(data: ReportPdfData): string {
   const typeLbl = data.reportType === "weekly" ? "أسبوعي" : "شهري";
   const pct = Math.min(100, Math.max(0, data.progressPercentage));
   const plannedPct = data.plannedProgress != null ? Math.min(100, Math.max(0, data.plannedProgress)) : null;
