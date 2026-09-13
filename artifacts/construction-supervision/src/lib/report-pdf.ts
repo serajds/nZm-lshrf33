@@ -599,6 +599,57 @@ export function previewReport(data: ReportPdfData): void {
   win.document.close();
 }
 
+/** Render in an isolated document so report styles never affect the app. */
+export async function downloadReportPdf(data: ReportPdfData): Promise<void> {
+  const { default: bundleUrl } = await import("html2pdf.js/dist/html2pdf.bundle.min.js?url");
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;left:-10000px;top:0;width:900px;height:1000px;border:0";
+  document.body.appendChild(frame);
+  try {
+    const doc = frame.contentDocument!;
+    doc.open();
+    doc.write(buildPrintHTML(data));
+    doc.close();
+    doc.querySelector(".toolbar")?.remove();
+    await doc.fonts.ready;
+    await Promise.all(Array.from(doc.images).map(async (image) => {
+      await image.decode();
+    }));
+    await new Promise<void>((resolve, reject) => {
+      const script = doc.createElement("script");
+      script.src = new URL(bundleUrl, window.location.href).href;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("تعذّر تحميل أداة PDF"));
+      doc.head.appendChild(script);
+    });
+    const pdfWindow = frame.contentWindow as unknown as {
+      JSON: typeof JSON;
+      html2pdf: () => {
+        set: (options: object) => { from: (element: HTMLElement) => { outputPdf: (type: "blob") => Promise<Blob> } };
+      };
+    };
+    const blob = await pdfWindow.html2pdf().set(pdfWindow.JSON.parse(JSON.stringify({
+      filename: `report-${data.reportNumber ?? data.reportId}.pdf`,
+      margin: [10, 10, 10, 10],
+      image: { type: "jpeg", quality: 0.95 },
+      html2canvas: { scale: 1.5, useCORS: true, backgroundColor: "#ffffff", windowWidth: 900 },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      pagebreak: { mode: ["css", "legacy"], avoid: ["tr", ".avoid-break"] },
+    }))).from(doc.body).outputPdf("blob");
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `report-${data.reportNumber ?? data.reportId}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } finally {
+    frame.remove();
+  }
+}
+
 export interface ExecutiveSummaryAI {
   headline: string;
   status: string;

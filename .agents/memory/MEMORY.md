@@ -7,3 +7,4 @@
 - [Vite workspace export cache](vite-workspace-export-cache.md) — after adding exports to an optimized workspace package, clear the web artifact’s Vite cache before restarting.
 - [Session generations and authenticated caches](session-generation-cache.md) — bind responses to request tokens; never shared-cache protected API or upload responses.
 - [Vite browser-test harness imports](vite-browser-harness-imports.md) — dynamic inline HTML must use /@fs plus fs.allow for workspace sources; bare imports are not transformed.
+- [PDF browser realms](pdf-browser-realms.md) — iframe rendering needs same-realm options and parent-document Blob downloads.
