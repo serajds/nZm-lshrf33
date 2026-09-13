@@ -62,7 +62,6 @@ import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/r
 import { getAuthToken } from "@/lib/auth-session";
 import {
   ProtectedImage,
-  downloadProtectedAsset,
   openProtectedAsset,
   protectedAssetToDataUrl,
 } from "@/components/protected-image";
@@ -428,7 +427,6 @@ export default function ProjectReports() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [copyingId, setCopyingId] = useState<number | null>(null);
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [isAiDrafting, setIsAiDrafting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
@@ -785,22 +783,6 @@ export default function ProjectReports() {
       apiBase,
       reportSignatures: (project as any).reportSignatures ?? null,
     });
-  };
-
-  const handleDownloadPdf = async (report: Report) => {
-    if (downloadingId !== null) return;
-    setDownloadingId(report.id);
-    try {
-      await downloadProtectedAsset(
-        `/api/projects/${projectId}/reports/export-pdf?reportId=${report.id}`,
-        `report-${report.reportNumber || report.id}.pdf`,
-      );
-    } catch (error) {
-      console.error("Report PDF download failed", error);
-      toast({ title: "تعذّر تحميل PDF", description: "تعذّر إنشاء الملف على الخادم. حاول مجدداً.", variant: "destructive" });
-    } finally {
-      setDownloadingId(null);
-    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, groupIndex: number) => {
@@ -1660,7 +1642,7 @@ export default function ProjectReports() {
                 className={`text-violet-600 hover:bg-violet-50 hover:text-violet-700 border-violet-200 ${btnClass}`}
                 onClick={() => handlePreview(report)}
                 disabled={previewLoadingId === report.id}
-                title="معاينة وطباعة"
+                title="معاينة وحفظ PDF"
               >
                 {previewLoadingId === report.id ? (
                   <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
@@ -1668,10 +1650,6 @@ export default function ProjectReports() {
                   <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 )}{" "}
                 <span className="hidden sm:inline">معاينة و</span>طباعة
-              </Button>
-              <Button variant="outline" size="sm" className={btnClass} onClick={() => handleDownloadPdf(report)} disabled={downloadingId !== null}>
-                {downloadingId === report.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-                {downloadingId === report.id ? "جارٍ تجهيز PDF…" : "تحميل PDF"}
               </Button>
               {canApprove && (
                 report.status === "draft" ? (
