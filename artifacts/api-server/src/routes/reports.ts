@@ -458,6 +458,49 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
   res.status(201).json(report);
 });
 
+router.post("/projects/:projectId/reports/:id/duplicate", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res): Promise<void> => {
+  const projectId = Number(req.params.projectId);
+  const sourceId = Number(req.params.id);
+  if (!Number.isSafeInteger(sourceId) || sourceId <= 0) {
+    res.status(400).json({ error: "رقم التقرير غير صالح" });
+    return;
+  }
+  const copy = await db.transaction(async (tx) => {
+    // Serialize report numbering with all report inserts in this transaction.
+    await tx.execute(sql`LOCK TABLE reports IN SHARE ROW EXCLUSIVE MODE`);
+    const [source] = await tx.select().from(reportsTable)
+      .where(and(eq(reportsTable.id, sourceId), eq(reportsTable.projectId, projectId)));
+    if (!source) return null;
+    const [maximum] = await tx.select({ number: sql<number>`COALESCE(MAX(${reportsTable.reportNumber}), 0)` })
+      .from(reportsTable).where(eq(reportsTable.projectId, projectId));
+    const [created] = await tx.insert(reportsTable).values({
+      projectId,
+      reportNumber: Number(maximum.number) + 1,
+      type: source.type,
+      reportDate: source.reportDate,
+      periodStart: source.periodStart,
+      periodEnd: source.periodEnd,
+      workDescription: source.workDescription,
+      progressPercentage: source.progressPercentage,
+      technicalNotes: source.technicalNotes,
+      recommendations: source.recommendations,
+      imageUrls: source.imageUrls,
+      imageGroups: source.imageGroups,
+      activitiesSnapshot: source.activitiesSnapshot,
+      status: "draft",
+      createdById: req.user?.userId ?? null,
+    }).returning();
+    return created;
+  });
+  if (!copy) {
+    res.status(404).json({ error: "التقرير غير موجود" });
+    return;
+  }
+  const { logAudit } = await import("../lib/audit");
+  logAudit({ userId: req.user?.userId, userName: req.user?.phone, action: "create", entityType: "report", entityId: copy.id, entityName: `نسخة من التقرير #${sourceId}`, projectId });
+  res.status(201).json(copy);
+});
+
 router.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
