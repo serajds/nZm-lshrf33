@@ -58,7 +58,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Progress } from "@/components/ui/progress";
-import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
+import { downloadReportPdf, previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
 import { getAuthToken } from "@/lib/auth-session";
 import {
   ProtectedImage,
@@ -427,6 +427,7 @@ export default function ProjectReports() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [copyingId, setCopyingId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [isAiDrafting, setIsAiDrafting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
@@ -701,7 +702,7 @@ export default function ProjectReports() {
     }
   };
 
-  const handlePreview = async (report: Report) => {
+  const handlePreview = async (report: Report, download = false) => {
     if (!project) return;
     // The list endpoint strips the heavy `activitiesSnapshot` column to keep
     // payloads small, so the row we got from `useListReports` doesn't carry
@@ -727,6 +728,7 @@ export default function ProjectReports() {
       try {
         return await protectedAssetToDataUrl(url);
       } catch {
+        if (download) throw new Error("تعذّر تحميل إحدى صور التقرير");
         return "";
       }
     };
@@ -753,7 +755,8 @@ export default function ProjectReports() {
       status: (a.status as ActivityForReport["status"]) ?? "not_started",
     }));
     const apiBase = API_BASE.replace("/api", "");
-    previewReport({
+    const renderReport = download ? downloadReportPdf : previewReport;
+    await renderReport({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
       contractor: project.contractor,
@@ -780,6 +783,18 @@ export default function ProjectReports() {
       apiBase,
       reportSignatures: (project as any).reportSignatures ?? null,
     });
+  };
+
+  const handleDownloadPdf = async (report: Report) => {
+    if (downloadingId !== null) return;
+    setDownloadingId(report.id);
+    try {
+      await handlePreview(report, true);
+    } catch {
+      toast({ title: "تعذّر تحميل PDF", description: "تحقق من الاتصال ثم حاول مجدداً. لم يتم تجاهل صور التقرير.", variant: "destructive" });
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, groupIndex: number) => {
@@ -1647,6 +1662,10 @@ export default function ProjectReports() {
                   <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 )}{" "}
                 <span className="hidden sm:inline">معاينة و</span>طباعة
+              </Button>
+              <Button variant="outline" size="sm" className={btnClass} onClick={() => handleDownloadPdf(report)} disabled={downloadingId !== null}>
+                {downloadingId === report.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                {downloadingId === report.id ? "جارٍ تجهيز PDF…" : "تحميل PDF"}
               </Button>
               {canApprove && (
                 report.status === "draft" ? (
