@@ -9,7 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import {
   ApiError, apiCreateReportComment, apiDeleteReport, apiDeleteReportComment,
-  apiGetReport, apiListReportComments, apiMyProjectPermissions, apiSetReportStatus,
+  apiGetProject, apiGetReport, apiListReportComments, apiMyProjectPermissions, apiSetReportStatus,
 } from "@/lib/api";
 
 export default function ReportDetailScreen() {
@@ -21,6 +21,7 @@ export default function ReportDetailScreen() {
   const { user } = useAuth();
 
   const reportQ = useQuery({ queryKey: ["report", projectId, rId], queryFn: () => apiGetReport(projectId, rId), enabled: Number.isFinite(projectId) && Number.isFinite(rId) });
+  const projectQ = useQuery({ queryKey: ["project", projectId], queryFn: () => apiGetProject(projectId), enabled: Number.isFinite(projectId) });
   const permsQ = useQuery({ queryKey: ["project-perms", projectId], queryFn: () => apiMyProjectPermissions(projectId), enabled: Number.isFinite(projectId) });
 
   const setStatus = useMutation({
@@ -37,18 +38,28 @@ export default function ReportDetailScreen() {
   const r = reportQ.data;
   const isPM = permsQ.data?.role === "admin" || permsQ.data?.projectRole === "project_manager";
   const canEdit = !!permsQ.data?.tabPermissions?.reports?.edit || !!permsQ.data?.canEditAll;
+  const periodOnly = projectQ.data?.reportDisplayMode === "period_only";
 
   return (
-    <Screen title={r ? `تقرير #${r.reportNumber}` : "تقرير"} back refreshing={reportQ.isFetching} onRefresh={() => reportQ.refetch()}>
-      {reportQ.isLoading ? (
+    <Screen
+      title={r && projectQ.data ? (periodOnly ? `${r.periodStart ?? "—"} — ${r.periodEnd ?? "—"}` : `تقرير #${r.reportNumber}`) : "تقرير"}
+      back
+      refreshing={reportQ.isFetching || projectQ.isFetching}
+      onRefresh={() => { void reportQ.refetch(); void projectQ.refetch(); }}
+    >
+      {reportQ.isLoading || projectQ.isLoading ? (
         <Card><Text style={{ color: colors.mutedForeground, fontFamily: "Cairo_400Regular" }}>جاري التحميل…</Text></Card>
+      ) : projectQ.isError || !projectQ.data ? (
+        <Empty icon="alert-circle" title="تعذّر تحميل إعدادات المشروع" />
       ) : !r ? (
         <Empty icon="alert-circle" title="تعذّر تحميل التقرير" />
       ) : (
         <>
           <Card>
             <View style={styles.row}>
-              <Text style={[styles.title, { color: colors.foreground }]}>{r.type}</Text>
+              <Text style={[styles.title, { color: colors.foreground }]}>
+                {periodOnly ? `من ${r.periodStart ?? "—"} إلى ${r.periodEnd ?? "—"}` : r.type}
+              </Text>
               <View style={[styles.badge, { backgroundColor: (r.status === "approved" ? colors.success : colors.warning) + "22", borderColor: r.status === "approved" ? colors.success : colors.warning }]}>
                 <Text style={[styles.badgeText, { color: r.status === "approved" ? colors.success : colors.warning }]}>{r.status === "approved" ? "معتمد" : "مسودة"}</Text>
               </View>

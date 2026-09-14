@@ -112,6 +112,7 @@ router.get("/projects", requireAuth, async (req, res): Promise<void> => {
     siteRadiusMeters: projectsTable.siteRadiusMeters,
     attendanceAutoCloseHours: projectsTable.attendanceAutoCloseHours,
     attendanceLongDayHours: projectsTable.attendanceLongDayHours,
+    reportDisplayMode: projectsTable.reportDisplayMode,
     createdAt: projectsTable.createdAt,
     updatedAt: projectsTable.updatedAt,
   }).from(projectsTable);
@@ -132,7 +133,7 @@ router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
     name, location, ownerEntity, supervisorEntity, contractor,
     startDate, expectedEndDate, status, noSchedule,
     ownerCompanyId, contractorCompanyId, supervisorCompanyId,
-    onedriveTestResultsFolderId
+    onedriveTestResultsFolderId, reportDisplayMode
   } = req.body;
 
   const isNoSchedule = noSchedule === true || noSchedule === "true";
@@ -147,6 +148,11 @@ router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
+  if (reportDisplayMode !== undefined && reportDisplayMode !== "type_and_number" && reportDisplayMode !== "period_only") {
+    res.status(400).json({ error: "طريقة عرض التقارير غير صالحة" });
+    return;
+  }
+
   const [project] = await db.insert(projectsTable).values({
     name, location, ownerEntity, supervisorEntity, contractor,
     noSchedule: isNoSchedule,
@@ -158,6 +164,7 @@ router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
     contractorCompanyId: contractorCompanyId && contractorCompanyId !== "none" && !isNaN(Number(contractorCompanyId)) ? parseInt(contractorCompanyId, 10) : null,
     supervisorCompanyId: supervisorCompanyId && supervisorCompanyId !== "none" && !isNaN(Number(supervisorCompanyId)) ? parseInt(supervisorCompanyId, 10) : null,
     onedriveTestResultsFolderId: onedriveTestResultsFolderId || null,
+    reportDisplayMode: reportDisplayMode ?? "type_and_number",
   }).returning();
 
   const { logAudit } = await import("../lib/audit");
@@ -210,14 +217,22 @@ router.get("/projects/:id/company-logos", requireProjectAccess("id"), async (req
 router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
+  const body = req.body;
+  const canManageProject = req.user?.role === "admin" || req.projectRole === "project_manager";
 
-  if (req.user?.role !== "admin" && req.projectRole !== "project_manager") {
+  // Keep report presentation settings protected server-side even if another
+  // project field gains broader edit permissions later.
+  if (body.reportDisplayMode !== undefined && !canManageProject) {
+    res.status(403).json({ error: "يجب أن تكون مدير المشروع أو مدير النظام لتغيير طريقة عرض التقارير" });
+    return;
+  }
+
+  if (!canManageProject) {
     res.status(403).json({ error: "يجب أن تكون مدير المشروع أو مدير النظام لتعديل المشروع" });
     return;
   }
 
   const updateData: Record<string, unknown> = {};
-  const body = req.body;
   const parseCompanyId = (val: unknown) => val && val !== "none" && !isNaN(Number(val)) ? parseInt(String(val), 10) : null;
   const isTogglingNoSchedule = body.noSchedule !== undefined;
   const willBeNoSchedule = isTogglingNoSchedule
@@ -297,6 +312,13 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
     updateData.attendanceLongDayHours = n;
   }
   if (body.reportSignatures !== undefined) updateData.reportSignatures = body.reportSignatures;
+  if (body.reportDisplayMode !== undefined) {
+    if (body.reportDisplayMode !== "type_and_number" && body.reportDisplayMode !== "period_only") {
+      res.status(400).json({ error: "طريقة عرض التقارير غير صالحة" });
+      return;
+    }
+    updateData.reportDisplayMode = body.reportDisplayMode;
+  }
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });

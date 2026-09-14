@@ -209,6 +209,11 @@ export declare const ProjectStatus: {
     readonly delayed: "delayed";
     readonly suspended: "suspended";
 };
+export type ProjectReportDisplayMode = (typeof ProjectReportDisplayMode)[keyof typeof ProjectReportDisplayMode];
+export declare const ProjectReportDisplayMode: {
+    readonly type_and_number: "type_and_number";
+    readonly period_only: "period_only";
+};
 export interface ReportSignature {
     id?: string;
     title?: string;
@@ -241,6 +246,7 @@ export interface Project {
     siteRadiusMeters?: number | null;
     /** @nullable */
     reportSignatures?: ReportSignature[] | null;
+    reportDisplayMode: ProjectReportDisplayMode;
     attendanceAutoCloseHours: number;
     attendanceLongDayHours: number;
     createdAt: string;
@@ -252,6 +258,11 @@ export declare const CreateProjectBodyStatus: {
     readonly completed: "completed";
     readonly delayed: "delayed";
     readonly suspended: "suspended";
+};
+export type CreateProjectBodyReportDisplayMode = (typeof CreateProjectBodyReportDisplayMode)[keyof typeof CreateProjectBodyReportDisplayMode];
+export declare const CreateProjectBodyReportDisplayMode: {
+    readonly type_and_number: "type_and_number";
+    readonly period_only: "period_only";
 };
 export interface CreateProjectBody {
     name: string;
@@ -265,6 +276,7 @@ export interface CreateProjectBody {
     expectedEndDate?: string | null;
     noSchedule?: boolean;
     status?: CreateProjectBodyStatus;
+    reportDisplayMode?: CreateProjectBodyReportDisplayMode;
 }
 /**
  * @nullable
@@ -275,6 +287,11 @@ export declare const UpdateProjectBodyStatus: {
     readonly completed: "completed";
     readonly delayed: "delayed";
     readonly suspended: "suspended";
+};
+export type UpdateProjectBodyReportDisplayMode = (typeof UpdateProjectBodyReportDisplayMode)[keyof typeof UpdateProjectBodyReportDisplayMode];
+export declare const UpdateProjectBodyReportDisplayMode: {
+    readonly type_and_number: "type_and_number";
+    readonly period_only: "period_only";
 };
 export interface UpdateProjectBody {
     /** @nullable */
@@ -307,6 +324,7 @@ export interface UpdateProjectBody {
     siteRadiusMeters?: number | null;
     /** @nullable */
     reportSignatures?: ReportSignature[] | null;
+    reportDisplayMode?: UpdateProjectBodyReportDisplayMode;
 }
 export type CreateActivityBodyStatus = (typeof CreateActivityBodyStatus)[keyof typeof CreateActivityBodyStatus];
 export declare const CreateActivityBodyStatus: {

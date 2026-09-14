@@ -49,6 +49,7 @@ export interface ReportPdfData {
   };
   apiBase?: string;
   reportSignatures?: {id: string, title: string, role: string, name?: string}[] | null;
+  reportDisplayMode?: "type_and_number" | "period_only";
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -97,6 +98,8 @@ function daysBetween(a: string | null | undefined, b: string | null | undefined)
 
 export function buildPrintHTML(data: ReportPdfData): string {
   const typeLbl = data.reportType === "weekly" ? "أسبوعي" : "شهري";
+  const periodOnly = data.reportDisplayMode === "period_only";
+  const periodLabel = `${fmtDate(data.periodStart)} — ${fmtDate(data.periodEnd)}`;
   const pct = Math.min(100, Math.max(0, data.progressPercentage));
   const plannedPct = data.plannedProgress != null ? Math.min(100, Math.max(0, data.plannedProgress)) : null;
   const deviation = plannedPct != null ? pct - plannedPct : null;
@@ -207,7 +210,7 @@ export function buildPrintHTML(data: ReportPdfData): string {
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>تقرير ${typeLbl} — ${esc(data.projectName)}</title>
+<title>${periodOnly ? `تقرير الفترة ${periodLabel}` : `تقرير ${typeLbl}`} — ${esc(data.projectName)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -426,8 +429,8 @@ ${(() => {
       </div>
     </div>
     <div class="header-badge">
-      <div class="badge-lbl">نوع التقرير</div>
-      <div class="badge-val">${typeLbl}</div>
+      <div class="badge-lbl">${periodOnly ? "الفترة" : "نوع التقرير"}</div>
+      <div class="badge-val">${periodOnly ? periodLabel : typeLbl}</div>
     </div>
   </div>
 </div>
@@ -437,7 +440,7 @@ ${(() => {
   <div class="info-cell"><div class="info-lbl">تاريخ التقرير</div><div class="info-val">${fmtDate(data.reportDate)}</div></div>
   <div class="info-cell"><div class="info-lbl">بداية الفترة</div><div class="info-val">${fmtDate(data.periodStart)}</div></div>
   <div class="info-cell"><div class="info-lbl">نهاية الفترة</div><div class="info-val">${fmtDate(data.periodEnd)}</div></div>
-  <div class="info-cell"><div class="info-lbl">رقم التقرير</div><div class="info-val">#${data.reportNumber ?? data.reportId}</div></div>
+  ${periodOnly ? "" : `<div class="info-cell"><div class="info-lbl">رقم التقرير</div><div class="info-val">#${data.reportNumber ?? data.reportId}</div></div>`}
 </div>
 
 <!-- DUAL PROGRESS -->
@@ -583,7 +586,7 @@ ${(() => {
 <!-- FOOTER -->
 <div class="footer avoid-break">
   <span></span>
-  <span style="font-weight:700;color:#64748b">تقرير ${typeLbl} #${data.reportNumber ?? data.reportId}</span>
+  <span style="font-weight:700;color:#64748b">${periodOnly ? `الفترة ${periodLabel}` : `تقرير ${typeLbl} #${data.reportNumber ?? data.reportId}`}</span>
 </div>
 
 </body>

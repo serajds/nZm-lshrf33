@@ -466,6 +466,7 @@ export default function OwnerPortal() {
       imageUrls,
       reportId: report.id,
       reportNumber: report.reportNumber,
+      reportDisplayMode: project.reportDisplayMode,
       activities: activityList,
       contractValue: (project as any).contractValue ?? null,
       startDate: (project as any).startDate ?? null,
@@ -959,7 +960,9 @@ export default function OwnerPortal() {
                           </div>
                           <div>
                             <CardTitle className="text-base">
-                              تقرير {report.type === 'weekly' ? 'أسبوعي' : 'شهري'} #{report.reportNumber}
+                              {project.reportDisplayMode === "period_only"
+                                ? `${fmtDate(report.periodStart)} — ${fmtDate(report.periodEnd)}`
+                                : `تقرير ${report.type === 'weekly' ? 'أسبوعي' : 'شهري'} #${report.reportNumber}`}
                             </CardTitle>
                             <p className="text-xs text-muted-foreground mt-0.5 tabular-nums" dir="ltr">{fmtDate(report.reportDate)}</p>
                           </div>

@@ -411,6 +411,23 @@ export declare const projectsTable: import("drizzle-orm/pg-core").PgTableWithCol
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
+        reportDisplayMode: import("drizzle-orm/pg-core").PgColumn<{
+            name: "report_display_mode";
+            tableName: "projects";
+            dataType: "string";
+            columnType: "PgText";
+            data: "type_and_number" | "period_only";
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: ["type_and_number", "period_only"];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
         reportSignatures: import("drizzle-orm/pg-core").PgColumn<{
             name: "report_signatures";
             tableName: "projects";
@@ -506,6 +523,10 @@ export declare const insertProjectSchema: z.ZodObject<{
     siteRadiusMeters: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     attendanceAutoCloseHours: z.ZodOptional<z.ZodInt>;
     attendanceLongDayHours: z.ZodOptional<z.ZodInt>;
+    reportDisplayMode: z.ZodOptional<z.ZodEnum<{
+        type_and_number: "type_and_number";
+        period_only: "period_only";
+    }>>;
     reportSignatures: z.ZodOptional<z.ZodNullable<z.ZodType<{
         id: string;
         title: string;

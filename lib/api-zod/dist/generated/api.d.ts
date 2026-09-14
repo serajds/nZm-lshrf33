@@ -279,6 +279,7 @@ export declare const ListProjectsResponseItem: zod.ZodObject<{
         name?: string | undefined;
         title?: string | undefined;
     }>, "many">>>;
+    reportDisplayMode: zod.ZodEnum<["type_and_number", "period_only"]>;
     attendanceAutoCloseHours: zod.ZodNumber;
     attendanceLongDayHours: zod.ZodNumber;
     createdAt: zod.ZodDate;
@@ -294,6 +295,7 @@ export declare const ListProjectsResponseItem: zod.ZodObject<{
     supervisorEntity: string;
     overallProgress: number;
     noSchedule: boolean;
+    reportDisplayMode: "type_and_number" | "period_only";
     attendanceAutoCloseHours: number;
     attendanceLongDayHours: number;
     updatedAt: Date;
@@ -321,6 +323,7 @@ export declare const ListProjectsResponseItem: zod.ZodObject<{
     supervisorEntity: string;
     overallProgress: number;
     noSchedule: boolean;
+    reportDisplayMode: "type_and_number" | "period_only";
     attendanceAutoCloseHours: number;
     attendanceLongDayHours: number;
     updatedAt: Date;
@@ -371,6 +374,7 @@ export declare const ListProjectsResponse: zod.ZodArray<zod.ZodObject<{
         name?: string | undefined;
         title?: string | undefined;
     }>, "many">>>;
+    reportDisplayMode: zod.ZodEnum<["type_and_number", "period_only"]>;
     attendanceAutoCloseHours: zod.ZodNumber;
     attendanceLongDayHours: zod.ZodNumber;
     createdAt: zod.ZodDate;
@@ -386,6 +390,7 @@ export declare const ListProjectsResponse: zod.ZodArray<zod.ZodObject<{
     supervisorEntity: string;
     overallProgress: number;
     noSchedule: boolean;
+    reportDisplayMode: "type_and_number" | "period_only";
     attendanceAutoCloseHours: number;
     attendanceLongDayHours: number;
     updatedAt: Date;
@@ -413,6 +418,7 @@ export declare const ListProjectsResponse: zod.ZodArray<zod.ZodObject<{
     supervisorEntity: string;
     overallProgress: number;
     noSchedule: boolean;
+    reportDisplayMode: "type_and_number" | "period_only";
     attendanceAutoCloseHours: number;
     attendanceLongDayHours: number;
     updatedAt: Date;
@@ -435,6 +441,7 @@ export declare const ListProjectsResponse: zod.ZodArray<zod.ZodObject<{
  */
 export declare const createProjectBodyNoScheduleDefault = false;
 export declare const createProjectBodyStatusDefault = "active";
+export declare const createProjectBodyReportDisplayModeDefault = "type_and_number";
 export declare const CreateProjectBody: zod.ZodObject<{
     name: zod.ZodString;
     location: zod.ZodString;
@@ -445,6 +452,7 @@ export declare const CreateProjectBody: zod.ZodObject<{
     expectedEndDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
     noSchedule: zod.ZodDefault<zod.ZodBoolean>;
     status: zod.ZodDefault<zod.ZodEnum<["active", "completed", "delayed", "suspended"]>>;
+    reportDisplayMode: zod.ZodDefault<zod.ZodEnum<["type_and_number", "period_only"]>>;
 }, "strip", zod.ZodTypeAny, {
     status: "active" | "completed" | "delayed" | "suspended";
     contractor: string;
@@ -453,6 +461,7 @@ export declare const CreateProjectBody: zod.ZodObject<{
     ownerEntity: string;
     supervisorEntity: string;
     noSchedule: boolean;
+    reportDisplayMode: "type_and_number" | "period_only";
     startDate?: Date | null | undefined;
     expectedEndDate?: Date | null | undefined;
 }, {
@@ -465,6 +474,7 @@ export declare const CreateProjectBody: zod.ZodObject<{
     startDate?: Date | null | undefined;
     expectedEndDate?: Date | null | undefined;
     noSchedule?: boolean | undefined;
+    reportDisplayMode?: "type_and_number" | "period_only" | undefined;
 }>;
 /**
  * @summary Get a project by ID
@@ -509,6 +519,7 @@ export declare const GetProjectResponse: zod.ZodObject<{
         name?: string | undefined;
         title?: string | undefined;
     }>, "many">>>;
+    reportDisplayMode: zod.ZodEnum<["type_and_number", "period_only"]>;
     attendanceAutoCloseHours: zod.ZodNumber;
     attendanceLongDayHours: zod.ZodNumber;
     createdAt: zod.ZodDate;
@@ -524,6 +535,7 @@ export declare const GetProjectResponse: zod.ZodObject<{
     supervisorEntity: string;
     overallProgress: number;
     noSchedule: boolean;
+    reportDisplayMode: "type_and_number" | "period_only";
     attendanceAutoCloseHours: number;
     attendanceLongDayHours: number;
     updatedAt: Date;
@@ -551,6 +563,7 @@ export declare const GetProjectResponse: zod.ZodObject<{
     supervisorEntity: string;
     overallProgress: number;
     noSchedule: boolean;
+    reportDisplayMode: "type_and_number" | "period_only";
     attendanceAutoCloseHours: number;
     attendanceLongDayHours: number;
     updatedAt: Date;
@@ -609,6 +622,7 @@ export declare const UpdateProjectBody: zod.ZodObject<{
         name?: string | undefined;
         title?: string | undefined;
     }>, "many">>>;
+    reportDisplayMode: zod.ZodOptional<zod.ZodEnum<["type_and_number", "period_only"]>>;
 }, "strip", zod.ZodTypeAny, {
     status?: "active" | "completed" | "delayed" | "suspended" | null | undefined;
     contractor?: string | null | undefined;
@@ -630,6 +644,7 @@ export declare const UpdateProjectBody: zod.ZodObject<{
         name?: string | undefined;
         title?: string | undefined;
     }[] | null | undefined;
+    reportDisplayMode?: "type_and_number" | "period_only" | undefined;
 }, {
     status?: "active" | "completed" | "delayed" | "suspended" | null | undefined;
     contractor?: string | null | undefined;
@@ -651,6 +666,7 @@ export declare const UpdateProjectBody: zod.ZodObject<{
         name?: string | undefined;
         title?: string | undefined;
     }[] | null | undefined;
+    reportDisplayMode?: "type_and_number" | "period_only" | undefined;
 }>;
 export declare const UpdateProjectResponse: zod.ZodObject<{
     id: zod.ZodNumber;
@@ -685,6 +701,7 @@ export declare const UpdateProjectResponse: zod.ZodObject<{
         name?: string | undefined;
         title?: string | undefined;
     }>, "many">>>;
+    reportDisplayMode: zod.ZodEnum<["type_and_number", "period_only"]>;
     attendanceAutoCloseHours: zod.ZodNumber;
     attendanceLongDayHours: zod.ZodNumber;
     createdAt: zod.ZodDate;
@@ -700,6 +717,7 @@ export declare const UpdateProjectResponse: zod.ZodObject<{
     supervisorEntity: string;
     overallProgress: number;
     noSchedule: boolean;
+    reportDisplayMode: "type_and_number" | "period_only";
     attendanceAutoCloseHours: number;
     attendanceLongDayHours: number;
     updatedAt: Date;
@@ -727,6 +745,7 @@ export declare const UpdateProjectResponse: zod.ZodObject<{
     supervisorEntity: string;
     overallProgress: number;
     noSchedule: boolean;
+    reportDisplayMode: "type_and_number" | "period_only";
     attendanceAutoCloseHours: number;
     attendanceLongDayHours: number;
     updatedAt: Date;
@@ -3233,6 +3252,7 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
             name?: string | undefined;
             title?: string | undefined;
         }>, "many">>>;
+        reportDisplayMode: zod.ZodEnum<["type_and_number", "period_only"]>;
         attendanceAutoCloseHours: zod.ZodNumber;
         attendanceLongDayHours: zod.ZodNumber;
         createdAt: zod.ZodDate;
@@ -3248,6 +3268,7 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
         supervisorEntity: string;
         overallProgress: number;
         noSchedule: boolean;
+        reportDisplayMode: "type_and_number" | "period_only";
         attendanceAutoCloseHours: number;
         attendanceLongDayHours: number;
         updatedAt: Date;
@@ -3275,6 +3296,7 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
         supervisorEntity: string;
         overallProgress: number;
         noSchedule: boolean;
+        reportDisplayMode: "type_and_number" | "period_only";
         attendanceAutoCloseHours: number;
         attendanceLongDayHours: number;
         updatedAt: Date;
@@ -3594,6 +3616,7 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
         supervisorEntity: string;
         overallProgress: number;
         noSchedule: boolean;
+        reportDisplayMode: "type_and_number" | "period_only";
         attendanceAutoCloseHours: number;
         attendanceLongDayHours: number;
         updatedAt: Date;
@@ -3694,6 +3717,7 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
         supervisorEntity: string;
         overallProgress: number;
         noSchedule: boolean;
+        reportDisplayMode: "type_and_number" | "period_only";
         attendanceAutoCloseHours: number;
         attendanceLongDayHours: number;
         updatedAt: Date;
@@ -3857,6 +3881,7 @@ export declare const GetDashboardSummaryResponse: zod.ZodObject<{
             name?: string | undefined;
             title?: string | undefined;
         }>, "many">>>;
+        reportDisplayMode: zod.ZodEnum<["type_and_number", "period_only"]>;
         attendanceAutoCloseHours: zod.ZodNumber;
         attendanceLongDayHours: zod.ZodNumber;
         createdAt: zod.ZodDate;
@@ -3872,6 +3897,7 @@ export declare const GetDashboardSummaryResponse: zod.ZodObject<{
         supervisorEntity: string;
         overallProgress: number;
         noSchedule: boolean;
+        reportDisplayMode: "type_and_number" | "period_only";
         attendanceAutoCloseHours: number;
         attendanceLongDayHours: number;
         updatedAt: Date;
@@ -3899,6 +3925,7 @@ export declare const GetDashboardSummaryResponse: zod.ZodObject<{
         supervisorEntity: string;
         overallProgress: number;
         noSchedule: boolean;
+        reportDisplayMode: "type_and_number" | "period_only";
         attendanceAutoCloseHours: number;
         attendanceLongDayHours: number;
         updatedAt: Date;
@@ -4020,6 +4047,7 @@ export declare const GetDashboardSummaryResponse: zod.ZodObject<{
         supervisorEntity: string;
         overallProgress: number;
         noSchedule: boolean;
+        reportDisplayMode: "type_and_number" | "period_only";
         attendanceAutoCloseHours: number;
         attendanceLongDayHours: number;
         updatedAt: Date;
@@ -4089,6 +4117,7 @@ export declare const GetDashboardSummaryResponse: zod.ZodObject<{
         supervisorEntity: string;
         overallProgress: number;
         noSchedule: boolean;
+        reportDisplayMode: "type_and_number" | "period_only";
         attendanceAutoCloseHours: number;
         attendanceLongDayHours: number;
         updatedAt: Date;

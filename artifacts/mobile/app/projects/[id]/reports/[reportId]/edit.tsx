@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, View } from "react-native";
 import { Card, PrimaryButton, Screen } from "@/components/Screen";
 import { useColors } from "@/hooks/useColors";
-import { ApiError, apiGetReport, apiUpdateReport } from "@/lib/api";
+import { ApiError, apiGetProject, apiGetReport, apiUpdateReport } from "@/lib/api";
 
 const REPORT_TYPES: { value: string; label: string }[] = [
   { value: "weekly", label: "أسبوعي" },
@@ -22,6 +22,11 @@ export default function EditReportScreen() {
     queryKey: ["report", projectId, reportIdNum],
     queryFn: () => apiGetReport(projectId, reportIdNum),
     enabled: Number.isFinite(projectId) && Number.isFinite(reportIdNum),
+  });
+  const projectQ = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => apiGetProject(projectId),
+    enabled: Number.isFinite(projectId),
   });
 
   const [type, setType] = useState("weekly");
@@ -62,12 +67,28 @@ export default function EditReportScreen() {
     onError: (e) => Alert.alert("خطأ", e instanceof ApiError ? e.message : "فشل تحديث التقرير"),
   });
 
-  if (reportQ.isLoading) {
+  if (reportQ.isLoading || projectQ.isLoading) {
     return <Screen title="تعديل التقرير" back><Card><ActivityIndicator color={colors.primary} /></Card></Screen>;
   }
 
+  if (projectQ.isError || !projectQ.data) {
+    return (
+      <Screen title="تعديل التقرير" back>
+        <Card><Text style={{ color: colors.mutedForeground, fontFamily: "Cairo_400Regular" }}>تعذّر تحميل إعدادات المشروع.</Text></Card>
+      </Screen>
+    );
+  }
+
+  const periodOnly = projectQ.data?.reportDisplayMode === "period_only";
+  const report = reportQ.data;
+
   return (
-    <Screen title={`تعديل تقرير #${reportQ.data?.reportNumber ?? ""}`} back>
+    <Screen
+      title={periodOnly && report
+        ? `تعديل الفترة ${report.periodStart ?? "—"} — ${report.periodEnd ?? "—"}`
+        : `تعديل تقرير #${report?.reportNumber ?? ""}`}
+      back
+    >
       <Card>
         <Label colors={colors}>نوع التقرير</Label>
         <View style={styles.chipsRow}>

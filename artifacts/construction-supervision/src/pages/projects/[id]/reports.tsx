@@ -275,7 +275,7 @@ function ReportActivityLog({ projectId, reportId }: { projectId: number; reportI
   );
 }
 
-function ReportSignaturesDialog({ projectId }: { projectId: number }) {
+function ReportSettingsDialog({ projectId }: { projectId: number }) {
   const [open, setOpen] = useState(false);
   const { data: project, isLoading } = useGetProject(projectId, { query: { enabled: open } });
   const updateProject = useUpdateProject();
@@ -283,9 +283,11 @@ function ReportSignaturesDialog({ projectId }: { projectId: number }) {
   const { toast } = useToast();
 
   const [signatures, setSignatures] = useState<{ id: string; title: string; role: string; name: string }[]>([]);
+  const [reportDisplayMode, setReportDisplayMode] = useState<"type_and_number" | "period_only">("type_and_number");
 
   useEffect(() => {
     if (open && project) {
+      setReportDisplayMode(project.reportDisplayMode ?? "type_and_number");
       if (project.reportSignatures && Array.isArray(project.reportSignatures)) {
         setSignatures(project.reportSignatures as any);
       } else {
@@ -303,14 +305,14 @@ function ReportSignaturesDialog({ projectId }: { projectId: number }) {
     try {
       await updateProject.mutateAsync({
         id: projectId,
-        data: { reportSignatures: signatures }
+        data: { reportSignatures: signatures, reportDisplayMode }
       });
       queryClient.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) });
-      toast({ title: "تم حفظ إعدادات التوقيعات بنجاح" });
+      toast({ title: "تم حفظ إعدادات التقارير بنجاح" });
       setOpen(false);
     } catch (err) {
       console.error("Save signatures error:", err);
-      toast({ variant: "destructive", title: "حدث خطأ أثناء حفظ التوقيعات" });
+      toast({ variant: "destructive", title: "حدث خطأ أثناء حفظ إعدادات التقارير" });
     }
   };
 
@@ -340,20 +342,20 @@ function ReportSignaturesDialog({ projectId }: { projectId: number }) {
       <DialogTrigger asChild>
         <Button variant="outline" className="gap-2 shrink-0">
           <Settings2 className="h-4 w-4" />
-          إعدادات التوقيعات
+          إعدادات التقارير
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-hidden p-0" dir="rtl">
-        <div className="bg-gradient-to-br from-slate-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+        <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
           <DialogHeader>
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-slate-500/10 rounded-xl">
                 <Settings2 className="h-6 w-6 text-slate-600" />
               </div>
               <div>
-                <DialogTitle className="text-xl">إعدادات توقيعات التقارير</DialogTitle>
+                <DialogTitle className="text-xl">إعدادات التقارير</DialogTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  قم بإدارة الأشخاص والجهات التي يحق لها التوقيع على تقارير المشروع.
+                  حدد طريقة عرض التقارير والتوقيعات الخاصة بهذا المشروع.
                 </p>
               </div>
             </div>
@@ -365,6 +367,24 @@ function ReportSignaturesDialog({ projectId }: { projectId: number }) {
             <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
           ) : (
             <>
+              <div className="space-y-2 rounded-lg border p-4">
+                <label className="text-sm font-semibold">طريقة تعريف التقرير في العرض والمعاينة</label>
+                <Select value={reportDisplayMode} onValueChange={(value) => setReportDisplayMode(value as "type_and_number" | "period_only")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent dir="rtl">
+                    <SelectItem value="type_and_number">نوع التقرير ورقمه (الوضع الحالي)</SelectItem>
+                    <SelectItem value="period_only">الفترة فقط (من — إلى)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  لا يغيّر هذا الخيار بيانات التقرير أو طريقة إنشائه؛ بل يحدد ما يظهر في القوائم والمعاينة فقط.
+                </p>
+              </div>
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-semibold">التوقيعات</h3>
+              </div>
               <div className="space-y-3">
                 {signatures.map((sig, index) => (
                   <div key={sig.id} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center bg-accent/20 p-3 rounded-lg border">
@@ -450,7 +470,7 @@ export default function ProjectReports() {
   // weighted-average formula.
   const [manualOverrideProgress, setManualOverrideProgress] = useState(false);
 
-  const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
+  const { data: project, isLoading: isProjectLoading } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: myPermissions } = useMyProjectPermissions(projectId);
   const { canEdit: canEditReports, isHidden } = useTabAccess(projectId, "reports", { redirectIfHidden: true });
   const isViewer = !canEditReports;
@@ -474,7 +494,7 @@ export default function ProjectReports() {
   // matches the global default but is set explicitly here for clarity
   // alongside the placeholder behaviour.
   const { data: reports, isLoading } = useListReports(projectId, {
-    type: typeFilter && typeFilter !== "all" ? typeFilter : undefined,
+    type: project?.reportDisplayMode === "period_only" || !typeFilter || typeFilter === "all" ? undefined : typeFilter,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
   }, { query: { enabled: !!projectId, placeholderData: (prev: any) => prev } as any });
@@ -641,7 +661,12 @@ export default function ProjectReports() {
       queryClient.setQueryData(getGetReportQueryKey(projectId, copy.id), copy);
       await queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
       setSelectedReportId(null);
-      toast({ title: `تم إنشاء نسخة مستقلة برقم ${copy.reportNumber}`, description: "حُفظت كمسودة. يمكنك تعديل بياناتها وتواريخها الآن." });
+      toast({
+        title: project?.reportDisplayMode === "period_only"
+          ? `تم إنشاء نسخة مستقلة للفترة ${fmtDate(copy.periodStart)} — ${fmtDate(copy.periodEnd)}`
+          : `تم إنشاء نسخة مستقلة برقم ${copy.reportNumber}`,
+        description: "حُفظت كمسودة. يمكنك تعديل بياناتها وتواريخها الآن.",
+      });
       await handleEdit(copy);
     } catch {
       toast({ title: "تعذّر نسخ التقرير", description: "يرجى التحقق من الاتصال والصلاحيات والمحاولة مجدداً.", variant: "destructive" });
@@ -782,6 +807,7 @@ export default function ProjectReports() {
       companyLogos: companyLogos as any,
       apiBase,
       reportSignatures: (project as any).reportSignatures ?? null,
+      reportDisplayMode: project.reportDisplayMode,
     });
   };
 
@@ -1039,18 +1065,20 @@ export default function ProjectReports() {
 
       <div className="surface-card space-y-3 p-3 sm:p-4">
         <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-          <div className="w-full sm:w-40">
-            <Select value={typeFilter ?? "all"} onValueChange={(v) => setTypeFilter(v)}>
-              <SelectTrigger className="h-11 rounded-xl">
-                <SelectValue placeholder="نوع التقرير" />
-              </SelectTrigger>
-              <SelectContent dir="rtl">
-                <SelectItem value="all">الكل</SelectItem>
-                <SelectItem value="weekly">أسبوعي</SelectItem>
-                <SelectItem value="monthly">شهري</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {project?.reportDisplayMode !== "period_only" && (
+            <div className="w-full sm:w-40">
+              <Select value={typeFilter ?? "all"} onValueChange={(v) => setTypeFilter(v)}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="نوع التقرير" />
+                </SelectTrigger>
+                <SelectContent dir="rtl">
+                  <SelectItem value="all">الكل</SelectItem>
+                  <SelectItem value="weekly">أسبوعي</SelectItem>
+                  <SelectItem value="monthly">شهري</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground whitespace-nowrap">من</span>
             <Input type="date" className="h-11 min-w-0 flex-1 rounded-xl text-sm" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
@@ -1062,9 +1090,9 @@ export default function ProjectReports() {
           </div>
         </div>
         
-        {!isViewer && (
+        {canApprove && (
         <div className="flex items-center gap-2">
-          <ReportSignaturesDialog projectId={projectId} />
+          <ReportSettingsDialog projectId={projectId} />
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
             setOpenGroupIdx(0);
@@ -1616,6 +1644,7 @@ export default function ProjectReports() {
 
       {(() => {
         const reportsList = reports ?? [];
+        const periodOnly = project?.reportDisplayMode === "period_only";
         const selectedReport = reportsList.find((r) => r.id === selectedReportId) ?? null;
 
         const countImages = (report: Report) => {
@@ -1709,10 +1738,12 @@ export default function ProjectReports() {
           return (
             <div className="space-y-5">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                <div>
-                  <div className="text-xs text-muted-foreground mb-0.5">النوع</div>
-                  <div className="font-medium">{report.type === "weekly" ? "أسبوعي" : "شهري"}</div>
-                </div>
+                {!periodOnly && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-0.5">النوع</div>
+                    <div className="font-medium">{report.type === "weekly" ? "أسبوعي" : "شهري"}</div>
+                  </div>
+                )}
                 <div>
                   <div className="text-xs text-muted-foreground mb-0.5">الحالة</div>
                   <div>
@@ -1813,7 +1844,7 @@ export default function ProjectReports() {
 
         return (
           <>
-            {isLoading ? (
+            {isLoading || isProjectLoading || !project ? (
               <LoadingSpinner text="جاري تحميل التقارير..." />
             ) : reportsList.length === 0 ? (
               <Card className="border-dashed">
@@ -1831,8 +1862,8 @@ export default function ProjectReports() {
                     <table className="w-full text-sm">
                       <thead className="bg-muted/60 text-muted-foreground">
                         <tr className="text-right">
-                          <th className="px-3 py-2 font-medium">#</th>
-                          <th className="px-3 py-2 font-medium">النوع</th>
+                          {!periodOnly && <th className="px-3 py-2 font-medium">#</th>}
+                          {!periodOnly && <th className="px-3 py-2 font-medium">النوع</th>}
                           <th className="px-3 py-2 font-medium">الحالة</th>
                           <th className="px-3 py-2 font-medium">التاريخ</th>
                           <th className="px-3 py-2 font-medium">الفترة</th>
@@ -1849,7 +1880,7 @@ export default function ProjectReports() {
                               key={report.id}
                               role="button"
                               tabIndex={0}
-                              aria-label={`فتح تفاصيل التقرير رقم ${report.reportNumber}`}
+                              aria-label={periodOnly ? `فتح تفاصيل تقرير الفترة من ${fmtDate(report.periodStart)} إلى ${fmtDate(report.periodEnd)}` : `فتح تفاصيل التقرير رقم ${report.reportNumber}`}
                               className="border-t hover:bg-accent/40 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                               onClick={() => setSelectedReportId(report.id)}
                               onKeyDown={(e) => {
@@ -1859,17 +1890,21 @@ export default function ProjectReports() {
                                 }
                               }}
                             >
-                              <td className="px-3 py-2.5 font-bold whitespace-nowrap">
-                                <span className="inline-flex items-center gap-1.5">
-                                  <FileText className={`h-4 w-4 ${report.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
-                                  #{report.reportNumber}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2.5 whitespace-nowrap">
-                                <Badge variant="outline" className="bg-background">
-                                  {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
-                                </Badge>
-                              </td>
+                              {!periodOnly && (
+                                <td className="px-3 py-2.5 font-bold whitespace-nowrap">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <FileText className={`h-4 w-4 ${report.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
+                                    #{report.reportNumber}
+                                  </span>
+                                </td>
+                              )}
+                              {!periodOnly && (
+                                <td className="px-3 py-2.5 whitespace-nowrap">
+                                  <Badge variant="outline" className="bg-background">
+                                    {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                                  </Badge>
+                                </td>
+                              )}
                               <td className="px-3 py-2.5 whitespace-nowrap">
                                 {report.status === "draft" ? (
                                   <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">مسودة</Badge>
@@ -1910,7 +1945,7 @@ export default function ProjectReports() {
                         key={report.id}
                         role="button"
                         tabIndex={0}
-                        aria-label={`فتح تفاصيل التقرير رقم ${report.reportNumber}`}
+                        aria-label={periodOnly ? `فتح تفاصيل تقرير الفترة من ${fmtDate(report.periodStart)} إلى ${fmtDate(report.periodEnd)}` : `فتح تفاصيل التقرير رقم ${report.reportNumber}`}
                         className="overflow-hidden cursor-pointer hover:bg-accent/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         onClick={() => setSelectedReportId(report.id)}
                         onKeyDown={(e) => {
@@ -1924,10 +1959,16 @@ export default function ProjectReports() {
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0">
                               <FileText className={`h-5 w-5 shrink-0 ${report.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
-                              <span className="font-bold">#{report.reportNumber}</span>
-                              <Badge variant="outline" className="bg-background text-xs">
-                                {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
-                              </Badge>
+                              {periodOnly ? (
+                                <span className="font-bold text-sm">{fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}</span>
+                              ) : (
+                                <>
+                                  <span className="font-bold">#{report.reportNumber}</span>
+                                  <Badge variant="outline" className="bg-background text-xs">
+                                    {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                                  </Badge>
+                                </>
+                              )}
                               {report.status === "draft" ? (
                                 <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100 text-xs">مسودة</Badge>
                               ) : (
@@ -1938,9 +1979,7 @@ export default function ProjectReports() {
                           </div>
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <span className="font-mono">{fmtDate(report.reportDate)}</span>
-                            <span className="font-mono">
-                              {fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}
-                            </span>
+                            {!periodOnly && <span className="font-mono">{fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}</span>}
                             <span className="inline-flex items-center gap-1">
                               <ImagePlus className="h-3.5 w-3.5" /> {imgCount}
                             </span>
@@ -1970,10 +2009,16 @@ export default function ProjectReports() {
                     <SheetHeader className="text-right space-y-3 pr-10">
                       <SheetTitle className="flex items-center gap-2 flex-wrap">
                         <FileText className={`h-5 w-5 ${selectedReport.type === 'weekly' ? 'text-blue-500' : 'text-primary'}`} />
-                        تقرير #{selectedReport.reportNumber}
-                        <Badge variant="outline" className="bg-background font-normal">
-                          {selectedReport.type === 'weekly' ? 'أسبوعي' : 'شهري'}
-                        </Badge>
+                        {periodOnly ? (
+                          <span>{fmtDate(selectedReport.periodStart)} — {fmtDate(selectedReport.periodEnd)}</span>
+                        ) : (
+                          <>
+                            تقرير #{selectedReport.reportNumber}
+                            <Badge variant="outline" className="bg-background font-normal">
+                              {selectedReport.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                            </Badge>
+                          </>
+                        )}
                       </SheetTitle>
                       <div>{renderActions(selectedReport, "panel")}</div>
                     </SheetHeader>

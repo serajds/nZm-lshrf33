@@ -5,6 +5,7 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateProjectBodyReportDisplayMode } from "./createProjectBodyReportDisplayMode";
 import type { CreateProjectBodyStatus } from "./createProjectBodyStatus";
 export interface CreateProjectBody {
     name: string;
@@ -18,5 +19,6 @@ export interface CreateProjectBody {
     expectedEndDate?: Date | null;
     noSchedule?: boolean;
     status?: CreateProjectBodyStatus;
+    reportDisplayMode?: CreateProjectBodyReportDisplayMode;
 }
 //# sourceMappingURL=createProjectBody.d.ts.map

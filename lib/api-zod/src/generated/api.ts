@@ -150,6 +150,7 @@ export const ListProjectsResponseItem = zod.object({
       }),
     )
     .nullish(),
+  reportDisplayMode: zod.enum(["type_and_number", "period_only"]),
   attendanceAutoCloseHours: zod.number(),
   attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
@@ -162,6 +163,7 @@ export const ListProjectsResponse = zod.array(ListProjectsResponseItem);
  */
 export const createProjectBodyNoScheduleDefault = false;
 export const createProjectBodyStatusDefault = `active`;
+export const createProjectBodyReportDisplayModeDefault = `type_and_number`;
 
 export const CreateProjectBody = zod.object({
   name: zod.string(),
@@ -175,6 +177,9 @@ export const CreateProjectBody = zod.object({
   status: zod
     .enum(["active", "completed", "delayed", "suspended"])
     .default(createProjectBodyStatusDefault),
+  reportDisplayMode: zod
+    .enum(["type_and_number", "period_only"])
+    .default(createProjectBodyReportDisplayModeDefault),
 });
 
 /**
@@ -211,6 +216,7 @@ export const GetProjectResponse = zod.object({
       }),
     )
     .nullish(),
+  reportDisplayMode: zod.enum(["type_and_number", "period_only"]),
   attendanceAutoCloseHours: zod.number(),
   attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
@@ -257,6 +263,7 @@ export const UpdateProjectBody = zod.object({
       }),
     )
     .nullish(),
+  reportDisplayMode: zod.enum(["type_and_number", "period_only"]).optional(),
 });
 
 export const UpdateProjectResponse = zod.object({
@@ -286,6 +293,7 @@ export const UpdateProjectResponse = zod.object({
       }),
     )
     .nullish(),
+  reportDisplayMode: zod.enum(["type_and_number", "period_only"]),
   attendanceAutoCloseHours: zod.number(),
   attendanceLongDayHours: zod.number(),
   createdAt: zod.coerce.date(),
@@ -1246,6 +1254,7 @@ export const VerifyOwnerAccessResponse = zod.object({
         }),
       )
       .nullish(),
+    reportDisplayMode: zod.enum(["type_and_number", "period_only"]),
     attendanceAutoCloseHours: zod.number(),
     attendanceLongDayHours: zod.number(),
     createdAt: zod.coerce.date(),
@@ -1434,6 +1443,7 @@ export const GetDashboardSummaryResponse = zod.object({
           }),
         )
         .nullish(),
+      reportDisplayMode: zod.enum(["type_and_number", "period_only"]),
       attendanceAutoCloseHours: zod.number(),
       attendanceLongDayHours: zod.number(),
       createdAt: zod.coerce.date(),

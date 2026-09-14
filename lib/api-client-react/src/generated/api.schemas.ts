@@ -253,6 +253,14 @@ export const ProjectStatus = {
   suspended: "suspended",
 } as const;
 
+export type ProjectReportDisplayMode =
+  (typeof ProjectReportDisplayMode)[keyof typeof ProjectReportDisplayMode];
+
+export const ProjectReportDisplayMode = {
+  type_and_number: "type_and_number",
+  period_only: "period_only",
+} as const;
+
 export interface ReportSignature {
   id?: string;
   title?: string;
@@ -286,6 +294,7 @@ export interface Project {
   siteRadiusMeters?: number | null;
   /** @nullable */
   reportSignatures?: ReportSignature[] | null;
+  reportDisplayMode: ProjectReportDisplayMode;
   attendanceAutoCloseHours: number;
   attendanceLongDayHours: number;
   createdAt: string;
@@ -302,6 +311,14 @@ export const CreateProjectBodyStatus = {
   suspended: "suspended",
 } as const;
 
+export type CreateProjectBodyReportDisplayMode =
+  (typeof CreateProjectBodyReportDisplayMode)[keyof typeof CreateProjectBodyReportDisplayMode];
+
+export const CreateProjectBodyReportDisplayMode = {
+  type_and_number: "type_and_number",
+  period_only: "period_only",
+} as const;
+
 export interface CreateProjectBody {
   name: string;
   location: string;
@@ -314,6 +331,7 @@ export interface CreateProjectBody {
   expectedEndDate?: string | null;
   noSchedule?: boolean;
   status?: CreateProjectBodyStatus;
+  reportDisplayMode?: CreateProjectBodyReportDisplayMode;
 }
 
 /**
@@ -328,6 +346,14 @@ export const UpdateProjectBodyStatus = {
   completed: "completed",
   delayed: "delayed",
   suspended: "suspended",
+} as const;
+
+export type UpdateProjectBodyReportDisplayMode =
+  (typeof UpdateProjectBodyReportDisplayMode)[keyof typeof UpdateProjectBodyReportDisplayMode];
+
+export const UpdateProjectBodyReportDisplayMode = {
+  type_and_number: "type_and_number",
+  period_only: "period_only",
 } as const;
 
 export interface UpdateProjectBody {
@@ -361,6 +387,7 @@ export interface UpdateProjectBody {
   siteRadiusMeters?: number | null;
   /** @nullable */
   reportSignatures?: ReportSignature[] | null;
+  reportDisplayMode?: UpdateProjectBodyReportDisplayMode;
 }
 
 export type CreateActivityBodyStatus =
