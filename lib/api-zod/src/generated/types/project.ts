@@ -5,6 +5,7 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { ProjectReportDisplayMode } from "./projectReportDisplayMode";
 import type { ProjectStatus } from "./projectStatus";
 import type { ReportSignature } from "./reportSignature";
 
@@ -34,6 +35,7 @@ export interface Project {
   siteRadiusMeters?: number | null;
   /** @nullable */
   reportSignatures?: ReportSignature[] | null;
+  reportDisplayMode: ProjectReportDisplayMode;
   attendanceAutoCloseHours: number;
   attendanceLongDayHours: number;
   createdAt: Date;

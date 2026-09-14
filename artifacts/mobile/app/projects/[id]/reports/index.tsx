@@ -5,16 +5,18 @@ import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Card, Empty, PrimaryButton, Screen } from "@/components/Screen";
 import { useColors } from "@/hooks/useColors";
-import { apiListReports, apiMyProjectPermissions } from "@/lib/api";
+import { apiGetProject, apiListReports, apiMyProjectPermissions } from "@/lib/api";
 
 export default function ReportsListScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const projectId = Number(id);
   const colors = useColors();
   const reportsQ = useQuery({ queryKey: ["reports", projectId], queryFn: () => apiListReports(projectId), enabled: Number.isFinite(projectId) });
+  const projectQ = useQuery({ queryKey: ["project", projectId], queryFn: () => apiGetProject(projectId), enabled: Number.isFinite(projectId) });
   const permsQ = useQuery({ queryKey: ["project-perms", projectId], queryFn: () => apiMyProjectPermissions(projectId), enabled: Number.isFinite(projectId) });
   const canEdit = !!permsQ.data?.tabPermissions?.reports?.edit || !!permsQ.data?.canEditAll;
   const reports = reportsQ.data ?? [];
+  const periodOnly = projectQ.data?.reportDisplayMode === "period_only";
 
   return (
     <Screen
@@ -28,8 +30,10 @@ export default function ReportsListScreen() {
         </TouchableOpacity>
       ) : null}
     >
-      {reportsQ.isLoading ? (
+      {reportsQ.isLoading || projectQ.isLoading ? (
         <Card><Text style={{ color: colors.mutedForeground, fontFamily: "Cairo_400Regular" }}>جاري التحميل…</Text></Card>
+      ) : projectQ.isError || !projectQ.data ? (
+        <Empty icon="alert-circle" title="تعذّر تحميل إعدادات المشروع" />
       ) : reports.length === 0 ? (
         <Empty
           icon="file-text" title="لا توجد تقارير" description="لم يتم إنشاء أي تقرير لهذا المشروع بعد."
@@ -40,12 +44,16 @@ export default function ReportsListScreen() {
           <TouchableOpacity key={r.id} onPress={() => router.push(`/projects/${projectId}/reports/${r.id}` as never)} activeOpacity={0.85}>
             <Card>
               <View style={styles.row}>
-                <Text style={[styles.title, { color: colors.foreground }]}>تقرير #{r.reportNumber}</Text>
+                <Text style={[styles.title, { color: colors.foreground }]}>
+                  {periodOnly ? `${r.periodStart ?? "—"} — ${r.periodEnd ?? "—"}` : `تقرير #${r.reportNumber}`}
+                </Text>
                 <View style={[styles.badge, { backgroundColor: (r.status === "approved" ? colors.success : colors.warning) + "22", borderColor: r.status === "approved" ? colors.success : colors.warning }]}>
                   <Text style={[styles.badgeText, { color: r.status === "approved" ? colors.success : colors.warning }]}>{r.status === "approved" ? "معتمد" : "مسودة"}</Text>
                 </View>
               </View>
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>{r.type} · {r.reportDate}</Text>
+              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+                {periodOnly ? `تاريخ التقرير: ${r.reportDate}` : `${r.type} · ${r.reportDate}`}
+              </Text>
               {r.workDescription ? (
                 <Text style={[styles.desc, { color: colors.foreground }]} numberOfLines={2}>{r.workDescription}</Text>
               ) : null}

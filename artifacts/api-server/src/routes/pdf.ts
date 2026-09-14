@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable, projectSuspensionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
 import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcActivityPlannedProgress, isActivityDelayed, roundPercent } from "../lib/progress";
 import PDFDocument from "pdfkit";
@@ -97,6 +97,12 @@ function ensurePage(doc: InstanceType<typeof PDFDocument>, neededHeight: number)
 router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
+  const requestedReportId = typeof req.query.reportId === "string" ? Number(req.query.reportId) : null;
+
+  if (requestedReportId !== null && (!Number.isSafeInteger(requestedReportId) || requestedReportId <= 0)) {
+    res.status(400).json({ error: "رقم التقرير غير صالح" });
+    return;
+  }
 
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   if (!project) {
@@ -105,8 +111,17 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   }
 
   const reports = await db.select().from(reportsTable)
-    .where(eq(reportsTable.projectId, projectId))
+    .where(
+      requestedReportId === null
+        ? eq(reportsTable.projectId, projectId)
+        : and(eq(reportsTable.projectId, projectId), eq(reportsTable.id, requestedReportId)),
+    )
     .orderBy(reportsTable.reportDate);
+
+  if (requestedReportId !== null && reports.length === 0) {
+    res.status(404).json({ error: "التقرير غير موجود" });
+    return;
+  }
 
   const activities = await db.select().from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId))
@@ -121,6 +136,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     .orderBy(projectSuspensionsTable.startDate);
 
   const hasFont = fs.existsSync(AMIRI_FONT);
+  const periodOnly = project.reportDisplayMode === "period_only";
 
   const doc = new PDFDocument({
     margin: MARGIN,
@@ -129,7 +145,9 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
       Title: `تقرير المشروع الشامل - ${project.name}`,
       Author: "إدارة الإشراف والمتابعة",
     },
-    bufferPages: true,
+    // A single report may contain hundreds of photos. Stream those pages as
+    // they are produced instead of retaining the whole document in memory.
+    bufferPages: requestedReportId === null,
   });
 
   if (hasFont) { doc.registerFont("Amiri", AMIRI_FONT); doc.font("Amiri"); }
@@ -139,7 +157,12 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   };
 
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''report-${projectId}.pdf`);
+  const downloadName = requestedReportId === null
+    ? `project-${projectId}-reports.pdf`
+    : periodOnly
+      ? `report-period-${reports[0].periodStart || "start"}-${reports[0].periodEnd || "end"}.pdf`
+      : `report-${reports[0].reportNumber || requestedReportId}.pdf`;
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${downloadName}`);
   doc.pipe(res);
 
   // ════════════════════════════════════════════
@@ -405,11 +428,27 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
       const typeColor = report.type === "monthly" ? C.primary : C.accent;
       doc.rect(MARGIN, y, CONTENT_W, 50).fill(typeColor);
       setFont(9, C.white);
-      doc.text(`تقرير ${reportTypeLabel(report.type)}  —  ${idx + 1} من ${reports.length}`, MARGIN + 8, y + 8, { width: CONTENT_W - 16, align: "right" });
+      doc.text(
+        periodOnly
+          ? `الفترة: ${formatDate(report.periodStart)} — ${formatDate(report.periodEnd)}`
+          : `تقرير ${reportTypeLabel(report.type)} #${report.reportNumber}  —  ${idx + 1} من ${reports.length}`,
+        MARGIN + 8,
+        y + 8,
+        { width: CONTENT_W - 16, align: "right" },
+      );
       setFont(12, C.white);
-      doc.text(`الفترة: ${formatDate(report.periodStart)} — ${formatDate(report.periodEnd)}`, MARGIN + 8, y + 24, { width: CONTENT_W - 16, align: "right" });
-      setFont(8, "rgba(255,255,255,0.8)");
-      doc.text(`تاريخ التقرير: ${formatDate(report.reportDate)}`, MARGIN + 8, y + 40, { width: CONTENT_W - 16, align: "right" });
+      doc.text(
+        periodOnly
+          ? `تاريخ التقرير: ${formatDate(report.reportDate)}`
+          : `الفترة: ${formatDate(report.periodStart)} — ${formatDate(report.periodEnd)}`,
+        MARGIN + 8,
+        y + 24,
+        { width: CONTENT_W - 16, align: "right" },
+      );
+      if (!periodOnly) {
+        setFont(8, "rgba(255,255,255,0.8)");
+        doc.text(`تاريخ التقرير: ${formatDate(report.reportDate)}`, MARGIN + 8, y + 40, { width: CONTENT_W - 16, align: "right" });
+      }
       y += 58;
 
       // Progress indicator for this report
@@ -720,14 +759,18 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   setFont(9, C.textDark);
   doc.text(`تاريخ الإصدار: ${formatDate(new Date())}  |  المشروع: ${project.name}`, MARGIN + 8, y + 27, { width: CONTENT_W - 16, align: "center" });
 
-  // Page numbers
-  const pageCount = (doc as { _pageBuffer?: unknown[] })._pageBuffer?.length ?? 1;
-  for (let i = 0; i < pageCount; i++) {
-    doc.switchToPage(i);
-    if (hasFont) doc.font("Amiri");
-    doc.rect(0, PAGE_H - 28, PAGE_W, 28).fill(C.primary);
-    doc.fillColor(C.white).fontSize(8)
-      .text(`صفحة ${i + 1} من ${pageCount}  |  نظام الإشراف الهندسي`, MARGIN, PAGE_H - 18, { width: CONTENT_W, align: "center" });
+  // Retrospective page numbering requires buffered pages. Single-report
+  // exports intentionally stream pages so photo-heavy reports stay bounded
+  // in memory, therefore they skip this footer pass.
+  if (requestedReportId === null) {
+    const pageCount = (doc as { _pageBuffer?: unknown[] })._pageBuffer?.length ?? 1;
+    for (let i = 0; i < pageCount; i++) {
+      doc.switchToPage(i);
+      if (hasFont) doc.font("Amiri");
+      doc.rect(0, PAGE_H - 28, PAGE_W, 28).fill(C.primary);
+      doc.fillColor(C.white).fontSize(8)
+        .text(`صفحة ${i + 1} من ${pageCount}  |  نظام الإشراف الهندسي`, MARGIN, PAGE_H - 18, { width: CONTENT_W, align: "center" });
+    }
   }
 
   doc.end();

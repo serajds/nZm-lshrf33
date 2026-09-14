@@ -1890,6 +1890,9 @@ components:
           type: ["array", "null"]
           items:
             $ref: "#/components/schemas/ReportSignature"
+        reportDisplayMode:
+          type: string
+          enum: [type_and_number, period_only]
         attendanceAutoCloseHours:
           type: integer
         attendanceLongDayHours:
@@ -1912,6 +1915,7 @@ components:
         - noSchedule
         - attendanceAutoCloseHours
         - attendanceLongDayHours
+        - reportDisplayMode
         - createdAt
         - updatedAt
 
@@ -1941,6 +1945,10 @@ components:
           type: string
           enum: [active, completed, delayed, suspended]
           default: active
+        reportDisplayMode:
+          type: string
+          enum: [type_and_number, period_only]
+          default: type_and_number
       required:
         - name
         - location
@@ -1999,6 +2007,9 @@ components:
           type: ["array", "null"]
           items:
             $ref: "#/components/schemas/ReportSignature"
+        reportDisplayMode:
+          type: string
+          enum: [type_and_number, period_only]
 
     # Activities
     Activity:

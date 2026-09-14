@@ -118,6 +118,7 @@ export interface ApiProject {
   siteLatitude?: number | null;
   siteLongitude?: number | null;
   siteRadiusMeters?: number | null;
+  reportDisplayMode?: "type_and_number" | "period_only";
 }
 
 export interface MyAttendanceProjectStatus {

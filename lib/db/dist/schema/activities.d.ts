@@ -178,7 +178,7 @@ export declare const activitiesTable: import("drizzle-orm/pg-core").PgTableWithC
             tableName: "activities";
             dataType: "string";
             columnType: "PgText";
-            data: "not_started" | "in_progress" | "completed" | "delayed";
+            data: "completed" | "delayed" | "not_started" | "in_progress";
             driverParam: string;
             notNull: true;
             hasDefault: true;
@@ -262,21 +262,21 @@ export declare const activitiesTable: import("drizzle-orm/pg-core").PgTableWithC
     dialect: "pg";
 }>;
 export declare const insertActivitySchema: z.ZodObject<{
-    projectId: z.ZodInt;
     name: z.ZodString;
+    actualEndDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    status: z.ZodOptional<z.ZodEnum<{
+        completed: "completed";
+        delayed: "delayed";
+        not_started: "not_started";
+        in_progress: "in_progress";
+    }>>;
+    projectId: z.ZodInt;
     plannedStartDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     plannedEndDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     actualStartDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    actualEndDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     plannedProgress: z.ZodOptional<z.ZodNumber>;
     actualProgress: z.ZodOptional<z.ZodNumber>;
     weight: z.ZodOptional<z.ZodNumber>;
-    status: z.ZodOptional<z.ZodEnum<{
-        not_started: "not_started";
-        in_progress: "in_progress";
-        completed: "completed";
-        delayed: "delayed";
-    }>>;
     groupId: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     sortOrder: z.ZodOptional<z.ZodInt>;
     progressUpdatedAt: z.ZodOptional<z.ZodNullable<z.ZodDate>>;

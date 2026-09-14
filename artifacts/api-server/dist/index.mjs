@@ -58945,6 +58945,7 @@ var init_projects = __esm({
       siteRadiusMeters: integer("site_radius_meters").default(200),
       attendanceAutoCloseHours: integer("attendance_auto_close_hours").notNull().default(12),
       attendanceLongDayHours: integer("attendance_long_day_hours").notNull().default(10),
+      reportDisplayMode: text("report_display_mode", { enum: ["type_and_number", "period_only"] }).notNull().default("type_and_number"),
       reportSignatures: jsonb("report_signatures").$type(),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
       updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => /* @__PURE__ */ new Date())
@@ -119431,6 +119432,7 @@ var ListProjectsResponseItem = objectType({
       name: stringType().optional()
     })
   ).nullish(),
+  reportDisplayMode: enumType(["type_and_number", "period_only"]),
   attendanceAutoCloseHours: numberType(),
   attendanceLongDayHours: numberType(),
   createdAt: coerce.date(),
@@ -119439,6 +119441,7 @@ var ListProjectsResponseItem = objectType({
 var ListProjectsResponse = arrayType(ListProjectsResponseItem);
 var createProjectBodyNoScheduleDefault = false;
 var createProjectBodyStatusDefault = `active`;
+var createProjectBodyReportDisplayModeDefault = `type_and_number`;
 var CreateProjectBody = objectType({
   name: stringType(),
   location: stringType(),
@@ -119448,7 +119451,8 @@ var CreateProjectBody = objectType({
   startDate: coerce.date().nullish(),
   expectedEndDate: coerce.date().nullish(),
   noSchedule: booleanType().default(createProjectBodyNoScheduleDefault),
-  status: enumType(["active", "completed", "delayed", "suspended"]).default(createProjectBodyStatusDefault)
+  status: enumType(["active", "completed", "delayed", "suspended"]).default(createProjectBodyStatusDefault),
+  reportDisplayMode: enumType(["type_and_number", "period_only"]).default(createProjectBodyReportDisplayModeDefault)
 });
 var GetProjectParams = objectType({
   id: coerce.number()
@@ -119478,6 +119482,7 @@ var GetProjectResponse = objectType({
       name: stringType().optional()
     })
   ).nullish(),
+  reportDisplayMode: enumType(["type_and_number", "period_only"]),
   attendanceAutoCloseHours: numberType(),
   attendanceLongDayHours: numberType(),
   createdAt: coerce.date(),
@@ -119514,7 +119519,8 @@ var UpdateProjectBody = objectType({
       role: stringType().optional(),
       name: stringType().optional()
     })
-  ).nullish()
+  ).nullish(),
+  reportDisplayMode: enumType(["type_and_number", "period_only"]).optional()
 });
 var UpdateProjectResponse = objectType({
   id: numberType(),
@@ -119541,6 +119547,7 @@ var UpdateProjectResponse = objectType({
       name: stringType().optional()
     })
   ).nullish(),
+  reportDisplayMode: enumType(["type_and_number", "period_only"]),
   attendanceAutoCloseHours: numberType(),
   attendanceLongDayHours: numberType(),
   createdAt: coerce.date(),
@@ -120262,6 +120269,7 @@ var VerifyOwnerAccessResponse = objectType({
         name: stringType().optional()
       })
     ).nullish(),
+    reportDisplayMode: enumType(["type_and_number", "period_only"]),
     attendanceAutoCloseHours: numberType(),
     attendanceLongDayHours: numberType(),
     createdAt: coerce.date(),
@@ -120412,6 +120420,7 @@ var GetDashboardSummaryResponse = objectType({
           name: stringType().optional()
         })
       ).nullish(),
+      reportDisplayMode: enumType(["type_and_number", "period_only"]),
       attendanceAutoCloseHours: numberType(),
       attendanceLongDayHours: numberType(),
       createdAt: coerce.date(),
@@ -123207,6 +123216,7 @@ router3.get("/projects", requireAuth, async (req, res) => {
     siteRadiusMeters: projectsTable.siteRadiusMeters,
     attendanceAutoCloseHours: projectsTable.attendanceAutoCloseHours,
     attendanceLongDayHours: projectsTable.attendanceLongDayHours,
+    reportDisplayMode: projectsTable.reportDisplayMode,
     createdAt: projectsTable.createdAt,
     updatedAt: projectsTable.updatedAt
   }).from(projectsTable);
@@ -123229,7 +123239,8 @@ router3.post("/projects", requireAdmin, async (req, res) => {
     ownerCompanyId,
     contractorCompanyId,
     supervisorCompanyId,
-    onedriveTestResultsFolderId
+    onedriveTestResultsFolderId,
+    reportDisplayMode
   } = req.body;
   const isNoSchedule = noSchedule === true || noSchedule === "true";
   if (!name || !location || !ownerEntity || !supervisorEntity || !contractor) {
@@ -123238,6 +123249,10 @@ router3.post("/projects", requireAdmin, async (req, res) => {
   }
   if (!isNoSchedule && (!startDate || !expectedEndDate)) {
     res.status(400).json({ error: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0628\u062F\u0627\u064A\u0629 \u0648\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646 \u0644\u0644\u0645\u0634\u0627\u0631\u064A\u0639 \u0630\u0627\u062A \u0627\u0644\u062C\u062F\u0648\u0644 \u0627\u0644\u0632\u0645\u0646\u064A" });
+    return;
+  }
+  if (reportDisplayMode !== void 0 && reportDisplayMode !== "type_and_number" && reportDisplayMode !== "period_only") {
+    res.status(400).json({ error: "\u0637\u0631\u064A\u0642\u0629 \u0639\u0631\u0636 \u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629" });
     return;
   }
   const [project] = await db.insert(projectsTable).values({
@@ -123254,7 +123269,8 @@ router3.post("/projects", requireAdmin, async (req, res) => {
     ownerCompanyId: ownerCompanyId && ownerCompanyId !== "none" && !isNaN(Number(ownerCompanyId)) ? parseInt(ownerCompanyId, 10) : null,
     contractorCompanyId: contractorCompanyId && contractorCompanyId !== "none" && !isNaN(Number(contractorCompanyId)) ? parseInt(contractorCompanyId, 10) : null,
     supervisorCompanyId: supervisorCompanyId && supervisorCompanyId !== "none" && !isNaN(Number(supervisorCompanyId)) ? parseInt(supervisorCompanyId, 10) : null,
-    onedriveTestResultsFolderId: onedriveTestResultsFolderId || null
+    onedriveTestResultsFolderId: onedriveTestResultsFolderId || null,
+    reportDisplayMode: reportDisplayMode ?? "type_and_number"
   }).returning();
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
   logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "create", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name });
@@ -123301,12 +123317,17 @@ router3.get("/projects/:id/company-logos", requireProjectAccess("id"), async (re
 router3.patch("/projects/:id", requireProjectAccess("id"), async (req, res) => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
-  if (req.user?.role !== "admin" && req.projectRole !== "project_manager") {
+  const body = req.body;
+  const canManageProject = req.user?.role === "admin" || req.projectRole === "project_manager";
+  if (body.reportDisplayMode !== void 0 && !canManageProject) {
+    res.status(403).json({ error: "\u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0623\u0648 \u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645 \u0644\u062A\u063A\u064A\u064A\u0631 \u0637\u0631\u064A\u0642\u0629 \u0639\u0631\u0636 \u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631" });
+    return;
+  }
+  if (!canManageProject) {
     res.status(403).json({ error: "\u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0623\u0648 \u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645 \u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0634\u0631\u0648\u0639" });
     return;
   }
   const updateData = {};
-  const body = req.body;
   const parseCompanyId = (val) => val && val !== "none" && !isNaN(Number(val)) ? parseInt(String(val), 10) : null;
   const isTogglingNoSchedule = body.noSchedule !== void 0;
   const willBeNoSchedule = isTogglingNoSchedule ? body.noSchedule === true || body.noSchedule === "true" : void 0;
@@ -123381,6 +123402,13 @@ router3.patch("/projects/:id", requireProjectAccess("id"), async (req, res) => {
     updateData.attendanceLongDayHours = n;
   }
   if (body.reportSignatures !== void 0) updateData.reportSignatures = body.reportSignatures;
+  if (body.reportDisplayMode !== void 0) {
+    if (body.reportDisplayMode !== "type_and_number" && body.reportDisplayMode !== "period_only") {
+      res.status(400).json({ error: "\u0637\u0631\u064A\u0642\u0629 \u0639\u0631\u0636 \u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629" });
+      return;
+    }
+    updateData.reportDisplayMode = body.reportDisplayMode;
+  }
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0628\u064A\u0627\u0646\u0627\u062A \u0644\u0644\u062A\u062D\u062F\u064A\u062B" });
     return;
@@ -126342,7 +126370,9 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
     res.status(404).json({ error: "\u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
-  const reports = await db.select().from(reportsTable).where(requestedReportId === null ? eq(reportsTable.projectId, projectId) : and(eq(reportsTable.projectId, projectId), eq(reportsTable.id, requestedReportId))).orderBy(reportsTable.reportDate);
+  const reports = await db.select().from(reportsTable).where(
+    requestedReportId === null ? eq(reportsTable.projectId, projectId) : and(eq(reportsTable.projectId, projectId), eq(reportsTable.id, requestedReportId))
+  ).orderBy(reportsTable.reportDate);
   if (requestedReportId !== null && reports.length === 0) {
     res.status(404).json({ error: "\u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
@@ -126351,6 +126381,7 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
   const extensions = await db.select().from(projectExtensionsTable).where(eq(projectExtensionsTable.projectId, projectId)).orderBy(projectExtensionsTable.extensionDate);
   const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId)).orderBy(projectSuspensionsTable.startDate);
   const hasFont = fs3.existsSync(AMIRI_FONT);
+  const periodOnly = project.reportDisplayMode === "period_only";
   const doc = new PDFDocument({
     margin: MARGIN,
     size: "A4",
@@ -126371,7 +126402,7 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
     doc.fontSize(size).fillColor(color);
   };
   res.setHeader("Content-Type", "application/pdf");
-  const downloadName = requestedReportId === null ? `project-${projectId}-reports.pdf` : `report-${reports[0].reportNumber || requestedReportId}.pdf`;
+  const downloadName = requestedReportId === null ? `project-${projectId}-reports.pdf` : periodOnly ? `report-period-${reports[0].periodStart || "start"}-${reports[0].periodEnd || "end"}.pdf` : `report-${reports[0].reportNumber || requestedReportId}.pdf`;
   res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${downloadName}`);
   doc.pipe(res);
   doc.rect(0, 0, PAGE_W, 90).fill(C.primary);
@@ -126576,11 +126607,23 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
       const typeColor = report.type === "monthly" ? C.primary : C.accent;
       doc.rect(MARGIN, y, CONTENT_W, 50).fill(typeColor);
       setFont(9, C.white);
-      doc.text(`\u062A\u0642\u0631\u064A\u0631 ${reportTypeLabel(report.type)}  \u2014  ${idx + 1} \u0645\u0646 ${reports.length}`, MARGIN + 8, y + 8, { width: CONTENT_W - 16, align: "right" });
+      doc.text(
+        periodOnly ? `\u0627\u0644\u0641\u062A\u0631\u0629: ${formatDate(report.periodStart)} \u2014 ${formatDate(report.periodEnd)}` : `\u062A\u0642\u0631\u064A\u0631 ${reportTypeLabel(report.type)} #${report.reportNumber}  \u2014  ${idx + 1} \u0645\u0646 ${reports.length}`,
+        MARGIN + 8,
+        y + 8,
+        { width: CONTENT_W - 16, align: "right" }
+      );
       setFont(12, C.white);
-      doc.text(`\u0627\u0644\u0641\u062A\u0631\u0629: ${formatDate(report.periodStart)} \u2014 ${formatDate(report.periodEnd)}`, MARGIN + 8, y + 24, { width: CONTENT_W - 16, align: "right" });
-      setFont(8, "rgba(255,255,255,0.8)");
-      doc.text(`\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0642\u0631\u064A\u0631: ${formatDate(report.reportDate)}`, MARGIN + 8, y + 40, { width: CONTENT_W - 16, align: "right" });
+      doc.text(
+        periodOnly ? `\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0642\u0631\u064A\u0631: ${formatDate(report.reportDate)}` : `\u0627\u0644\u0641\u062A\u0631\u0629: ${formatDate(report.periodStart)} \u2014 ${formatDate(report.periodEnd)}`,
+        MARGIN + 8,
+        y + 24,
+        { width: CONTENT_W - 16, align: "right" }
+      );
+      if (!periodOnly) {
+        setFont(8, "rgba(255,255,255,0.8)");
+        doc.text(`\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0642\u0631\u064A\u0631: ${formatDate(report.reportDate)}`, MARGIN + 8, y + 40, { width: CONTENT_W - 16, align: "right" });
+      }
       y += 58;
       doc.roundedRect(MARGIN, y, CONTENT_W, 32, 4).fill(C.light).stroke(C.border);
       setFont(8, C.textMuted);

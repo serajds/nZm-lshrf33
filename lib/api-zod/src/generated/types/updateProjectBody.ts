@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ReportSignature } from "./reportSignature";
+import type { UpdateProjectBodyReportDisplayMode } from "./updateProjectBodyReportDisplayMode";
 import type { UpdateProjectBodyStatus } from "./updateProjectBodyStatus";
 
 export interface UpdateProjectBody {
@@ -39,4 +40,5 @@ export interface UpdateProjectBody {
   siteRadiusMeters?: number | null;
   /** @nullable */
   reportSignatures?: ReportSignature[] | null;
+  reportDisplayMode?: UpdateProjectBodyReportDisplayMode;
 }
