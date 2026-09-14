@@ -125,7 +125,7 @@ export function buildPrintHTML(data: ReportPdfData): string {
   ].filter(Boolean) as string[][];
 
   const activitiesHTML = acts.length > 0 ? `
-    <div class="section avoid-break">
+    <div class="section activities-section">
       <div class="section-title blue-title">📋 حالة بنود الأعمال</div>
       <table class="tbl">
         <thead>
@@ -300,13 +300,15 @@ export function buildPrintHTML(data: ReportPdfData): string {
     background: rgba(255,255,255,0.04);
     border-radius: 50%;
   }
-  .header-row { display: flex; justify-content: space-between; align-items: flex-start; position: relative; z-index: 1; }
-  .header-info { flex: 1; }
+  .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; position: relative; z-index: 1; }
+  .header-info { flex: 1; min-width: 0; }
   .header-sys { font-size: 10px; text-transform: uppercase; letter-spacing: 3px; color: rgba(255,255,255,0.45); margin-bottom: 6px; }
   .header-name { font-size: 22px; font-weight: 800; line-height: 1.3; margin-bottom: 12px; }
   .header-pills { display: flex; flex-wrap: wrap; gap: 6px; }
   .pill { display: inline-block; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 3px 12px; font-size: 11px; color: rgba(255,255,255,0.8); }
   .header-badge { background: rgba(255,255,255,0.12); border: 1.5px solid rgba(255,255,255,0.25); border-radius: 12px; padding: 12px 20px; text-align: center; min-width: 90px; }
+  .header-badge.period-badge { width: 180px; flex: 0 0 180px; padding-left: 10px; padding-right: 10px; }
+  .header-badge.period-badge .badge-val { font-size: 13px; line-height: 1.4; white-space: nowrap; }
   .badge-lbl { font-size: 9px; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
   .badge-val { font-size: 20px; font-weight: 800; }
 
@@ -367,6 +369,8 @@ export function buildPrintHTML(data: ReportPdfData): string {
 
   /* ── TABLE ── */
   .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl thead { display: table-header-group; }
+  .tbl tr { break-inside: avoid; page-break-inside: avoid; }
   .th { background: #f1f5f9; padding: 8px 10px; font-size: 12px; font-weight: 700; color: #475569; border-bottom: 2px solid #cbd5e1; text-align: right; }
   .tc { text-align: center !important; }
   .td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; }
@@ -428,7 +432,7 @@ ${(() => {
         ${metaRows.map(([l, v]) => `<span class="pill">${l}: ${esc(v)}</span>`).join("")}
       </div>
     </div>
-    <div class="header-badge">
+    <div class="header-badge${periodOnly ? " period-badge" : ""}">
       <div class="badge-lbl">${periodOnly ? "الفترة" : "نوع التقرير"}</div>
       <div class="badge-val">${periodOnly ? periodLabel : typeLbl}</div>
     </div>

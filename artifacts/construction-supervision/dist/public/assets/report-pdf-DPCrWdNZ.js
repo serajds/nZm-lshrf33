@@ -1,5 +1,5 @@
 function F(e){if(!e)return"—";const s=new Date(e);return isNaN(s.getTime())?"—":`${s.getFullYear()}/${String(s.getMonth()+1).padStart(2,"0")}/${String(s.getDate()).padStart(2,"0")}`}function a(e){return e.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}function H(e){const s=e.replace(/["'<>]/g,"");return/^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(s)?s:/^(https?:\/\/|\/)/i.test(s)?a(s):""}function ve(e){return{completed:"مكتمل",in_progress:"جارٍ",delayed:"متأخر",not_started:"لم يبدأ"}[e]??e}function oe(e){return{completed:"#16a34a",in_progress:"#2563eb",delayed:"#dc2626",not_started:"#6b7280"}[e]??"#6b7280"}function fe(e){return{completed:"#f0fdf4",in_progress:"#eff6ff",delayed:"#fef2f2",not_started:"#f9fafb"}[e]??"#f9fafb"}function de(e){return e==null?"—":e.toLocaleString("ar-u-nu-latn",{maximumFractionDigits:0})}function _(e,s){if(!e||!s)return null;const i=new Date(e),d=new Date(s);return isNaN(i.getTime())||isNaN(d.getTime())?null:Math.round((d.getTime()-i.getTime())/864e5)}function be(e){const s=e.reportType==="weekly"?"أسبوعي":"شهري",i=e.reportDisplayMode==="period_only",d=`${F(e.periodStart)} — ${F(e.periodEnd)}`,n=Math.min(100,Math.max(0,e.progressPercentage)),b=e.plannedProgress!=null?Math.min(100,Math.max(0,e.plannedProgress)):null,h=b!=null?n-b:null,w=_(e.startDate,e.expectedEndDate),p=_(e.startDate,e.reportDate),$=_(e.reportDate,e.expectedEndDate),N=$!=null&&$<0&&n<100?-$:0,r=$!=null?Math.max(0,$):null,x=w&&p!=null?Math.min(100,Math.round(p/w*100)):null,c=e.activities??[],g=c.filter(t=>t.status==="completed").length,A=c.filter(t=>t.status==="in_progress").length,y=c.filter(t=>t.status==="delayed").length,M=c.filter(t=>t.status==="not_started").length,P=[e.ownerEntity?["جهة المالك",e.ownerEntity]:null,e.contractor?["المقاول",e.contractor]:null,e.supervisorEntity?["جهة الإشراف",e.supervisorEntity]:null,e.location?["الموقع",e.location]:null].filter(Boolean),I=c.length>0?`
-    <div class="section avoid-break">
+    <div class="section activities-section">
       <div class="section-title blue-title">📋 حالة بنود الأعمال</div>
       <table class="tbl">
         <thead>
@@ -145,13 +145,15 @@ function F(e){if(!e)return"—";const s=new Date(e);return isNaN(s.getTime())?"�
     background: rgba(255,255,255,0.04);
     border-radius: 50%;
   }
-  .header-row { display: flex; justify-content: space-between; align-items: flex-start; position: relative; z-index: 1; }
-  .header-info { flex: 1; }
+  .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; position: relative; z-index: 1; }
+  .header-info { flex: 1; min-width: 0; }
   .header-sys { font-size: 10px; text-transform: uppercase; letter-spacing: 3px; color: rgba(255,255,255,0.45); margin-bottom: 6px; }
   .header-name { font-size: 22px; font-weight: 800; line-height: 1.3; margin-bottom: 12px; }
   .header-pills { display: flex; flex-wrap: wrap; gap: 6px; }
   .pill { display: inline-block; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 3px 12px; font-size: 11px; color: rgba(255,255,255,0.8); }
   .header-badge { background: rgba(255,255,255,0.12); border: 1.5px solid rgba(255,255,255,0.25); border-radius: 12px; padding: 12px 20px; text-align: center; min-width: 90px; }
+  .header-badge.period-badge { width: 180px; flex: 0 0 180px; padding-left: 10px; padding-right: 10px; }
+  .header-badge.period-badge .badge-val { font-size: 13px; line-height: 1.4; white-space: nowrap; }
   .badge-lbl { font-size: 9px; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
   .badge-val { font-size: 20px; font-weight: 800; }
 
@@ -212,6 +214,8 @@ function F(e){if(!e)return"—";const s=new Date(e);return isNaN(s.getTime())?"�
 
   /* ── TABLE ── */
   .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl thead { display: table-header-group; }
+  .tbl tr { break-inside: avoid; page-break-inside: avoid; }
   .th { background: #f1f5f9; padding: 8px 10px; font-size: 12px; font-weight: 700; color: #475569; border-bottom: 2px solid #cbd5e1; text-align: right; }
   .tc { text-align: center !important; }
   .td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; }
@@ -257,7 +261,7 @@ ${(()=>{const t=e.companyLogos,v=e.apiBase||"";if(!t||!t.owner?.logoUrl&&!t.cont
         ${P.map(([t,v])=>`<span class="pill">${t}: ${a(v)}</span>`).join("")}
       </div>
     </div>
-    <div class="header-badge">
+    <div class="header-badge${i?" period-badge":""}">
       <div class="badge-lbl">${i?"الفترة":"نوع التقرير"}</div>
       <div class="badge-val">${i?d:s}</div>
     </div>
