@@ -178,7 +178,7 @@ export declare const activitiesTable: import("drizzle-orm/pg-core").PgTableWithC
             tableName: "activities";
             dataType: "string";
             columnType: "PgText";
-            data: "completed" | "delayed" | "not_started" | "in_progress";
+            data: "not_started" | "in_progress" | "completed" | "delayed";
             driverParam: string;
             notNull: true;
             hasDefault: true;
@@ -209,6 +209,40 @@ export declare const activitiesTable: import("drizzle-orm/pg-core").PgTableWithC
         }, {}, {}>;
         externalSourceGroupId: import("drizzle-orm/pg-core").PgColumn<{
             name: "external_source_group_id";
+            tableName: "activities";
+            dataType: "number";
+            columnType: "PgInteger";
+            data: number;
+            driverParam: string | number;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        managedByGroupId: import("drizzle-orm/pg-core").PgColumn<{
+            name: "managed_by_group_id";
+            tableName: "activities";
+            dataType: "number";
+            columnType: "PgInteger";
+            data: number;
+            driverParam: string | number;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        managedSourceProjectId: import("drizzle-orm/pg-core").PgColumn<{
+            name: "managed_source_project_id";
             tableName: "activities";
             dataType: "number";
             columnType: "PgInteger";
@@ -279,23 +313,25 @@ export declare const activitiesTable: import("drizzle-orm/pg-core").PgTableWithC
     dialect: "pg";
 }>;
 export declare const insertActivitySchema: z.ZodObject<{
-    name: z.ZodString;
-    actualEndDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    status: z.ZodOptional<z.ZodEnum<{
-        completed: "completed";
-        delayed: "delayed";
-        not_started: "not_started";
-        in_progress: "in_progress";
-    }>>;
     projectId: z.ZodInt;
+    name: z.ZodString;
     plannedStartDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     plannedEndDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     actualStartDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    actualEndDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     plannedProgress: z.ZodOptional<z.ZodNumber>;
     actualProgress: z.ZodOptional<z.ZodNumber>;
     weight: z.ZodOptional<z.ZodNumber>;
+    status: z.ZodOptional<z.ZodEnum<{
+        not_started: "not_started";
+        in_progress: "in_progress";
+        completed: "completed";
+        delayed: "delayed";
+    }>>;
     groupId: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     externalSourceGroupId: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
+    managedByGroupId: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
+    managedSourceProjectId: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     sortOrder: z.ZodOptional<z.ZodInt>;
     progressUpdatedAt: z.ZodOptional<z.ZodNullable<z.ZodDate>>;
 }, {

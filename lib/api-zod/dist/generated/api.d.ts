@@ -774,6 +774,211 @@ export declare const DeleteProjectParams: zod.ZodObject<{
     id: number;
 }>;
 /**
+ * @summary List activity groups
+ */
+export declare const ListActivityGroupsParams: zod.ZodObject<{
+    projectId: zod.ZodNumber;
+}, "strip", zod.ZodTypeAny, {
+    projectId: number;
+}, {
+    projectId: number;
+}>;
+export declare const ListActivityGroupsResponseItem: zod.ZodObject<{
+    id: zod.ZodNumber;
+    projectId: zod.ZodNumber;
+    name: zod.ZodString;
+    color: zod.ZodString;
+    sortOrder: zod.ZodNumber;
+    linkCode: zod.ZodNullable<zod.ZodString>;
+}, "strip", zod.ZodTypeAny, {
+    id: number;
+    projectId: number;
+    name: string;
+    color: string;
+    sortOrder: number;
+    linkCode: string | null;
+}, {
+    id: number;
+    projectId: number;
+    name: string;
+    color: string;
+    sortOrder: number;
+    linkCode: string | null;
+}>;
+export declare const ListActivityGroupsResponse: zod.ZodArray<zod.ZodObject<{
+    id: zod.ZodNumber;
+    projectId: zod.ZodNumber;
+    name: zod.ZodString;
+    color: zod.ZodString;
+    sortOrder: zod.ZodNumber;
+    linkCode: zod.ZodNullable<zod.ZodString>;
+}, "strip", zod.ZodTypeAny, {
+    id: number;
+    projectId: number;
+    name: string;
+    color: string;
+    sortOrder: number;
+    linkCode: string | null;
+}, {
+    id: number;
+    projectId: number;
+    name: string;
+    color: string;
+    sortOrder: number;
+    linkCode: string | null;
+}>, "many">;
+/**
+ * @summary Create an activity group
+ */
+export declare const CreateActivityGroupParams: zod.ZodObject<{
+    projectId: zod.ZodNumber;
+}, "strip", zod.ZodTypeAny, {
+    projectId: number;
+}, {
+    projectId: number;
+}>;
+export declare const CreateActivityGroupBody: zod.ZodObject<{
+    name: zod.ZodString;
+    color: zod.ZodOptional<zod.ZodString>;
+    linkCode: zod.ZodOptional<zod.ZodNullable<zod.ZodString>>;
+}, "strip", zod.ZodTypeAny, {
+    name: string;
+    color?: string | undefined;
+    linkCode?: string | null | undefined;
+}, {
+    name: string;
+    color?: string | undefined;
+    linkCode?: string | null | undefined;
+}>;
+/**
+ * @summary Update an activity group, including its normalized sharing code
+ */
+export declare const UpdateActivityGroupParams: zod.ZodObject<{
+    projectId: zod.ZodNumber;
+    id: zod.ZodNumber;
+}, "strip", zod.ZodTypeAny, {
+    id: number;
+    projectId: number;
+}, {
+    id: number;
+    projectId: number;
+}>;
+export declare const UpdateActivityGroupBody: zod.ZodObject<{
+    name: zod.ZodOptional<zod.ZodString>;
+    color: zod.ZodOptional<zod.ZodString>;
+    linkCode: zod.ZodOptional<zod.ZodNullable<zod.ZodString>>;
+}, "strip", zod.ZodTypeAny, {
+    name?: string | undefined;
+    color?: string | undefined;
+    linkCode?: string | null | undefined;
+}, {
+    name?: string | undefined;
+    color?: string | undefined;
+    linkCode?: string | null | undefined;
+}>;
+export declare const UpdateActivityGroupResponse: zod.ZodObject<{
+    id: zod.ZodNumber;
+    projectId: zod.ZodNumber;
+    name: zod.ZodString;
+    color: zod.ZodString;
+    sortOrder: zod.ZodNumber;
+    linkCode: zod.ZodNullable<zod.ZodString>;
+}, "strip", zod.ZodTypeAny, {
+    id: number;
+    projectId: number;
+    name: string;
+    color: string;
+    sortOrder: number;
+    linkCode: string | null;
+}, {
+    id: number;
+    projectId: number;
+    name: string;
+    color: string;
+    sortOrder: number;
+    linkCode: string | null;
+}>;
+/**
+ * @summary Search shareable groups from projects accessible to the caller
+ */
+export declare const SearchActivityGroupSourcesParams: zod.ZodObject<{
+    projectId: zod.ZodNumber;
+}, "strip", zod.ZodTypeAny, {
+    projectId: number;
+}, {
+    projectId: number;
+}>;
+export declare const SearchActivityGroupSourcesQueryParams: zod.ZodObject<{
+    query: zod.ZodString;
+}, "strip", zod.ZodTypeAny, {
+    query: string;
+}, {
+    query: string;
+}>;
+export declare const searchActivityGroupSourcesResponseAvailableDefault = true;
+export declare const SearchActivityGroupSourcesResponseItem: zod.ZodObject<{
+    available: zod.ZodDefault<zod.ZodBoolean>;
+    groupId: zod.ZodNumber;
+    projectId: zod.ZodOptional<zod.ZodNumber>;
+    projectName: zod.ZodOptional<zod.ZodString>;
+    groupName: zod.ZodOptional<zod.ZodString>;
+    linkCode: zod.ZodOptional<zod.ZodNullable<zod.ZodString>>;
+    actualProgress: zod.ZodOptional<zod.ZodNumber>;
+    plannedStartDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+    plannedEndDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+}, "strip", zod.ZodTypeAny, {
+    available: boolean;
+    groupId: number;
+    projectId?: number | undefined;
+    projectName?: string | undefined;
+    linkCode?: string | null | undefined;
+    groupName?: string | undefined;
+    actualProgress?: number | undefined;
+    plannedStartDate?: Date | null | undefined;
+    plannedEndDate?: Date | null | undefined;
+}, {
+    groupId: number;
+    projectId?: number | undefined;
+    projectName?: string | undefined;
+    linkCode?: string | null | undefined;
+    available?: boolean | undefined;
+    groupName?: string | undefined;
+    actualProgress?: number | undefined;
+    plannedStartDate?: Date | null | undefined;
+    plannedEndDate?: Date | null | undefined;
+}>;
+export declare const SearchActivityGroupSourcesResponse: zod.ZodArray<zod.ZodObject<{
+    available: zod.ZodDefault<zod.ZodBoolean>;
+    groupId: zod.ZodNumber;
+    projectId: zod.ZodOptional<zod.ZodNumber>;
+    projectName: zod.ZodOptional<zod.ZodString>;
+    groupName: zod.ZodOptional<zod.ZodString>;
+    linkCode: zod.ZodOptional<zod.ZodNullable<zod.ZodString>>;
+    actualProgress: zod.ZodOptional<zod.ZodNumber>;
+    plannedStartDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+    plannedEndDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+}, "strip", zod.ZodTypeAny, {
+    available: boolean;
+    groupId: number;
+    projectId?: number | undefined;
+    projectName?: string | undefined;
+    linkCode?: string | null | undefined;
+    groupName?: string | undefined;
+    actualProgress?: number | undefined;
+    plannedStartDate?: Date | null | undefined;
+    plannedEndDate?: Date | null | undefined;
+}, {
+    groupId: number;
+    projectId?: number | undefined;
+    projectName?: string | undefined;
+    linkCode?: string | null | undefined;
+    available?: boolean | undefined;
+    groupName?: string | undefined;
+    actualProgress?: number | undefined;
+    plannedStartDate?: Date | null | undefined;
+    plannedEndDate?: Date | null | undefined;
+}>, "many">;
+/**
  * @summary List activities for a project
  */
 export declare const ListActivitiesParams: zod.ZodObject<{
@@ -784,6 +989,7 @@ export declare const ListActivitiesParams: zod.ZodObject<{
     projectId: number;
 }>;
 export declare const listActivitiesResponseWeightDefault = 1;
+export declare const listActivitiesResponseExternalSourceOneAvailableDefault = true;
 export declare const ListActivitiesResponseItem: zod.ZodObject<{
     id: zod.ZodNumber;
     projectId: zod.ZodNumber;
@@ -798,6 +1004,47 @@ export declare const ListActivitiesResponseItem: zod.ZodObject<{
     status: zod.ZodEnum<["not_started", "in_progress", "completed", "delayed"]>;
     sortOrder: zod.ZodNumber;
     groupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
+    externalSourceGroupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
+    externalSource: zod.ZodOptional<zod.ZodUnion<[zod.ZodObject<{
+        available: zod.ZodDefault<zod.ZodBoolean>;
+        groupId: zod.ZodNumber;
+        projectId: zod.ZodOptional<zod.ZodNumber>;
+        projectName: zod.ZodOptional<zod.ZodString>;
+        groupName: zod.ZodOptional<zod.ZodString>;
+        linkCode: zod.ZodOptional<zod.ZodNullable<zod.ZodString>>;
+        actualProgress: zod.ZodOptional<zod.ZodNumber>;
+        plannedStartDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+        plannedEndDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+    }, "strip", zod.ZodTypeAny, {
+        available: boolean;
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    }, {
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        available?: boolean | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    }>, zod.ZodObject<{
+        available: zod.ZodBoolean;
+        groupId: zod.ZodNumber;
+    }, "strip", zod.ZodTypeAny, {
+        available: boolean;
+        groupId: number;
+    }, {
+        available: boolean;
+        groupId: number;
+    }>]>>;
     createdAt: zod.ZodDate;
 }, "strip", zod.ZodTypeAny, {
     status: "completed" | "delayed" | "not_started" | "in_progress";
@@ -805,30 +1052,60 @@ export declare const ListActivitiesResponseItem: zod.ZodObject<{
     projectId: number;
     createdAt: Date;
     name: string;
-    plannedProgress: number;
-    actualProgress: number;
-    weight: number;
     sortOrder: number;
+    actualProgress: number;
+    plannedProgress: number;
+    weight: number;
     actualEndDate?: Date | null | undefined;
+    groupId?: number | null | undefined;
     plannedStartDate?: Date | null | undefined;
     plannedEndDate?: Date | null | undefined;
     actualStartDate?: Date | null | undefined;
-    groupId?: number | null | undefined;
+    externalSourceGroupId?: number | null | undefined;
+    externalSource?: {
+        available: boolean;
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    } | {
+        available: boolean;
+        groupId: number;
+    } | undefined;
 }, {
     status: "completed" | "delayed" | "not_started" | "in_progress";
     id: number;
     projectId: number;
     createdAt: Date;
     name: string;
-    plannedProgress: number;
-    actualProgress: number;
     sortOrder: number;
+    actualProgress: number;
+    plannedProgress: number;
     actualEndDate?: Date | null | undefined;
+    groupId?: number | null | undefined;
     plannedStartDate?: Date | null | undefined;
     plannedEndDate?: Date | null | undefined;
     actualStartDate?: Date | null | undefined;
     weight?: number | undefined;
-    groupId?: number | null | undefined;
+    externalSourceGroupId?: number | null | undefined;
+    externalSource?: {
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        available?: boolean | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    } | {
+        available: boolean;
+        groupId: number;
+    } | undefined;
 }>;
 export declare const ListActivitiesResponse: zod.ZodArray<zod.ZodObject<{
     id: zod.ZodNumber;
@@ -844,6 +1121,47 @@ export declare const ListActivitiesResponse: zod.ZodArray<zod.ZodObject<{
     status: zod.ZodEnum<["not_started", "in_progress", "completed", "delayed"]>;
     sortOrder: zod.ZodNumber;
     groupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
+    externalSourceGroupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
+    externalSource: zod.ZodOptional<zod.ZodUnion<[zod.ZodObject<{
+        available: zod.ZodDefault<zod.ZodBoolean>;
+        groupId: zod.ZodNumber;
+        projectId: zod.ZodOptional<zod.ZodNumber>;
+        projectName: zod.ZodOptional<zod.ZodString>;
+        groupName: zod.ZodOptional<zod.ZodString>;
+        linkCode: zod.ZodOptional<zod.ZodNullable<zod.ZodString>>;
+        actualProgress: zod.ZodOptional<zod.ZodNumber>;
+        plannedStartDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+        plannedEndDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+    }, "strip", zod.ZodTypeAny, {
+        available: boolean;
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    }, {
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        available?: boolean | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    }>, zod.ZodObject<{
+        available: zod.ZodBoolean;
+        groupId: zod.ZodNumber;
+    }, "strip", zod.ZodTypeAny, {
+        available: boolean;
+        groupId: number;
+    }, {
+        available: boolean;
+        groupId: number;
+    }>]>>;
     createdAt: zod.ZodDate;
 }, "strip", zod.ZodTypeAny, {
     status: "completed" | "delayed" | "not_started" | "in_progress";
@@ -851,30 +1169,60 @@ export declare const ListActivitiesResponse: zod.ZodArray<zod.ZodObject<{
     projectId: number;
     createdAt: Date;
     name: string;
-    plannedProgress: number;
-    actualProgress: number;
-    weight: number;
     sortOrder: number;
+    actualProgress: number;
+    plannedProgress: number;
+    weight: number;
     actualEndDate?: Date | null | undefined;
+    groupId?: number | null | undefined;
     plannedStartDate?: Date | null | undefined;
     plannedEndDate?: Date | null | undefined;
     actualStartDate?: Date | null | undefined;
-    groupId?: number | null | undefined;
+    externalSourceGroupId?: number | null | undefined;
+    externalSource?: {
+        available: boolean;
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    } | {
+        available: boolean;
+        groupId: number;
+    } | undefined;
 }, {
     status: "completed" | "delayed" | "not_started" | "in_progress";
     id: number;
     projectId: number;
     createdAt: Date;
     name: string;
-    plannedProgress: number;
-    actualProgress: number;
     sortOrder: number;
+    actualProgress: number;
+    plannedProgress: number;
     actualEndDate?: Date | null | undefined;
+    groupId?: number | null | undefined;
     plannedStartDate?: Date | null | undefined;
     plannedEndDate?: Date | null | undefined;
     actualStartDate?: Date | null | undefined;
     weight?: number | undefined;
-    groupId?: number | null | undefined;
+    externalSourceGroupId?: number | null | undefined;
+    externalSource?: {
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        available?: boolean | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    } | {
+        available: boolean;
+        groupId: number;
+    } | undefined;
 }>, "many">;
 /**
  * @summary Create an activity
@@ -903,30 +1251,33 @@ export declare const CreateActivityBody: zod.ZodObject<{
     status: zod.ZodDefault<zod.ZodEnum<["not_started", "in_progress", "completed", "delayed"]>>;
     sortOrder: zod.ZodDefault<zod.ZodNumber>;
     groupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
+    externalSourceGroupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
 }, "strip", zod.ZodTypeAny, {
     status: "completed" | "delayed" | "not_started" | "in_progress";
     name: string;
-    plannedProgress: number;
-    actualProgress: number;
-    weight: number;
     sortOrder: number;
+    actualProgress: number;
+    plannedProgress: number;
+    weight: number;
     actualEndDate?: Date | null | undefined;
+    groupId?: number | null | undefined;
     plannedStartDate?: Date | null | undefined;
     plannedEndDate?: Date | null | undefined;
     actualStartDate?: Date | null | undefined;
-    groupId?: number | null | undefined;
+    externalSourceGroupId?: number | null | undefined;
 }, {
     name: string;
     status?: "completed" | "delayed" | "not_started" | "in_progress" | undefined;
     actualEndDate?: Date | null | undefined;
+    sortOrder?: number | undefined;
+    groupId?: number | null | undefined;
+    actualProgress?: number | undefined;
     plannedStartDate?: Date | null | undefined;
     plannedEndDate?: Date | null | undefined;
     actualStartDate?: Date | null | undefined;
     plannedProgress?: number | undefined;
-    actualProgress?: number | undefined;
     weight?: number | undefined;
-    sortOrder?: number | undefined;
-    groupId?: number | null | undefined;
+    externalSourceGroupId?: number | null | undefined;
 }>;
 /**
  * @summary Import activities from Excel file
@@ -970,32 +1321,36 @@ export declare const UpdateActivityBody: zod.ZodObject<{
     status: zod.ZodOptional<zod.ZodNullable<zod.ZodUnion<[zod.ZodLiteral<"not_started">, zod.ZodLiteral<"in_progress">, zod.ZodLiteral<"completed">, zod.ZodLiteral<"delayed">, zod.ZodLiteral<null>]>>>;
     sortOrder: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
     groupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
+    externalSourceGroupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
 }, "strip", zod.ZodTypeAny, {
     status?: "completed" | "delayed" | "not_started" | "in_progress" | null | undefined;
     name?: string | null | undefined;
     actualEndDate?: Date | null | undefined;
+    sortOrder?: number | null | undefined;
+    groupId?: number | null | undefined;
+    actualProgress?: number | null | undefined;
     plannedStartDate?: Date | null | undefined;
     plannedEndDate?: Date | null | undefined;
     actualStartDate?: Date | null | undefined;
     plannedProgress?: number | null | undefined;
-    actualProgress?: number | null | undefined;
     weight?: number | null | undefined;
-    sortOrder?: number | null | undefined;
-    groupId?: number | null | undefined;
+    externalSourceGroupId?: number | null | undefined;
 }, {
     status?: "completed" | "delayed" | "not_started" | "in_progress" | null | undefined;
     name?: string | null | undefined;
     actualEndDate?: Date | null | undefined;
+    sortOrder?: number | null | undefined;
+    groupId?: number | null | undefined;
+    actualProgress?: number | null | undefined;
     plannedStartDate?: Date | null | undefined;
     plannedEndDate?: Date | null | undefined;
     actualStartDate?: Date | null | undefined;
     plannedProgress?: number | null | undefined;
-    actualProgress?: number | null | undefined;
     weight?: number | null | undefined;
-    sortOrder?: number | null | undefined;
-    groupId?: number | null | undefined;
+    externalSourceGroupId?: number | null | undefined;
 }>;
 export declare const updateActivityResponseWeightDefault = 1;
+export declare const updateActivityResponseExternalSourceOneAvailableDefault = true;
 export declare const UpdateActivityResponse: zod.ZodObject<{
     id: zod.ZodNumber;
     projectId: zod.ZodNumber;
@@ -1010,6 +1365,47 @@ export declare const UpdateActivityResponse: zod.ZodObject<{
     status: zod.ZodEnum<["not_started", "in_progress", "completed", "delayed"]>;
     sortOrder: zod.ZodNumber;
     groupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
+    externalSourceGroupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
+    externalSource: zod.ZodOptional<zod.ZodUnion<[zod.ZodObject<{
+        available: zod.ZodDefault<zod.ZodBoolean>;
+        groupId: zod.ZodNumber;
+        projectId: zod.ZodOptional<zod.ZodNumber>;
+        projectName: zod.ZodOptional<zod.ZodString>;
+        groupName: zod.ZodOptional<zod.ZodString>;
+        linkCode: zod.ZodOptional<zod.ZodNullable<zod.ZodString>>;
+        actualProgress: zod.ZodOptional<zod.ZodNumber>;
+        plannedStartDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+        plannedEndDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+    }, "strip", zod.ZodTypeAny, {
+        available: boolean;
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    }, {
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        available?: boolean | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    }>, zod.ZodObject<{
+        available: zod.ZodBoolean;
+        groupId: zod.ZodNumber;
+    }, "strip", zod.ZodTypeAny, {
+        available: boolean;
+        groupId: number;
+    }, {
+        available: boolean;
+        groupId: number;
+    }>]>>;
     createdAt: zod.ZodDate;
 }, "strip", zod.ZodTypeAny, {
     status: "completed" | "delayed" | "not_started" | "in_progress";
@@ -1017,30 +1413,60 @@ export declare const UpdateActivityResponse: zod.ZodObject<{
     projectId: number;
     createdAt: Date;
     name: string;
-    plannedProgress: number;
-    actualProgress: number;
-    weight: number;
     sortOrder: number;
+    actualProgress: number;
+    plannedProgress: number;
+    weight: number;
     actualEndDate?: Date | null | undefined;
+    groupId?: number | null | undefined;
     plannedStartDate?: Date | null | undefined;
     plannedEndDate?: Date | null | undefined;
     actualStartDate?: Date | null | undefined;
-    groupId?: number | null | undefined;
+    externalSourceGroupId?: number | null | undefined;
+    externalSource?: {
+        available: boolean;
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    } | {
+        available: boolean;
+        groupId: number;
+    } | undefined;
 }, {
     status: "completed" | "delayed" | "not_started" | "in_progress";
     id: number;
     projectId: number;
     createdAt: Date;
     name: string;
-    plannedProgress: number;
-    actualProgress: number;
     sortOrder: number;
+    actualProgress: number;
+    plannedProgress: number;
     actualEndDate?: Date | null | undefined;
+    groupId?: number | null | undefined;
     plannedStartDate?: Date | null | undefined;
     plannedEndDate?: Date | null | undefined;
     actualStartDate?: Date | null | undefined;
     weight?: number | undefined;
-    groupId?: number | null | undefined;
+    externalSourceGroupId?: number | null | undefined;
+    externalSource?: {
+        groupId: number;
+        projectId?: number | undefined;
+        projectName?: string | undefined;
+        linkCode?: string | null | undefined;
+        available?: boolean | undefined;
+        groupName?: string | undefined;
+        actualProgress?: number | undefined;
+        plannedStartDate?: Date | null | undefined;
+        plannedEndDate?: Date | null | undefined;
+    } | {
+        available: boolean;
+        groupId: number;
+    } | undefined;
 }>;
 /**
  * @summary Delete an activity
@@ -1118,25 +1544,25 @@ export declare const ListReportsResponseItem: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }, {
         status?: string | undefined;
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }>, "many">>>;
     status: zod.ZodEnum<["draft", "approved"]>;
     approvedAt: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
@@ -1169,13 +1595,13 @@ export declare const ListReportsResponseItem: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }[] | null | undefined;
     approvedAt?: Date | null | undefined;
     approvedById?: number | null | undefined;
@@ -1205,13 +1631,13 @@ export declare const ListReportsResponseItem: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }[] | null | undefined;
     approvedAt?: Date | null | undefined;
     approvedById?: number | null | undefined;
@@ -1257,25 +1683,25 @@ export declare const ListReportsResponse: zod.ZodArray<zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }, {
         status?: string | undefined;
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }>, "many">>>;
     status: zod.ZodEnum<["draft", "approved"]>;
     approvedAt: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
@@ -1308,13 +1734,13 @@ export declare const ListReportsResponse: zod.ZodArray<zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }[] | null | undefined;
     approvedAt?: Date | null | undefined;
     approvedById?: number | null | undefined;
@@ -1344,13 +1770,13 @@ export declare const ListReportsResponse: zod.ZodArray<zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }[] | null | undefined;
     approvedAt?: Date | null | undefined;
     approvedById?: number | null | undefined;
@@ -1468,25 +1894,25 @@ export declare const GetReportResponse: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }, {
         status?: string | undefined;
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }>, "many">>>;
     status: zod.ZodEnum<["draft", "approved"]>;
     approvedAt: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
@@ -1519,13 +1945,13 @@ export declare const GetReportResponse: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }[] | null | undefined;
     approvedAt?: Date | null | undefined;
     approvedById?: number | null | undefined;
@@ -1555,13 +1981,13 @@ export declare const GetReportResponse: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }[] | null | undefined;
     approvedAt?: Date | null | undefined;
     approvedById?: number | null | undefined;
@@ -1692,25 +2118,25 @@ export declare const UpdateReportResponse: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }, {
         status?: string | undefined;
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }>, "many">>>;
     status: zod.ZodEnum<["draft", "approved"]>;
     approvedAt: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
@@ -1743,13 +2169,13 @@ export declare const UpdateReportResponse: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }[] | null | undefined;
     approvedAt?: Date | null | undefined;
     approvedById?: number | null | undefined;
@@ -1779,13 +2205,13 @@ export declare const UpdateReportResponse: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }[] | null | undefined;
     approvedAt?: Date | null | undefined;
     approvedById?: number | null | undefined;
@@ -1864,25 +2290,25 @@ export declare const UpdateReportStatusResponse: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }, {
         status?: string | undefined;
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }>, "many">>>;
     status: zod.ZodEnum<["draft", "approved"]>;
     approvedAt: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
@@ -1915,13 +2341,13 @@ export declare const UpdateReportStatusResponse: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }[] | null | undefined;
     approvedAt?: Date | null | undefined;
     approvedById?: number | null | undefined;
@@ -1951,13 +2377,13 @@ export declare const UpdateReportStatusResponse: zod.ZodObject<{
         id?: number | undefined;
         name?: string | undefined;
         actualEndDate?: string | null | undefined;
+        sortOrder?: number | undefined;
+        actualProgress?: number | undefined;
         plannedStartDate?: string | undefined;
         plannedEndDate?: string | undefined;
         actualStartDate?: string | null | undefined;
         plannedProgress?: number | undefined;
-        actualProgress?: number | undefined;
         weight?: number | undefined;
-        sortOrder?: number | undefined;
     }[] | null | undefined;
     approvedAt?: Date | null | undefined;
     approvedById?: number | null | undefined;
@@ -3218,6 +3644,7 @@ export declare const VerifyOwnerAccessBody: zod.ZodObject<{
     password?: string | undefined;
 }>;
 export declare const verifyOwnerAccessResponseActivitiesItemWeightDefault = 1;
+export declare const verifyOwnerAccessResponseActivitiesItemExternalSourceOneAvailableDefault = true;
 export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
     project: zod.ZodObject<{
         id: zod.ZodNumber;
@@ -3328,6 +3755,47 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
         status: zod.ZodEnum<["not_started", "in_progress", "completed", "delayed"]>;
         sortOrder: zod.ZodNumber;
         groupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
+        externalSourceGroupId: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
+        externalSource: zod.ZodOptional<zod.ZodUnion<[zod.ZodObject<{
+            available: zod.ZodDefault<zod.ZodBoolean>;
+            groupId: zod.ZodNumber;
+            projectId: zod.ZodOptional<zod.ZodNumber>;
+            projectName: zod.ZodOptional<zod.ZodString>;
+            groupName: zod.ZodOptional<zod.ZodString>;
+            linkCode: zod.ZodOptional<zod.ZodNullable<zod.ZodString>>;
+            actualProgress: zod.ZodOptional<zod.ZodNumber>;
+            plannedStartDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+            plannedEndDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+        }, "strip", zod.ZodTypeAny, {
+            available: boolean;
+            groupId: number;
+            projectId?: number | undefined;
+            projectName?: string | undefined;
+            linkCode?: string | null | undefined;
+            groupName?: string | undefined;
+            actualProgress?: number | undefined;
+            plannedStartDate?: Date | null | undefined;
+            plannedEndDate?: Date | null | undefined;
+        }, {
+            groupId: number;
+            projectId?: number | undefined;
+            projectName?: string | undefined;
+            linkCode?: string | null | undefined;
+            available?: boolean | undefined;
+            groupName?: string | undefined;
+            actualProgress?: number | undefined;
+            plannedStartDate?: Date | null | undefined;
+            plannedEndDate?: Date | null | undefined;
+        }>, zod.ZodObject<{
+            available: zod.ZodBoolean;
+            groupId: zod.ZodNumber;
+        }, "strip", zod.ZodTypeAny, {
+            available: boolean;
+            groupId: number;
+        }, {
+            available: boolean;
+            groupId: number;
+        }>]>>;
         createdAt: zod.ZodDate;
     }, "strip", zod.ZodTypeAny, {
         status: "completed" | "delayed" | "not_started" | "in_progress";
@@ -3335,30 +3803,60 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
         projectId: number;
         createdAt: Date;
         name: string;
-        plannedProgress: number;
-        actualProgress: number;
-        weight: number;
         sortOrder: number;
+        actualProgress: number;
+        plannedProgress: number;
+        weight: number;
         actualEndDate?: Date | null | undefined;
+        groupId?: number | null | undefined;
         plannedStartDate?: Date | null | undefined;
         plannedEndDate?: Date | null | undefined;
         actualStartDate?: Date | null | undefined;
-        groupId?: number | null | undefined;
+        externalSourceGroupId?: number | null | undefined;
+        externalSource?: {
+            available: boolean;
+            groupId: number;
+            projectId?: number | undefined;
+            projectName?: string | undefined;
+            linkCode?: string | null | undefined;
+            groupName?: string | undefined;
+            actualProgress?: number | undefined;
+            plannedStartDate?: Date | null | undefined;
+            plannedEndDate?: Date | null | undefined;
+        } | {
+            available: boolean;
+            groupId: number;
+        } | undefined;
     }, {
         status: "completed" | "delayed" | "not_started" | "in_progress";
         id: number;
         projectId: number;
         createdAt: Date;
         name: string;
-        plannedProgress: number;
-        actualProgress: number;
         sortOrder: number;
+        actualProgress: number;
+        plannedProgress: number;
         actualEndDate?: Date | null | undefined;
+        groupId?: number | null | undefined;
         plannedStartDate?: Date | null | undefined;
         plannedEndDate?: Date | null | undefined;
         actualStartDate?: Date | null | undefined;
         weight?: number | undefined;
-        groupId?: number | null | undefined;
+        externalSourceGroupId?: number | null | undefined;
+        externalSource?: {
+            groupId: number;
+            projectId?: number | undefined;
+            projectName?: string | undefined;
+            linkCode?: string | null | undefined;
+            available?: boolean | undefined;
+            groupName?: string | undefined;
+            actualProgress?: number | undefined;
+            plannedStartDate?: Date | null | undefined;
+            plannedEndDate?: Date | null | undefined;
+        } | {
+            available: boolean;
+            groupId: number;
+        } | undefined;
     }>, "many">;
     reports: zod.ZodArray<zod.ZodObject<{
         id: zod.ZodNumber;
@@ -3400,25 +3898,25 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
             id?: number | undefined;
             name?: string | undefined;
             actualEndDate?: string | null | undefined;
+            sortOrder?: number | undefined;
+            actualProgress?: number | undefined;
             plannedStartDate?: string | undefined;
             plannedEndDate?: string | undefined;
             actualStartDate?: string | null | undefined;
             plannedProgress?: number | undefined;
-            actualProgress?: number | undefined;
             weight?: number | undefined;
-            sortOrder?: number | undefined;
         }, {
             status?: string | undefined;
             id?: number | undefined;
             name?: string | undefined;
             actualEndDate?: string | null | undefined;
+            sortOrder?: number | undefined;
+            actualProgress?: number | undefined;
             plannedStartDate?: string | undefined;
             plannedEndDate?: string | undefined;
             actualStartDate?: string | null | undefined;
             plannedProgress?: number | undefined;
-            actualProgress?: number | undefined;
             weight?: number | undefined;
-            sortOrder?: number | undefined;
         }>, "many">>>;
         status: zod.ZodEnum<["draft", "approved"]>;
         approvedAt: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
@@ -3451,13 +3949,13 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
             id?: number | undefined;
             name?: string | undefined;
             actualEndDate?: string | null | undefined;
+            sortOrder?: number | undefined;
+            actualProgress?: number | undefined;
             plannedStartDate?: string | undefined;
             plannedEndDate?: string | undefined;
             actualStartDate?: string | null | undefined;
             plannedProgress?: number | undefined;
-            actualProgress?: number | undefined;
             weight?: number | undefined;
-            sortOrder?: number | undefined;
         }[] | null | undefined;
         approvedAt?: Date | null | undefined;
         approvedById?: number | null | undefined;
@@ -3487,13 +3985,13 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
             id?: number | undefined;
             name?: string | undefined;
             actualEndDate?: string | null | undefined;
+            sortOrder?: number | undefined;
+            actualProgress?: number | undefined;
             plannedStartDate?: string | undefined;
             plannedEndDate?: string | undefined;
             actualStartDate?: string | null | undefined;
             plannedProgress?: number | undefined;
-            actualProgress?: number | undefined;
             weight?: number | undefined;
-            sortOrder?: number | undefined;
         }[] | null | undefined;
         approvedAt?: Date | null | undefined;
         approvedById?: number | null | undefined;
@@ -3558,15 +4056,30 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
         projectId: number;
         createdAt: Date;
         name: string;
-        plannedProgress: number;
-        actualProgress: number;
-        weight: number;
         sortOrder: number;
+        actualProgress: number;
+        plannedProgress: number;
+        weight: number;
         actualEndDate?: Date | null | undefined;
+        groupId?: number | null | undefined;
         plannedStartDate?: Date | null | undefined;
         plannedEndDate?: Date | null | undefined;
         actualStartDate?: Date | null | undefined;
-        groupId?: number | null | undefined;
+        externalSourceGroupId?: number | null | undefined;
+        externalSource?: {
+            available: boolean;
+            groupId: number;
+            projectId?: number | undefined;
+            projectName?: string | undefined;
+            linkCode?: string | null | undefined;
+            groupName?: string | undefined;
+            actualProgress?: number | undefined;
+            plannedStartDate?: Date | null | undefined;
+            plannedEndDate?: Date | null | undefined;
+        } | {
+            available: boolean;
+            groupId: number;
+        } | undefined;
     }[];
     reports: {
         status: "draft" | "approved";
@@ -3593,13 +4106,13 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
             id?: number | undefined;
             name?: string | undefined;
             actualEndDate?: string | null | undefined;
+            sortOrder?: number | undefined;
+            actualProgress?: number | undefined;
             plannedStartDate?: string | undefined;
             plannedEndDate?: string | undefined;
             actualStartDate?: string | null | undefined;
             plannedProgress?: number | undefined;
-            actualProgress?: number | undefined;
             weight?: number | undefined;
-            sortOrder?: number | undefined;
         }[] | null | undefined;
         approvedAt?: Date | null | undefined;
         approvedById?: number | null | undefined;
@@ -3659,15 +4172,30 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
         projectId: number;
         createdAt: Date;
         name: string;
-        plannedProgress: number;
-        actualProgress: number;
         sortOrder: number;
+        actualProgress: number;
+        plannedProgress: number;
         actualEndDate?: Date | null | undefined;
+        groupId?: number | null | undefined;
         plannedStartDate?: Date | null | undefined;
         plannedEndDate?: Date | null | undefined;
         actualStartDate?: Date | null | undefined;
         weight?: number | undefined;
-        groupId?: number | null | undefined;
+        externalSourceGroupId?: number | null | undefined;
+        externalSource?: {
+            groupId: number;
+            projectId?: number | undefined;
+            projectName?: string | undefined;
+            linkCode?: string | null | undefined;
+            available?: boolean | undefined;
+            groupName?: string | undefined;
+            actualProgress?: number | undefined;
+            plannedStartDate?: Date | null | undefined;
+            plannedEndDate?: Date | null | undefined;
+        } | {
+            available: boolean;
+            groupId: number;
+        } | undefined;
     }[];
     reports: {
         status: "draft" | "approved";
@@ -3694,13 +4222,13 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
             id?: number | undefined;
             name?: string | undefined;
             actualEndDate?: string | null | undefined;
+            sortOrder?: number | undefined;
+            actualProgress?: number | undefined;
             plannedStartDate?: string | undefined;
             plannedEndDate?: string | undefined;
             actualStartDate?: string | null | undefined;
             plannedProgress?: number | undefined;
-            actualProgress?: number | undefined;
             weight?: number | undefined;
-            sortOrder?: number | undefined;
         }[] | null | undefined;
         approvedAt?: Date | null | undefined;
         approvedById?: number | null | undefined;
@@ -4012,16 +4540,16 @@ export declare const GetDashboardSummaryResponse: zod.ZodObject<{
         projectId?: number | undefined;
         projectName?: string | undefined;
         name?: string | undefined;
-        plannedEndDate?: string | null | undefined;
         actualProgress?: number | undefined;
+        plannedEndDate?: string | null | undefined;
         delayDays?: number | undefined;
     }, {
         id?: number | undefined;
         projectId?: number | undefined;
         projectName?: string | undefined;
         name?: string | undefined;
-        plannedEndDate?: string | null | undefined;
         actualProgress?: number | undefined;
+        plannedEndDate?: string | null | undefined;
         delayDays?: number | undefined;
     }>, "many">;
 }, "strip", zod.ZodTypeAny, {
@@ -4090,8 +4618,8 @@ export declare const GetDashboardSummaryResponse: zod.ZodObject<{
         projectId?: number | undefined;
         projectName?: string | undefined;
         name?: string | undefined;
-        plannedEndDate?: string | null | undefined;
         actualProgress?: number | undefined;
+        plannedEndDate?: string | null | undefined;
         delayDays?: number | undefined;
     }[];
 }, {
@@ -4160,8 +4688,8 @@ export declare const GetDashboardSummaryResponse: zod.ZodObject<{
         projectId?: number | undefined;
         projectName?: string | undefined;
         name?: string | undefined;
-        plannedEndDate?: string | null | undefined;
         actualProgress?: number | undefined;
+        plannedEndDate?: string | null | undefined;
         delayDays?: number | undefined;
     }[];
 }>;
@@ -4299,8 +4827,8 @@ export declare const GetProjectDeviationResponse: zod.ZodObject<{
         delayDays: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
         overrunDays: zod.ZodOptional<zod.ZodNullable<zod.ZodNumber>>;
     }, "strip", zod.ZodTypeAny, {
-        plannedProgress: number;
         actualProgress: number;
+        plannedProgress: number;
         deviation: number;
         activityId: number;
         activityName: string;
@@ -4309,8 +4837,8 @@ export declare const GetProjectDeviationResponse: zod.ZodObject<{
         overrunDays?: number | null | undefined;
         weightedImpact?: number | undefined;
     }, {
-        plannedProgress: number;
         actualProgress: number;
+        plannedProgress: number;
         deviation: number;
         activityId: number;
         activityName: string;
@@ -4326,8 +4854,8 @@ export declare const GetProjectDeviationResponse: zod.ZodObject<{
     timeDeviation: number;
     progressDeviation: number;
     activitiesAnalysis: {
-        plannedProgress: number;
         actualProgress: number;
+        plannedProgress: number;
         deviation: number;
         activityId: number;
         activityName: string;
@@ -4337,8 +4865,8 @@ export declare const GetProjectDeviationResponse: zod.ZodObject<{
         weightedImpact?: number | undefined;
     }[];
     noSchedule?: boolean | undefined;
-    plannedProgress?: number | undefined;
     actualProgress?: number | undefined;
+    plannedProgress?: number | undefined;
     recommendations?: {
         title: string;
         description: string;
@@ -4365,8 +4893,8 @@ export declare const GetProjectDeviationResponse: zod.ZodObject<{
     timeDeviation: number;
     progressDeviation: number;
     activitiesAnalysis: {
-        plannedProgress: number;
         actualProgress: number;
+        plannedProgress: number;
         deviation: number;
         activityId: number;
         activityName: string;
@@ -4376,8 +4904,8 @@ export declare const GetProjectDeviationResponse: zod.ZodObject<{
         weightedImpact?: number | undefined;
     }[];
     noSchedule?: boolean | undefined;
-    plannedProgress?: number | undefined;
     actualProgress?: number | undefined;
+    plannedProgress?: number | undefined;
     recommendations?: {
         title: string;
         description: string;
@@ -4427,13 +4955,13 @@ export declare const GetProjectDeviationTimelineResponse: zod.ZodObject<{
         deviation: zod.ZodNumber;
     }, "strip", zod.ZodTypeAny, {
         date: Date;
-        plannedProgress: number;
         actualProgress: number;
+        plannedProgress: number;
         deviation: number;
     }, {
         date: Date;
-        plannedProgress: number;
         actualProgress: number;
+        plannedProgress: number;
         deviation: number;
     }>, "many">;
     suspensionsBreakdown: zod.ZodArray<zod.ZodObject<{
@@ -4458,8 +4986,8 @@ export declare const GetProjectDeviationTimelineResponse: zod.ZodObject<{
     }[];
     points: {
         date: Date;
-        plannedProgress: number;
         actualProgress: number;
+        plannedProgress: number;
         deviation: number;
     }[];
     noSchedule?: boolean | undefined;
@@ -4472,8 +5000,8 @@ export declare const GetProjectDeviationTimelineResponse: zod.ZodObject<{
     }[];
     points: {
         date: Date;
-        plannedProgress: number;
         actualProgress: number;
+        plannedProgress: number;
         deviation: number;
     }[];
     noSchedule?: boolean | undefined;

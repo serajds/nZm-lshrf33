@@ -1,0 +1,1 @@
+{"version":3,"file":"createActivityGroupBody.d.ts","sourceRoot":"","sources":["../../../src/generated/types/createActivityGroupBody.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AAEH,MAAM,WAAW,uBAAuB;IACtC,IAAI,EAAE,MAAM,CAAC;IACb,KAAK,CAAC,EAAE,MAAM,CAAC;IACf,gBAAgB;IAChB,QAAQ,CAAC,EAAE,MAAM,GAAG,IAAI,CAAC;CAC1B"}

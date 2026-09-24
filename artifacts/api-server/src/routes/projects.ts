@@ -5,6 +5,7 @@ import { eq, ilike, or, sql, inArray, and } from "drizzle-orm";
 import { requireAuth, requireEngineerOrAdmin, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
+import { deleteProjectUnderSourceGraphLock } from "../lib/external-sources";
 import {
   calcActivityPlannedProgress,
   calcActualProgressForProject,
@@ -341,7 +342,7 @@ router.delete("/projects/:id", requireAdmin, async (req, res): Promise<void> => 
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
-  const [existing] = await db.select({ id: projectsTable.id, name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, id));
+  const existing = await deleteProjectUnderSourceGraphLock(id);
   if (!existing) {
     res.status(404).json({ error: "المشروع غير موجود" });
     return;
@@ -349,18 +350,6 @@ router.delete("/projects/:id", requireAdmin, async (req, res): Promise<void> => 
 
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "delete", entityType: "project", entityId: id, entityName: (existing as any).name, projectId: id, projectName: (existing as any).name });
-
-  await db.transaction(async tx => {
-    await tx.delete(projectMembersTable).where(eq(projectMembersTable.projectId, id));
-    await tx.delete(activitiesTable).where(eq(activitiesTable.projectId, id));
-    // Groups are stable-ID sources for activities in other projects.
-    // Removing them makes those links unavailable without touching targets'
-    // last copied values; serial IDs are never reused.
-    await tx.delete(activityGroupsTable).where(eq(activityGroupsTable.projectId, id));
-    await tx.delete(reportsTable).where(eq(reportsTable.projectId, id));
-    await tx.delete(projectFilesTable).where(eq(projectFilesTable.projectId, id));
-    await tx.delete(projectsTable).where(eq(projectsTable.id, id));
-  });
 
   res.sendStatus(204);
 });

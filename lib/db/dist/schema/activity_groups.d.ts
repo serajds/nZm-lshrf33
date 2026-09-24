@@ -104,6 +104,23 @@ export declare const activityGroupsTable: import("drizzle-orm/pg-core").PgTableW
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
+        linkedProjectId: import("drizzle-orm/pg-core").PgColumn<{
+            name: "linked_project_id";
+            tableName: "activity_groups";
+            dataType: "number";
+            columnType: "PgInteger";
+            data: number;
+            driverParam: string | number;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
     };
     dialect: "pg";
 }>;

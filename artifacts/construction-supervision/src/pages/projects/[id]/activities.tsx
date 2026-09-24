@@ -68,6 +68,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { ActivityGroupSideProjectSync } from "@/components/activity-group-side-project-sync";
 
 import { 
   Plus, Edit2, Trash2, ArrowRight, ChevronDown, ChevronLeft,
@@ -87,6 +88,7 @@ interface ActivityGroup {
   color: string;
   sortOrder: number;
   linkCode?: string | null;
+  linkedProjectId?: number | null;
 }
 
 interface ExternalSource {
@@ -239,6 +241,15 @@ function isActivityDelayed(a: Activity): boolean {
   return delay.kind === "delayed" || delay.kind === "late_start";
 }
 
+function isActivelyManagedActivity(
+  activity: Activity,
+  groups: { id: number; linkedProjectId?: number | null }[],
+): boolean {
+  const managedByGroupId = (activity as Activity & { managedByGroupId?: number | null }).managedByGroupId;
+  return managedByGroupId != null
+    && groups.some((group) => group.id === managedByGroupId && group.linkedProjectId != null);
+}
+
 function DelayBadge({ info }: { info: DelayInfo }) {
   if (info.kind === "delayed" || info.kind === "late_start") {
     const Icon = info.kind === "late_start" ? CalendarX : Timer;
@@ -365,6 +376,7 @@ export default function ProjectActivities() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingManagedRow, setEditingManagedRow] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -540,7 +552,7 @@ export default function ProjectActivities() {
   });
 
   const reorderActivities = useMutation({
-    mutationFn: async (items: { id: number; sortOrder: number; groupId: number | null }[]) => {
+    mutationFn: async (items: { id: number; sortOrder: number; groupId?: number | null }[]) => {
       const r = await fetchWithSession(`/api/projects/${projectId}/activities/reorder`, {
         method: "PUT",
         body: JSON.stringify({ items }),
@@ -566,6 +578,8 @@ export default function ProjectActivities() {
   };
 
   const assignToGroup = async (activityId: number, groupId: number | null) => {
+    const targetActivity = activities?.find((activity) => activity.id === activityId);
+    if (targetActivity && isActivelyManagedActivity(targetActivity, groups)) return;
     setUpdatingId(activityId);
     try {
       const response = await fetchWithSession(`/api/projects/${projectId}/activities/${activityId}`, {
@@ -613,6 +627,34 @@ export default function ProjectActivities() {
     }
 
     if (!activities) return;
+    const activeActivity = activities.find((activity) => activity.id === active.id);
+    if (activeActivity && isActivelyManagedActivity(activeActivity, groups) && overStr.startsWith("group-")) {
+      const targetGroupId = parseInt(overStr.replace("group-", ""), 10);
+      const sourceGroupId = (activeActivity as Activity & { groupId?: number | null }).groupId ?? null;
+      if (targetGroupId !== sourceGroupId) {
+        toast({ title: "لا يمكن نقل بند مُدار إلى مجموعة أخرى" });
+      }
+      return;
+    }
+    const overActivity = activities.find((activity) => activity.id === over.id);
+    if (!activeActivity || !overActivity) return;
+    if (isActivelyManagedActivity(activeActivity, groups)) {
+      const activeGroupId = (activeActivity as Activity & { groupId?: number | null }).groupId ?? null;
+      const overGroupId = (overActivity as Activity & { groupId?: number | null }).groupId ?? null;
+      if (activeGroupId !== overGroupId) {
+        toast({ title: "لا يمكن نقل بند مُدار إلى مجموعة أخرى" });
+        return;
+      }
+      const groupActivities = activities.filter(
+        (activity) => ((activity as Activity & { groupId?: number | null }).groupId ?? null) === activeGroupId,
+      );
+      const oldGroupIndex = groupActivities.findIndex((activity) => activity.id === activeActivity.id);
+      const newGroupIndex = groupActivities.findIndex((activity) => activity.id === overActivity.id);
+      if (oldGroupIndex === -1 || newGroupIndex === -1) return;
+      const reorderedGroup = arrayMove(groupActivities, oldGroupIndex, newGroupIndex);
+      reorderActivities.mutate(reorderedGroup.map((activity, index) => ({ id: activity.id, sortOrder: index })));
+      return;
+    }
     const oldIndex = activities.findIndex(a => a.id === active.id);
     const newIndex = activities.findIndex(a => a.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
@@ -642,7 +684,10 @@ export default function ProjectActivities() {
   const isNoSchedule = project?.noSchedule === true;
   const isLinkedSource = !sourceUnlinkRequested &&
     (!!selectedSource || (sourceTouched && !!sourceCode.trim()));
-  const currentSchema = useMemo(() => createActivitySchema(isNoSchedule || isLinkedSource), [isNoSchedule, isLinkedSource]);
+  const currentSchema = useMemo(
+    () => createActivitySchema(isNoSchedule || isLinkedSource || editingManagedRow),
+    [isNoSchedule, isLinkedSource, editingManagedRow],
+  );
 
   const form = useForm<ActivityFormValues>({
     resolver: zodResolver(currentSchema),
@@ -765,6 +810,7 @@ export default function ProjectActivities() {
 
   const handleEdit = (a: Activity) => {
     setEditingId(a.id);
+    setEditingManagedRow(isActivelyManagedActivity(a, groups));
     const linked = a as Activity & { externalSourceGroupId?: number | null; externalSource?: ExternalSource | null };
     if (linked.externalSourceGroupId != null) {
       const source = linked.externalSource ?? { available: false, groupId: linked.externalSourceGroupId };
@@ -807,7 +853,7 @@ export default function ProjectActivities() {
 
   /* ── Quick status update ── */
   const quickUpdateStatus = async (a: Activity, newStatus: string) => {
-    if (a.status === newStatus) return;
+    if (isActivelyManagedActivity(a, groups) || a.status === newStatus) return;
     setUpdatingId(a.id);
     try {
       const extra: Record<string, unknown> = {};
@@ -827,7 +873,7 @@ export default function ProjectActivities() {
 
   /* ── Quick progress increment ── */
   const quickIncrement = async (a: Activity, delta: number) => {
-    if (getLinkedSource(a)) return;
+    if (isActivelyManagedActivity(a, groups) || getLinkedSource(a)) return;
     const next = Math.min(100, Math.max(0, a.actualProgress + delta));
     if (next === a.actualProgress) return;
     setUpdatingId(a.id);
@@ -846,6 +892,25 @@ export default function ProjectActivities() {
   };
 
   const onSubmit = async (values: ActivityFormValues) => {
+    if (editingId && editingManagedRow) {
+      try {
+        await updateActivity.mutateAsync({
+          projectId,
+          id: editingId,
+          data: { weight: values.weight, sortOrder: values.sortOrder },
+        });
+        toast({ title: "تم تحديث الوزن والترتيب المحليين" });
+        invalidate();
+        setIsDialogOpen(false);
+        form.reset();
+        setEditingId(null);
+        setEditingManagedRow(false);
+        return;
+      } catch {
+        toast({ variant: "destructive", title: "فشل تحديث الوزن والترتيب" });
+        return;
+      }
+    }
     const typedCode = sourceCode.trim();
     if (sourceTouched && typedCode) {
       const normalizedCode = typedCode.toLocaleLowerCase();
@@ -903,6 +968,7 @@ export default function ProjectActivities() {
       setIsDialogOpen(false);
       form.reset();
       setEditingId(null);
+      setEditingManagedRow(false);
       resetExternalSource();
     } catch {
       toast({ variant: "destructive", title: "فشل الحفظ" });
@@ -984,6 +1050,15 @@ export default function ProjectActivities() {
       else counts.set(groupId, (counts.get(groupId) ?? 0) + 1);
     }
     return { counts, ungrouped };
+  }, [allActivityRows]);
+  const unavailableByGroup = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const activity of allActivityRows) {
+      const managedByGroupId = (activity as Activity & { managedByGroupId?: number | null }).managedByGroupId;
+      if (managedByGroupId == null || getLinkedSource(activity)?.available !== false) continue;
+      counts.set(managedByGroupId, (counts.get(managedByGroupId) ?? 0) + 1);
+    }
+    return counts;
   }, [allActivityRows]);
   const totalWeight = allActivityRows.reduce((sum, a) => sum + (a.weight && a.weight > 0 ? a.weight : 1), 0);
   const actualProgress = totalWeight > 0
@@ -1188,6 +1263,15 @@ export default function ProjectActivities() {
                           </Button>
                           {!isViewer && !isContractorBase && (
                             <>
+                              <ActivityGroupSideProjectSync
+                                currentProjectId={projectId}
+                                group={group}
+                                unavailableCount={unavailableByGroup.get(group.id) ?? 0}
+                                onUpdated={() => {
+                                  queryClient.invalidateQueries({ queryKey: groupsQueryKey });
+                                  invalidate();
+                                }}
+                              />
                               <Button type="button" size="icon" variant="outline" className="h-9 w-8 rounded-none border-r-0" title={`تعديل مجموعة ${group.name}`} aria-label={`تعديل مجموعة ${group.name}`} onClick={() => openEditGroupDialog(group)}>
                                 <Edit2 className="h-3.5 w-3.5" />
                               </Button>
@@ -1637,10 +1721,10 @@ export default function ProjectActivities() {
             {!isViewer && (
             <Dialog open={isDialogOpen} onOpenChange={(open) => {
               setIsDialogOpen(open);
-              if (!open) { form.reset(); setEditingId(null); resetExternalSource(); }
+              if (!open) { form.reset(); setEditingId(null); setEditingManagedRow(false); resetExternalSource(); }
             }}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5 text-xs sm:text-sm mr-auto" onClick={() => { setEditingId(null); resetExternalSource(); }}>
+                <Button size="sm" className="gap-1.5 text-xs sm:text-sm mr-auto" onClick={() => { setEditingId(null); setEditingManagedRow(false); resetExternalSource(); }}>
                   <Plus className="h-4 w-4" /> إضافة بند
                 </Button>
               </DialogTrigger>
@@ -1654,7 +1738,9 @@ export default function ProjectActivities() {
                       <div>
                         <DialogTitle className="text-xl">{editingId ? "تعديل البند" : "إضافة بند جديد"}</DialogTitle>
                         <p className="text-sm text-muted-foreground mt-1">
-                          {editingId ? "قم بتحديث تفاصيل البند وحالته الحالية." : "أدخل تفاصيل ومواعيد البند الجديد لمتابعته في الجدول الزمني."}
+                          {editingManagedRow
+                            ? "هذا بند مُدار من مصدر مجموعة؛ يمكن تعديل وزنه وترتيبه المحليين فقط."
+                            : editingId ? "قم بتحديث تفاصيل البند وحالته الحالية." : "أدخل تفاصيل ومواعيد البند الجديد لمتابعته في الجدول الزمني."}
                         </p>
                       </div>
                     </div>
@@ -1664,7 +1750,41 @@ export default function ProjectActivities() {
                 <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
                   <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 pt-4 space-y-6">
-                      
+                      {editingManagedRow && (
+                        <div className="space-y-4">
+                          <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
+                            <p className="font-medium">بند مُدار من مجموعة مرتبطة</p>
+                            {selectedSource && !selectedSource.available && (
+                              <p className="mt-2 flex items-center gap-2 text-amber-700 dark:text-amber-400" role="status">
+                                <AlertTriangle className="h-4 w-4 shrink-0" />
+                                المصدر غير متاح؛ القيم المحفوظة ظاهرة ولن تُحدّث حتى يعود المصدر.
+                              </p>
+                            )}
+                            {selectedSource?.available && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                المصدر: {selectedSource.groupName} · {selectedSource.projectName}
+                              </p>
+                            )}
+                          </div>
+                          <div className="grid gap-5 sm:grid-cols-2">
+                            <FormField control={form.control} name="weight" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>الوزن النسبي</FormLabel>
+                                <FormControl><Input type="number" className="h-11 bg-background font-mono" min={0} step="0.1" {...field} /></FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="sortOrder" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>الترتيب المحلي</FormLabel>
+                                <FormControl><Input type="number" className="h-11 bg-background font-mono" {...field} /></FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                          </div>
+                        </div>
+                      )}
+                      <div className={editingManagedRow ? "hidden" : "space-y-6"}>
                       <div className="p-5 rounded-2xl border bg-muted/20 shadow-sm space-y-5">
                         <FormField control={form.control} name="name" render={({ field }) => (
                           <FormItem>
@@ -1857,6 +1977,7 @@ export default function ProjectActivities() {
                           </FormItem>
                         )} />
                       </div>
+                      </div>
 
                       <div className="flex justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
                         <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
@@ -1896,6 +2017,7 @@ export default function ProjectActivities() {
                 const deviation = a.actualProgress - planned;
                 const delayInfo = calcActivityDelay(a);
                 const editable = canEditActivity(a);
+                const managed = isActivelyManagedActivity(a, groups);
                 const source = getLinkedSource(a);
                 return (
                   <SortableActivityRow key={a.id} id={a.id}>
@@ -1904,6 +2026,11 @@ export default function ProjectActivities() {
                         {!isViewer && <DragHandle />}
                         <div className="min-w-0">
                           <span className="block truncate" title={a.name}>{a.name}</span>
+                          {managed && (
+                            <div className="mt-1">
+                              <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">مُدار من مصدر مجموعة</Badge>
+                            </div>
+                          )}
                           {source && (
                             <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px]">
                               <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">مرتبط</Badge>
@@ -1913,7 +2040,7 @@ export default function ProjectActivities() {
                                 </span>
                               ) : (
                                 <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
-                                  <AlertTriangle className="h-3 w-3" /> المصدر غير متاح
+                                  <AlertTriangle className="h-3 w-3" /> المصدر غير متاح · القيم المحفوظة باقية
                                 </span>
                               )}
                             </div>
@@ -1947,7 +2074,7 @@ export default function ProjectActivities() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {editable ? (
+                      {editable && !managed ? (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-accent transition-colors text-sm">
@@ -1982,13 +2109,13 @@ export default function ProjectActivities() {
                       <div className="flex items-center justify-center gap-1">
                         {editable ? (
                           <>
-                            {!source && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
+                            {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
                               <span className="text-xs font-bold text-muted-foreground">-1</span>
                             </Button>}
-                            {!source && <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
+                            {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
                               <span className="text-xs font-bold text-primary">+1</span>
                             </Button>}
-                            {groups.length > 0 && (
+                            {groups.length > 0 && !managed && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -2177,18 +2304,24 @@ export default function ProjectActivities() {
                 const deviation = a.actualProgress - planned;
                 const delayInfo = calcActivityDelay(a);
                 const editable = canEditActivity(a);
+                const managed = isActivelyManagedActivity(a, groups);
                 const source = getLinkedSource(a);
                 return (
                   <div key={a.id} className={`rounded-lg border p-3 space-y-2.5 ${isBusy ? "opacity-60 pointer-events-none" : ""}`}>
                     <div className="flex items-start justify-between gap-2">
                       <span className="text-sm font-medium leading-tight flex-1">
                         {a.name}
+                        {managed && (
+                          <span className="mt-1 block">
+                            <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">مُدار من مصدر مجموعة</Badge>
+                          </span>
+                        )}
                         {source && (
                           <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
                             <Badge variant="secondary" className="me-1 h-4 px-1.5 text-[9px]">مرتبط</Badge>
                             {source.available
                               ? `${source.groupName ?? ""} · ${source.projectName ?? ""}`
-                              : <span className="text-amber-700 dark:text-amber-400">المصدر غير متاح — قد تكون المجموعة حُذفت</span>}
+                              : <span className="text-amber-700 dark:text-amber-400">المصدر غير متاح؛ القيم المحفوظة باقية</span>}
                           </span>
                         )}
                       </span>
@@ -2211,10 +2344,10 @@ export default function ProjectActivities() {
                     {editable ? (
                       <div className="flex items-center gap-1 pt-1 border-t">
                         <div className="flex items-center gap-1 mr-auto">
-                          {!source && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
+                          {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
                             <span className="text-xs font-bold text-muted-foreground">-1</span>
                           </Button>}
-                          {!source && <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
+                          {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
                             <span className="text-xs font-bold text-primary">+1</span>
                           </Button>}
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
