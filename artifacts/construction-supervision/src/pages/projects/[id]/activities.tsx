@@ -375,6 +375,7 @@ export default function ProjectActivities() {
   const [newGroupColor, setNewGroupColor] = useState("#3b82f6");
   const [newGroupLinkCode, setNewGroupLinkCode] = useState("");
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState<ActivityGroup | null>(null);
   const [sourceCode, setSourceCode] = useState("");
   const [selectedSource, setSelectedSource] = useState<SourceSelection | null>(null);
   const [sourceTouched, setSourceTouched] = useState(false);
@@ -502,7 +503,10 @@ export default function ProjectActivities() {
         method: "PUT",
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error("فشل تحديث المجموعة");
+      if (!r.ok) {
+        const response = await r.json().catch(() => null);
+        throw new Error(response?.error ?? "فشل تحديث المجموعة");
+      }
       return r.json();
     },
     onSuccess: () => {
@@ -511,17 +515,27 @@ export default function ProjectActivities() {
       setEditingGroupId(null);
       toast({ title: "تم تحديث المجموعة" });
     },
+    onError: (error: Error) => toast({ variant: "destructive", title: error.message }),
   });
 
   const deleteGroup = useMutation({
     mutationFn: async (id: number) => {
       const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups/${id}`, { method: "DELETE" });
-      if (!r.ok) throw new Error("فشل حذف المجموعة");
+      if (!r.ok) {
+        const response = await r.json().catch(() => null);
+        throw new Error(response?.error ?? "فشل حذف المجموعة");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: groupsQueryKey });
       invalidate();
+      setGroupFilter("all");
+      setDeletingGroup(null);
       toast({ title: "تم حذف المجموعة" });
+    },
+    onError: (error: Error) => {
+      invalidate();
+      toast({ variant: "destructive", title: error.message });
     },
   });
 
@@ -1172,10 +1186,15 @@ export default function ProjectActivities() {
                             <span className="max-w-[12rem] truncate">{group.name}</span>
                             <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{groupCounts.counts.get(group.id) ?? 0}</span>
                           </Button>
-                          {!isViewer && (
-                            <Button type="button" size="icon" variant="outline" className="h-9 w-8 rounded-s-none border-r-0" title={`تعديل ${group.name}`} onClick={() => openEditGroupDialog(group)}>
-                              <Edit2 className="h-3 w-3" />
-                            </Button>
+                          {!isViewer && !isContractorBase && (
+                            <>
+                              <Button type="button" size="icon" variant="outline" className="h-9 w-8 rounded-none border-r-0" title={`تعديل مجموعة ${group.name}`} aria-label={`تعديل مجموعة ${group.name}`} onClick={() => openEditGroupDialog(group)}>
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button type="button" size="icon" variant="outline" className="h-9 w-8 rounded-s-none border-r-0" title={`حذف مجموعة ${group.name}`} aria-label={`حذف مجموعة ${group.name}`} onClick={() => setDeletingGroup(group)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
                           )}
                         </div>
                       );
@@ -1543,66 +1562,9 @@ export default function ProjectActivities() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
             {!isViewer && (
-            <Dialog open={isGroupDialogOpen} onOpenChange={setIsGroupDialogOpen}>
               <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm" onClick={openNewGroupDialog}>
                 <FolderPlus className="h-4 w-4" /> <span className="hidden sm:inline">مجموعة جديدة</span>
               </Button>
-              <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden" dir="rtl">
-                <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
-                  <DialogHeader>
-                    <DialogTitle className="text-xl">{editingGroupId ? "تعديل المجموعة" : "إضافة مجموعة جديدة"}</DialogTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      قم بإنشاء مجموعة جديدة لتنظيم بنود الأعمال الخاصة بالمشروع.
-                    </p>
-                  </DialogHeader>
-                </div>
-                <div className="p-6 pt-4 space-y-6">
-                  <div className="p-5 rounded-2xl border bg-muted/20 shadow-sm space-y-5">
-                    <div>
-                      <label className="text-sm font-semibold mb-2 block text-foreground/90">اسم المجموعة</label>
-                      <Input className="h-11 bg-background" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder="مثال: الأعمال الخرسانية" />
-                    </div>
-                    <div>
-                      <label className="text-sm font-semibold mb-2 block text-foreground/90">لون المجموعة</label>
-                      <div className="flex flex-wrap gap-3">
-                        {GROUP_COLORS.map(c => (
-                          <button
-                            key={c.value}
-                            className={`w-9 h-9 rounded-full border-2 transition-all shadow-sm ${newGroupColor === c.value ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
-                            style={{ backgroundColor: c.value }}
-                            onClick={() => setNewGroupColor(c.value)}
-                            title={c.label}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-sm font-semibold mb-2 block text-foreground/90">رمز الربط (اختياري)</label>
-                      <Input
-                        className="h-11 bg-background"
-                        value={newGroupLinkCode}
-                        onChange={e => setNewGroupLinkCode(e.target.value)}
-                        placeholder="رمز فريد لمشاركة مصدر الإنجاز"
-                        dir="ltr"
-                      />
-                      <p className="mt-1 text-xs text-muted-foreground">يتيح هذا الرمز للمشاريع الأخرى ربط بنودها بهذه المجموعة.</p>
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
-                    <Button variant="outline" className="w-full sm:w-auto" onClick={() => { setIsGroupDialogOpen(false); setEditingGroupId(null); }}>إلغاء</Button>
-                    <Button
-                      className="w-full sm:w-auto shadow-md"
-                      disabled={!newGroupName.trim() || createGroup.isPending || updateGroup.isPending}
-                      onClick={() => editingGroupId
-                        ? updateGroup.mutate({ id: editingGroupId, name: newGroupName.trim(), color: newGroupColor, linkCode: newGroupLinkCode.trim() || null })
-                        : createGroup.mutate({ name: newGroupName.trim(), color: newGroupColor, linkCode: newGroupLinkCode.trim() || null })}
-                    >
-                      {createGroup.isPending || updateGroup.isPending ? "جاري الحفظ..." : editingGroupId ? "حفظ التغييرات" : "تأكيد وإنشاء"}
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
             )}
             <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm" onClick={exportActivities} disabled={!activities || activities.length === 0}>
               <Download className="h-4 w-4" /> <span className="hidden xs:inline">تصدير</span> <span className="hidden sm:inline">Excel</span>
@@ -2128,7 +2090,7 @@ export default function ProjectActivities() {
                                       <div className="flex-1 max-w-[80px]">
                                         <ProgressBar value={groupProgress} color={g.color} />
                                       </div>
-                                      {!isViewer && (
+                                      {!isViewer && !isContractorBase && (
                                       <>
                                         <Button
                                           variant="ghost"
@@ -2144,7 +2106,7 @@ export default function ProjectActivities() {
                                           size="icon"
                                           className="h-6 w-6"
                                           title="حذف المجموعة"
-                                          onClick={(e) => { e.stopPropagation(); deleteGroup.mutate(g.id); }}
+                                          onClick={(e) => { e.stopPropagation(); setDeletingGroup(g); }}
                                         >
                                           <X className="h-3 w-3 text-muted-foreground" />
                                         </Button>
@@ -2365,6 +2327,97 @@ export default function ProjectActivities() {
         </Card>
         )}
       </div>
+
+      {!isViewer && !isContractorBase && (
+      <Dialog open={isGroupDialogOpen} onOpenChange={(open) => {
+        setIsGroupDialogOpen(open);
+        if (!open) setEditingGroupId(null);
+      }}>
+        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden" dir="rtl">
+          <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
+            <DialogHeader>
+              <DialogTitle className="text-xl">{editingGroupId ? "تعديل المجموعة" : "إضافة مجموعة جديدة"}</DialogTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                {editingGroupId ? "عدّل بيانات المجموعة دون تغيير بنودها أو الروابط المرتبطة بها." : "قم بإنشاء مجموعة جديدة لتنظيم بنود الأعمال الخاصة بالمشروع."}
+              </p>
+            </DialogHeader>
+          </div>
+          <div className="p-6 pt-4 space-y-6">
+            <div className="p-5 rounded-2xl border bg-muted/20 shadow-sm space-y-5">
+              <div>
+                <label className="text-sm font-semibold mb-2 block text-foreground/90">اسم المجموعة</label>
+                <Input className="h-11 bg-background" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder="مثال: الأعمال الخرسانية" />
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-2 block text-foreground/90">لون المجموعة</label>
+                <div className="flex flex-wrap gap-3">
+                  {GROUP_COLORS.map(c => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      className={`w-9 h-9 rounded-full border-2 transition-all shadow-sm ${newGroupColor === c.value ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
+                      style={{ backgroundColor: c.value }}
+                      onClick={() => setNewGroupColor(c.value)}
+                      title={c.label}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-2 block text-foreground/90">رمز الربط (اختياري)</label>
+                <Input
+                  className="h-11 bg-background"
+                  value={newGroupLinkCode}
+                  onChange={e => setNewGroupLinkCode(e.target.value)}
+                  placeholder="رمز فريد لمشاركة مصدر الإنجاز"
+                  dir="ltr"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">يتيح هذا الرمز للمشاريع الأخرى ربط بنودها بهذه المجموعة.</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+              <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIsGroupDialogOpen(false)}>إلغاء</Button>
+              <Button
+                className="w-full sm:w-auto shadow-md"
+                disabled={!newGroupName.trim() || createGroup.isPending || updateGroup.isPending}
+                onClick={() => editingGroupId
+                  ? updateGroup.mutate({ id: editingGroupId, name: newGroupName.trim(), color: newGroupColor, linkCode: newGroupLinkCode.trim() || null })
+                  : createGroup.mutate({ name: newGroupName.trim(), color: newGroupColor, linkCode: newGroupLinkCode.trim() || null })}
+              >
+                {createGroup.isPending || updateGroup.isPending ? "جاري الحفظ..." : editingGroupId ? "حفظ التغييرات" : "تأكيد وإنشاء"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      )}
+
+      {!isViewer && !isContractorBase && (
+      <AlertDialog open={!!deletingGroup} onOpenChange={(open) => { if (!open) setDeletingGroup(null); }}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>حذف مجموعة {deletingGroup?.name}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(groupCounts.counts.get(deletingGroup?.id ?? -1) ?? 0) > 0
+                ? "لا يمكن حذف هذه المجموعة قبل نقل أو حذف البنود الموجودة داخلها. لن تُنقل البنود أو تُحذف تلقائياً."
+                : "هذه المجموعة فارغة. هل تريد حذفها؟ لا يمكن التراجع عن الحذف، وستظهر روابطها في المشاريع الأخرى كمصدر غير متاح إن وُجدت."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2">
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            {(groupCounts.counts.get(deletingGroup?.id ?? -1) ?? 0) === 0 && (
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={deleteGroup.isPending}
+                onClick={() => { if (deletingGroup) deleteGroup.mutate(deletingGroup.id); }}
+              >
+                {deleteGroup.isPending ? "جاري الحذف..." : "حذف المجموعة الفارغة"}
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      )}
 
       {!isContractorBase && (
       <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>

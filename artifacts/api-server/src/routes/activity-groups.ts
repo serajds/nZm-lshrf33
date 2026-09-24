@@ -1,10 +1,12 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { activityGroupsTable, activitiesTable } from "@workspace/db";
+import { activityGroupsTable } from "@workspace/db";
 import { eq, and, asc, ilike } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
+import { requireTabEdit } from "../middlewares/tab-access";
 import { canReadProject, getGroupSummary, normalizeLinkCode, refreshLinkedSources } from "../lib/external-sources";
 import { groupMatchesSourceQuery, resolveSourceSuggestions } from "../lib/activity-source-rules";
+import { deleteEmptyActivityGroup } from "../lib/delete-empty-activity-group";
 
 const router: IRouter = Router();
 
@@ -50,7 +52,7 @@ router.get("/projects/:projectId/activity-groups/search", requireProjectAccess("
   res.json(resolveSourceSuggestions(results, query).slice(0, 20));
 });
 
-router.post("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.post("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
   const { name, color } = req.body;
   if (req.body.linkCode !== undefined && req.body.linkCode !== null && typeof req.body.linkCode !== "string") {
@@ -93,7 +95,7 @@ router.post("/projects/:projectId/activity-groups", requireProjectAccess("projec
   res.status(201).json(group);
 });
 
-router.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
   const { order } = req.body;
   if (!Array.isArray(order)) {
@@ -108,7 +110,7 @@ router.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess(
   res.json({ success: true });
 });
 
-router.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
   const id = parseInt(req.params.id as string, 10);
   const { name, color } = req.body;
@@ -154,18 +156,20 @@ router.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("pro
   res.json(updated);
 });
 
-router.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
   const id = parseInt(req.params.id as string, 10);
-
-  await db.update(activitiesTable)
-    .set({ groupId: null })
-    .where(and(eq(activitiesTable.projectId, projectId), eq(activitiesTable.groupId, id)));
-
-  // Preserve externalSourceGroupId on target activities. Their last copied
-  // values remain available while GET reports the source as unavailable.
-  await db.delete(activityGroupsTable)
-    .where(and(eq(activityGroupsTable.id, id), eq(activityGroupsTable.projectId, projectId)));
+  const result = await deleteEmptyActivityGroup(projectId, id);
+  if (result === "not_found") {
+    res.status(404).json({ error: "المجموعة غير موجودة" });
+    return;
+  }
+  if (result === "not_empty") {
+    res.status(409).json({ error: "لا يمكن حذف المجموعة قبل نقل أو حذف البنود الموجودة داخلها" });
+    return;
+  }
+  // An empty group can still be an external source. Its linked targets keep
+  // their last copied values and will show the source as unavailable.
   res.sendStatus(204);
 });
 
