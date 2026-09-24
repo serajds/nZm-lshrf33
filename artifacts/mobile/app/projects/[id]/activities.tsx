@@ -47,9 +47,29 @@ export default function ActivitiesScreen() {
             </View>
             {g.items.map(a => {
               const pct = Math.min(100, Math.max(0, a.actualProgress ?? 0));
+              const hasExternalSource = a.externalSourceGroupId != null || a.externalSource != null;
+              const sourceAvailable = a.externalSource?.available === true;
               return (
                 <Card key={a.id}>
                   <Text style={[styles.actName, { color: colors.foreground }]}>{a.name}</Text>
+                  {hasExternalSource ? (
+                    <View style={[
+                      styles.sourceBadge,
+                      {
+                        backgroundColor: sourceAvailable ? "#dcfce7" : "#fee2e2",
+                        borderColor: sourceAvailable ? "#86efac" : "#fca5a5",
+                      },
+                    ]}>
+                      <Text style={[
+                        styles.sourceText,
+                        { color: sourceAvailable ? "#166534" : "#991b1b" },
+                      ]}>
+                        {sourceAvailable ? "مصدر مرتبط" : "المصدر غير متاح"}
+                        {a.externalSource?.projectName ? ` · ${a.externalSource.projectName}` : ""}
+                        {a.externalSource?.groupName ? ` / ${a.externalSource.groupName}` : ""}
+                      </Text>
+                    </View>
+                  ) : null}
                   {a.description ? (
                     <Text style={[styles.actDesc, { color: colors.mutedForeground }]} numberOfLines={2}>{a.description}</Text>
                   ) : null}
@@ -75,6 +95,8 @@ const styles = StyleSheet.create({
   groupName: { fontFamily: "Cairo_700Bold", fontSize: 14 },
   groupCount: { fontFamily: "Cairo_400Regular", fontSize: 12 },
   actName: { fontFamily: "Cairo_700Bold", fontSize: 14 },
+  sourceBadge: { alignSelf: "flex-start", borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 3, marginTop: 5 },
+  sourceText: { fontFamily: "Cairo_700Bold", fontSize: 11 },
   actDesc: { fontFamily: "Cairo_400Regular", fontSize: 12, marginTop: 4 },
   progressTrack: { height: 6, backgroundColor: "#e5e7eb", borderRadius: 4, overflow: "hidden", marginTop: 10 },
   progressFill: { height: "100%", borderRadius: 4 },

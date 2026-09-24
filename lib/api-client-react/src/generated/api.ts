@@ -19,11 +19,13 @@ import type {
 import type {
   ActiveAttendanceResponse,
   Activity,
+  ActivityGroup,
   AddProjectMemberBody,
   AttendanceCheckBody,
   AttendanceRecord,
   AttendanceRecordWithUser,
   CreateActivityBody,
+  CreateActivityGroupBody,
   CreateBackup200,
   CreateProjectBody,
   CreateReportBody,
@@ -35,6 +37,7 @@ import type {
   DeviationTimeline,
   EmployeeAttendanceReport,
   ErrorResponse,
+  ExternalSourceGroup,
   GenerateOwnerLinkBody,
   GetEmployeeAttendanceReportParams,
   GetIncompleteUsersCount200,
@@ -69,7 +72,9 @@ import type {
   RegisterResponse,
   Report,
   ReportAuditLogEntry,
+  SearchActivityGroupSourcesParams,
   UpdateActivityBody,
+  UpdateActivityGroupBody,
   UpdateAttendanceRecordBody,
   UpdateMemberGroups200,
   UpdateMemberGroupsBody,
@@ -920,6 +925,394 @@ export const useDeleteProject = <
 > => {
   return useMutation(getDeleteProjectMutationOptions(options));
 };
+
+/**
+ * @summary List activity groups
+ */
+export const getListActivityGroupsUrl = (projectId: number) => {
+  return `/api/projects/${projectId}/activity-groups`;
+};
+
+export const listActivityGroups = async (
+  projectId: number,
+  options?: RequestInit,
+): Promise<ActivityGroup[]> => {
+  return customFetch<ActivityGroup[]>(getListActivityGroupsUrl(projectId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListActivityGroupsQueryKey = (projectId: number) => {
+  return [`/api/projects/${projectId}/activity-groups`] as const;
+};
+
+export const getListActivityGroupsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listActivityGroups>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listActivityGroups>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListActivityGroupsQueryKey(projectId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listActivityGroups>>
+  > = ({ signal }) =>
+    listActivityGroups(projectId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!projectId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listActivityGroups>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListActivityGroupsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listActivityGroups>>
+>;
+export type ListActivityGroupsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List activity groups
+ */
+
+export function useListActivityGroups<
+  TData = Awaited<ReturnType<typeof listActivityGroups>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listActivityGroups>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListActivityGroupsQueryOptions(projectId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create an activity group
+ */
+export const getCreateActivityGroupUrl = (projectId: number) => {
+  return `/api/projects/${projectId}/activity-groups`;
+};
+
+export const createActivityGroup = async (
+  projectId: number,
+  createActivityGroupBody: CreateActivityGroupBody,
+  options?: RequestInit,
+): Promise<ActivityGroup> => {
+  return customFetch<ActivityGroup>(getCreateActivityGroupUrl(projectId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createActivityGroupBody),
+  });
+};
+
+export const getCreateActivityGroupMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createActivityGroup>>,
+    TError,
+    { projectId: number; data: BodyType<CreateActivityGroupBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createActivityGroup>>,
+  TError,
+  { projectId: number; data: BodyType<CreateActivityGroupBody> },
+  TContext
+> => {
+  const mutationKey = ["createActivityGroup"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createActivityGroup>>,
+    { projectId: number; data: BodyType<CreateActivityGroupBody> }
+  > = (props) => {
+    const { projectId, data } = props ?? {};
+
+    return createActivityGroup(projectId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateActivityGroupMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createActivityGroup>>
+>;
+export type CreateActivityGroupMutationBody = BodyType<CreateActivityGroupBody>;
+export type CreateActivityGroupMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create an activity group
+ */
+export const useCreateActivityGroup = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createActivityGroup>>,
+    TError,
+    { projectId: number; data: BodyType<CreateActivityGroupBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createActivityGroup>>,
+  TError,
+  { projectId: number; data: BodyType<CreateActivityGroupBody> },
+  TContext
+> => {
+  return useMutation(getCreateActivityGroupMutationOptions(options));
+};
+
+/**
+ * @summary Update an activity group, including its normalized sharing code
+ */
+export const getUpdateActivityGroupUrl = (projectId: number, id: number) => {
+  return `/api/projects/${projectId}/activity-groups/${id}`;
+};
+
+export const updateActivityGroup = async (
+  projectId: number,
+  id: number,
+  updateActivityGroupBody: UpdateActivityGroupBody,
+  options?: RequestInit,
+): Promise<ActivityGroup> => {
+  return customFetch<ActivityGroup>(getUpdateActivityGroupUrl(projectId, id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateActivityGroupBody),
+  });
+};
+
+export const getUpdateActivityGroupMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateActivityGroup>>,
+    TError,
+    { projectId: number; id: number; data: BodyType<UpdateActivityGroupBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateActivityGroup>>,
+  TError,
+  { projectId: number; id: number; data: BodyType<UpdateActivityGroupBody> },
+  TContext
+> => {
+  const mutationKey = ["updateActivityGroup"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateActivityGroup>>,
+    { projectId: number; id: number; data: BodyType<UpdateActivityGroupBody> }
+  > = (props) => {
+    const { projectId, id, data } = props ?? {};
+
+    return updateActivityGroup(projectId, id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateActivityGroupMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateActivityGroup>>
+>;
+export type UpdateActivityGroupMutationBody = BodyType<UpdateActivityGroupBody>;
+export type UpdateActivityGroupMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update an activity group, including its normalized sharing code
+ */
+export const useUpdateActivityGroup = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateActivityGroup>>,
+    TError,
+    { projectId: number; id: number; data: BodyType<UpdateActivityGroupBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateActivityGroup>>,
+  TError,
+  { projectId: number; id: number; data: BodyType<UpdateActivityGroupBody> },
+  TContext
+> => {
+  return useMutation(getUpdateActivityGroupMutationOptions(options));
+};
+
+/**
+ * @summary Search shareable groups from projects accessible to the caller
+ */
+export const getSearchActivityGroupSourcesUrl = (
+  projectId: number,
+  params: SearchActivityGroupSourcesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/projects/${projectId}/activity-groups/search?${stringifiedParams}`
+    : `/api/projects/${projectId}/activity-groups/search`;
+};
+
+export const searchActivityGroupSources = async (
+  projectId: number,
+  params: SearchActivityGroupSourcesParams,
+  options?: RequestInit,
+): Promise<ExternalSourceGroup[]> => {
+  return customFetch<ExternalSourceGroup[]>(
+    getSearchActivityGroupSourcesUrl(projectId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getSearchActivityGroupSourcesQueryKey = (
+  projectId: number,
+  params?: SearchActivityGroupSourcesParams,
+) => {
+  return [
+    `/api/projects/${projectId}/activity-groups/search`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getSearchActivityGroupSourcesQueryOptions = <
+  TData = Awaited<ReturnType<typeof searchActivityGroupSources>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  params: SearchActivityGroupSourcesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchActivityGroupSources>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getSearchActivityGroupSourcesQueryKey(projectId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof searchActivityGroupSources>>
+  > = ({ signal }) =>
+    searchActivityGroupSources(projectId, params, {
+      signal,
+      ...requestOptions,
+    });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!projectId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof searchActivityGroupSources>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type SearchActivityGroupSourcesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof searchActivityGroupSources>>
+>;
+export type SearchActivityGroupSourcesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Search shareable groups from projects accessible to the caller
+ */
+
+export function useSearchActivityGroupSources<
+  TData = Awaited<ReturnType<typeof searchActivityGroupSources>>,
+  TError = ErrorType<unknown>,
+>(
+  projectId: number,
+  params: SearchActivityGroupSourcesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchActivityGroupSources>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getSearchActivityGroupSourcesQueryOptions(
+    projectId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List activities for a project

@@ -244,6 +244,106 @@ paths:
           description: Deleted
 
   # Activities (Schedule items)
+  /projects/{projectId}/activity-groups:
+    get:
+      operationId: listActivityGroups
+      tags: [activities]
+      summary: List activity groups
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Activity groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityGroup"
+    post:
+      operationId: createActivityGroup
+      tags: [activities]
+      summary: Create an activity group
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateActivityGroupBody"
+      responses:
+        "201":
+          description: Created activity group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityGroup"
+
+  /projects/{projectId}/activity-groups/{id}:
+    put:
+      operationId: updateActivityGroup
+      tags: [activities]
+      summary: Update an activity group, including its normalized sharing code
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateActivityGroupBody"
+      responses:
+        "200":
+          description: Updated activity group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityGroup"
+
+  /projects/{projectId}/activity-groups/search:
+    get:
+      operationId: searchActivityGroupSources
+      tags: [activities]
+      summary: Search shareable groups from projects accessible to the caller
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Shareable matching source groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ExternalSourceGroup"
+
   /projects/{projectId}/activities:
     get:
       operationId: listActivities
@@ -2012,6 +2112,44 @@ components:
           enum: [type_and_number, period_only]
 
     # Activities
+    ActivityGroup:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        name:
+          type: string
+        color:
+          type: string
+        sortOrder:
+          type: integer
+        linkCode:
+          type: ["string", "null"]
+      required: [id, projectId, name, color, sortOrder, linkCode]
+
+    CreateActivityGroupBody:
+      type: object
+      properties:
+        name:
+          type: string
+        color:
+          type: string
+        linkCode:
+          type: ["string", "null"]
+      required: [name]
+
+    UpdateActivityGroupBody:
+      type: object
+      properties:
+        name:
+          type: string
+        color:
+          type: string
+        linkCode:
+          type: ["string", "null"]
+
     Activity:
       type: object
       properties:
@@ -2048,6 +2186,18 @@ components:
           type: integer
         groupId:
           type: ["integer", "null"]
+        externalSourceGroupId:
+          type: ["integer", "null"]
+        externalSource:
+          oneOf:
+            - $ref: "#/components/schemas/ExternalSourceGroup"
+            - type: object
+              properties:
+                available:
+                  type: boolean
+                groupId:
+                  type: integer
+              required: [available, groupId]
         createdAt:
           type: string
           format: date-time
@@ -2061,6 +2211,32 @@ components:
         - status
         - sortOrder
         - createdAt
+
+    ExternalSourceGroup:
+      type: object
+      properties:
+        available:
+          type: boolean
+          default: true
+        groupId:
+          type: integer
+        projectId:
+          type: integer
+        projectName:
+          type: string
+        groupName:
+          type: string
+        linkCode:
+          type: ["string", "null"]
+        actualProgress:
+          type: number
+        plannedStartDate:
+          type: ["string", "null"]
+          format: date
+        plannedEndDate:
+          type: ["string", "null"]
+          format: date
+      required: [groupId]
 
     CreateActivityBody:
       type: object
@@ -2097,6 +2273,8 @@ components:
           default: 0
         groupId:
           type: ["integer", "null"]
+        externalSourceGroupId:
+          type: ["integer", "null"]
       required:
         - name
 
@@ -2129,6 +2307,8 @@ components:
         sortOrder:
           type: ["integer", "null"]
         groupId:
+          type: ["integer", "null"]
+        externalSourceGroupId:
           type: ["integer", "null"]
 
     # Reports

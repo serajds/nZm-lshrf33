@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, usersTable, formSubmissionsTable, formTemplatesTable, projectSuspensionsTable } from "@workspace/db";
+import { projectsTable, activitiesTable, activityGroupsTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, usersTable, formSubmissionsTable, formTemplatesTable, projectSuspensionsTable } from "@workspace/db";
 import { eq, ilike, or, sql, inArray, and } from "drizzle-orm";
 import { requireAuth, requireEngineerOrAdmin, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
@@ -350,11 +350,17 @@ router.delete("/projects/:id", requireAdmin, async (req, res): Promise<void> => 
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "delete", entityType: "project", entityId: id, entityName: (existing as any).name, projectId: id, projectName: (existing as any).name });
 
-  await db.delete(projectMembersTable).where(eq(projectMembersTable.projectId, id));
-  await db.delete(activitiesTable).where(eq(activitiesTable.projectId, id));
-  await db.delete(reportsTable).where(eq(reportsTable.projectId, id));
-  await db.delete(projectFilesTable).where(eq(projectFilesTable.projectId, id));
-  await db.delete(projectsTable).where(eq(projectsTable.id, id));
+  await db.transaction(async tx => {
+    await tx.delete(projectMembersTable).where(eq(projectMembersTable.projectId, id));
+    await tx.delete(activitiesTable).where(eq(activitiesTable.projectId, id));
+    // Groups are stable-ID sources for activities in other projects.
+    // Removing them makes those links unavailable without touching targets'
+    // last copied values; serial IDs are never reused.
+    await tx.delete(activityGroupsTable).where(eq(activityGroupsTable.projectId, id));
+    await tx.delete(reportsTable).where(eq(reportsTable.projectId, id));
+    await tx.delete(projectFilesTable).where(eq(projectFilesTable.projectId, id));
+    await tx.delete(projectsTable).where(eq(projectsTable.id, id));
+  });
 
   res.sendStatus(204);
 });

@@ -308,6 +308,91 @@ export const DeleteProjectParams = zod.object({
 });
 
 /**
+ * @summary List activity groups
+ */
+export const ListActivityGroupsParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const ListActivityGroupsResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  name: zod.string(),
+  color: zod.string(),
+  sortOrder: zod.number(),
+  linkCode: zod.string().nullable(),
+});
+export const ListActivityGroupsResponse = zod.array(
+  ListActivityGroupsResponseItem,
+);
+
+/**
+ * @summary Create an activity group
+ */
+export const CreateActivityGroupParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const CreateActivityGroupBody = zod.object({
+  name: zod.string(),
+  color: zod.string().optional(),
+  linkCode: zod.string().nullish(),
+});
+
+/**
+ * @summary Update an activity group, including its normalized sharing code
+ */
+export const UpdateActivityGroupParams = zod.object({
+  projectId: zod.coerce.number(),
+  id: zod.coerce.number(),
+});
+
+export const UpdateActivityGroupBody = zod.object({
+  name: zod.string().optional(),
+  color: zod.string().optional(),
+  linkCode: zod.string().nullish(),
+});
+
+export const UpdateActivityGroupResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  name: zod.string(),
+  color: zod.string(),
+  sortOrder: zod.number(),
+  linkCode: zod.string().nullable(),
+});
+
+/**
+ * @summary Search shareable groups from projects accessible to the caller
+ */
+export const SearchActivityGroupSourcesParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const SearchActivityGroupSourcesQueryParams = zod.object({
+  query: zod.coerce.string(),
+});
+
+export const searchActivityGroupSourcesResponseAvailableDefault = true;
+
+export const SearchActivityGroupSourcesResponseItem = zod.object({
+  available: zod
+    .boolean()
+    .default(searchActivityGroupSourcesResponseAvailableDefault),
+  groupId: zod.number(),
+  projectId: zod.number().optional(),
+  projectName: zod.string().optional(),
+  groupName: zod.string().optional(),
+  linkCode: zod.string().nullish(),
+  actualProgress: zod.number().optional(),
+  plannedStartDate: zod.coerce.date().nullish(),
+  plannedEndDate: zod.coerce.date().nullish(),
+});
+export const SearchActivityGroupSourcesResponse = zod.array(
+  SearchActivityGroupSourcesResponseItem,
+);
+
+/**
  * @summary List activities for a project
  */
 export const ListActivitiesParams = zod.object({
@@ -315,6 +400,7 @@ export const ListActivitiesParams = zod.object({
 });
 
 export const listActivitiesResponseWeightDefault = 1;
+export const listActivitiesResponseExternalSourceOneAvailableDefault = true;
 
 export const ListActivitiesResponseItem = zod.object({
   id: zod.number(),
@@ -333,6 +419,28 @@ export const ListActivitiesResponseItem = zod.object({
   status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
   sortOrder: zod.number(),
   groupId: zod.number().nullish(),
+  externalSourceGroupId: zod.number().nullish(),
+  externalSource: zod
+    .union([
+      zod.object({
+        available: zod
+          .boolean()
+          .default(listActivitiesResponseExternalSourceOneAvailableDefault),
+        groupId: zod.number(),
+        projectId: zod.number().optional(),
+        projectName: zod.string().optional(),
+        groupName: zod.string().optional(),
+        linkCode: zod.string().nullish(),
+        actualProgress: zod.number().optional(),
+        plannedStartDate: zod.coerce.date().nullish(),
+        plannedEndDate: zod.coerce.date().nullish(),
+      }),
+      zod.object({
+        available: zod.boolean(),
+        groupId: zod.number(),
+      }),
+    ])
+    .optional(),
   createdAt: zod.coerce.date(),
 });
 export const ListActivitiesResponse = zod.array(ListActivitiesResponseItem);
@@ -366,6 +474,7 @@ export const CreateActivityBody = zod.object({
     .default(createActivityBodyStatusDefault),
   sortOrder: zod.number().default(createActivityBodySortOrderDefault),
   groupId: zod.number().nullish(),
+  externalSourceGroupId: zod.number().nullish(),
 });
 
 /**
@@ -407,9 +516,11 @@ export const UpdateActivityBody = zod.object({
     .nullish(),
   sortOrder: zod.number().nullish(),
   groupId: zod.number().nullish(),
+  externalSourceGroupId: zod.number().nullish(),
 });
 
 export const updateActivityResponseWeightDefault = 1;
+export const updateActivityResponseExternalSourceOneAvailableDefault = true;
 
 export const UpdateActivityResponse = zod.object({
   id: zod.number(),
@@ -428,6 +539,28 @@ export const UpdateActivityResponse = zod.object({
   status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
   sortOrder: zod.number(),
   groupId: zod.number().nullish(),
+  externalSourceGroupId: zod.number().nullish(),
+  externalSource: zod
+    .union([
+      zod.object({
+        available: zod
+          .boolean()
+          .default(updateActivityResponseExternalSourceOneAvailableDefault),
+        groupId: zod.number(),
+        projectId: zod.number().optional(),
+        projectName: zod.string().optional(),
+        groupName: zod.string().optional(),
+        linkCode: zod.string().nullish(),
+        actualProgress: zod.number().optional(),
+        plannedStartDate: zod.coerce.date().nullish(),
+        plannedEndDate: zod.coerce.date().nullish(),
+      }),
+      zod.object({
+        available: zod.boolean(),
+        groupId: zod.number(),
+      }),
+    ])
+    .optional(),
   createdAt: zod.coerce.date(),
 });
 
@@ -1225,6 +1358,7 @@ export const VerifyOwnerAccessBody = zod.object({
 });
 
 export const verifyOwnerAccessResponseActivitiesItemWeightDefault = 1;
+export const verifyOwnerAccessResponseActivitiesItemExternalSourceOneAvailableDefault = true;
 
 export const VerifyOwnerAccessResponse = zod.object({
   project: zod.object({
@@ -1278,6 +1412,30 @@ export const VerifyOwnerAccessResponse = zod.object({
       status: zod.enum(["not_started", "in_progress", "completed", "delayed"]),
       sortOrder: zod.number(),
       groupId: zod.number().nullish(),
+      externalSourceGroupId: zod.number().nullish(),
+      externalSource: zod
+        .union([
+          zod.object({
+            available: zod
+              .boolean()
+              .default(
+                verifyOwnerAccessResponseActivitiesItemExternalSourceOneAvailableDefault,
+              ),
+            groupId: zod.number(),
+            projectId: zod.number().optional(),
+            projectName: zod.string().optional(),
+            groupName: zod.string().optional(),
+            linkCode: zod.string().nullish(),
+            actualProgress: zod.number().optional(),
+            plannedStartDate: zod.coerce.date().nullish(),
+            plannedEndDate: zod.coerce.date().nullish(),
+          }),
+          zod.object({
+            available: zod.boolean(),
+            groupId: zod.number(),
+          }),
+        ])
+        .optional(),
       createdAt: zod.coerce.date(),
     }),
   ),

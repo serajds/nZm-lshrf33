@@ -30,4 +30,6 @@ export interface UpdateActivityBody {
   sortOrder?: number | null;
   /** @nullable */
   groupId?: number | null;
+  /** @nullable */
+  externalSourceGroupId?: number | null;
 }

@@ -58980,12 +58980,14 @@ var init_activities = __esm({
       weight: real("weight").notNull().default(1),
       status: text("status", { enum: ["not_started", "in_progress", "completed", "delayed"] }).notNull().default("not_started"),
       groupId: integer("group_id"),
+      externalSourceGroupId: integer("external_source_group_id"),
       sortOrder: integer("sort_order").notNull().default(0),
       progressUpdatedAt: timestamp("progress_updated_at", { withTimezone: true }),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
     }, (t) => [
       index("activities_project_sort_idx").on(t.projectId, t.sortOrder),
-      index("activities_group_idx").on(t.groupId)
+      index("activities_group_idx").on(t.groupId),
+      index("activities_external_source_group_idx").on(t.externalSourceGroupId)
     ]);
     insertActivitySchema = createInsertSchema(activitiesTable).omit({ id: true, createdAt: true });
   }
@@ -59002,9 +59004,11 @@ var init_activity_groups = __esm({
       projectId: integer("project_id").notNull(),
       name: text("name").notNull(),
       color: text("color").notNull().default("#3b82f6"),
-      sortOrder: integer("sort_order").notNull().default(0)
+      sortOrder: integer("sort_order").notNull().default(0),
+      linkCode: text("link_code")
     }, (t) => [
-      index("activity_groups_project_idx").on(t.projectId, t.sortOrder)
+      index("activity_groups_project_idx").on(t.projectId, t.sortOrder),
+      uniqueIndex("activity_groups_link_code_unique").on(t.linkCode)
     ]);
   }
 });
@@ -119556,10 +119560,71 @@ var UpdateProjectResponse = objectType({
 var DeleteProjectParams = objectType({
   id: coerce.number()
 });
+var ListActivityGroupsParams = objectType({
+  projectId: coerce.number()
+});
+var ListActivityGroupsResponseItem = objectType({
+  id: numberType(),
+  projectId: numberType(),
+  name: stringType(),
+  color: stringType(),
+  sortOrder: numberType(),
+  linkCode: stringType().nullable()
+});
+var ListActivityGroupsResponse = arrayType(
+  ListActivityGroupsResponseItem
+);
+var CreateActivityGroupParams = objectType({
+  projectId: coerce.number()
+});
+var CreateActivityGroupBody = objectType({
+  name: stringType(),
+  color: stringType().optional(),
+  linkCode: stringType().nullish()
+});
+var UpdateActivityGroupParams = objectType({
+  projectId: coerce.number(),
+  id: coerce.number()
+});
+var UpdateActivityGroupBody = objectType({
+  name: stringType().optional(),
+  color: stringType().optional(),
+  linkCode: stringType().nullish()
+});
+var UpdateActivityGroupResponse = objectType({
+  id: numberType(),
+  projectId: numberType(),
+  name: stringType(),
+  color: stringType(),
+  sortOrder: numberType(),
+  linkCode: stringType().nullable()
+});
+var SearchActivityGroupSourcesParams = objectType({
+  projectId: coerce.number()
+});
+var SearchActivityGroupSourcesQueryParams = objectType({
+  query: coerce.string()
+});
+var searchActivityGroupSourcesResponseAvailableDefault = true;
+var SearchActivityGroupSourcesResponseItem = objectType({
+  available: booleanType().default(searchActivityGroupSourcesResponseAvailableDefault),
+  groupId: numberType(),
+  projectId: numberType().optional(),
+  projectName: stringType().optional(),
+  groupName: stringType().optional(),
+  linkCode: stringType().nullish(),
+  actualProgress: numberType().optional(),
+  plannedStartDate: coerce.date().nullish(),
+  plannedEndDate: coerce.date().nullish()
+});
+var SearchActivityGroupSourcesResponse = arrayType(
+  SearchActivityGroupSourcesResponseItem
+);
 var ListActivitiesParams = objectType({
   projectId: coerce.number()
 });
 var listActivitiesResponseWeightDefault = 1;
+var listActivitiesResponseExternalSourceOneAvailableDefault = true;
 var ListActivitiesResponseItem = objectType({
   id: numberType(),
   projectId: numberType(),
@@ -119574,6 +119639,24 @@ var ListActivitiesResponseItem = objectType({
   status: enumType(["not_started", "in_progress", "completed", "delayed"]),
   sortOrder: numberType(),
   groupId: numberType().nullish(),
+  externalSourceGroupId: numberType().nullish(),
+  externalSource: unionType([
+    objectType({
+      available: booleanType().default(listActivitiesResponseExternalSourceOneAvailableDefault),
+      groupId: numberType(),
+      projectId: numberType().optional(),
+      projectName: stringType().optional(),
+      groupName: stringType().optional(),
+      linkCode: stringType().nullish(),
+      actualProgress: numberType().optional(),
+      plannedStartDate: coerce.date().nullish(),
+      plannedEndDate: coerce.date().nullish()
+    }),
+    objectType({
+      available: booleanType(),
+      groupId: numberType()
+    })
+  ]).optional(),
   createdAt: coerce.date()
 });
 var ListActivitiesResponse = arrayType(ListActivitiesResponseItem);
@@ -119596,7 +119679,8 @@ var CreateActivityBody = objectType({
   weight: numberType().default(createActivityBodyWeightDefault),
   status: enumType(["not_started", "in_progress", "completed", "delayed"]).default(createActivityBodyStatusDefault),
   sortOrder: numberType().default(createActivityBodySortOrderDefault),
-  groupId: numberType().nullish()
+  groupId: numberType().nullish(),
+  externalSourceGroupId: numberType().nullish()
 });
 var ImportActivitiesParams = objectType({
   projectId: coerce.number()
@@ -119625,9 +119709,11 @@ var UpdateActivityBody = objectType({
     literalType(null)
   ]).nullish(),
   sortOrder: numberType().nullish(),
-  groupId: numberType().nullish()
+  groupId: numberType().nullish(),
+  externalSourceGroupId: numberType().nullish()
 });
 var updateActivityResponseWeightDefault = 1;
+var updateActivityResponseExternalSourceOneAvailableDefault = true;
 var UpdateActivityResponse = objectType({
   id: numberType(),
   projectId: numberType(),
@@ -119642,6 +119728,24 @@ var UpdateActivityResponse = objectType({
   status: enumType(["not_started", "in_progress", "completed", "delayed"]),
   sortOrder: numberType(),
   groupId: numberType().nullish(),
+  externalSourceGroupId: numberType().nullish(),
+  externalSource: unionType([
+    objectType({
+      available: booleanType().default(updateActivityResponseExternalSourceOneAvailableDefault),
+      groupId: numberType(),
+      projectId: numberType().optional(),
+      projectName: stringType().optional(),
+      groupName: stringType().optional(),
+      linkCode: stringType().nullish(),
+      actualProgress: numberType().optional(),
+      plannedStartDate: coerce.date().nullish(),
+      plannedEndDate: coerce.date().nullish()
+    }),
+    objectType({
+      available: booleanType(),
+      groupId: numberType()
+    })
+  ]).optional(),
   createdAt: coerce.date()
 });
 var DeleteActivityParams = objectType({
@@ -120243,6 +120347,7 @@ var VerifyOwnerAccessBody = objectType({
   password: stringType().optional()
 });
 var verifyOwnerAccessResponseActivitiesItemWeightDefault = 1;
+var verifyOwnerAccessResponseActivitiesItemExternalSourceOneAvailableDefault = true;
 var VerifyOwnerAccessResponse = objectType({
   project: objectType({
     id: numberType(),
@@ -120290,6 +120395,26 @@ var VerifyOwnerAccessResponse = objectType({
       status: enumType(["not_started", "in_progress", "completed", "delayed"]),
       sortOrder: numberType(),
       groupId: numberType().nullish(),
+      externalSourceGroupId: numberType().nullish(),
+      externalSource: unionType([
+        objectType({
+          available: booleanType().default(
+            verifyOwnerAccessResponseActivitiesItemExternalSourceOneAvailableDefault
+          ),
+          groupId: numberType(),
+          projectId: numberType().optional(),
+          projectName: stringType().optional(),
+          groupName: stringType().optional(),
+          linkCode: stringType().nullish(),
+          actualProgress: numberType().optional(),
+          plannedStartDate: coerce.date().nullish(),
+          plannedEndDate: coerce.date().nullish()
+        }),
+        objectType({
+          available: booleanType(),
+          groupId: numberType()
+        })
+      ]).optional(),
       createdAt: coerce.date()
     })
   ),
@@ -123432,11 +123557,14 @@ router3.delete("/projects/:id", requireAdmin, async (req, res) => {
   }
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
   logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "delete", entityType: "project", entityId: id, entityName: existing.name, projectId: id, projectName: existing.name });
-  await db.delete(projectMembersTable).where(eq(projectMembersTable.projectId, id));
-  await db.delete(activitiesTable).where(eq(activitiesTable.projectId, id));
-  await db.delete(reportsTable).where(eq(reportsTable.projectId, id));
-  await db.delete(projectFilesTable).where(eq(projectFilesTable.projectId, id));
-  await db.delete(projectsTable).where(eq(projectsTable.id, id));
+  await db.transaction(async (tx) => {
+    await tx.delete(projectMembersTable).where(eq(projectMembersTable.projectId, id));
+    await tx.delete(activitiesTable).where(eq(activitiesTable.projectId, id));
+    await tx.delete(activityGroupsTable).where(eq(activityGroupsTable.projectId, id));
+    await tx.delete(reportsTable).where(eq(reportsTable.projectId, id));
+    await tx.delete(projectFilesTable).where(eq(projectFilesTable.projectId, id));
+    await tx.delete(projectsTable).where(eq(projectsTable.id, id));
+  });
   res.sendStatus(204);
 });
 router3.post("/projects/:projectId/generate-owner-link", requireProjectAccess("projectId"), async (req, res) => {
@@ -123914,6 +124042,259 @@ async function recalcExpectedEndDate(projectId) {
   await db.update(projectsTable).set({ expectedEndDate: newExpectedEnd }).where(eq(projectsTable.id, projectId));
 }
 
+// src/lib/external-sources.ts
+init_src();
+init_drizzle_orm();
+
+// src/lib/activity-source-rules.ts
+function normalizeLinkCode(value) {
+  if (value === null || value === void 0 || String(value).trim() === "") return null;
+  return String(value).trim().toLowerCase();
+}
+function groupMatchesSourceQuery(group, query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return false;
+  return group.name.toLowerCase().includes(normalizedQuery) || Boolean(group.linkCode?.toLowerCase().startsWith(normalizedQuery));
+}
+function resolveSourceSuggestions(suggestions, query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const exact = suggestions.filter((group) => group.linkCode?.toLowerCase() === normalizedQuery);
+  if (exact.length) return [exact[0]];
+  return [...suggestions].sort((left, right) => {
+    const leftPrefix = left.linkCode?.toLowerCase().startsWith(normalizedQuery) ? 1 : 0;
+    const rightPrefix = right.linkCode?.toLowerCase().startsWith(normalizedQuery) ? 1 : 0;
+    return rightPrefix - leftPrefix;
+  });
+}
+function sourceIsAvailable(summary) {
+  return summary !== null;
+}
+function linkedSourceIdAfterPatch(currentId, requestedId) {
+  return requestedId === void 0 ? currentId : requestedId;
+}
+function currentRoleCanReadProject(currentRole, isMember, contractorCompanyId, userCompanyIds) {
+  if (currentRole === "admin" || isMember) return true;
+  return currentRole !== "project_manager" && contractorCompanyId != null && userCompanyIds.includes(contractorCompanyId);
+}
+function suspensionActivityDateShift(activity, suspensionStart, calendarDays, direction) {
+  if (activity.externalSourceGroupId != null || !activity.plannedStartDate || !activity.plannedEndDate) return null;
+  const add = (date6) => {
+    const shifted = /* @__PURE__ */ new Date(`${date6}T00:00:00Z`);
+    shifted.setUTCDate(shifted.getUTCDate() + calendarDays * direction);
+    return shifted.toISOString().slice(0, 10);
+  };
+  if (activity.plannedStartDate >= suspensionStart) {
+    return {
+      plannedStartDate: add(activity.plannedStartDate),
+      plannedEndDate: add(activity.plannedEndDate)
+    };
+  }
+  if (activity.plannedEndDate >= suspensionStart) {
+    return {
+      plannedStartDate: activity.plannedStartDate,
+      plannedEndDate: add(activity.plannedEndDate)
+    };
+  }
+  return null;
+}
+function summarizeSourceChildren(children, group) {
+  const weight = (child) => child.weight != null && Number.isFinite(child.weight) && child.weight > 0 ? child.weight : 1;
+  const totalWeight = children.reduce((sum2, child) => sum2 + weight(child), 0);
+  const actualProgress = totalWeight ? Math.round(children.reduce((sum2, child) => sum2 + (child.actualProgress ?? 0) * weight(child), 0) / totalWeight * 10) / 10 : 0;
+  const starts = children.map((child) => child.plannedStartDate).filter((date6) => Boolean(date6)).sort();
+  const ends = children.map((child) => child.plannedEndDate).filter((date6) => Boolean(date6)).sort();
+  return {
+    ...group,
+    actualProgress,
+    plannedStartDate: starts[0] ?? null,
+    plannedEndDate: ends.at(-1) ?? null
+  };
+}
+function linkedActivityValues(summary, plannedProgress) {
+  if (!summary) return null;
+  return {
+    actualProgress: summary.actualProgress,
+    plannedStartDate: summary.plannedStartDate,
+    plannedEndDate: summary.plannedEndDate,
+    plannedProgress
+  };
+}
+function wouldCreateDependencyCycle(targetProjectId, sourceProjectId, edges) {
+  if (targetProjectId === sourceProjectId) return true;
+  const pending = [sourceProjectId];
+  const visited = /* @__PURE__ */ new Set();
+  while (pending.length) {
+    const current = pending.pop();
+    if (current === targetProjectId) return true;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    pending.push(...edges.get(current) ?? []);
+  }
+  return false;
+}
+function topologicalSourceGroupOrder(starts, edges) {
+  const reachable = /* @__PURE__ */ new Set();
+  const pending = [...new Set(starts)].sort((a, b) => a - b);
+  while (pending.length) {
+    const source = pending.shift();
+    if (reachable.has(source)) continue;
+    reachable.add(source);
+    pending.push(...(edges.get(source) ?? []).filter((id) => !reachable.has(id)));
+  }
+  const indegree = new Map([...reachable].map((id) => [id, 0]));
+  for (const source of reachable) {
+    for (const target of edges.get(source) ?? []) {
+      if (reachable.has(target)) indegree.set(target, (indegree.get(target) ?? 0) + 1);
+    }
+  }
+  const ready = [...indegree].filter(([, degree]) => degree === 0).map(([id]) => id).sort((a, b) => a - b);
+  const order = [];
+  while (ready.length) {
+    const source = ready.shift();
+    order.push(source);
+    for (const target of edges.get(source) ?? []) {
+      if (!indegree.has(target)) continue;
+      const nextDegree = indegree.get(target) - 1;
+      indegree.set(target, nextDegree);
+      if (nextDegree === 0) {
+        ready.push(target);
+        ready.sort((a, b) => a - b);
+      }
+    }
+  }
+  if (order.length !== reachable.size) {
+    throw new Error("Cycle detected in activity source propagation graph");
+  }
+  return order;
+}
+
+// src/lib/external-sources.ts
+var processGraphLock = Promise.resolve();
+async function canReadProject(userId, projectId) {
+  if (!Number.isInteger(userId) || userId <= 0) return false;
+  const [user] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) return false;
+  const [membership] = await db.select({ id: projectMembersTable.id }).from(projectMembersTable).where(and(eq(projectMembersTable.userId, userId), eq(projectMembersTable.projectId, projectId)));
+  const companies = await db.select({ companyId: userCompaniesTable.companyId }).from(userCompaniesTable).where(eq(userCompaniesTable.userId, userId));
+  const [project] = await db.select({ contractorCompanyId: projectsTable.contractorCompanyId }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  return currentRoleCanReadProject(
+    user.role,
+    Boolean(membership),
+    project?.contractorCompanyId ?? null,
+    companies.map((company) => company.companyId)
+  );
+}
+async function withSourceGraphLock(operation) {
+  const previous = processGraphLock;
+  let releaseProcessLock;
+  processGraphLock = new Promise((resolve) => {
+    releaseProcessLock = resolve;
+  });
+  await previous;
+  try {
+    const client = await pool.connect();
+    const lockKey = 731924613;
+    let transactionOpen = false;
+    try {
+      await client.query("BEGIN");
+      transactionOpen = true;
+      await client.query("SELECT pg_advisory_xact_lock($1)", [lockKey]);
+      const result = await operation();
+      await client.query("COMMIT");
+      transactionOpen = false;
+      return result;
+    } finally {
+      try {
+        if (transactionOpen) await client.query("ROLLBACK");
+      } finally {
+        client.release();
+      }
+    }
+  } finally {
+    releaseProcessLock();
+  }
+}
+async function getGroupSummary(groupId) {
+  const [group] = await db.select().from(activityGroupsTable).where(eq(activityGroupsTable.id, groupId));
+  if (!group) return null;
+  const [project] = await db.select({ name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, group.projectId));
+  if (!project) return null;
+  const children = await db.select({
+    actualProgress: activitiesTable.actualProgress,
+    weight: activitiesTable.weight,
+    plannedStartDate: activitiesTable.plannedStartDate,
+    plannedEndDate: activitiesTable.plannedEndDate
+  }).from(activitiesTable).where(and(eq(activitiesTable.projectId, group.projectId), eq(activitiesTable.groupId, groupId)));
+  return summarizeSourceChildren(children, {
+    groupId: group.id,
+    projectId: group.projectId,
+    projectName: project.name,
+    groupName: group.name,
+    linkCode: group.linkCode
+  });
+}
+async function wouldCreateSourceCycle(targetProjectId, sourceProjectId) {
+  if (targetProjectId === sourceProjectId) return true;
+  const linked = await db.select({
+    projectId: activitiesTable.projectId,
+    sourceGroupId: activitiesTable.externalSourceGroupId
+  }).from(activitiesTable).where(isNotNull(activitiesTable.externalSourceGroupId));
+  const sourceGroups = await db.select({ id: activityGroupsTable.id, projectId: activityGroupsTable.projectId }).from(activityGroupsTable);
+  const projectForGroup = new Map(sourceGroups.map((g) => [g.id, g.projectId]));
+  const edges = /* @__PURE__ */ new Map();
+  for (const link of linked) {
+    if (link.sourceGroupId == null) continue;
+    const source = projectForGroup.get(link.sourceGroupId);
+    if (source === void 0) continue;
+    edges.set(link.projectId, [...edges.get(link.projectId) ?? [], source]);
+  }
+  return wouldCreateDependencyCycle(targetProjectId, sourceProjectId, edges);
+}
+async function refreshLinkedSources(sourceGroupIds) {
+  if (!sourceGroupIds.length) return;
+  await withSourceGraphLock(async () => {
+    const linkedActivities = await db.select({
+      sourceGroupId: activitiesTable.externalSourceGroupId,
+      targetGroupId: activitiesTable.groupId
+    }).from(activitiesTable).where(and(
+      isNotNull(activitiesTable.externalSourceGroupId),
+      isNotNull(activitiesTable.groupId)
+    ));
+    const dependencies = /* @__PURE__ */ new Map();
+    for (const linked of linkedActivities) {
+      if (linked.sourceGroupId == null || linked.targetGroupId == null) continue;
+      dependencies.set(linked.sourceGroupId, [...dependencies.get(linked.sourceGroupId) ?? [], linked.targetGroupId]);
+    }
+    const order = topologicalSourceGroupOrder(sourceGroupIds, dependencies);
+    for (const groupId of order) {
+      const summary = await getGroupSummary(groupId);
+      if (!summary) continue;
+      const targets = await db.select().from(activitiesTable).where(eq(activitiesTable.externalSourceGroupId, groupId));
+      const projects = /* @__PURE__ */ new Set();
+      for (const activity of targets) {
+        const plannedProgress = calcActivityPlannedProgress({
+          plannedStartDate: summary.plannedStartDate,
+          plannedEndDate: summary.plannedEndDate
+        });
+        const values = linkedActivityValues(summary, plannedProgress);
+        if (!values) continue;
+        await db.update(activitiesTable).set({
+          ...values,
+          ...activity.actualProgress !== summary.actualProgress ? { progressUpdatedAt: /* @__PURE__ */ new Date() } : {}
+        }).where(eq(activitiesTable.id, activity.id));
+        projects.add(activity.projectId);
+      }
+      for (const projectId of projects) {
+        const acts = await db.select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+        const total = acts.reduce((s, a) => s + (a.weight > 0 ? a.weight : 1), 0);
+        const progress = total ? roundPercent(acts.reduce((s, a) => s + a.actualProgress * (a.weight > 0 ? a.weight : 1), 0) / total) : 0;
+        await db.update(projectsTable).set({ overallProgress: progress }).where(eq(projectsTable.id, projectId));
+        await recalcExpectedEndDate(projectId);
+      }
+    }
+  });
+}
+
 // src/routes/activities.ts
 var import_multer = __toESM(require_multer(), 1);
 var XLSX = __toESM(require_xlsx(), 1);
@@ -123944,7 +124325,19 @@ router4.get("/projects/:projectId/activities", requireProjectAccess("projectId")
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder, activitiesTable.id);
-  res.json(activities);
+  const response = await Promise.all(activities.map(async (activity) => {
+    if (activity.externalSourceGroupId == null) return activity;
+    const source = await getGroupSummary(activity.externalSourceGroupId);
+    const canReadSource = source && await canReadProject(req.user?.userId, source.projectId);
+    return canReadSource ? {
+      ...activity,
+      externalSource: sourceIsAvailable(source) ? { available: true, ...source } : { available: false, groupId: activity.externalSourceGroupId }
+    } : {
+      ...activity,
+      externalSource: { available: false, groupId: activity.externalSourceGroupId }
+    };
+  }));
+  res.json(response);
 });
 router4.post("/projects/:projectId/activities", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
@@ -123960,7 +124353,8 @@ router4.post("/projects/:projectId/activities", requireProjectAccess("projectId"
     weight,
     status,
     sortOrder,
-    groupId
+    groupId,
+    externalSourceGroupId
   } = req.body;
   if (!name) {
     res.status(400).json({ error: "\u0627\u0633\u0645 \u0627\u0644\u0628\u0646\u062F \u0645\u0637\u0644\u0648\u0628" });
@@ -123968,11 +124362,33 @@ router4.post("/projects/:projectId/activities", requireProjectAccess("projectId"
   }
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   const isNoSchedule = project?.noSchedule === true;
-  if (!isNoSchedule && (!plannedStartDate || !plannedEndDate)) {
+  let externalSummary = null;
+  if (externalSourceGroupId != null) {
+    if (typeof externalSourceGroupId !== "number" || !Number.isInteger(externalSourceGroupId) || externalSourceGroupId <= 0) {
+      res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0645\u0635\u062F\u0631 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+      return;
+    }
+    if ([actualProgress, plannedStartDate, plannedEndDate].some((value) => value !== void 0)) {
+      res.status(400).json({ error: "\u0644\u0627 \u064A\u0645\u0643\u0646 \u062A\u062D\u062F\u064A\u062F \u0627\u0644\u062A\u0642\u062F\u0645 \u0623\u0648 \u0627\u0644\u062A\u0648\u0627\u0631\u064A\u062E \u064A\u062F\u0648\u064A\u064B\u0627 \u0639\u0646\u062F \u0631\u0628\u0637 \u0645\u0635\u062F\u0631 \u062E\u0627\u0631\u062C\u064A" });
+      return;
+    }
+    externalSummary = await getGroupSummary(Number(externalSourceGroupId));
+    if (!externalSummary || !externalSummary.linkCode || externalSummary.projectId === projectId) {
+      res.status(400).json({ error: "\u0645\u0635\u062F\u0631 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D \u0623\u0648 \u063A\u064A\u0631 \u0642\u0627\u0628\u0644 \u0644\u0644\u0645\u0634\u0627\u0631\u0643\u0629" });
+      return;
+    }
+    if (!await canReadProject(req.user?.userId, externalSummary.projectId)) {
+      res.status(403).json({ error: "\u0644\u064A\u0633 \u0644\u062F\u064A\u0643 \u0635\u0644\u0627\u062D\u064A\u0629 \u0627\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 \u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0635\u062F\u0631" });
+      return;
+    }
+  }
+  const effectiveStart = externalSummary?.plannedStartDate ?? plannedStartDate;
+  const effectiveEnd = externalSummary?.plannedEndDate ?? plannedEndDate;
+  if (!isNoSchedule && !externalSummary && (!effectiveStart || !effectiveEnd)) {
     res.status(400).json({ error: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0628\u062F\u0627\u064A\u0629 \u0648\u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u062E\u0637\u0637\u0629 \u0645\u0637\u0644\u0648\u0628\u0629" });
     return;
   }
-  if (groupId) {
+  if (groupId != null) {
     const [grp] = await db.select().from(activityGroupsTable).where(and(eq(activityGroupsTable.id, groupId), eq(activityGroupsTable.projectId, projectId)));
     if (!grp) {
       res.status(400).json({ error: "\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0647\u0630\u0627 \u0627\u0644\u0645\u0634\u0631\u0648\u0639" });
@@ -123980,18 +124396,18 @@ router4.post("/projects/:projectId/activities", requireProjectAccess("projectId"
     }
   }
   const autoPlannedProgress = calcActivityPlannedProgress({
-    plannedStartDate: plannedStartDate || null,
-    plannedEndDate: plannedEndDate || null
+    plannedStartDate: effectiveStart || null,
+    plannedEndDate: effectiveEnd || null
   });
-  const [activity] = await db.insert(activitiesTable).values({
+  const insertValues = {
     projectId,
     name,
-    plannedStartDate: plannedStartDate || null,
-    plannedEndDate: plannedEndDate || null,
+    plannedStartDate: effectiveStart || null,
+    plannedEndDate: effectiveEnd || null,
     actualStartDate: actualStartDate ?? null,
     actualEndDate: actualEndDate ?? null,
     plannedProgress: roundPercent(autoPlannedProgress),
-    actualProgress: actualProgress ?? 0,
+    actualProgress: externalSummary?.actualProgress ?? actualProgress ?? 0,
     weight: (() => {
       const w = Number(weight);
       if (!Number.isFinite(w) || w <= 0) return 1;
@@ -123999,13 +124415,34 @@ router4.post("/projects/:projectId/activities", requireProjectAccess("projectId"
     })(),
     status: status ?? "not_started",
     groupId: groupId ?? null,
+    externalSourceGroupId: externalSourceGroupId ?? null,
     sortOrder: sortOrder ?? 0,
     // Stamp execution-state timestamp when the activity is created already in motion,
     // so period-scoped reports can pick it up.
     progressUpdatedAt: (actualProgress ?? 0) > 0 || status && status !== "not_started" || actualStartDate || actualEndDate ? /* @__PURE__ */ new Date() : null
-  }).returning();
+  };
+  let activity;
+  if (externalSourceGroupId != null && externalSummary) {
+    const result = await withSourceGraphLock(async () => {
+      if (await wouldCreateSourceCycle(projectId, externalSummary.projectId)) return { cycle: true, activity: void 0 };
+      const [created] = await db.insert(activitiesTable).values(insertValues).returning();
+      return { cycle: false, activity: created };
+    });
+    if (result.cycle) {
+      res.status(400).json({ error: "\u0647\u0630\u0627 \u0627\u0644\u0631\u0628\u0637 \u064A\u0646\u0634\u0626 \u0627\u0639\u062A\u0645\u0627\u062F\u064B\u0627 \u062F\u0627\u0626\u0631\u064A\u064B\u0627 \u0628\u064A\u0646 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639" });
+      return;
+    }
+    activity = result.activity;
+  } else {
+    [activity] = await db.insert(activitiesTable).values(insertValues).returning();
+  }
+  if (!activity) {
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0628\u0646\u062F" });
+    return;
+  }
   await syncProjectProgress(projectId);
   await recalcExpectedEndDate(projectId);
+  if (groupId != null) await refreshLinkedSources([Number(groupId)]);
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
   logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "create", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId });
   res.status(201).json(activity);
@@ -124016,6 +124453,11 @@ router4.patch("/projects/:projectId/activities/:id", requireProjectAccess("proje
   const projectId = parseInt(rawProjectId, 10);
   const id = parseInt(rawId, 10);
   const user = req.user;
+  const [existing] = await db.select().from(activitiesTable).where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
+  if (!existing) {
+    res.status(404).json({ error: "\u0627\u0644\u0628\u0646\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    return;
+  }
   if (user?.role !== "admin") {
     const allowed = await checkGroupPermission(user?.userId, projectId, id);
     if (!allowed) {
@@ -124027,6 +124469,38 @@ router4.patch("/projects/:projectId/activities/:id", requireProjectAccess("proje
   const projNoSchedule = proj?.noSchedule === true;
   const updateData = {};
   const body = req.body;
+  const finalExternalGroupId = linkedSourceIdAfterPatch(existing.externalSourceGroupId, body.externalSourceGroupId);
+  const changingSource = finalExternalGroupId !== existing.externalSourceGroupId;
+  if (body.externalSourceGroupId !== void 0 && body.externalSourceGroupId !== null && (typeof finalExternalGroupId !== "number" || !Number.isInteger(finalExternalGroupId) || finalExternalGroupId <= 0)) {
+    res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0645\u0635\u062F\u0631 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
+  let externalSummary = null;
+  if (finalExternalGroupId != null) {
+    if (body.actualProgress !== void 0 || body.plannedStartDate !== void 0 || body.plannedEndDate !== void 0) {
+      res.status(400).json({ error: "\u0644\u0627 \u064A\u0645\u0643\u0646 \u062A\u062D\u062F\u064A\u062F \u0627\u0644\u062A\u0642\u062F\u0645 \u0623\u0648 \u0627\u0644\u062A\u0648\u0627\u0631\u064A\u062E \u064A\u062F\u0648\u064A\u064B\u0627 \u0639\u0646\u062F \u0631\u0628\u0637 \u0645\u0635\u062F\u0631 \u062E\u0627\u0631\u062C\u064A" });
+      return;
+    }
+    externalSummary = await getGroupSummary(finalExternalGroupId);
+    if (changingSource && (!externalSummary || !externalSummary.linkCode)) {
+      res.status(400).json({ error: "\u0645\u0635\u062F\u0631 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D \u0623\u0648 \u063A\u064A\u0631 \u0642\u0627\u0628\u0644 \u0644\u0644\u0645\u0634\u0627\u0631\u0643\u0629" });
+      return;
+    }
+    if (externalSummary && externalSummary.projectId === projectId) {
+      res.status(400).json({ error: "\u0644\u0627 \u064A\u0645\u0643\u0646 \u0631\u0628\u0637 \u0628\u0646\u062F \u0628\u0645\u062C\u0645\u0648\u0639\u0629 \u0645\u0646 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0646\u0641\u0633\u0647" });
+      return;
+    }
+    if (changingSource && externalSummary && !await canReadProject(user?.userId, externalSummary.projectId)) {
+      res.status(403).json({ error: "\u0644\u064A\u0633 \u0644\u062F\u064A\u0643 \u0635\u0644\u0627\u062D\u064A\u0629 \u0627\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 \u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0635\u062F\u0631" });
+      return;
+    }
+  }
+  if (body.externalSourceGroupId !== void 0) updateData.externalSourceGroupId = finalExternalGroupId;
+  if (externalSummary) {
+    updateData.actualProgress = externalSummary.actualProgress;
+    updateData.plannedStartDate = externalSummary.plannedStartDate;
+    updateData.plannedEndDate = externalSummary.plannedEndDate;
+  }
   if (body.name !== void 0) updateData.name = body.name;
   if (body.plannedStartDate !== void 0) {
     const val = body.plannedStartDate || null;
@@ -124068,7 +124542,6 @@ router4.patch("/projects/:projectId/activities/:id", requireProjectAccess("proje
     return;
   }
   const todayStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-  const [existing] = await db.select().from(activitiesTable).where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
   if (body.actualProgress !== void 0 || body.status !== void 0 || body.actualStartDate !== void 0 || body.actualEndDate !== void 0) {
     updateData.progressUpdatedAt = /* @__PURE__ */ new Date();
   }
@@ -124093,13 +124566,35 @@ router4.patch("/projects/:projectId/activities/:id", requireProjectAccess("proje
       plannedEndDate: finalEnd ?? null
     }));
   }
-  const [activity] = await db.update(activitiesTable).set(updateData).where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId))).returning();
+  let activity;
+  if (body.externalSourceGroupId !== void 0) {
+    const result = await withSourceGraphLock(async () => {
+      if (changingSource && finalExternalGroupId != null && await wouldCreateSourceCycle(projectId, externalSummary.projectId)) {
+        return { cycle: true, activity: void 0 };
+      }
+      const [updated] = await db.update(activitiesTable).set(updateData).where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId))).returning();
+      return { cycle: false, activity: updated };
+    });
+    if (result.cycle) {
+      res.status(400).json({ error: "\u0647\u0630\u0627 \u0627\u0644\u0631\u0628\u0637 \u064A\u0646\u0634\u0626 \u0627\u0639\u062A\u0645\u0627\u062F\u064B\u0627 \u062F\u0627\u0626\u0631\u064A\u064B\u0627 \u0628\u064A\u0646 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639" });
+      return;
+    }
+    activity = result.activity;
+  } else {
+    [activity] = await db.update(activitiesTable).set(updateData).where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId))).returning();
+  }
   if (!activity) {
     res.status(404).json({ error: "\u0627\u0644\u0628\u0646\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
   await syncProjectProgress(projectId);
   await recalcExpectedEndDate(projectId);
+  const affectedSourceGroups = /* @__PURE__ */ new Set();
+  if (existing.groupId != null) affectedSourceGroups.add(existing.groupId);
+  if (activity.groupId != null) affectedSourceGroups.add(activity.groupId);
+  if (existing.externalSourceGroupId != null) affectedSourceGroups.add(existing.externalSourceGroupId);
+  if (activity.externalSourceGroupId != null) affectedSourceGroups.add(activity.externalSourceGroupId);
+  if (affectedSourceGroups.size) await refreshLinkedSources([...affectedSourceGroups]);
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
   logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "update", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId, details: updateData });
   res.json(activity);
@@ -124232,13 +124727,15 @@ router4.delete("/projects/:projectId/activities/:id", requireProjectAccess("proj
       return;
     }
   }
-  const [activity] = await db.delete(activitiesTable).where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId))).returning();
+  const [activity] = await db.select().from(activitiesTable).where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
   if (!activity) {
     res.status(404).json({ error: "\u0627\u0644\u0628\u0646\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
+  await db.delete(activitiesTable).where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId))).returning();
   await syncProjectProgress(projectId);
   await recalcExpectedEndDate(projectId);
+  if (activity.groupId != null) await refreshLinkedSources([activity.groupId]);
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
   logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "delete", entityType: "activity", entityId: id, entityName: activity.name, projectId });
   res.sendStatus(204);
@@ -124250,6 +124747,20 @@ router4.put("/projects/:projectId/activities/reorder", requireProjectAccess("pro
     res.status(400).json({ error: "items \u0645\u0637\u0644\u0648\u0628" });
     return;
   }
+  if (items.some((item) => item.groupId !== void 0 && item.groupId !== null && (!Number.isInteger(item.groupId) || item.groupId <= 0))) {
+    res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
+  const requestedGroupIds = [...new Set(items.map((item) => item.groupId).filter((id) => id !== void 0 && id !== null))];
+  if (requestedGroupIds.length) {
+    const validGroups = await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable).where(and(eq(activityGroupsTable.projectId, projectId)));
+    const validIds = new Set(validGroups.map((group) => group.id));
+    if (requestedGroupIds.some((id) => !validIds.has(Number(id)))) {
+      res.status(400).json({ error: "\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0647\u0630\u0627 \u0627\u0644\u0645\u0634\u0631\u0648\u0639" });
+      return;
+    }
+  }
+  const oldGroups = await db.select({ groupId: activitiesTable.groupId }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
   await db.transaction(async (tx) => {
     await Promise.all(items.map((item) => {
       const updateData = { sortOrder: item.sortOrder };
@@ -124257,6 +124768,9 @@ router4.put("/projects/:projectId/activities/reorder", requireProjectAccess("pro
       return tx.update(activitiesTable).set(updateData).where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
     }));
   });
+  const sourceGroups = await db.select({ groupId: activitiesTable.groupId }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+  const ids = [...new Set([...oldGroups, ...sourceGroups].map((a) => a.groupId).filter((id) => id != null))];
+  if (ids.length) await refreshLinkedSources(ids);
   res.json({ success: true });
 });
 var activities_default = router4;
@@ -126996,21 +127510,14 @@ function addDays(dateStr, days) {
 }
 async function shiftActivities(projectId, suspStartDate, calendarDays, direction) {
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
-  const suspStart = new Date(suspStartDate);
+  const changedGroups = /* @__PURE__ */ new Set();
   for (const activity of activities) {
-    if (!activity.plannedStartDate || !activity.plannedEndDate) continue;
-    const actStart = new Date(activity.plannedStartDate);
-    const actEnd = new Date(activity.plannedEndDate);
-    const shift = calendarDays * direction;
-    if (actStart >= suspStart) {
-      await db.update(activitiesTable).set({
-        plannedStartDate: addDays(activity.plannedStartDate, shift),
-        plannedEndDate: addDays(activity.plannedEndDate, shift)
-      }).where(eq(activitiesTable.id, activity.id));
-    } else if (actEnd >= suspStart) {
-      await db.update(activitiesTable).set({ plannedEndDate: addDays(activity.plannedEndDate, shift) }).where(eq(activitiesTable.id, activity.id));
-    }
+    const shifted = suspensionActivityDateShift(activity, suspStartDate, calendarDays, direction);
+    if (!shifted) continue;
+    await db.update(activitiesTable).set(shifted).where(eq(activitiesTable.id, activity.id));
+    if (activity.groupId != null) changedGroups.add(activity.groupId);
   }
+  return [...changedGroups];
 }
 router13.get("/projects/:projectId/suspensions", requireProjectAccess("projectId"), rejectContractor, async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
@@ -127055,10 +127562,11 @@ router13.post("/projects/:projectId/suspensions", requireProjectAccess("projectI
     datesShifted: shouldShift
   }).returning();
   if (shouldShift) {
-    await shiftActivities(projectId, startDate, calendarDays, 1);
+    const changedGroups = await shiftActivities(projectId, startDate, calendarDays, 1);
     if (project.expectedEndDate) {
       await db.update(projectsTable).set({ expectedEndDate: addDays(project.expectedEndDate, calendarDays) }).where(eq(projectsTable.id, projectId));
     }
+    if (changedGroups.length) await refreshLinkedSources(changedGroups);
   }
   (async () => {
     try {
@@ -127090,10 +127598,11 @@ router13.delete("/projects/:projectId/suspensions/:id", requireProjectAccess("pr
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   await db.delete(projectSuspensionsTable).where(and(eq(projectSuspensionsTable.id, id), eq(projectSuspensionsTable.projectId, projectId)));
   if (susp.datesShifted) {
-    await shiftActivities(projectId, susp.startDate, susp.calendarDays, -1);
+    const changedGroups = await shiftActivities(projectId, susp.startDate, susp.calendarDays, -1);
     if (project?.expectedEndDate) {
       await db.update(projectsTable).set({ expectedEndDate: addDays(project.expectedEndDate, -susp.calendarDays) }).where(eq(projectsTable.id, projectId));
     }
+    if (changedGroups.length) await refreshLinkedSources(changedGroups);
   }
   res.sendStatus(204);
 });
@@ -127790,21 +128299,65 @@ router17.get("/projects/:projectId/activity-groups", requireProjectAccess("proje
   const groups = await db.select().from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId)).orderBy(asc(activityGroupsTable.sortOrder));
   res.json(groups);
 });
+router17.get("/projects/:projectId/activity-groups/search", requireProjectAccess("projectId"), async (req, res) => {
+  const projectId = Number(req.params.projectId);
+  const query = String(req.query.query ?? "").trim();
+  if (!query) {
+    res.json([]);
+    return;
+  }
+  const user = req.user;
+  const normalizedCode = normalizeLinkCode(query);
+  const exactCodeGroups = normalizedCode ? await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable).where(eq(activityGroupsTable.linkCode, normalizedCode)) : [];
+  const codePrefixGroups = normalizedCode ? await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable).where(ilike(activityGroupsTable.linkCode, `${normalizedCode.replace(/[\\%_]/g, "\\$&")}%`)) : [];
+  const nameGroups = await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable).where(ilike(activityGroupsTable.name, `%${query.replace(/[%_]/g, "\\$&")}%`));
+  const candidateIds = [...new Set([...exactCodeGroups, ...codePrefixGroups, ...nameGroups].map((g) => g.id))];
+  const results = [];
+  for (const groupId of candidateIds) {
+    const summary = await getGroupSummary(groupId);
+    if (!summary || !summary.linkCode || summary.projectId === projectId || !await canReadProject(user?.userId, summary.projectId)) continue;
+    if (normalizedCode && summary.linkCode === normalizedCode) results.unshift({ available: true, ...summary });
+    else if (groupMatchesSourceQuery({ name: summary.groupName, linkCode: summary.linkCode }, query)) {
+      results.push({ available: true, ...summary });
+    }
+  }
+  res.json(resolveSourceSuggestions(results, query).slice(0, 20));
+});
 router17.post("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
   const { name, color } = req.body;
+  if (req.body.linkCode !== void 0 && req.body.linkCode !== null && typeof req.body.linkCode !== "string") {
+    res.status(400).json({ error: "\u0631\u0645\u0632 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u0629 \u064A\u062C\u0628 \u0623\u0646 \u064A\u0643\u0648\u0646 \u0646\u0635\u064B\u0627" });
+    return;
+  }
+  const linkCode = normalizeLinkCode(req.body.linkCode);
   if (!name) {
     res.status(400).json({ error: "\u0627\u0633\u0645 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u0645\u0637\u0644\u0648\u0628" });
     return;
   }
+  if (linkCode && (await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable).where(eq(activityGroupsTable.linkCode, linkCode))).length) {
+    res.status(400).json({ error: "\u0631\u0645\u0632 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u0629 \u0645\u0633\u062A\u062E\u062F\u0645 \u0628\u0627\u0644\u0641\u0639\u0644" });
+    return;
+  }
   const existing = await db.select().from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId));
   const maxSort = existing.reduce((m, g) => Math.max(m, g.sortOrder), 0);
-  const [group] = await db.insert(activityGroupsTable).values({
-    projectId,
-    name,
-    color: color ?? "#3b82f6",
-    sortOrder: maxSort + 1
-  }).returning();
+  let group;
+  try {
+    [group] = await db.insert(activityGroupsTable).values({
+      projectId,
+      name,
+      color: color ?? "#3b82f6",
+      linkCode,
+      sortOrder: maxSort + 1
+    }).returning();
+  } catch (error40) {
+    const code = error40?.code ?? error40?.cause?.code;
+    if (code === "23505") {
+      res.status(409).json({ error: "\u0631\u0645\u0632 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u0629 \u0645\u0633\u062A\u062E\u062F\u0645 \u0628\u0627\u0644\u0641\u0639\u0644" });
+      return;
+    }
+    throw error40;
+  }
   res.status(201).json(group);
 });
 router17.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res) => {
@@ -127826,11 +128379,34 @@ router17.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("p
   const updateData = {};
   if (name !== void 0) updateData.name = name;
   if (color !== void 0) updateData.color = color;
-  const [updated] = await db.update(activityGroupsTable).set(updateData).where(and(eq(activityGroupsTable.id, id), eq(activityGroupsTable.projectId, projectId))).returning();
+  if (req.body.linkCode !== void 0) {
+    if (req.body.linkCode !== null && typeof req.body.linkCode !== "string") {
+      res.status(400).json({ error: "\u0631\u0645\u0632 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u0629 \u064A\u062C\u0628 \u0623\u0646 \u064A\u0643\u0648\u0646 \u0646\u0635\u064B\u0627" });
+      return;
+    }
+    const linkCode = normalizeLinkCode(req.body.linkCode);
+    if (linkCode && (await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable).where(eq(activityGroupsTable.linkCode, linkCode))).some((g) => g.id !== id)) {
+      res.status(400).json({ error: "\u0631\u0645\u0632 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u0629 \u0645\u0633\u062A\u062E\u062F\u0645 \u0628\u0627\u0644\u0641\u0639\u0644" });
+      return;
+    }
+    updateData.linkCode = linkCode;
+  }
+  let updated;
+  try {
+    [updated] = await db.update(activityGroupsTable).set(updateData).where(and(eq(activityGroupsTable.id, id), eq(activityGroupsTable.projectId, projectId))).returning();
+  } catch (error40) {
+    const code = error40?.code ?? error40?.cause?.code;
+    if (code === "23505") {
+      res.status(409).json({ error: "\u0631\u0645\u0632 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u0629 \u0645\u0633\u062A\u062E\u062F\u0645 \u0628\u0627\u0644\u0641\u0639\u0644" });
+      return;
+    }
+    throw error40;
+  }
   if (!updated) {
     res.status(404).json({ error: "\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
     return;
   }
+  await refreshLinkedSources([id]);
   res.json(updated);
 });
 router17.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, async (req, res) => {

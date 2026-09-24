@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -86,6 +86,34 @@ interface ActivityGroup {
   name: string;
   color: string;
   sortOrder: number;
+  linkCode?: string | null;
+}
+
+interface ExternalSource {
+  available: boolean;
+  groupId: number;
+  projectId?: number;
+  projectName?: string;
+  groupName?: string;
+  linkCode?: string;
+  actualProgress?: number;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+}
+
+interface GroupSearchResult {
+  groupId: number;
+  projectId: number;
+  projectName: string;
+  groupName: string;
+  linkCode: string;
+  actualProgress?: number;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+}
+
+interface SourceSelection extends ExternalSource {
+  available: boolean;
 }
 
 const GROUP_COLORS = [
@@ -345,6 +373,17 @@ export default function ProjectActivities() {
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupColor, setNewGroupColor] = useState("#3b82f6");
+  const [newGroupLinkCode, setNewGroupLinkCode] = useState("");
+  const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
+  const [sourceCode, setSourceCode] = useState("");
+  const [selectedSource, setSelectedSource] = useState<SourceSelection | null>(null);
+  const [sourceTouched, setSourceTouched] = useState(false);
+  const [sourceUnlinkRequested, setSourceUnlinkRequested] = useState(false);
+  const [sourceSearchTerm, setSourceSearchTerm] = useState("");
+  const [sourceSearchResults, setSourceSearchResults] = useState<GroupSearchResult[]>([]);
+  const [sourceSearchLoading, setSourceSearchLoading] = useState(false);
+  const [sourceSearchError, setSourceSearchError] = useState("");
+  const [sourceSearchResolvedTerm, setSourceSearchResolvedTerm] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<number | "ungrouped">>(new Set());
   const [viewMode, setViewMode] = useState<"list" | "gantt">("list");
   const [searchQuery, setSearchQuery] = useState("");
@@ -365,6 +404,66 @@ export default function ProjectActivities() {
     enabled: !!projectId,
   });
 
+  useEffect(() => {
+    const query = sourceSearchTerm.trim();
+    if (query.length < 1) {
+      setSourceSearchResults([]);
+      setSourceSearchLoading(false);
+      setSourceSearchResolvedTerm("");
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setSourceSearchLoading(true);
+      setSourceSearchError("");
+      setSourceSearchResolvedTerm("");
+      try {
+        const response = await fetchWithSession(
+          `/api/projects/${projectId}/activity-groups/search?query=${encodeURIComponent(query)}`
+        );
+        if (!response.ok) throw new Error("تعذر البحث عن رمز المجموعة");
+        const results = await response.json() as GroupSearchResult[];
+        if (!cancelled) {
+          setSourceSearchResults(results.filter((group) => group.projectId !== projectId));
+          setSourceSearchResolvedTerm(query.toLocaleLowerCase());
+        }
+      } catch {
+        if (!cancelled) {
+          setSourceSearchResolvedTerm("");
+          setSourceSearchError("تعذر البحث عن رمز المجموعة");
+        }
+      } finally {
+        if (!cancelled) setSourceSearchLoading(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [projectId, sourceSearchTerm]);
+
+  useEffect(() => {
+    const normalizedCode = sourceCode.trim().toLocaleLowerCase();
+    if (!sourceTouched || !normalizedCode || sourceSearchResolvedTerm !== normalizedCode) return;
+    const exactMatches = sourceSearchResults.filter(
+      (group) => group.linkCode.trim().toLocaleLowerCase() === normalizedCode
+    );
+    if (exactMatches.length !== 1) return;
+    const result = exactMatches[0];
+    setSelectedSource({
+      available: true,
+      groupId: result.groupId,
+      projectId: result.projectId,
+      projectName: result.projectName,
+      groupName: result.groupName,
+      linkCode: result.linkCode,
+      actualProgress: result.actualProgress,
+      plannedStartDate: result.plannedStartDate,
+      plannedEndDate: result.plannedEndDate,
+    });
+    setSourceUnlinkRequested(false);
+  }, [sourceCode, sourceSearchResolvedTerm, sourceSearchResults, sourceTouched]);
+
   const { data: myPermissions } = useMyProjectPermissions(projectId);
   const { canEdit: canEditActivities, isHidden } = useTabAccess(projectId, "activities", { redirectIfHidden: true });
   const canEditAll = canEditActivities && (myPermissions?.canEditAll ?? true);
@@ -378,7 +477,7 @@ export default function ProjectActivities() {
   }, [canEditAll, assignedGroupIds, isViewer]);
 
   const createGroup = useMutation({
-    mutationFn: async (data: { name: string; color: string }) => {
+    mutationFn: async (data: { name: string; color: string; linkCode: string | null }) => {
       const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups`, {
         method: "POST",
         body: JSON.stringify(data),
@@ -391,7 +490,26 @@ export default function ProjectActivities() {
       setIsGroupDialogOpen(false);
       setNewGroupName("");
       setNewGroupColor("#3b82f6");
+      setNewGroupLinkCode("");
       toast({ title: "تم إنشاء المجموعة" });
+    },
+  });
+
+  const updateGroup = useMutation({
+    mutationFn: async (data: { id: number; name: string; color: string; linkCode: string | null }) => {
+      const { id, ...body } = data;
+      const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error("فشل تحديث المجموعة");
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: groupsQueryKey });
+      setIsGroupDialogOpen(false);
+      setEditingGroupId(null);
+      toast({ title: "تم تحديث المجموعة" });
     },
   });
 
@@ -508,7 +626,9 @@ export default function ProjectActivities() {
   const deleteActivity = useDeleteActivity();
 
   const isNoSchedule = project?.noSchedule === true;
-  const currentSchema = useMemo(() => createActivitySchema(isNoSchedule), [isNoSchedule]);
+  const isLinkedSource = !sourceUnlinkRequested &&
+    (!!selectedSource || (sourceTouched && !!sourceCode.trim()));
+  const currentSchema = useMemo(() => createActivitySchema(isNoSchedule || isLinkedSource), [isNoSchedule, isLinkedSource]);
 
   const form = useForm<ActivityFormValues>({
     resolver: zodResolver(currentSchema),
@@ -520,6 +640,36 @@ export default function ProjectActivities() {
       status: "not_started", sortOrder: 0,
     }
   });
+  const hasMatchingSelectedSource = !!selectedSource &&
+    (!sourceTouched || sourceCode.trim().toLocaleLowerCase() === (selectedSource.linkCode ?? "").trim().toLocaleLowerCase());
+  const externalSourceId = selectedSource?.groupId ?? null;
+
+  const resetExternalSource = () => {
+    setSourceCode("");
+    setSelectedSource(null);
+    setSourceTouched(false);
+    setSourceUnlinkRequested(false);
+    setSourceSearchTerm("");
+    setSourceSearchResults([]);
+    setSourceSearchError("");
+    setSourceSearchResolvedTerm("");
+  };
+
+  const openNewGroupDialog = () => {
+    setEditingGroupId(null);
+    setNewGroupName("");
+    setNewGroupColor("#3b82f6");
+    setNewGroupLinkCode("");
+    setIsGroupDialogOpen(true);
+  };
+
+  const openEditGroupDialog = (group: ActivityGroup) => {
+    setEditingGroupId(group.id);
+    setNewGroupName(group.name);
+    setNewGroupColor(group.color);
+    setNewGroupLinkCode(group.linkCode ?? "");
+    setIsGroupDialogOpen(true);
+  };
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(projectId) });
@@ -601,6 +751,19 @@ export default function ProjectActivities() {
 
   const handleEdit = (a: Activity) => {
     setEditingId(a.id);
+    const linked = a as Activity & { externalSourceGroupId?: number | null; externalSource?: ExternalSource | null };
+    if (linked.externalSourceGroupId != null) {
+      const source = linked.externalSource ?? { available: false, groupId: linked.externalSourceGroupId };
+      setSelectedSource(source);
+      setSourceCode(source.linkCode ?? "");
+      setSourceTouched(false);
+      setSourceUnlinkRequested(false);
+      setSourceSearchTerm("");
+      setSourceSearchResults([]);
+      setSourceSearchResolvedTerm("");
+    } else {
+      resetExternalSource();
+    }
     form.reset({
       name: a.name,
       plannedStartDate: a.plannedStartDate ? new Date(a.plannedStartDate).toISOString().split('T')[0] : "",
@@ -634,8 +797,10 @@ export default function ProjectActivities() {
     setUpdatingId(a.id);
     try {
       const extra: Record<string, unknown> = {};
-      if (newStatus === "completed") extra.actualProgress = 100;
-      if (newStatus === "not_started") extra.actualProgress = 0;
+      if (!getLinkedSource(a)) {
+        if (newStatus === "completed") extra.actualProgress = 100;
+        if (newStatus === "not_started") extra.actualProgress = 0;
+      }
       await updateActivity.mutateAsync({ projectId, id: a.id, data: { status: newStatus as UpdateActivityBodyStatus, ...extra } });
       invalidate();
       toast({ title: "تم تحديث الحالة" });
@@ -648,6 +813,7 @@ export default function ProjectActivities() {
 
   /* ── Quick progress increment ── */
   const quickIncrement = async (a: Activity, delta: number) => {
+    if (getLinkedSource(a)) return;
     const next = Math.min(100, Math.max(0, a.actualProgress + delta));
     if (next === a.actualProgress) return;
     setUpdatingId(a.id);
@@ -666,12 +832,52 @@ export default function ProjectActivities() {
   };
 
   const onSubmit = async (values: ActivityFormValues) => {
+    const typedCode = sourceCode.trim();
+    if (sourceTouched && typedCode) {
+      const normalizedCode = typedCode.toLocaleLowerCase();
+      if (sourceSearchResolvedTerm !== normalizedCode) {
+        setSourceSearchError("انتظر اكتمال البحث للتحقق من رمز المجموعة");
+        return;
+      }
+      const exactMatches = sourceSearchResults.filter(
+        (result) => result.linkCode.trim().toLocaleLowerCase() === normalizedCode
+      );
+      if (exactMatches.length !== 1) {
+        setSourceSearchError(exactMatches.length > 1
+          ? "رمز المجموعة غير فريد؛ اختر رمزاً فريداً للمصدر"
+          : "لم يتم العثور على رمز مجموعة مطابق تماماً");
+        return;
+      }
+      if (!selectedSource || selectedSource.groupId !== exactMatches[0].groupId ||
+          (selectedSource.linkCode ?? "").trim().toLocaleLowerCase() !== normalizedCode) {
+        setSourceSearchError("تحقق من المصدر المحدد قبل الحفظ");
+        return;
+      }
+      if (selectedSource.projectId === projectId) {
+        setSourceSearchError("لا يمكن ربط بند بمجموعة من المشروع نفسه");
+        return;
+      }
+    }
+    if (sourceTouched && !typedCode && selectedSource) {
+      setSourceSearchError("استخدم زر إلغاء الربط لتأكيد إزالة المصدر");
+      return;
+    }
+    if (sourceTouched && !typedCode && !sourceUnlinkRequested) {
+      setSourceSearchError("استخدم زر إلغاء الربط لتأكيد إزالة المصدر");
+      return;
+    }
     try {
       const payload = {
         ...values,
         actualStartDate: values.actualStartDate || null,
         actualEndDate: values.actualEndDate || null,
+        ...(sourceTouched || !editingId ? { externalSourceGroupId: sourceUnlinkRequested ? null : externalSourceId } : {}),
       };
+      if (externalSourceId != null && isLinkedSource) {
+        delete (payload as Partial<typeof payload>).plannedStartDate;
+        delete (payload as Partial<typeof payload>).plannedEndDate;
+        delete (payload as Partial<typeof payload>).actualProgress;
+      }
       if (editingId) {
         await updateActivity.mutateAsync({ projectId, id: editingId, data: payload });
         toast({ title: "تم التحديث" });
@@ -683,6 +889,7 @@ export default function ProjectActivities() {
       setIsDialogOpen(false);
       form.reset();
       setEditingId(null);
+      resetExternalSource();
     } catch {
       toast({ variant: "destructive", title: "فشل الحفظ" });
     }
@@ -696,6 +903,12 @@ export default function ProjectActivities() {
       case 'delayed': return <Badge variant="destructive">متأخر</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
+  };
+  const getLinkedSource = (activity: Activity) => {
+    const linked = activity as Activity & { externalSourceGroupId?: number | null; externalSource?: ExternalSource | null };
+    return linked.externalSourceGroupId != null
+      ? linked.externalSource ?? { available: false, groupId: linked.externalSourceGroupId }
+      : null;
   };
 
   const allActivityRows = activities ?? [];
@@ -946,19 +1159,25 @@ export default function ProjectActivities() {
                     {groups.slice().sort((a, b) => a.sortOrder - b.sortOrder).map((group) => {
                       const isSelected = groupFilter === group.id;
                       return (
-                        <Button
-                          key={group.id}
-                          type="button"
-                          size="sm"
-                          variant={isSelected ? "default" : "outline"}
-                          aria-pressed={isSelected}
-                          className="h-9 min-w-0 justify-center gap-1.5 px-2 text-xs"
-                          onClick={() => setGroupFilter(group.id)}
-                        >
-                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: group.color }} />
-                          <span className="max-w-[12rem] truncate">{group.name}</span>
-                          <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{groupCounts.counts.get(group.id) ?? 0}</span>
-                        </Button>
+                        <div key={group.id} className="inline-flex items-center">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isSelected ? "default" : "outline"}
+                            aria-pressed={isSelected}
+                            className="h-9 min-w-0 justify-center gap-1.5 rounded-e-none px-2 text-xs"
+                            onClick={() => setGroupFilter(group.id)}
+                          >
+                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: group.color }} />
+                            <span className="max-w-[12rem] truncate">{group.name}</span>
+                            <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{groupCounts.counts.get(group.id) ?? 0}</span>
+                          </Button>
+                          {!isViewer && (
+                            <Button type="button" size="icon" variant="outline" className="h-9 w-8 rounded-s-none border-r-0" title={`تعديل ${group.name}`} onClick={() => openEditGroupDialog(group)}>
+                              <Edit2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       );
                     })}
                     {groupCounts.ungrouped > 0 && (
@@ -1325,15 +1544,13 @@ export default function ProjectActivities() {
             <div className="flex flex-wrap items-center gap-2">
             {!isViewer && (
             <Dialog open={isGroupDialogOpen} onOpenChange={setIsGroupDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm">
-                  <FolderPlus className="h-4 w-4" /> <span className="hidden sm:inline">مجموعة جديدة</span>
-                </Button>
-              </DialogTrigger>
+              <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm" onClick={openNewGroupDialog}>
+                <FolderPlus className="h-4 w-4" /> <span className="hidden sm:inline">مجموعة جديدة</span>
+              </Button>
               <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden" dir="rtl">
                 <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
                   <DialogHeader>
-                    <DialogTitle className="text-xl">إضافة مجموعة جديدة</DialogTitle>
+                    <DialogTitle className="text-xl">{editingGroupId ? "تعديل المجموعة" : "إضافة مجموعة جديدة"}</DialogTitle>
                     <p className="text-sm text-muted-foreground mt-1">
                       قم بإنشاء مجموعة جديدة لتنظيم بنود الأعمال الخاصة بالمشروع.
                     </p>
@@ -1359,15 +1576,28 @@ export default function ProjectActivities() {
                         ))}
                       </div>
                     </div>
+                    <div>
+                      <label className="text-sm font-semibold mb-2 block text-foreground/90">رمز الربط (اختياري)</label>
+                      <Input
+                        className="h-11 bg-background"
+                        value={newGroupLinkCode}
+                        onChange={e => setNewGroupLinkCode(e.target.value)}
+                        placeholder="رمز فريد لمشاركة مصدر الإنجاز"
+                        dir="ltr"
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">يتيح هذا الرمز للمشاريع الأخرى ربط بنودها بهذه المجموعة.</p>
+                    </div>
                   </div>
                   <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
-                    <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIsGroupDialogOpen(false)}>إلغاء</Button>
+                    <Button variant="outline" className="w-full sm:w-auto" onClick={() => { setIsGroupDialogOpen(false); setEditingGroupId(null); }}>إلغاء</Button>
                     <Button
                       className="w-full sm:w-auto shadow-md"
-                      disabled={!newGroupName.trim() || createGroup.isPending}
-                      onClick={() => createGroup.mutate({ name: newGroupName.trim(), color: newGroupColor })}
+                      disabled={!newGroupName.trim() || createGroup.isPending || updateGroup.isPending}
+                      onClick={() => editingGroupId
+                        ? updateGroup.mutate({ id: editingGroupId, name: newGroupName.trim(), color: newGroupColor, linkCode: newGroupLinkCode.trim() || null })
+                        : createGroup.mutate({ name: newGroupName.trim(), color: newGroupColor, linkCode: newGroupLinkCode.trim() || null })}
                     >
-                      {createGroup.isPending ? "جاري الإنشاء..." : "تأكيد وإنشاء"}
+                      {createGroup.isPending || updateGroup.isPending ? "جاري الحفظ..." : editingGroupId ? "حفظ التغييرات" : "تأكيد وإنشاء"}
                     </Button>
                   </div>
                 </div>
@@ -1445,10 +1675,10 @@ export default function ProjectActivities() {
             {!isViewer && (
             <Dialog open={isDialogOpen} onOpenChange={(open) => {
               setIsDialogOpen(open);
-              if (!open) { form.reset(); setEditingId(null); }
+              if (!open) { form.reset(); setEditingId(null); resetExternalSource(); }
             }}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5 text-xs sm:text-sm mr-auto">
+                <Button size="sm" className="gap-1.5 text-xs sm:text-sm mr-auto" onClick={() => { setEditingId(null); resetExternalSource(); }}>
                   <Plus className="h-4 w-4" /> إضافة بند
                 </Button>
               </DialogTrigger>
@@ -1483,18 +1713,124 @@ export default function ProjectActivities() {
                         )} />
                       </div>
 
+                      <div className="p-5 rounded-2xl border bg-muted/20 shadow-sm space-y-3">
+                        <div>
+                          <label className="text-sm font-semibold mb-1 block text-foreground/90">رمز مصدر الإنجاز (اختياري)</label>
+                          <p className="text-xs text-muted-foreground mb-2">أدخل رمز مجموعة من مشروع آخر لربط الإنجاز والتواريخ المخططة بها.</p>
+                          <Input
+                            className="h-11 bg-background font-mono"
+                            value={sourceCode}
+                            dir="ltr"
+                            placeholder="رمز المجموعة"
+                            onChange={(event) => {
+                              setSourceCode(event.target.value);
+                              setSourceTouched(true);
+                              setSourceUnlinkRequested(false);
+                              setSourceSearchError("");
+                              setSourceSearchResolvedTerm("");
+                              setSourceSearchTerm(event.target.value);
+                            }}
+                          />
+                          {sourceSearchLoading && <p className="mt-2 text-xs text-muted-foreground">جاري البحث عن مجموعات…</p>}
+                          {sourceSearchError && <p className="mt-2 text-xs text-destructive">{sourceSearchError}</p>}
+                          {sourceSearchResults.length > 0 && sourceTouched && !hasMatchingSelectedSource && (
+                            <div className="mt-2 max-h-40 space-y-1 overflow-auto rounded-md border bg-background p-1">
+                              {sourceSearchResults.map((result) => {
+                                const exactMatch = result.linkCode.trim() === sourceCode.trim();
+                                return (
+                                  <button
+                                    key={`${result.projectId}-${result.groupId}`}
+                                    type="button"
+                                    className={`w-full rounded px-3 py-2 text-right text-sm hover:bg-accent ${selectedSource?.groupId === result.groupId ? "bg-accent" : ""}`}
+                                    onClick={() => {
+                                      setSelectedSource({
+                                        available: true,
+                                        groupId: result.groupId,
+                                        projectId: result.projectId,
+                                        projectName: result.projectName,
+                                        groupName: result.groupName,
+                                        linkCode: result.linkCode,
+                                        actualProgress: result.actualProgress,
+                                        plannedStartDate: result.plannedStartDate,
+                                        plannedEndDate: result.plannedEndDate,
+                                      });
+                                      setSourceCode(result.linkCode);
+                                      setSourceSearchTerm(result.linkCode);
+                                      setSourceTouched(true);
+                                      setSourceUnlinkRequested(false);
+                                      setSourceSearchResolvedTerm(result.linkCode.trim().toLocaleLowerCase());
+                                      setSourceSearchError("");
+                                    }}
+                                  >
+                                    <span className="flex items-center justify-between gap-2">
+                                      <span className="font-medium">{result.groupName}</span>
+                                      <span className="font-mono text-xs text-muted-foreground" dir="ltr">{result.linkCode}</span>
+                                    </span>
+                                    <span className="block text-xs text-muted-foreground">{result.projectName}{exactMatch ? " · تطابق الرمز" : ""}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        {selectedSource && isLinkedSource && hasMatchingSelectedSource && (
+                          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                            {selectedSource.available ? (
+                              <>
+                                <div className="mb-1 flex items-center gap-2">
+                                  <Badge variant="secondary">مصدر مرتبط</Badge>
+                                  <span className="font-medium">{selectedSource.groupName ?? "المجموعة"}</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  المشروع: {selectedSource.projectName ?? "—"} · الإنجاز: {selectedSource.actualProgress ?? 0}%
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  المدة المخططة: {fmtDate(selectedSource.plannedStartDate)} → {fmtDate(selectedSource.plannedEndDate)}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+                                <AlertTriangle className="h-4 w-4 shrink-0" /> المصدر المرتبط غير متاح (قد تكون المجموعة حُذفت). أعد الربط برمز صالح أو ألغِ الربط.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {(selectedSource || sourceTouched) && !sourceUnlinkRequested && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedSource(null);
+                              setSourceCode("");
+                              setSourceTouched(true);
+                              setSourceUnlinkRequested(true);
+                              setSourceSearchTerm("");
+                              setSourceSearchResults([]);
+                              setSourceSearchResolvedTerm("");
+                              setSourceSearchError("");
+                            }}
+                          >
+                            إلغاء ربط المصدر
+                          </Button>
+                        )}
+                        {sourceUnlinkRequested && (
+                          <p className="text-xs text-muted-foreground">سيُلغى ربط المصدر عند حفظ البند.</p>
+                        )}
+                      </div>
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-muted/20 shadow-sm">
                         <FormField control={form.control} name="plannedStartDate" render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-foreground/90">بداية مخططة {isNoSchedule && <span className="text-xs text-muted-foreground font-normal">(اختياري)</span>}</FormLabel>
-                            <FormControl><Input type="date" className="h-11 bg-background" {...field} /></FormControl>
+                            <FormControl><Input type="date" className="h-11 bg-background" {...field} disabled={isLinkedSource} /></FormControl>
                             <FormMessage />
                           </FormItem>
                         )} />
                         <FormField control={form.control} name="plannedEndDate" render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-foreground/90">نهاية مخططة {isNoSchedule && <span className="text-xs text-muted-foreground font-normal">(اختياري)</span>}</FormLabel>
-                            <FormControl><Input type="date" className="h-11 bg-background" {...field} /></FormControl>
+                            <FormControl><Input type="date" className="h-11 bg-background" {...field} disabled={isLinkedSource} /></FormControl>
                             <FormMessage />
                           </FormItem>
                         )} />
@@ -1521,7 +1857,7 @@ export default function ProjectActivities() {
                         <FormField control={form.control} name="actualProgress" render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-foreground/90">الإنجاز الفعلي (%)</FormLabel>
-                            <FormControl><Input type="number" className="h-11 bg-background font-mono" min={0} max={100} {...field} /></FormControl>
+                            <FormControl><Input type="number" className="h-11 bg-background font-mono" min={0} max={100} {...field} disabled={isLinkedSource} /></FormControl>
                             <FormMessage />
                           </FormItem>
                         )} />
@@ -1590,7 +1926,7 @@ export default function ProjectActivities() {
                 if (!groupMap.has(gid)) groupMap.set("ungrouped", [...(groupMap.get("ungrouped") ?? []), a]);
                 else groupMap.get(gid)!.push(a);
               }
-              const visibleGroups = sortedGroups.filter((group) => (groupMap.get(group.id) ?? []).length > 0);
+              const visibleGroups = sortedGroups;
 
               const renderActivityRow = (a: Activity) => {
                 const isBusy = updatingId === a.id;
@@ -1598,12 +1934,29 @@ export default function ProjectActivities() {
                 const deviation = a.actualProgress - planned;
                 const delayInfo = calcActivityDelay(a);
                 const editable = canEditActivity(a);
+                const source = getLinkedSource(a);
                 return (
                   <SortableActivityRow key={a.id} id={a.id}>
                     <TableCell className="font-medium max-w-[200px]">
                       <div className="flex items-center gap-1">
                         {!isViewer && <DragHandle />}
-                        <span className="block truncate" title={a.name}>{a.name}</span>
+                        <div className="min-w-0">
+                          <span className="block truncate" title={a.name}>{a.name}</span>
+                          {source && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px]">
+                              <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">مرتبط</Badge>
+                              {source.available ? (
+                                <span className="truncate text-muted-foreground" title={`${source.groupName ?? ""} · ${source.projectName ?? ""}`}>
+                                  {source.groupName} · {source.projectName}
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
+                                  <AlertTriangle className="h-3 w-3" /> المصدر غير متاح
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell className="w-[190px]">
@@ -1667,12 +2020,12 @@ export default function ProjectActivities() {
                       <div className="flex items-center justify-center gap-1">
                         {editable ? (
                           <>
-                            <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
+                            {!source && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
                               <span className="text-xs font-bold text-muted-foreground">-1</span>
-                            </Button>
-                            <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
+                            </Button>}
+                            {!source && <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
                               <span className="text-xs font-bold text-primary">+1</span>
-                            </Button>
+                            </Button>}
                             {groups.length > 0 && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -1776,14 +2129,26 @@ export default function ProjectActivities() {
                                         <ProgressBar value={groupProgress} color={g.color} />
                                       </div>
                                       {!isViewer && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6"
-                                        onClick={(e) => { e.stopPropagation(); deleteGroup.mutate(g.id); }}
-                                      >
-                                        <X className="h-3 w-3 text-muted-foreground" />
-                                      </Button>
+                                      <>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          title="تعديل المجموعة"
+                                          onClick={(e) => { e.stopPropagation(); openEditGroupDialog(g); }}
+                                        >
+                                          <Edit2 className="h-3 w-3 text-muted-foreground" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          title="حذف المجموعة"
+                                          onClick={(e) => { e.stopPropagation(); deleteGroup.mutate(g.id); }}
+                                        >
+                                          <X className="h-3 w-3 text-muted-foreground" />
+                                        </Button>
+                                      </>
                                       )}
                                     </div>
                                   </TableCell>
@@ -1850,10 +2215,21 @@ export default function ProjectActivities() {
                 const deviation = a.actualProgress - planned;
                 const delayInfo = calcActivityDelay(a);
                 const editable = canEditActivity(a);
+                const source = getLinkedSource(a);
                 return (
                   <div key={a.id} className={`rounded-lg border p-3 space-y-2.5 ${isBusy ? "opacity-60 pointer-events-none" : ""}`}>
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-sm font-medium leading-tight flex-1">{a.name}</span>
+                      <span className="text-sm font-medium leading-tight flex-1">
+                        {a.name}
+                        {source && (
+                          <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+                            <Badge variant="secondary" className="me-1 h-4 px-1.5 text-[9px]">مرتبط</Badge>
+                            {source.available
+                              ? `${source.groupName ?? ""} · ${source.projectName ?? ""}`
+                              : <span className="text-amber-700 dark:text-amber-400">المصدر غير متاح — قد تكون المجموعة حُذفت</span>}
+                          </span>
+                        )}
+                      </span>
                       <StatusBadge status={a.status} />
                     </div>
                     <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -1873,12 +2249,12 @@ export default function ProjectActivities() {
                     {editable ? (
                       <div className="flex items-center gap-1 pt-1 border-t">
                         <div className="flex items-center gap-1 mr-auto">
-                          <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
+                          {!source && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
                             <span className="text-xs font-bold text-muted-foreground">-1</span>
-                          </Button>
-                          <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
+                          </Button>}
+                          {!source && <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
                             <span className="text-xs font-bold text-primary">+1</span>
-                          </Button>
+                          </Button>}
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
                             <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
                           </Button>

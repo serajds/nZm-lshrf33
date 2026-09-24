@@ -5,6 +5,8 @@ import { eq, and, asc } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
+import { refreshLinkedSources } from "../lib/external-sources";
+import { suspensionActivityDateShift } from "../lib/activity-source-rules";
 
 const router: IRouter = Router();
 
@@ -19,27 +21,15 @@ function addDays(dateStr: string, days: number): string {
 
 async function shiftActivities(projectId: number, suspStartDate: string, calendarDays: number, direction: 1 | -1) {
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
-  const suspStart = new Date(suspStartDate);
+  const changedGroups = new Set<number>();
 
   for (const activity of activities) {
-    if (!activity.plannedStartDate || !activity.plannedEndDate) continue;
-    const actStart = new Date(activity.plannedStartDate);
-    const actEnd = new Date(activity.plannedEndDate);
-    const shift = calendarDays * direction;
-
-    if (actStart >= suspStart) {
-      await db.update(activitiesTable)
-        .set({
-          plannedStartDate: addDays(activity.plannedStartDate, shift),
-          plannedEndDate: addDays(activity.plannedEndDate, shift),
-        })
-        .where(eq(activitiesTable.id, activity.id));
-    } else if (actEnd >= suspStart) {
-      await db.update(activitiesTable)
-        .set({ plannedEndDate: addDays(activity.plannedEndDate, shift) })
-        .where(eq(activitiesTable.id, activity.id));
-    }
+    const shifted = suspensionActivityDateShift(activity, suspStartDate, calendarDays, direction);
+    if (!shifted) continue;
+    await db.update(activitiesTable).set(shifted).where(eq(activitiesTable.id, activity.id));
+    if (activity.groupId != null) changedGroups.add(activity.groupId);
   }
+  return [...changedGroups];
 }
 
 router.get("/projects/:projectId/suspensions", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
@@ -100,12 +90,13 @@ router.post("/projects/:projectId/suspensions", requireProjectAccess("projectId"
   }).returning();
 
   if (shouldShift) {
-    await shiftActivities(projectId, startDate, calendarDays, 1);
+    const changedGroups = await shiftActivities(projectId, startDate, calendarDays, 1);
     if (project.expectedEndDate) {
       await db.update(projectsTable)
         .set({ expectedEndDate: addDays(project.expectedEndDate, calendarDays) })
         .where(eq(projectsTable.id, projectId));
     }
+    if (changedGroups.length) await refreshLinkedSources(changedGroups);
   }
 
   (async () => {
@@ -149,12 +140,13 @@ router.delete("/projects/:projectId/suspensions/:id", requireProjectAccess("proj
     .where(and(eq(projectSuspensionsTable.id, id), eq(projectSuspensionsTable.projectId, projectId)));
 
   if (susp.datesShifted) {
-    await shiftActivities(projectId, susp.startDate, susp.calendarDays, -1);
+    const changedGroups = await shiftActivities(projectId, susp.startDate, susp.calendarDays, -1);
     if (project?.expectedEndDate) {
       await db.update(projectsTable)
         .set({ expectedEndDate: addDays(project.expectedEndDate, -susp.calendarDays) })
         .where(eq(projectsTable.id, projectId));
     }
+    if (changedGroups.length) await refreshLinkedSources(changedGroups);
   }
 
   res.sendStatus(204);
