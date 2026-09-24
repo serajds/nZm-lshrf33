@@ -130,15 +130,6 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     return;
   }
 
-  if (groupId != null) {
-    const [grp] = await db.select().from(activityGroupsTable)
-      .where(and(eq(activityGroupsTable.id, groupId), eq(activityGroupsTable.projectId, projectId)));
-    if (!grp) {
-      res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
-      return;
-    }
-  }
-
   const autoPlannedProgress = calcActivityPlannedProgress({
     plannedStartDate: effectiveStart || null,
     plannedEndDate: effectiveEnd || null,
@@ -169,20 +160,29 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
       : null,
   };
   let activity: typeof activitiesTable.$inferSelect | undefined;
-  if (externalSourceGroupId != null && externalSummary) {
-    const result = await withSourceGraphLock(async () => {
-      if (await wouldCreateSourceCycle(projectId, externalSummary!.projectId)) return { cycle: true, activity: undefined };
-      const [created] = await db.insert(activitiesTable).values(insertValues).returning();
-      return { cycle: false, activity: created };
-    });
-    if (result.cycle) {
-      res.status(400).json({ error: "هذا الربط ينشئ اعتمادًا دائريًا بين المشاريع" });
-      return;
+  const result = await withSourceGraphLock(async () => {
+    // Validate the group while holding the same lock as empty-group deletion.
+    if (groupId != null) {
+      const [grp] = await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
+        .where(and(eq(activityGroupsTable.id, groupId), eq(activityGroupsTable.projectId, projectId)));
+      if (!grp) return { invalidGroup: true, cycle: false, activity: undefined };
     }
-    activity = result.activity;
-  } else {
-    [activity] = await db.insert(activitiesTable).values(insertValues).returning();
+    if (externalSourceGroupId != null && externalSummary
+        && await wouldCreateSourceCycle(projectId, externalSummary.projectId)) {
+      return { invalidGroup: false, cycle: true, activity: undefined };
+    }
+    const [created] = await db.insert(activitiesTable).values(insertValues).returning();
+    return { invalidGroup: false, cycle: false, activity: created };
+  });
+  if (result.invalidGroup) {
+    res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
+    return;
   }
+  if (result.cycle) {
+    res.status(400).json({ error: "هذا الربط ينشئ اعتمادًا دائريًا بين المشاريع" });
+    return;
+  }
+  activity = result.activity;
   if (!activity) {
     res.status(500).json({ error: "تعذر إنشاء البند" });
     return;
@@ -286,14 +286,6 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   if (body.status !== undefined) updateData.status = body.status;
   if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder;
   if (body.groupId !== undefined) {
-    if (body.groupId !== null) {
-      const [grp] = await db.select().from(activityGroupsTable)
-        .where(and(eq(activityGroupsTable.id, body.groupId), eq(activityGroupsTable.projectId, projectId)));
-      if (!grp) {
-        res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
-        return;
-      }
-    }
     updateData.groupId = body.groupId === null ? null : body.groupId;
   }
 
@@ -334,29 +326,33 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   }
 
   let activity: typeof activitiesTable.$inferSelect | undefined;
-  if (body.externalSourceGroupId !== undefined) {
-    const result = await withSourceGraphLock(async () => {
-      if (changingSource && finalExternalGroupId != null
-          && await wouldCreateSourceCycle(projectId, externalSummary!.projectId)) {
-        return { cycle: true, activity: undefined };
-      }
-      const [updated] = await db.update(activitiesTable)
-        .set(updateData)
-        .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))
-        .returning();
-      return { cycle: false, activity: updated };
-    });
-    if (result.cycle) {
-      res.status(400).json({ error: "هذا الربط ينشئ اعتمادًا دائريًا بين المشاريع" });
-      return;
+  const result = await withSourceGraphLock(async () => {
+    // Group existence and the activity write must be serialized against
+    // deleting an empty group, otherwise the write can leave an orphaned id.
+    if (body.groupId !== undefined && body.groupId !== null) {
+      const [grp] = await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
+        .where(and(eq(activityGroupsTable.id, body.groupId), eq(activityGroupsTable.projectId, projectId)));
+      if (!grp) return { invalidGroup: true, cycle: false, activity: undefined };
     }
-    activity = result.activity;
-  } else {
-    [activity] = await db.update(activitiesTable)
+    if (changingSource && finalExternalGroupId != null
+        && await wouldCreateSourceCycle(projectId, externalSummary!.projectId)) {
+      return { invalidGroup: false, cycle: true, activity: undefined };
+    }
+    const [updated] = await db.update(activitiesTable)
       .set(updateData)
       .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))
       .returning();
+    return { invalidGroup: false, cycle: false, activity: updated };
+  });
+  if (result.invalidGroup) {
+    res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
+    return;
   }
+  if (result.cycle) {
+    res.status(400).json({ error: "هذا الربط ينشئ اعتمادًا دائريًا بين المشاريع" });
+    return;
+  }
+  activity = result.activity;
 
   if (!activity) {
     res.status(404).json({ error: "البند غير موجود" });
@@ -562,32 +558,42 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
     return;
   }
   const requestedGroupIds = [...new Set(items.map((item: any) => item.groupId).filter((id: unknown): id is number => id !== undefined && id !== null))];
-  if (requestedGroupIds.length) {
-    const validGroups = await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
-      .where(and(eq(activityGroupsTable.projectId, projectId)));
-    const validIds = new Set(validGroups.map(group => group.id));
-    if (requestedGroupIds.some(id => !validIds.has(Number(id)))) {
-      res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
-      return;
+  const result = await withSourceGraphLock(async () => {
+    if (requestedGroupIds.length) {
+      const validGroups = await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
+        .where(and(eq(activityGroupsTable.projectId, projectId)));
+      const validIds = new Set(validGroups.map(group => group.id));
+      if (requestedGroupIds.some(id => !validIds.has(Number(id)))) {
+        return { invalidGroup: true, sourceGroupIds: [] as number[] };
+      }
     }
-  }
-  const oldGroups = await db.select({ groupId: activitiesTable.groupId }).from(activitiesTable)
-    .where(eq(activitiesTable.projectId, projectId));
-  // Run all updates in parallel inside one transaction. Previously
-  // each row was awaited serially → reordering 50 items took 50 round
-  // trips. Now it's a single batched commit.
-  await db.transaction(async (tx) => {
-    await Promise.all(items.map((item: any) => {
-      const updateData: Record<string, unknown> = { sortOrder: item.sortOrder };
-      if (item.groupId !== undefined) updateData.groupId = item.groupId === null ? null : item.groupId;
-      return tx.update(activitiesTable)
-        .set(updateData)
-        .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
-    }));
+    const oldGroups = await db.select({ groupId: activitiesTable.groupId }).from(activitiesTable)
+      .where(eq(activitiesTable.projectId, projectId));
+    // Run all updates in parallel inside one transaction. Previously
+    // each row was awaited serially → reordering 50 items took 50 round
+    // trips. Now it's a single batched commit.
+    await db.transaction(async (tx) => {
+      await Promise.all(items.map((item: any) => {
+        const updateData: Record<string, unknown> = { sortOrder: item.sortOrder };
+        if (item.groupId !== undefined) updateData.groupId = item.groupId === null ? null : item.groupId;
+        return tx.update(activitiesTable)
+          .set(updateData)
+          .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
+      }));
+    });
+    const sourceGroups = await db.select({ groupId: activitiesTable.groupId }).from(activitiesTable)
+      .where(eq(activitiesTable.projectId, projectId));
+    const sourceGroupIds = [...new Set([...oldGroups, ...sourceGroups]
+      .map(a => a.groupId).filter((groupId): groupId is number => groupId != null))];
+    return { invalidGroup: false, sourceGroupIds };
   });
-  const sourceGroups = await db.select({ groupId: activitiesTable.groupId }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
-  const ids = [...new Set([...oldGroups, ...sourceGroups].map(a => a.groupId).filter((id): id is number => id != null))];
-  if (ids.length) await refreshLinkedSources(ids);
+  if (result.invalidGroup) {
+    res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
+    return;
+  }
+  // Keep propagation outside the graph lock; refreshLinkedSources acquires it
+  // itself and nested acquisition would deadlock.
+  if (result.sourceGroupIds.length) await refreshLinkedSources(result.sourceGroupIds);
   res.json({ success: true });
 });
 
