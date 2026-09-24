@@ -6,6 +6,8 @@ import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlew
 import { requireTabEdit } from "../middlewares/tab-access";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
 import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
+import { canReadProject, getGroupSummary, refreshLinkedSources, withSourceGraphLock, wouldCreateSourceCycle } from "../lib/external-sources";
+import { linkedSourceIdAfterPatch, sourceIsAvailable } from "../lib/activity-source-rules";
 import multer from "multer";
 import * as XLSX from "xlsx";
 
@@ -66,7 +68,21 @@ router.get("/projects/:projectId/activities", requireProjectAccess("projectId"),
     .where(eq(activitiesTable.projectId, projectId))
     .orderBy(activitiesTable.sortOrder, activitiesTable.id);
 
-  res.json(activities);
+  const response = await Promise.all(activities.map(async activity => {
+    if (activity.externalSourceGroupId == null) return activity;
+    const source = await getGroupSummary(activity.externalSourceGroupId);
+    const canReadSource = source && await canReadProject((req as any).user?.userId, source.projectId);
+    return canReadSource ? {
+      ...activity,
+      externalSource: sourceIsAvailable(source)
+        ? { available: true, ...source }
+        : { available: false, groupId: activity.externalSourceGroupId },
+    } : {
+      ...activity,
+      externalSource: { available: false, groupId: activity.externalSourceGroupId },
+    };
+  }));
+  res.json(response);
 });
 
 router.post("/projects/:projectId/activities", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
@@ -75,7 +91,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
 
   const {
     name, plannedStartDate, plannedEndDate, actualStartDate, actualEndDate,
-    plannedProgress, actualProgress, weight, status, sortOrder, groupId
+    plannedProgress, actualProgress, weight, status, sortOrder, groupId, externalSourceGroupId
   } = req.body;
 
   if (!name) {
@@ -86,12 +102,35 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   const isNoSchedule = project?.noSchedule === true;
 
-  if (!isNoSchedule && (!plannedStartDate || !plannedEndDate)) {
+  let externalSummary: Awaited<ReturnType<typeof getGroupSummary>> = null;
+  if (externalSourceGroupId != null) {
+    if (typeof externalSourceGroupId !== "number" || !Number.isInteger(externalSourceGroupId) || externalSourceGroupId <= 0) {
+      res.status(400).json({ error: "معرف مصدر المجموعة غير صالح" });
+      return;
+    }
+    if ([actualProgress, plannedStartDate, plannedEndDate].some(value => value !== undefined)) {
+      res.status(400).json({ error: "لا يمكن تحديد التقدم أو التواريخ يدويًا عند ربط مصدر خارجي" });
+      return;
+    }
+    externalSummary = await getGroupSummary(Number(externalSourceGroupId));
+    if (!externalSummary || !externalSummary.linkCode || externalSummary.projectId === projectId) {
+      res.status(400).json({ error: "مصدر المجموعة غير صالح أو غير قابل للمشاركة" });
+      return;
+    }
+    if (!(await canReadProject((req as any).user?.userId, externalSummary.projectId))) {
+      res.status(403).json({ error: "ليس لديك صلاحية الوصول إلى مشروع المصدر" });
+      return;
+    }
+  }
+
+  const effectiveStart = externalSummary?.plannedStartDate ?? plannedStartDate;
+  const effectiveEnd = externalSummary?.plannedEndDate ?? plannedEndDate;
+  if (!isNoSchedule && !externalSummary && (!effectiveStart || !effectiveEnd)) {
     res.status(400).json({ error: "تاريخ البداية والنهاية المخططة مطلوبة" });
     return;
   }
 
-  if (groupId) {
+  if (groupId != null) {
     const [grp] = await db.select().from(activityGroupsTable)
       .where(and(eq(activityGroupsTable.id, groupId), eq(activityGroupsTable.projectId, projectId)));
     if (!grp) {
@@ -101,19 +140,19 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
   }
 
   const autoPlannedProgress = calcActivityPlannedProgress({
-    plannedStartDate: plannedStartDate || null,
-    plannedEndDate: plannedEndDate || null,
+    plannedStartDate: effectiveStart || null,
+    plannedEndDate: effectiveEnd || null,
   });
 
-  const [activity] = await db.insert(activitiesTable).values({
+  const insertValues = {
     projectId,
     name,
-    plannedStartDate: plannedStartDate || null,
-    plannedEndDate: plannedEndDate || null,
+    plannedStartDate: effectiveStart || null,
+    plannedEndDate: effectiveEnd || null,
     actualStartDate: actualStartDate ?? null,
     actualEndDate: actualEndDate ?? null,
     plannedProgress: roundPercent(autoPlannedProgress),
-    actualProgress: actualProgress ?? 0,
+    actualProgress: externalSummary?.actualProgress ?? actualProgress ?? 0,
     weight: (() => {
       const w = Number(weight);
       if (!Number.isFinite(w) || w <= 0) return 1;
@@ -121,16 +160,37 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     })(),
     status: status ?? "not_started",
     groupId: groupId ?? null,
+    externalSourceGroupId: externalSourceGroupId ?? null,
     sortOrder: sortOrder ?? 0,
     // Stamp execution-state timestamp when the activity is created already in motion,
     // so period-scoped reports can pick it up.
     progressUpdatedAt: ((actualProgress ?? 0) > 0 || (status && status !== "not_started") || actualStartDate || actualEndDate)
       ? new Date()
       : null,
-  }).returning();
+  };
+  let activity: typeof activitiesTable.$inferSelect | undefined;
+  if (externalSourceGroupId != null && externalSummary) {
+    const result = await withSourceGraphLock(async () => {
+      if (await wouldCreateSourceCycle(projectId, externalSummary!.projectId)) return { cycle: true, activity: undefined };
+      const [created] = await db.insert(activitiesTable).values(insertValues).returning();
+      return { cycle: false, activity: created };
+    });
+    if (result.cycle) {
+      res.status(400).json({ error: "هذا الربط ينشئ اعتمادًا دائريًا بين المشاريع" });
+      return;
+    }
+    activity = result.activity;
+  } else {
+    [activity] = await db.insert(activitiesTable).values(insertValues).returning();
+  }
+  if (!activity) {
+    res.status(500).json({ error: "تعذر إنشاء البند" });
+    return;
+  }
 
   await syncProjectProgress(projectId);
   await recalcExpectedEndDate(projectId);
+  if (groupId != null) await refreshLinkedSources([Number(groupId)]);
 
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "create", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId });
@@ -144,6 +204,12 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   const projectId = parseInt(rawProjectId, 10);
   const id = parseInt(rawId, 10);
   const user = (req as any).user;
+  const [existing] = await db.select().from(activitiesTable)
+    .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
+  if (!existing) {
+    res.status(404).json({ error: "البند غير موجود" });
+    return;
+  }
 
   if (user?.role !== "admin") {
     const allowed = await checkGroupPermission(user?.userId, projectId, id);
@@ -158,6 +224,41 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
 
   const updateData: Record<string, unknown> = {};
   const body = req.body;
+  const finalExternalGroupId = linkedSourceIdAfterPatch(existing.externalSourceGroupId, body.externalSourceGroupId);
+  const changingSource = finalExternalGroupId !== existing.externalSourceGroupId;
+  if (body.externalSourceGroupId !== undefined && body.externalSourceGroupId !== null
+      && (typeof finalExternalGroupId !== "number" || !Number.isInteger(finalExternalGroupId) || finalExternalGroupId <= 0)) {
+    res.status(400).json({ error: "معرف مصدر المجموعة غير صالح" });
+    return;
+  }
+  let externalSummary: Awaited<ReturnType<typeof getGroupSummary>> = null;
+  if (finalExternalGroupId != null) {
+    if (body.actualProgress !== undefined || body.plannedStartDate !== undefined || body.plannedEndDate !== undefined) {
+      res.status(400).json({ error: "لا يمكن تحديد التقدم أو التواريخ يدويًا عند ربط مصدر خارجي" });
+      return;
+    }
+    externalSummary = await getGroupSummary(finalExternalGroupId);
+    // A deleted source must not prevent edits to unrelated fields; its last
+    // copied values remain on the linked activity until explicitly unlinked.
+    if (changingSource && (!externalSummary || !externalSummary.linkCode)) {
+      res.status(400).json({ error: "مصدر المجموعة غير صالح أو غير قابل للمشاركة" });
+      return;
+    }
+    if (externalSummary && externalSummary.projectId === projectId) {
+      res.status(400).json({ error: "لا يمكن ربط بند بمجموعة من المشروع نفسه" });
+      return;
+    }
+    if (changingSource && externalSummary && !(await canReadProject(user?.userId, externalSummary.projectId))) {
+      res.status(403).json({ error: "ليس لديك صلاحية الوصول إلى مشروع المصدر" });
+      return;
+    }
+  }
+  if (body.externalSourceGroupId !== undefined) updateData.externalSourceGroupId = finalExternalGroupId;
+  if (externalSummary) {
+    updateData.actualProgress = externalSummary.actualProgress;
+    updateData.plannedStartDate = externalSummary.plannedStartDate;
+    updateData.plannedEndDate = externalSummary.plannedEndDate;
+  }
   if (body.name !== undefined) updateData.name = body.name;
   if (body.plannedStartDate !== undefined) {
     const val = body.plannedStartDate || null;
@@ -202,9 +303,6 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   }
 
   const todayStr = new Date().toISOString().split("T")[0];
-  const [existing] = await db.select().from(activitiesTable)
-    .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
-
   // Stamp when the activity's execution state moved (progress, status, actual dates)
   // so reports can scope "what happened during the period".
   if (body.actualProgress !== undefined || body.status !== undefined
@@ -235,10 +333,30 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
     }));
   }
 
-  const [activity] = await db.update(activitiesTable)
-    .set(updateData)
-    .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))
-    .returning();
+  let activity: typeof activitiesTable.$inferSelect | undefined;
+  if (body.externalSourceGroupId !== undefined) {
+    const result = await withSourceGraphLock(async () => {
+      if (changingSource && finalExternalGroupId != null
+          && await wouldCreateSourceCycle(projectId, externalSummary!.projectId)) {
+        return { cycle: true, activity: undefined };
+      }
+      const [updated] = await db.update(activitiesTable)
+        .set(updateData)
+        .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))
+        .returning();
+      return { cycle: false, activity: updated };
+    });
+    if (result.cycle) {
+      res.status(400).json({ error: "هذا الربط ينشئ اعتمادًا دائريًا بين المشاريع" });
+      return;
+    }
+    activity = result.activity;
+  } else {
+    [activity] = await db.update(activitiesTable)
+      .set(updateData)
+      .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))
+      .returning();
+  }
 
   if (!activity) {
     res.status(404).json({ error: "البند غير موجود" });
@@ -247,6 +365,12 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
 
   await syncProjectProgress(projectId);
   await recalcExpectedEndDate(projectId);
+  const affectedSourceGroups = new Set<number>();
+  if (existing.groupId != null) affectedSourceGroups.add(existing.groupId);
+  if (activity.groupId != null) affectedSourceGroups.add(activity.groupId);
+  if (existing.externalSourceGroupId != null) affectedSourceGroups.add(existing.externalSourceGroupId);
+  if (activity.externalSourceGroupId != null) affectedSourceGroups.add(activity.externalSourceGroupId);
+  if (affectedSourceGroups.size) await refreshLinkedSources([...affectedSourceGroups]);
 
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "update", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId, details: updateData });
@@ -406,17 +530,19 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
     }
   }
 
-  const [activity] = await db.delete(activitiesTable)
-    .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))
-    .returning();
-
+  const [activity] = await db.select().from(activitiesTable)
+    .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
   if (!activity) {
     res.status(404).json({ error: "البند غير موجود" });
     return;
   }
+  await db.delete(activitiesTable)
+    .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))
+    .returning();
 
   await syncProjectProgress(projectId);
   await recalcExpectedEndDate(projectId);
+  if (activity.groupId != null) await refreshLinkedSources([activity.groupId]);
 
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "delete", entityType: "activity", entityId: id, entityName: activity.name, projectId });
@@ -431,6 +557,22 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
     res.status(400).json({ error: "items مطلوب" });
     return;
   }
+  if (items.some((item: any) => item.groupId !== undefined && item.groupId !== null && (!Number.isInteger(item.groupId) || item.groupId <= 0))) {
+    res.status(400).json({ error: "معرف المجموعة غير صالح" });
+    return;
+  }
+  const requestedGroupIds = [...new Set(items.map((item: any) => item.groupId).filter((id: unknown): id is number => id !== undefined && id !== null))];
+  if (requestedGroupIds.length) {
+    const validGroups = await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
+      .where(and(eq(activityGroupsTable.projectId, projectId)));
+    const validIds = new Set(validGroups.map(group => group.id));
+    if (requestedGroupIds.some(id => !validIds.has(Number(id)))) {
+      res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
+      return;
+    }
+  }
+  const oldGroups = await db.select({ groupId: activitiesTable.groupId }).from(activitiesTable)
+    .where(eq(activitiesTable.projectId, projectId));
   // Run all updates in parallel inside one transaction. Previously
   // each row was awaited serially → reordering 50 items took 50 round
   // trips. Now it's a single batched commit.
@@ -443,6 +585,9 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
         .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
     }));
   });
+  const sourceGroups = await db.select({ groupId: activitiesTable.groupId }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+  const ids = [...new Set([...oldGroups, ...sourceGroups].map(a => a.groupId).filter((id): id is number => id != null))];
+  if (ids.length) await refreshLinkedSources(ids);
   res.json({ success: true });
 });
 

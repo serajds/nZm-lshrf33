@@ -23,6 +23,8 @@ export async function recalcExpectedEndDate(projectId: number) {
 
   const baseEnd = await getActivitiesBaseEndDate(projectId);
 
+  // Keep an explicitly contracted expected end date when there are no dated
+  // activities to derive a replacement from.
   if (!baseEnd) return;
 
   const [extResult] = await db

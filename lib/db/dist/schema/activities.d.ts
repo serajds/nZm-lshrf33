@@ -207,6 +207,23 @@ export declare const activitiesTable: import("drizzle-orm/pg-core").PgTableWithC
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
+        externalSourceGroupId: import("drizzle-orm/pg-core").PgColumn<{
+            name: "external_source_group_id";
+            tableName: "activities";
+            dataType: "number";
+            columnType: "PgInteger";
+            data: number;
+            driverParam: string | number;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
         sortOrder: import("drizzle-orm/pg-core").PgColumn<{
             name: "sort_order";
             tableName: "activities";
@@ -278,6 +295,7 @@ export declare const insertActivitySchema: z.ZodObject<{
     actualProgress: z.ZodOptional<z.ZodNumber>;
     weight: z.ZodOptional<z.ZodNumber>;
     groupId: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
+    externalSourceGroupId: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     sortOrder: z.ZodOptional<z.ZodInt>;
     progressUpdatedAt: z.ZodOptional<z.ZodNullable<z.ZodDate>>;
 }, {

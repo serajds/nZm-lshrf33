@@ -15,12 +15,14 @@ export const activitiesTable = pgTable("activities", {
   weight: real("weight").notNull().default(1),
   status: text("status", { enum: ["not_started", "in_progress", "completed", "delayed"] }).notNull().default("not_started"),
   groupId: integer("group_id"),
+  externalSourceGroupId: integer("external_source_group_id"),
   sortOrder: integer("sort_order").notNull().default(0),
   progressUpdatedAt: timestamp("progress_updated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("activities_project_sort_idx").on(t.projectId, t.sortOrder),
   index("activities_group_idx").on(t.groupId),
+  index("activities_external_source_group_idx").on(t.externalSourceGroupId),
 ]);
 
 export const insertActivitySchema = createInsertSchema(activitiesTable).omit({ id: true, createdAt: true });

@@ -24,4 +24,6 @@ export interface CreateActivityBody {
   sortOrder?: number;
   /** @nullable */
   groupId?: number | null;
+  /** @nullable */
+  externalSourceGroupId?: number | null;
 }

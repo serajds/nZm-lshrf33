@@ -5,6 +5,7 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { ActivityExternalSource } from "./activityExternalSource";
 import type { ActivityStatus } from "./activityStatus";
 
 export interface Activity {
@@ -27,5 +28,8 @@ export interface Activity {
   sortOrder: number;
   /** @nullable */
   groupId?: number | null;
+  /** @nullable */
+  externalSourceGroupId?: number | null;
+  externalSource?: ActivityExternalSource;
   createdAt: Date;
 }

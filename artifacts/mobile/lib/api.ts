@@ -161,6 +161,14 @@ export interface ApiActivity {
   name: string;
   description: string | null;
   groupId: number | null;
+  externalSourceGroupId?: number | null;
+  externalSource?: {
+    available: boolean;
+    groupId: number;
+    projectName: string | null;
+    groupName: string | null;
+    linkCode?: string | null;
+  } | null;
   weight: number | null;
   actualProgress: number | null;
   startDate: string | null;
