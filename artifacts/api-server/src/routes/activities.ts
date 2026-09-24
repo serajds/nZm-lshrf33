@@ -6,7 +6,7 @@ import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlew
 import { requireTabEdit } from "../middlewares/tab-access";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
 import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
-import { canReadProject, getGroupSummary, refreshLinkedSources, withSourceGraphLock, wouldCreateSourceCycle } from "../lib/external-sources";
+import { canReadProject, getGroupSummary, hasLinkedGroupSourceDuplicate, refreshLinkedSources, withSourceGraphLock, wouldCreateSourceCycle } from "../lib/external-sources";
 import { linkedSourceIdAfterPatch, sourceIsAvailable } from "../lib/activity-source-rules";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -160,26 +160,58 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
       : null,
   };
   let activity: typeof activitiesTable.$inferSelect | undefined;
-  const result = await withSourceGraphLock(async () => {
+  const result = await withSourceGraphLock(async () => db.transaction(async tx => {
     // Validate the group while holding the same lock as empty-group deletion.
     if (groupId != null) {
-      const [grp] = await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
+      const [grp] = await tx.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
         .where(and(eq(activityGroupsTable.id, groupId), eq(activityGroupsTable.projectId, projectId)));
-      if (!grp) return { invalidGroup: true, cycle: false, activity: undefined };
+      if (!grp) return { invalidGroup: true, cycle: false, duplicate: false, invalidSource: false, activity: undefined };
     }
-    if (externalSourceGroupId != null && externalSummary
-        && await wouldCreateSourceCycle(projectId, externalSummary.projectId)) {
-      return { invalidGroup: false, cycle: true, activity: undefined };
+    let currentSource = externalSummary;
+    if (externalSourceGroupId != null) {
+      currentSource = await getGroupSummary(Number(externalSourceGroupId));
+      if (!currentSource || !currentSource.linkCode || currentSource.projectId === projectId
+          || !(await canReadProject((req as any).user?.userId, currentSource.projectId))) {
+        return { invalidGroup: false, cycle: false, duplicate: false, invalidSource: true, activity: undefined };
+      }
+      if (await wouldCreateSourceCycle(projectId, currentSource.projectId)) {
+        return { invalidGroup: false, cycle: true, duplicate: false, invalidSource: false, activity: undefined };
+      }
+      if (groupId != null && await hasLinkedGroupSourceDuplicate(tx, Number(groupId), Number(externalSourceGroupId))) {
+        return { invalidGroup: false, cycle: false, duplicate: true, invalidSource: false, activity: undefined };
+      }
     }
-    const [created] = await db.insert(activitiesTable).values(insertValues).returning();
-    return { invalidGroup: false, cycle: false, activity: created };
-  });
+    const lockedStart = currentSource?.plannedStartDate ?? plannedStartDate ?? null;
+    const lockedEnd = currentSource?.plannedEndDate ?? plannedEndDate ?? null;
+    const lockedValues = {
+      ...insertValues,
+      ...(currentSource ? {
+        plannedStartDate: lockedStart,
+        plannedEndDate: lockedEnd,
+        plannedProgress: roundPercent(calcActivityPlannedProgress({
+          plannedStartDate: lockedStart,
+          plannedEndDate: lockedEnd,
+        })),
+        actualProgress: currentSource.actualProgress,
+      } : {}),
+    };
+    const [created] = await tx.insert(activitiesTable).values(lockedValues).returning();
+    return { invalidGroup: false, cycle: false, duplicate: false, invalidSource: false, activity: created };
+  }));
   if (result.invalidGroup) {
     res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
     return;
   }
   if (result.cycle) {
     res.status(400).json({ error: "هذا الربط ينشئ اعتمادًا دائريًا بين المشاريع" });
+    return;
+  }
+  if (result.duplicate) {
+    res.status(409).json({ error: "يوجد بند ممثل لمجموعة المصدر داخل هذه المجموعة" });
+    return;
+  }
+  if (result.invalidSource) {
+    res.status(400).json({ error: "مصدر المجموعة غير صالح أو غير قابل للمشاركة" });
     return;
   }
   activity = result.activity;
@@ -210,7 +242,6 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
     res.status(404).json({ error: "البند غير موجود" });
     return;
   }
-
   if (user?.role !== "admin") {
     const allowed = await checkGroupPermission(user?.userId, projectId, id);
     if (!allowed) {
@@ -288,6 +319,17 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   if (body.groupId !== undefined) {
     updateData.groupId = body.groupId === null ? null : body.groupId;
   }
+  if (existing.managedByGroupId != null) {
+    const groupChanged = body.groupId !== undefined
+      && (body.groupId === null ? null : Number(body.groupId)) !== existing.groupId;
+    if (changingSource || groupChanged) {
+      // Once detached, changing either side of the generated row's identity
+      // turns it into an ordinary individually linked activity. This prevents
+      // a later group reattach from claiming/moving that manually edited row.
+      updateData.managedByGroupId = null;
+      updateData.managedSourceProjectId = null;
+    }
+  }
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "لا توجد بيانات للتحديث" });
@@ -326,30 +368,87 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   }
 
   let activity: typeof activitiesTable.$inferSelect | undefined;
-  const result = await withSourceGraphLock(async () => {
+  const result = await withSourceGraphLock(async () => db.transaction(async tx => {
+    const [fresh] = await tx.select().from(activitiesTable)
+      .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
+    if (!fresh) return { invalidGroup: false, cycle: false, duplicate: false, managedLocked: false, invalidSource: false, changed: false, activity: undefined };
+    if (fresh.groupId !== existing.groupId || fresh.externalSourceGroupId !== existing.externalSourceGroupId
+        || fresh.managedByGroupId !== existing.managedByGroupId) {
+      return { invalidGroup: false, cycle: false, duplicate: false, managedLocked: false, invalidSource: false, changed: true, activity: undefined };
+    }
+    if (fresh.managedByGroupId != null) {
+      const [managedGroup] = await tx.select({ linkedProjectId: activityGroupsTable.linkedProjectId })
+        .from(activityGroupsTable).where(eq(activityGroupsTable.id, fresh.managedByGroupId));
+      if (managedGroup?.linkedProjectId != null
+          && ["name", "actualProgress", "plannedStartDate", "plannedEndDate", "externalSourceGroupId", "groupId", "status"]
+            .some(field => Object.prototype.hasOwnProperty.call(body, field))) {
+        return { invalidGroup: false, cycle: false, duplicate: false, managedLocked: true, invalidSource: false, changed: false, activity: undefined };
+      }
+    }
     // Group existence and the activity write must be serialized against
     // deleting an empty group, otherwise the write can leave an orphaned id.
     if (body.groupId !== undefined && body.groupId !== null) {
-      const [grp] = await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
+      const [grp] = await tx.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
         .where(and(eq(activityGroupsTable.id, body.groupId), eq(activityGroupsTable.projectId, projectId)));
-      if (!grp) return { invalidGroup: true, cycle: false, activity: undefined };
+      if (!grp) return { invalidGroup: true, cycle: false, duplicate: false, managedLocked: false, invalidSource: false, changed: false, activity: undefined };
     }
-    if (changingSource && finalExternalGroupId != null
-        && await wouldCreateSourceCycle(projectId, externalSummary!.projectId)) {
-      return { invalidGroup: false, cycle: true, activity: undefined };
+    let currentSummary: Awaited<ReturnType<typeof getGroupSummary>> = null;
+    if (finalExternalGroupId != null) {
+      currentSummary = await getGroupSummary(finalExternalGroupId);
+      if (changingSource && (!currentSummary || !currentSummary.linkCode)) {
+        return { invalidGroup: false, cycle: false, duplicate: false, managedLocked: false, invalidSource: true, changed: false, activity: undefined };
+      }
+      if (currentSummary && currentSummary.projectId === projectId) {
+        return { invalidGroup: false, cycle: false, duplicate: false, managedLocked: false, invalidSource: true, changed: false, activity: undefined };
+      }
+      if (changingSource && currentSummary && !(await canReadProject(user?.userId, currentSummary.projectId))) {
+        return { invalidGroup: false, cycle: false, duplicate: false, managedLocked: false, invalidSource: true, changed: false, activity: undefined };
+      }
     }
-    const [updated] = await db.update(activitiesTable)
+    const effectiveGroupId = body.groupId !== undefined ? body.groupId : fresh.groupId;
+    if (changingSource && finalExternalGroupId != null && currentSummary
+        && await wouldCreateSourceCycle(projectId, currentSummary.projectId)) {
+      return { invalidGroup: false, cycle: true, duplicate: false, managedLocked: false, invalidSource: false, changed: false, activity: undefined };
+    }
+    if ((body.groupId !== undefined || body.externalSourceGroupId !== undefined)
+        && effectiveGroupId != null && finalExternalGroupId != null
+        && await hasLinkedGroupSourceDuplicate(tx, Number(effectiveGroupId), finalExternalGroupId, id)) {
+      return { invalidGroup: false, cycle: false, duplicate: true, managedLocked: false, invalidSource: false, changed: false, activity: undefined };
+    }
+    if (currentSummary) {
+      externalSummary = currentSummary;
+      updateData.actualProgress = currentSummary.actualProgress;
+      updateData.plannedStartDate = currentSummary.plannedStartDate;
+      updateData.plannedEndDate = currentSummary.plannedEndDate;
+    }
+    const [updated] = await tx.update(activitiesTable)
       .set(updateData)
       .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))
       .returning();
-    return { invalidGroup: false, cycle: false, activity: updated };
-  });
+    return { invalidGroup: false, cycle: false, duplicate: false, managedLocked: false, invalidSource: false, changed: false, activity: updated };
+  }));
   if (result.invalidGroup) {
     res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
     return;
   }
   if (result.cycle) {
     res.status(400).json({ error: "هذا الربط ينشئ اعتمادًا دائريًا بين المشاريع" });
+    return;
+  }
+  if (result.duplicate) {
+    res.status(409).json({ error: "يوجد بند ممثل لمجموعة المصدر داخل هذه المجموعة" });
+    return;
+  }
+  if (result.managedLocked) {
+    res.status(409).json({ error: "هذا البند مُدار من مشروع جانبي؛ يمكن تعديل الوزن والترتيب المحليين فقط" });
+    return;
+  }
+  if (result.invalidSource) {
+    res.status(400).json({ error: "مصدر المجموعة غير صالح أو غير قابل للمشاركة" });
+    return;
+  }
+  if (result.changed) {
+    res.status(409).json({ error: "تم تعديل البند بالتزامن؛ أعد تحميله ثم حاول مجددًا" });
     return;
   }
   activity = result.activity;
@@ -518,23 +617,38 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
   const id = parseInt(rawId, 10);
   const user = (req as any).user;
 
-  if (user?.role !== "admin") {
-    const allowed = await checkGroupPermission(user?.userId, projectId, id);
-    if (!allowed) {
-      res.status(403).json({ error: "ليس لديك صلاحية حذف هذا البند" });
-      return;
+  const deletion = await withSourceGraphLock(async () => db.transaction(async tx => {
+    const [activity] = await tx.select().from(activitiesTable)
+      .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
+    if (!activity) return { kind: "not_found" as const };
+    if (user?.role !== "admin" && !(await checkGroupPermission(user?.userId, projectId, id))) {
+      return { kind: "forbidden" as const };
     }
-  }
-
-  const [activity] = await db.select().from(activitiesTable)
-    .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
-  if (!activity) {
+    if (activity.managedByGroupId != null) {
+      const [managedGroup] = await tx.select({ linkedProjectId: activityGroupsTable.linkedProjectId })
+        .from(activityGroupsTable).where(eq(activityGroupsTable.id, activity.managedByGroupId));
+      const source = activity.externalSourceGroupId == null
+        ? null
+        : await getGroupSummary(activity.externalSourceGroupId);
+      if (managedGroup?.linkedProjectId != null && source) return { kind: "managed" as const };
+    }
+    await tx.delete(activitiesTable)
+      .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
+    return { kind: "deleted" as const, activity };
+  }));
+  if (deletion.kind === "not_found") {
     res.status(404).json({ error: "البند غير موجود" });
     return;
   }
-  await db.delete(activitiesTable)
-    .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))
-    .returning();
+  if (deletion.kind === "forbidden") {
+    res.status(403).json({ error: "ليس لديك صلاحية حذف هذا البند" });
+    return;
+  }
+  if (deletion.kind === "managed") {
+    res.status(409).json({ error: "لا يمكن حذف بند مُدار أثناء ارتباط المجموعة بمصدر متاح؛ افصل المجموعة أولاً" });
+    return;
+  }
+  const activity = deletion.activity;
 
   await syncProjectProgress(projectId);
   await recalcExpectedEndDate(projectId);
@@ -558,37 +672,66 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
     return;
   }
   const requestedGroupIds = [...new Set(items.map((item: any) => item.groupId).filter((id: unknown): id is number => id !== undefined && id !== null))];
-  const result = await withSourceGraphLock(async () => {
+  const result = await withSourceGraphLock(async () => db.transaction(async tx => {
+    const currentItems = await tx.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+    const currentById = new Map(currentItems.map(item => [item.id, item]));
     if (requestedGroupIds.length) {
-      const validGroups = await db.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
+      const validGroups = await tx.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
         .where(and(eq(activityGroupsTable.projectId, projectId)));
       const validIds = new Set(validGroups.map(group => group.id));
       if (requestedGroupIds.some(id => !validIds.has(Number(id)))) {
-        return { invalidGroup: true, sourceGroupIds: [] as number[] };
+        return { invalidGroup: true, managedLocked: false, duplicate: false, sourceGroupIds: [] as number[] };
       }
     }
-    const oldGroups = await db.select({ groupId: activitiesTable.groupId }).from(activitiesTable)
-      .where(eq(activitiesTable.projectId, projectId));
+    for (const item of items as any[]) {
+      const current = currentById.get(item.id);
+      if (!current || item.groupId === undefined || item.groupId === current.groupId) continue;
+      if (current.managedByGroupId != null) {
+        const [ownerGroup] = await tx.select({ linkedProjectId: activityGroupsTable.linkedProjectId })
+          .from(activityGroupsTable).where(eq(activityGroupsTable.id, current.managedByGroupId));
+        if (ownerGroup?.linkedProjectId != null) {
+          return { invalidGroup: false, managedLocked: true, duplicate: false, sourceGroupIds: [] as number[] };
+        }
+      }
+      if (item.groupId != null && current.externalSourceGroupId != null
+          && await hasLinkedGroupSourceDuplicate(tx, Number(item.groupId), current.externalSourceGroupId, current.id)) {
+        return { invalidGroup: false, managedLocked: false, duplicate: true, sourceGroupIds: [] as number[] };
+      }
+    }
+    const oldGroups = currentItems.map(activity => ({ groupId: activity.groupId }));
     // Run all updates in parallel inside one transaction. Previously
     // each row was awaited serially → reordering 50 items took 50 round
     // trips. Now it's a single batched commit.
-    await db.transaction(async (tx) => {
-      await Promise.all(items.map((item: any) => {
-        const updateData: Record<string, unknown> = { sortOrder: item.sortOrder };
-        if (item.groupId !== undefined) updateData.groupId = item.groupId === null ? null : item.groupId;
-        return tx.update(activitiesTable)
-          .set(updateData)
-          .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
-      }));
-    });
-    const sourceGroups = await db.select({ groupId: activitiesTable.groupId }).from(activitiesTable)
+    await Promise.all(items.map((item: any) => {
+      const updateData: Record<string, unknown> = { sortOrder: item.sortOrder };
+      if (item.groupId !== undefined) {
+        updateData.groupId = item.groupId === null ? null : item.groupId;
+        const current = currentById.get(item.id);
+        if (current?.managedByGroupId != null && item.groupId !== current.groupId) {
+          updateData.managedByGroupId = null;
+          updateData.managedSourceProjectId = null;
+        }
+      }
+      return tx.update(activitiesTable)
+        .set(updateData)
+        .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
+    }));
+    const sourceGroups = await tx.select({ groupId: activitiesTable.groupId }).from(activitiesTable)
       .where(eq(activitiesTable.projectId, projectId));
     const sourceGroupIds = [...new Set([...oldGroups, ...sourceGroups]
       .map(a => a.groupId).filter((groupId): groupId is number => groupId != null))];
-    return { invalidGroup: false, sourceGroupIds };
-  });
+    return { invalidGroup: false, managedLocked: false, duplicate: false, sourceGroupIds };
+  }));
   if (result.invalidGroup) {
     res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
+    return;
+  }
+  if (result.managedLocked) {
+    res.status(409).json({ error: "لا يمكن نقل بند مُدار أثناء ارتباط المجموعة بمصدر متاح" });
+    return;
+  }
+  if (result.duplicate) {
+    res.status(409).json({ error: "يوجد بند ممثل لمجموعة المصدر داخل هذه المجموعة" });
     return;
   }
   // Keep propagation outside the graph lock; refreshLinkedSources acquires it

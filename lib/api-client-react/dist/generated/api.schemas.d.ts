@@ -21,6 +21,24 @@ export declare const ActivityStatus: {
     readonly completed: "completed";
     readonly delayed: "delayed";
 };
+export interface ExternalSourceGroup {
+    available?: boolean;
+    groupId: number;
+    projectId?: number;
+    projectName?: string;
+    groupName?: string;
+    /** @nullable */
+    linkCode?: string | null;
+    actualProgress?: number;
+    /** @nullable */
+    plannedStartDate?: string | null;
+    /** @nullable */
+    plannedEndDate?: string | null;
+}
+export type ActivityExternalSource = ExternalSourceGroup | {
+    available: boolean;
+    groupId: number;
+};
 export interface Activity {
     id: number;
     projectId: number;
@@ -41,6 +59,9 @@ export interface Activity {
     sortOrder: number;
     /** @nullable */
     groupId?: number | null;
+    /** @nullable */
+    externalSourceGroupId?: number | null;
+    externalSource?: ActivityExternalSource;
     createdAt: string;
 }
 export interface ImportActivitiesResponse {
@@ -326,6 +347,27 @@ export interface UpdateProjectBody {
     reportSignatures?: ReportSignature[] | null;
     reportDisplayMode?: UpdateProjectBodyReportDisplayMode;
 }
+export interface ActivityGroup {
+    id: number;
+    projectId: number;
+    name: string;
+    color: string;
+    sortOrder: number;
+    /** @nullable */
+    linkCode: string | null;
+}
+export interface CreateActivityGroupBody {
+    name: string;
+    color?: string;
+    /** @nullable */
+    linkCode?: string | null;
+}
+export interface UpdateActivityGroupBody {
+    name?: string;
+    color?: string;
+    /** @nullable */
+    linkCode?: string | null;
+}
 export type CreateActivityBodyStatus = (typeof CreateActivityBodyStatus)[keyof typeof CreateActivityBodyStatus];
 export declare const CreateActivityBodyStatus: {
     readonly not_started: "not_started";
@@ -350,6 +392,8 @@ export interface CreateActivityBody {
     sortOrder?: number;
     /** @nullable */
     groupId?: number | null;
+    /** @nullable */
+    externalSourceGroupId?: number | null;
 }
 /**
  * @nullable
@@ -384,6 +428,8 @@ export interface UpdateActivityBody {
     sortOrder?: number | null;
     /** @nullable */
     groupId?: number | null;
+    /** @nullable */
+    externalSourceGroupId?: number | null;
 }
 export type ReportType = (typeof ReportType)[keyof typeof ReportType];
 export declare const ReportType: {
@@ -1001,6 +1047,9 @@ export type ListProjectsParams = {
      * @nullable
      */
     search?: string | null;
+};
+export type SearchActivityGroupSourcesParams = {
+    query: string;
 };
 export type ImportActivitiesBody = {
     file: Blob;
