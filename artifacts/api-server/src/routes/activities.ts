@@ -60,6 +60,44 @@ async function syncProjectProgress(projectId: number) {
     .where(eq(projectsTable.id, projectId));
 }
 
+async function serializeActivityForUser(
+  activity: typeof activitiesTable.$inferSelect,
+  userId: number | undefined,
+) {
+  const source = activity.externalSourceGroupId == null
+    ? null
+    : await getGroupSummary(activity.externalSourceGroupId);
+  const sourceProjectId = source?.projectId ?? activity.managedSourceProjectId ?? undefined;
+  const canReadSource = sourceProjectId !== undefined && userId !== undefined
+    && await canReadProject(userId, sourceProjectId);
+  if (activity.externalSourceGroupId == null) {
+    if (canReadSource || activity.managedSourceProjectId == null) return activity;
+    const { managedSourceProjectId: _sourceProjectId, ...safeActivity } = activity;
+    return safeActivity;
+  }
+  if (canReadSource) {
+    return {
+      ...activity,
+      externalSource: sourceIsAvailable(source)
+        ? { available: true, ...source }
+        : { available: false },
+    };
+  }
+  const { externalSourceGroupId: _sourceGroupId, managedSourceProjectId: _sourceProjectId, ...safeActivity } = activity;
+  return {
+    ...safeActivity,
+    externalSource: {
+      available: sourceIsAvailable(source),
+      ...(source ? {
+        groupName: source.groupName,
+        actualProgress: source.actualProgress,
+        plannedStartDate: source.plannedStartDate,
+        plannedEndDate: source.plannedEndDate,
+      } : {}),
+    },
+  };
+}
+
 router.get("/projects/:projectId/activities", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
@@ -68,20 +106,9 @@ router.get("/projects/:projectId/activities", requireProjectAccess("projectId"),
     .where(eq(activitiesTable.projectId, projectId))
     .orderBy(activitiesTable.sortOrder, activitiesTable.id);
 
-  const response = await Promise.all(activities.map(async activity => {
-    if (activity.externalSourceGroupId == null) return activity;
-    const source = await getGroupSummary(activity.externalSourceGroupId);
-    const canReadSource = source && await canReadProject((req as any).user?.userId, source.projectId);
-    return canReadSource ? {
-      ...activity,
-      externalSource: sourceIsAvailable(source)
-        ? { available: true, ...source }
-        : { available: false, groupId: activity.externalSourceGroupId },
-    } : {
-      ...activity,
-      externalSource: { available: false, groupId: activity.externalSourceGroupId },
-    };
-  }));
+  const response = await Promise.all(activities.map(activity =>
+    serializeActivityForUser(activity, req.user?.userId),
+  ));
   res.json(response);
 });
 
@@ -227,7 +254,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "create", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId });
 
-  res.status(201).json(activity);
+  res.status(201).json(await serializeActivityForUser(activity, req.user?.userId));
 });
 
 router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
@@ -470,7 +497,7 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "update", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId, details: updateData });
 
-  res.json(activity);
+  res.json(await serializeActivityForUser(activity, req.user?.userId));
 });
 
 router.post("/projects/:projectId/activities/import", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), upload.single("file"), async (req, res): Promise<void> => {

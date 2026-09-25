@@ -230,15 +230,15 @@ export declare const projectSuspensionsTable: import("drizzle-orm/pg-core").PgTa
 export declare const insertProjectSuspensionSchema: z.ZodObject<{
     startDate: z.ZodString;
     projectId: z.ZodInt;
+    reason: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    documentRef: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    approvedBy: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    notes: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     type: z.ZodEnum<{
         official_holiday: "official_holiday";
         force_majeure: "force_majeure";
         contractor_delay: "contractor_delay";
     }>;
-    reason: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    documentRef: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    approvedBy: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    notes: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     title: z.ZodString;
     endDate: z.ZodString;
     calendarDays: z.ZodInt;

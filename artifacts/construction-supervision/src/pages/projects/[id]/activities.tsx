@@ -88,12 +88,12 @@ interface ActivityGroup {
   color: string;
   sortOrder: number;
   linkCode?: string | null;
-  linkedProjectId?: number | null;
+  linkedProjectActive?: boolean;
 }
 
 interface ExternalSource {
   available: boolean;
-  groupId: number;
+  groupId?: number;
   projectId?: number;
   projectName?: string;
   groupName?: string;
@@ -243,11 +243,11 @@ function isActivityDelayed(a: Activity): boolean {
 
 function isActivelyManagedActivity(
   activity: Activity,
-  groups: { id: number; linkedProjectId?: number | null }[],
+  groups: { id: number; linkedProjectActive?: boolean }[],
 ): boolean {
   const managedByGroupId = (activity as Activity & { managedByGroupId?: number | null }).managedByGroupId;
   return managedByGroupId != null
-    && groups.some((group) => group.id === managedByGroupId && group.linkedProjectId != null);
+    && groups.some((group) => group.id === managedByGroupId && group.linkedProjectActive === true);
 }
 
 function DelayBadge({ info }: { info: DelayInfo }) {
@@ -392,6 +392,7 @@ export default function ProjectActivities() {
   const [selectedSource, setSelectedSource] = useState<SourceSelection | null>(null);
   const [sourceTouched, setSourceTouched] = useState(false);
   const [sourceUnlinkRequested, setSourceUnlinkRequested] = useState(false);
+  const [editingRedactedSource, setEditingRedactedSource] = useState(false);
   const [sourceSearchTerm, setSourceSearchTerm] = useState("");
   const [sourceSearchResults, setSourceSearchResults] = useState<GroupSearchResult[]>([]);
   const [sourceSearchLoading, setSourceSearchLoading] = useState(false);
@@ -404,14 +405,14 @@ export default function ProjectActivities() {
   const [groupFilter, setGroupFilter] = useState<"all" | "ungrouped" | number>("all");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
-  const { data: activities, isLoading } = useListActivities(projectId, { query: { enabled: !!projectId } });
+  const { data: activities, isLoading, isError: activitiesError, refetch: refetchActivities } = useListActivities(projectId, { query: { enabled: !!projectId } });
 
   const groupsQueryKey = [`/api/projects/${projectId}/activity-groups`];
-  const { data: groups = [] } = useQuery<ActivityGroup[]>({
+  const { data: groups = [], isLoading: groupsLoading, isError: groupsError, refetch: refetchGroups } = useQuery<ActivityGroup[]>({
     queryKey: groupsQueryKey,
     queryFn: async () => {
       const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups`);
-      if (!r.ok) return [];
+      if (!r.ok) throw new Error("تعذر تحميل المجموعات");
       return r.json();
     },
     enabled: !!projectId,
@@ -704,6 +705,7 @@ export default function ProjectActivities() {
   const externalSourceId = selectedSource?.groupId ?? null;
 
   const resetExternalSource = () => {
+    setEditingRedactedSource(false);
     setSourceCode("");
     setSelectedSource(null);
     setSourceTouched(false);
@@ -812,10 +814,12 @@ export default function ProjectActivities() {
     setEditingId(a.id);
     setEditingManagedRow(isActivelyManagedActivity(a, groups));
     const linked = a as Activity & { externalSourceGroupId?: number | null; externalSource?: ExternalSource | null };
-    if (linked.externalSourceGroupId != null) {
-      const source = linked.externalSource ?? { available: false, groupId: linked.externalSourceGroupId };
+    setEditingRedactedSource(linked.externalSource != null && linked.externalSourceGroupId == null);
+    if (linked.externalSourceGroupId != null || linked.externalSource != null) {
+      const source: SourceSelection = linked.externalSource ?? { available: false, groupId: linked.externalSourceGroupId ?? undefined };
       setSelectedSource(source);
-      setSourceCode(source.linkCode ?? "");
+      // A redacted source supplies display-only metadata, never a usable source ID or code.
+      setSourceCode(linked.externalSourceGroupId != null ? source.linkCode ?? "" : "");
       setSourceTouched(false);
       setSourceUnlinkRequested(false);
       setSourceSearchTerm("");
@@ -952,7 +956,7 @@ export default function ProjectActivities() {
         actualEndDate: values.actualEndDate || null,
         ...(sourceTouched || !editingId ? { externalSourceGroupId: sourceUnlinkRequested ? null : externalSourceId } : {}),
       };
-      if (externalSourceId != null && isLinkedSource) {
+      if (isLinkedSource) {
         delete (payload as Partial<typeof payload>).plannedStartDate;
         delete (payload as Partial<typeof payload>).plannedEndDate;
         delete (payload as Partial<typeof payload>).actualProgress;
@@ -986,9 +990,9 @@ export default function ProjectActivities() {
   };
   const getLinkedSource = (activity: Activity) => {
     const linked = activity as Activity & { externalSourceGroupId?: number | null; externalSource?: ExternalSource | null };
-    return linked.externalSourceGroupId != null
-      ? linked.externalSource ?? { available: false, groupId: linked.externalSourceGroupId }
-      : null;
+    return linked.externalSource ?? (linked.externalSourceGroupId != null
+      ? { available: false, groupId: linked.externalSourceGroupId }
+      : null);
   };
 
   const allActivityRows = activities ?? [];
@@ -1070,18 +1074,26 @@ export default function ProjectActivities() {
   const progressDelta = Math.round((actualProgress - plannedProgress) * 10) / 10;
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
+    <div className="mx-auto w-full min-w-0 max-w-[1600px] space-y-5 overflow-x-clip sm:space-y-6">
       <div className="page-hero flex flex-wrap items-start gap-3">
         <Button variant="ghost" size="icon" className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
-          <h1 className="relative z-10 text-lg font-bold leading-tight text-white md:text-2xl">{project?.name}</h1>
+          <h1 className="relative z-10 break-words text-lg font-bold leading-tight text-white md:text-2xl">{project?.name}</h1>
           <p className="relative z-10 mt-1 text-sm text-white/65">الجدول الزمني</p>
         </div>
       </div>
 
       <ProjectNav projectId={projectId} />
+
+      {(activitiesError || groupsError) && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          تعذر تحميل {activitiesError && groupsError ? "البنود والمجموعات" : groupsError ? "المجموعات" : "البنود"}. تحقق من الاتصال وأعد المحاولة.
+          <Button type="button" variant="outline" size="sm" className="min-h-10" onClick={() => { if (activitiesError) void refetchActivities(); if (groupsError) void refetchGroups(); }}>إعادة المحاولة</Button>
+        </div>
+      )}
+      {groupsLoading && <div className="h-16 animate-pulse rounded-xl bg-muted/50" aria-label="جارٍ تحميل المجموعات" />}
 
       <section aria-labelledby="activities-overview" className="space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -1096,7 +1108,7 @@ export default function ProjectActivities() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-5">
           {[
             { label: "إجمالي البنود", value: allActivityRows.length, note: `${groups.length} مجموعة`, icon: ListChecks, tone: "text-primary", dot: "bg-primary" },
             { label: "نسبة الإنجاز", value: `${actualProgress}%`, note: progressDelta >= 0 ? `+${progressDelta}% عن المخطط` : `${progressDelta}% عن المخطط`, icon: TrendingUp, tone: progressDelta < 0 ? "text-destructive" : "text-emerald-600", dot: progressDelta < 0 ? "bg-destructive" : "bg-emerald-500" },
@@ -1106,14 +1118,14 @@ export default function ProjectActivities() {
           ].map((stat) => {
             const Icon = stat.icon;
             return (
-              <Card key={stat.label} className="surface-card surface-card-hover overflow-hidden">
-                <CardContent className="relative p-4 sm:p-5">
+              <Card key={stat.label} className="surface-card surface-card-hover min-w-0 overflow-hidden">
+                <CardContent className="relative min-w-0 p-3 sm:p-5">
                   <div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-muted/40 ${stat.tone}`}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <p className="text-xs font-medium text-muted-foreground">{stat.label}</p>
                   <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{stat.value}</p>
-                  <p className="mt-1 truncate text-[11px] text-muted-foreground">{stat.note}</p>
+                  <p className="mt-1 break-words text-[11px] text-muted-foreground">{stat.note}</p>
                   <span className={`absolute left-0 top-0 h-1 w-full ${stat.dot}`} />
                 </CardContent>
               </Card>
@@ -1122,17 +1134,17 @@ export default function ProjectActivities() {
         </div>
       </section>
 
-      <Card className="surface-card surface-card-hover" dir="rtl">
-        <CardContent className="p-4 sm:p-5">
+      <Card className="surface-card surface-card-hover min-w-0" dir="rtl">
+        <CardContent className="min-w-0 p-3 sm:p-5">
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-muted/40 text-primary">
                   <SlidersHorizontal className="h-4 w-4" />
                 </span>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-semibold">مساحة العمل</p>
-                  <p className="text-xs text-muted-foreground">ابحث وفلتر البنود ثم اختر طريقة العرض المناسبة للمراجعة.</p>
+                  <p className="break-words text-xs text-muted-foreground">ابحث وفلتر البنود ثم اختر طريقة العرض المناسبة للمراجعة.</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1151,8 +1163,8 @@ export default function ProjectActivities() {
               </div>
             </div>
 
-            <div className="grid gap-5 xl:grid-cols-[minmax(260px,0.85fr)_minmax(0,2.15fr)]">
-              <div className="flex flex-col gap-3">
+            <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(260px,0.85fr)_minmax(0,2.15fr)]">
+              <div className="flex min-w-0 flex-col gap-3">
                 <div className="relative">
                   <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -1168,7 +1180,7 @@ export default function ProjectActivities() {
                     type="button"
                     size="sm"
                     variant={effectiveViewMode === "list" ? "default" : "ghost"}
-                    className="h-8 flex-1 gap-1.5 px-3 text-xs sm:flex-none"
+                    className="min-h-10 flex-1 gap-1.5 px-3 text-xs sm:flex-none"
                     disabled={isContractorBase}
                     onClick={() => setViewMode("list")}
                     title={isContractorBase ? "عرض القائمة غير متاح لهذا الدور" : "عرض القائمة"}
@@ -1179,7 +1191,7 @@ export default function ProjectActivities() {
                     type="button"
                     size="sm"
                     variant={effectiveViewMode === "gantt" ? "default" : "ghost"}
-                    className="h-8 flex-1 gap-1.5 px-3 text-xs sm:flex-none"
+                    className="min-h-10 flex-1 gap-1.5 px-3 text-xs sm:flex-none"
                     onClick={() => setViewMode("gantt")}
                   >
                     <GanttChart className="h-4 w-4" /> جانت
@@ -1199,7 +1211,7 @@ export default function ProjectActivities() {
                       size="sm"
                       variant={statusFilter === "all" ? "default" : "outline"}
                       aria-pressed={statusFilter === "all"}
-                      className="h-9 min-w-0 justify-center gap-1.5 px-2 text-xs"
+                      className="min-h-10 h-auto min-w-0 justify-center gap-1 px-1.5 py-1 text-[11px] sm:text-xs"
                       onClick={() => setStatusFilter("all")}
                     >
                       <ListChecks className="h-3.5 w-3.5" />
@@ -1216,7 +1228,7 @@ export default function ProjectActivities() {
                           size="sm"
                           variant={isSelected ? "default" : "outline"}
                           aria-pressed={isSelected}
-                          className={`h-9 min-w-0 justify-center gap-1.5 px-2 text-xs ${isSelected ? "" : option.cls}`}
+                          className={`min-h-10 h-auto min-w-0 justify-center gap-1 px-1.5 py-1 text-[11px] sm:text-xs ${isSelected ? "" : option.cls}`}
                           onClick={() => setStatusFilter(option.value)}
                         >
                           <Icon className="h-3.5 w-3.5" />
@@ -1233,32 +1245,32 @@ export default function ProjectActivities() {
                     <span className="text-xs font-semibold text-muted-foreground">فهرس المجموعات</span>
                     <span className="text-[11px] text-muted-foreground">{groups.length} مجموعات</span>
                   </div>
-                  <div className="flex flex-wrap gap-2" role="group" aria-label="فهرس مجموعات بنود الأعمال">
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap" role="group" aria-label="فهرس مجموعات بنود الأعمال">
                     <Button
                       type="button"
                       size="sm"
                       variant={groupFilter === "all" ? "default" : "outline"}
                       aria-pressed={groupFilter === "all"}
-                      className="h-9 min-w-0 justify-center gap-1.5 px-2 text-xs"
+                      className="min-h-10 min-w-0 justify-center gap-1.5 px-2 text-xs"
                       onClick={() => setGroupFilter("all")}
                     >
                       كل المجموعات
                       <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{allActivityRows.length}</span>
                     </Button>
-                    {groups.slice().sort((a, b) => a.sortOrder - b.sortOrder).map((group) => {
+                    {!groupsError && groups.slice().sort((a, b) => a.sortOrder - b.sortOrder).map((group) => {
                       const isSelected = groupFilter === group.id;
                       return (
-                        <div key={group.id} className="inline-flex items-center">
+                        <div key={group.id} className="flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-muted/20 p-2 sm:flex-row sm:flex-wrap sm:items-center">
                           <Button
                             type="button"
                             size="sm"
                             variant={isSelected ? "default" : "outline"}
                             aria-pressed={isSelected}
-                            className="h-9 min-w-0 justify-center gap-1.5 rounded-e-none px-2 text-xs"
+                            className="min-h-10 min-w-0 max-w-full justify-start gap-1.5 px-2 text-xs"
                             onClick={() => setGroupFilter(group.id)}
                           >
                             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: group.color }} />
-                            <span className="max-w-[12rem] truncate">{group.name}</span>
+                            <span className="min-w-0 max-w-[12rem] truncate">{group.name}</span>
                             <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{groupCounts.counts.get(group.id) ?? 0}</span>
                           </Button>
                           {!isViewer && !isContractorBase && (
@@ -1272,10 +1284,10 @@ export default function ProjectActivities() {
                                   invalidate();
                                 }}
                               />
-                              <Button type="button" size="icon" variant="outline" className="h-9 w-8 rounded-none border-r-0" title={`تعديل مجموعة ${group.name}`} aria-label={`تعديل مجموعة ${group.name}`} onClick={() => openEditGroupDialog(group)}>
+                              <Button type="button" size="icon" variant="outline" className="h-10 w-10 shrink-0" title={`تعديل مجموعة ${group.name}`} aria-label={`تعديل مجموعة ${group.name}`} onClick={() => openEditGroupDialog(group)}>
                                 <Edit2 className="h-3.5 w-3.5" />
                               </Button>
-                              <Button type="button" size="icon" variant="outline" className="h-9 w-8 rounded-s-none border-r-0" title={`حذف مجموعة ${group.name}`} aria-label={`حذف مجموعة ${group.name}`} onClick={() => setDeletingGroup(group)}>
+                              <Button type="button" size="icon" variant="outline" className="h-10 w-10 shrink-0" title={`حذف مجموعة ${group.name}`} aria-label={`حذف مجموعة ${group.name}`} onClick={() => setDeletingGroup(group)}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </>
@@ -1322,7 +1334,7 @@ export default function ProjectActivities() {
             t === "official_holiday" ? "عطلة رسمية" : t === "force_majeure" ? "ظرف قاهر" : "توقف مقاول";
 
           return (
-            <Card className="surface-card surface-card-hover">
+            <Card className="surface-card surface-card-hover min-w-0">
               <CardHeader className="pb-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <CardTitle className="text-base">مخطط Gantt - الجدول الزمني</CardTitle>
@@ -1365,8 +1377,8 @@ export default function ProjectActivities() {
                 </div>
               </CardHeader>
 
-              <CardContent className="pt-0">
-                <div className="overflow-x-auto">
+              <CardContent className="min-w-0 px-3 pt-0 sm:px-6">
+                <div className="w-full max-w-full overflow-x-auto overscroll-x-contain" role="region" aria-label="المخطط الزمني قابل للتمرير أفقياً" tabIndex={0}>
                   <div style={{ minWidth: 640 }}>
 
                     {/* ── Date tick header ── */}
@@ -1611,12 +1623,12 @@ export default function ProjectActivities() {
         })()}
 
         {!isContractorBase && effectiveViewMode === "gantt" && (
-        <Card className="surface-card surface-card-hover">
+        <Card className="surface-card surface-card-hover min-w-0">
           <CardHeader>
             <CardTitle className="text-base">الإنجاز المخطط مقابل الفعلي</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="h-[260px]">
+          <CardContent className="min-w-0 px-3 sm:px-6">
+            <div className="h-[260px] min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={ganttData} margin={{ top: 10, right: 20, left: 0, bottom: 50 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -1636,7 +1648,7 @@ export default function ProjectActivities() {
         )}
 
         {effectiveViewMode === "list" && !isContractorBase && (
-        <Card className="surface-card surface-card-hover">
+        <Card className="surface-card surface-card-hover min-w-0">
           <CardHeader className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -1646,12 +1658,12 @@ export default function ProjectActivities() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
             {!isViewer && (
-              <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm" onClick={openNewGroupDialog}>
-                <FolderPlus className="h-4 w-4" /> <span className="hidden sm:inline">مجموعة جديدة</span>
+              <Button size="sm" variant="outline" className="min-h-10 gap-1.5 text-xs sm:text-sm" onClick={openNewGroupDialog}>
+                <FolderPlus className="h-4 w-4" /> مجموعة جديدة
               </Button>
             )}
-            <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm" onClick={exportActivities} disabled={!activities || activities.length === 0}>
-              <Download className="h-4 w-4" /> <span className="hidden xs:inline">تصدير</span> <span className="hidden sm:inline">Excel</span>
+            <Button size="sm" variant="outline" className="min-h-10 gap-1.5 text-xs sm:text-sm" onClick={exportActivities} disabled={!activities || activities.length === 0}>
+              <Download className="h-4 w-4" /> تصدير <span className="hidden sm:inline">Excel</span>
             </Button>
             {!isViewer && (
             <Dialog open={isImportOpen} onOpenChange={(open) => {
@@ -1659,11 +1671,11 @@ export default function ProjectActivities() {
               if (!open) setImportFile(null);
             }}>
               <DialogTrigger asChild>
-                <Button size="sm" variant="outline" className="gap-1.5 text-xs sm:text-sm">
-                  <Upload className="h-4 w-4" /> <span className="hidden xs:inline">استيراد</span> <span className="hidden sm:inline">Excel</span>
+                <Button size="sm" variant="outline" className="min-h-10 gap-1.5 text-xs sm:text-sm">
+                  <Upload className="h-4 w-4" /> استيراد <span className="hidden sm:inline">Excel</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden" dir="rtl">
+              <DialogContent className="w-[calc(100vw-1.5rem)] min-w-0 sm:max-w-[550px] p-0 overflow-y-auto" dir="rtl">
                 <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
                   <DialogHeader>
                     <DialogTitle className="text-xl">استيراد بنود من ملف Excel</DialogTitle>
@@ -1672,8 +1684,8 @@ export default function ProjectActivities() {
                     </p>
                   </DialogHeader>
                 </div>
-                <div className="p-6 pt-4 space-y-6">
-                  <div className="rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors p-8 text-center">
+                <div className="min-w-0 p-4 pt-4 space-y-6 sm:p-6">
+                  <div className="min-w-0 rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors p-4 text-center sm:p-8">
                     <FileSpreadsheet className="h-12 w-12 mx-auto text-primary/60 mb-4" />
                     <p className="text-sm font-medium text-foreground/90 mb-2">
                       اسحب وأفلت ملف Excel هنا، أو انقر للاختيار
@@ -1682,7 +1694,7 @@ export default function ProjectActivities() {
                       type="file"
                       accept=".xlsx,.xls"
                       onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                      className="block w-full max-w-xs mx-auto text-sm text-muted-foreground file:me-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer transition-all"
+                      className="block min-w-0 w-full max-w-xs mx-auto text-sm text-muted-foreground file:me-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer transition-all"
                     />
                     {importFile && (
                       <div className="mt-4 p-3 bg-background rounded-xl border border-emerald-500/30 inline-block shadow-sm">
@@ -1706,7 +1718,7 @@ export default function ProjectActivities() {
                       <Download className="h-4 w-4" /> تحميل ملف عينة للتأكد من التنسيق
                     </Button>
                   </div>
-                  <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+                  <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
                     <Button variant="outline" className="w-full sm:w-auto" onClick={() => { setIsImportOpen(false); setImportFile(null); }}>
                       إلغاء
                     </Button>
@@ -1724,11 +1736,11 @@ export default function ProjectActivities() {
               if (!open) { form.reset(); setEditingId(null); setEditingManagedRow(false); resetExternalSource(); }
             }}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5 text-xs sm:text-sm mr-auto" onClick={() => { setEditingId(null); setEditingManagedRow(false); resetExternalSource(); }}>
+                <Button size="sm" className="min-h-10 gap-1.5 text-xs sm:text-sm mr-auto" onClick={() => { setEditingId(null); setEditingManagedRow(false); resetExternalSource(); }}>
                   <Plus className="h-4 w-4" /> إضافة بند
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden max-h-[90vh]" dir="rtl">
+              <DialogContent className="w-[calc(100vw-1.5rem)] min-w-0 sm:max-w-[700px] p-0 overflow-hidden max-h-[90dvh]" dir="rtl">
                 <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
                   <DialogHeader>
                     <div className="flex items-center gap-3">
@@ -1747,9 +1759,9 @@ export default function ProjectActivities() {
                   </DialogHeader>
                 </div>
                 
-                <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+                <div className="min-w-0 overflow-y-auto max-h-[calc(90dvh-140px)]">
                   <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 pt-4 space-y-6">
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="min-w-0 p-4 pt-4 space-y-6 sm:p-6">
                       {editingManagedRow && (
                         <div className="space-y-4">
                           <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
@@ -1762,7 +1774,7 @@ export default function ProjectActivities() {
                             )}
                             {selectedSource?.available && (
                               <p className="mt-1 text-xs text-muted-foreground">
-                                المصدر: {selectedSource.groupName} · {selectedSource.projectName}
+                                المصدر: {selectedSource.groupName ?? "مجموعة مرتبطة"}{!editingRedactedSource && selectedSource.projectName ? ` · ${selectedSource.projectName}` : ""}
                               </p>
                             )}
                           </div>
@@ -1796,6 +1808,39 @@ export default function ProjectActivities() {
                       </div>
 
                       <div className="p-5 rounded-2xl border bg-muted/20 shadow-sm space-y-3">
+                        {editingRedactedSource ? (
+                          <div className="space-y-3">
+                            <p className="text-sm font-semibold">مصدر إنجاز مرتبط</p>
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              {sourceUnlinkRequested
+                                ? "سيُلغى ربط المصدر عند حفظ البند، ويمكنك تعديل الإنجاز والتواريخ بعد ذلك."
+                                : "مصدر هذا البند مرتبط، لكن بيانات الوصول إلى المجموعة المصدر غير متاحة لك. سيبقى الربط قائماً عند حفظ التعديلات دون عرض رمز أو اسم المشروع المصدر."}
+                            </p>
+                            {!sourceUnlinkRequested && selectedSource?.groupName && (
+                              <p className="break-words text-xs text-muted-foreground">المجموعة: {selectedSource.groupName}</p>
+                            )}
+                            {!sourceUnlinkRequested && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="min-h-11"
+                                onClick={() => {
+                                  setSelectedSource(null);
+                                  setSourceCode("");
+                                  setSourceTouched(true);
+                                  setSourceUnlinkRequested(true);
+                                  setSourceSearchTerm("");
+                                  setSourceSearchResults([]);
+                                  setSourceSearchResolvedTerm("");
+                                  setSourceSearchError("");
+                                }}
+                              >
+                                إلغاء ربط المصدر عند الحفظ
+                              </Button>
+                            )}
+                          </div>
+                        ) : (
+                        <>
                         <div>
                           <label className="text-sm font-semibold mb-1 block text-foreground/90">رمز مصدر الإنجاز (اختياري)</label>
                           <p className="text-xs text-muted-foreground mb-2">أدخل رمز مجموعة من مشروع آخر لربط الإنجاز والتواريخ المخططة بها.</p>
@@ -1899,6 +1944,8 @@ export default function ProjectActivities() {
                         {sourceUnlinkRequested && (
                           <p className="text-xs text-muted-foreground">سيُلغى ربط المصدر عند حفظ البند.</p>
                         )}
+                        </>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-muted/20 shadow-sm">
@@ -1979,7 +2026,7 @@ export default function ProjectActivities() {
                       </div>
                       </div>
 
-                      <div className="flex justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+                      <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
                         <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
                         <Button type="submit" className="w-full sm:w-auto shadow-md" disabled={form.formState.isSubmitting}>
                           {form.formState.isSubmitting ? "جاري الحفظ..." : editingId ? "حفظ تعديلات البند" : "تأكيد إضافة البند"}
@@ -1995,7 +2042,7 @@ export default function ProjectActivities() {
           </CardHeader>
 
           {/* Desktop Table */}
-          <CardContent className="p-0 overflow-x-auto hidden md:block">
+          <CardContent className="min-w-0 max-w-full p-0 overflow-x-auto overscroll-x-contain hidden md:block" role="region" aria-label="جدول بنود الأعمال قابل للتمرير أفقياً" tabIndex={0}>
             {(() => {
               const allActs = activityRows;
               const groupMap = new Map<number | "ungrouped", (Activity & { groupId?: number | null })[]>();
@@ -2035,8 +2082,8 @@ export default function ProjectActivities() {
                             <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px]">
                               <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">مرتبط</Badge>
                               {source.available ? (
-                                <span className="truncate text-muted-foreground" title={`${source.groupName ?? ""} · ${source.projectName ?? ""}`}>
-                                  {source.groupName} · {source.projectName}
+                                <span className="truncate text-muted-foreground" title={source.groupName ?? "مصدر مرتبط"}>
+                                  {source.groupName ?? "مصدر مرتبط"}{(a as Activity & { externalSourceGroupId?: number | null }).externalSourceGroupId != null && source.projectName ? ` · ${source.projectName}` : ""}
                                 </span>
                               ) : (
                                 <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
@@ -2155,7 +2202,7 @@ export default function ProjectActivities() {
 
               return (
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <Table className="min-w-[720px]">
+                  <Table className="min-w-[1000px]">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="text-right w-[220px]">البند</TableHead>
@@ -2277,7 +2324,7 @@ export default function ProjectActivities() {
           </CardContent>
 
           {/* Mobile Card View */}
-          <CardContent className="md:hidden space-y-3 px-3">
+          <CardContent className="min-w-0 md:hidden space-y-3 px-3">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
@@ -2307,9 +2354,9 @@ export default function ProjectActivities() {
                 const managed = isActivelyManagedActivity(a, groups);
                 const source = getLinkedSource(a);
                 return (
-                  <div key={a.id} className={`rounded-lg border p-3 space-y-2.5 ${isBusy ? "opacity-60 pointer-events-none" : ""}`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-sm font-medium leading-tight flex-1">
+                  <div key={a.id} className={`min-w-0 rounded-lg border p-3 space-y-2.5 ${isBusy ? "opacity-60 pointer-events-none" : ""}`}>
+                    <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                      <span className="min-w-0 flex-1 break-words text-sm font-medium leading-tight">
                         {a.name}
                         {managed && (
                           <span className="mt-1 block">
@@ -2317,18 +2364,18 @@ export default function ProjectActivities() {
                           </span>
                         )}
                         {source && (
-                          <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+                          <span className="mt-1 block break-words text-[10px] font-normal text-muted-foreground">
                             <Badge variant="secondary" className="me-1 h-4 px-1.5 text-[9px]">مرتبط</Badge>
                             {source.available
-                              ? `${source.groupName ?? ""} · ${source.projectName ?? ""}`
+                              ? `${source.groupName ?? "مصدر مرتبط"}${(a as Activity & { externalSourceGroupId?: number | null }).externalSourceGroupId != null && source.projectName ? ` · ${source.projectName}` : ""}`
                               : <span className="text-amber-700 dark:text-amber-400">المصدر غير متاح؛ القيم المحفوظة باقية</span>}
                           </span>
                         )}
                       </span>
                       <StatusBadge status={a.status} />
                     </div>
-                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                      <span className="tabular-nums">{fmtDate(a.plannedStartDate)} → {fmtDate(a.plannedEndDate)}</span>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span className="tabular-nums break-words">{fmtDate(a.plannedStartDate)} → {fmtDate(a.plannedEndDate)}</span>
                       <DelayBadge info={delayInfo} />
                     </div>
                     <div className="space-y-1">
@@ -2342,18 +2389,18 @@ export default function ProjectActivities() {
                       <ProgressBar value={a.actualProgress} color="hsl(var(--primary))" />
                     </div>
                     {editable ? (
-                      <div className="flex items-center gap-1 pt-1 border-t">
-                        <div className="flex items-center gap-1 mr-auto">
-                          {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
+                      <div className="flex flex-wrap items-center gap-1 pt-1 border-t">
+                        <div className="flex flex-wrap items-center gap-1 mr-auto">
+                          {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="تخفيض الإنجاز 1%" aria-label="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
                             <span className="text-xs font-bold text-muted-foreground">-1</span>
                           </Button>}
-                          {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
+                          {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="رفع الإنجاز 1%" aria-label="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
                             <span className="text-xs font-bold text-primary">+1</span>
                           </Button>}
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
+                          <Button variant="ghost" size="icon" className="h-10 w-10" aria-label={`تعديل ${a.name}`} onClick={() => handleEdit(a)}>
                             <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(a.id)}>
+                          <Button variant="ghost" size="icon" className="h-10 w-10" aria-label={`حذف ${a.name}`} onClick={() => setDeletingId(a.id)}>
                             <Trash2 className="h-3.5 w-3.5 text-destructive" />
                           </Button>
                         </div>
@@ -2371,7 +2418,8 @@ export default function ProjectActivities() {
 
               return (
                 <>
-                  {visibleGroups.map((g, gi) => {
+                  {visibleGroups.map((g) => {
+                    const groupOrderIndex = sortedGroups.findIndex(x => x.id === g.id);
                     const groupActs = groupMap.get(g.id) ?? [];
                     const isCollapsed = collapsedGroups.has(g.id);
                     const groupProgress = (() => {
@@ -2385,9 +2433,10 @@ export default function ProjectActivities() {
                       return w > 0 ? Math.round((s / w) * 10) / 10 : 0;
                     })();
                     const moveGroup = (dir: -1 | 1) => {
-                      const newIdx = gi + dir;
+                      const currentIdx = sortedGroups.findIndex(x => x.id === g.id);
+                      const newIdx = currentIdx + dir;
                       if (newIdx < 0 || newIdx >= sortedGroups.length) return;
-                      const reordered = arrayMove([...sortedGroups], gi, newIdx);
+                      const reordered = arrayMove([...sortedGroups], currentIdx, newIdx);
                       reorderGroupsMutation.mutate(reordered.map(x => x.id));
                     };
                     return (
@@ -2398,28 +2447,32 @@ export default function ProjectActivities() {
                         >
                           <div className="flex flex-col gap-0.5">
                             <button
-                              className="p-0.5 rounded hover:bg-black/10 disabled:opacity-30"
-                              disabled={gi === 0}
+                              className="flex h-9 w-9 items-center justify-center rounded hover:bg-black/10 disabled:opacity-30"
+                              aria-label={`نقل مجموعة ${g.name} للأعلى`}
+                              disabled={isViewer || groupOrderIndex === 0 || reorderGroupsMutation.isPending}
                               onClick={() => moveGroup(-1)}
                             >
                               <ChevronDown className="h-3 w-3 rotate-180" />
                             </button>
                             <button
-                              className="p-0.5 rounded hover:bg-black/10 disabled:opacity-30"
-                              disabled={gi === sortedGroups.length - 1}
+                              className="flex h-9 w-9 items-center justify-center rounded hover:bg-black/10 disabled:opacity-30"
+                              aria-label={`نقل مجموعة ${g.name} للأسفل`}
+                              disabled={isViewer || groupOrderIndex === sortedGroups.length - 1 || reorderGroupsMutation.isPending}
                               onClick={() => moveGroup(1)}
                             >
                               <ChevronDown className="h-3 w-3" />
                             </button>
                           </div>
                           <button
-                            className="flex items-center gap-2 flex-1 min-w-0"
+                            className="flex min-h-11 items-center gap-1 flex-1 min-w-0"
+                            aria-expanded={!isCollapsed}
+                            aria-label={`عرض بنود مجموعة ${g.name}`}
                             onClick={() => toggleGroupCollapse(g.id)}
                           >
                             {isCollapsed ? <ChevronLeft className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                             <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                             <span className="font-semibold text-sm flex-1 text-right truncate">{g.name}</span>
-                            <span className="text-xs text-muted-foreground shrink-0">{groupActs.length} بند</span>
+                            <span className="hidden text-xs text-muted-foreground shrink-0 min-[390px]:inline">{groupActs.length} بند</span>
                             <span className="text-xs font-medium shrink-0">{groupProgress}%</span>
                           </button>
                         </div>
@@ -2466,7 +2519,7 @@ export default function ProjectActivities() {
         setIsGroupDialogOpen(open);
         if (!open) setEditingGroupId(null);
       }}>
-        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden" dir="rtl">
+        <DialogContent className="w-[calc(100vw-1.5rem)] min-w-0 sm:max-w-[500px] p-0 overflow-y-auto" dir="rtl">
           <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
             <DialogHeader>
               <DialogTitle className="text-xl">{editingGroupId ? "تعديل المجموعة" : "إضافة مجموعة جديدة"}</DialogTitle>
@@ -2475,7 +2528,7 @@ export default function ProjectActivities() {
               </p>
             </DialogHeader>
           </div>
-          <div className="p-6 pt-4 space-y-6">
+          <div className="min-w-0 p-4 pt-4 space-y-6 sm:p-6">
             <div className="p-5 rounded-2xl border bg-muted/20 shadow-sm space-y-5">
               <div>
                 <label className="text-sm font-semibold mb-2 block text-foreground/90">اسم المجموعة</label>
@@ -2508,7 +2561,7 @@ export default function ProjectActivities() {
                 <p className="mt-1 text-xs text-muted-foreground">يتيح هذا الرمز للمشاريع الأخرى ربط بنودها بهذه المجموعة.</p>
               </div>
             </div>
-            <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
               <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIsGroupDialogOpen(false)}>إلغاء</Button>
               <Button
                 className="w-full sm:w-auto shadow-md"

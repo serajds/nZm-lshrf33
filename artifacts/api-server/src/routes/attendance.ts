@@ -2,14 +2,13 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { db } from "@workspace/db";
 import { attendanceRecordsTable, projectsTable, usersTable, projectMembersTable, userCompaniesTable } from "@workspace/db";
 import { eq, and, desc, gte, lte, inArray, sql } from "drizzle-orm";
-import { requireAuth, requireProjectAccess } from "../middlewares/auth";
+import { requireAuth, requireProjectAccess, verifyAndMaybeRenewToken } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { haversineDistanceMeters } from "../lib/geo";
 import { logAudit } from "../lib/audit";
 import { pairAttendanceSessions, type AttendanceSession } from "../lib/attendance-sessions";
 import { uploadToCloud, streamFromCloud } from "../lib/fileStorage";
 import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
-import { verifyToken } from "../lib/auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -1085,7 +1084,7 @@ router.get("/attendance/records/:recordId/photo", async (req: Request, res: Resp
   })();
   const queryToken = typeof req.query.token === "string" ? req.query.token : null;
   const token = headerToken || queryToken;
-  const payload = token ? verifyToken(token) : null;
+  const payload = token ? await verifyAndMaybeRenewToken(token, res) : null;
   if (!payload) {
     res.status(401).json({ error: "غير مصرح" });
     return;

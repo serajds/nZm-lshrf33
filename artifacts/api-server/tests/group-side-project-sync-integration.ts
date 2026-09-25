@@ -16,6 +16,8 @@ import {
 import { signToken } from "../src/lib/auth";
 import activitiesRouter from "../src/routes/activities";
 import activityGroupsRouter from "../src/routes/activity-groups";
+import projectsRouter from "../src/routes/projects";
+import ownerRouter from "../src/routes/owner";
 
 if (process.env.NODE_ENV === "production" || !process.env.DATABASE_URL) {
   throw new Error("This integration check requires a development database");
@@ -27,6 +29,10 @@ async function main() {
   let server: Server | undefined;
   try {
     const suffix = `side-sync-${Date.now()}`;
+    const projectCodeOne = `SOURCE-${suffix.slice(-8)}-ONE`;
+    const projectCodeTwo = `SOURCE-${suffix.slice(-8)}-TWO`;
+    const wrongProjectCode = `MISSING-${suffix.slice(-8)}-CODE`;
+    const temporaryTargetCode = `TARGET-${suffix.slice(-8)}-CODE`;
     const base = { location: "test", ownerEntity: "test", supervisorEntity: "test", contractor: "test", noSchedule: true };
     const projects = await db.insert(projectsTable).values([
       { ...base, name: `${suffix}-source` },
@@ -77,6 +83,8 @@ async function main() {
     app.use(express.json());
     app.use(activitiesRouter);
     app.use(activityGroupsRouter);
+    app.use(projectsRouter);
+    app.use(ownerRouter);
     server = app.listen(0);
     await new Promise<void>(resolve => server!.once("listening", resolve));
     const address = server.address();
@@ -128,12 +136,48 @@ async function main() {
     assert.equal(restoreManagedLocalFields.status, 200);
 
     // Exercise the side-project endpoints and source-group lifecycle through
-    // real HTTP middleware, including both tab-access and source-read checks.
-    const [httpSource, httpTarget] = await db.insert(projectsTable).values([
+    // real HTTP middleware, including target-tab ACLs and code-only linking.
+    const [httpSource, httpSource2, httpTarget] = await db.insert(projectsTable).values([
       { ...base, name: `${suffix}-http-source` },
+      { ...base, name: `${suffix}-http-source-two` },
       { ...base, name: `${suffix}-http-target` },
     ]).returning();
-    projectIds.push(httpSource.id, httpTarget.id);
+    projectIds.push(httpSource.id, httpSource2.id, httpTarget.id);
+    const httpAdminProjectsUrl = `http://127.0.0.1:${address.port}/projects/${httpSource.id}`;
+    const setSourceCode = async (projectId: number, linkCode: unknown) => fetch(
+      `http://127.0.0.1:${address.port}/projects/${projectId}`,
+      {
+        method: "PATCH", headers: { authorization, "content-type": "application/json" },
+        body: JSON.stringify({ linkCode }),
+      },
+    );
+    assert.equal((await setSourceCode(httpSource.id, ` ${projectCodeOne.toLowerCase()} `)).status, 200);
+    assert.equal((await setSourceCode(httpSource2.id, projectCodeTwo)).status, 200);
+    assert.equal((await setSourceCode(httpSource2.id, projectCodeOne.toLowerCase())).status, 409);
+    assert.equal((await setSourceCode(httpTarget.id, "bad!")).status, 400);
+    assert.equal((await setSourceCode(httpTarget.id, temporaryTargetCode)).status, 200);
+    const [demotedAdmin] = await db.insert(usersTable).values({
+      phone: `${suffix}-demoted-admin`, passwordHash: "integration-test", fullName: "Demoted Admin", role: "admin",
+    }).returning();
+    userIds.push(demotedAdmin.id);
+    const staleAdminAuth = `Bearer ${signToken({ userId: demotedAdmin.id, phone: demotedAdmin.phone, role: "admin" })}`;
+    await db.update(usersTable).set({ role: "engineer" }).where(eq(usersTable.id, demotedAdmin.id));
+    const demotedProjectRead = await fetch(httpAdminProjectsUrl, { headers: { authorization: staleAdminAuth } });
+    assert.equal(demotedProjectRead.status, 403);
+    assert.equal((await demotedProjectRead.text()).includes(projectCodeOne), false);
+    const demotedCodeWrite = await fetch(httpAdminProjectsUrl, {
+      method: "PATCH", headers: { authorization: staleAdminAuth, "content-type": "application/json" },
+      body: JSON.stringify({ linkCode: `DEMOTED-${suffix.slice(-8)}-CODE` }),
+    });
+    assert.equal(demotedCodeWrite.status, 403);
+    const [unchangedSource] = await db.select({ linkCode: projectsTable.linkCode }).from(projectsTable)
+      .where(eq(projectsTable.id, httpSource.id));
+    assert.equal(unchangedSource.linkCode, projectCodeOne);
+    const adminProjectRead = await fetch(httpAdminProjectsUrl, { headers: { authorization } });
+    assert.equal((await adminProjectRead.json() as { linkCode: string }).linkCode, projectCodeOne);
+    const adminProjectList = await fetch(`http://127.0.0.1:${address.port}/projects`, { headers: { authorization } });
+    assert.equal(((await adminProjectList.json()) as Array<Record<string, unknown>>)
+      .some(project => Object.hasOwn(project, "linkCode")), false);
     const targetGroupResponse = await fetch(`http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups`, {
       method: "POST",
       headers: { authorization, "content-type": "application/json" },
@@ -141,6 +185,18 @@ async function main() {
     });
     assert.equal(targetGroupResponse.status, 201);
     const httpTargetGroup = await targetGroupResponse.json() as { id: number };
+    const targetGroupTwoResponse = await fetch(`http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups`, {
+      method: "POST", headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ name: "HTTP target two" }),
+    });
+    assert.equal(targetGroupTwoResponse.status, 201);
+    const httpTargetGroupTwo = await targetGroupTwoResponse.json() as { id: number };
+    const ordinaryGroupResponse = await fetch(`http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups`, {
+      method: "POST", headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ name: "HTTP ordinary target" }),
+    });
+    assert.equal(ordinaryGroupResponse.status, 201);
+    const ordinaryTargetGroup = await ordinaryGroupResponse.json() as { id: number };
 
     const [engineer] = await db.insert(usersTable).values({
       phone: `${suffix}-engineer`, passwordHash: "integration-test", fullName: "Integration Engineer", role: "engineer",
@@ -160,35 +216,67 @@ async function main() {
     ]);
     const engineerAuth = `Bearer ${signToken({ userId: engineer.id, phone: engineer.phone, role: engineer.role })}`;
     const viewerAuth = `Bearer ${signToken({ userId: viewer.id, phone: viewer.phone, role: viewer.role })}`;
+    const deniedCodeWrite = await fetch(`http://127.0.0.1:${address.port}/projects/${httpTarget.id}`, {
+      method: "PATCH", headers: { authorization: engineerAuth, "content-type": "application/json" },
+      body: JSON.stringify({ linkCode: `${suffix}-not-allowed` }),
+    });
+    assert.equal(deniedCodeWrite.status, 403);
+    const engineerProjectRead = await fetch(`http://127.0.0.1:${address.port}/projects/${httpTarget.id}`, {
+      headers: { authorization: engineerAuth },
+    });
+    assert.equal(engineerProjectRead.status, 200);
+    assert.equal(Object.hasOwn(await engineerProjectRead.json() as object, "linkCode"), false);
+    const inaccessibleSourceRead = await fetch(`http://127.0.0.1:${address.port}/projects/${httpSource.id}`, {
+      headers: { authorization: engineerAuth },
+    });
+    assert.equal(inaccessibleSourceRead.status, 403);
+    const projectList = await fetch(`http://127.0.0.1:${address.port}/projects`, { headers: { authorization: engineerAuth } });
+    const listedProjects = await projectList.json() as Array<Record<string, unknown>>;
+    assert.equal(listedProjects.some(project => Object.hasOwn(project, "linkCode")), false);
+    assert.equal(listedProjects.some(project => project.id === httpSource.id || project.id === httpSource2.id), false);
     const linkUrl = `http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups/${httpTargetGroup.id}/linked-project`;
-    const selfLink = await fetch(linkUrl, {
+    const legacyNumericLink = await fetch(linkUrl, {
       method: "PUT", headers: { authorization, "content-type": "application/json" },
-      body: JSON.stringify({ sourceProjectId: httpTarget.id }),
+      body: JSON.stringify({ sourceProjectId: httpSource.id }),
     });
-    assert.equal(selfLink.status, 400);
-    const invalidProjectLink = await fetch(linkUrl, {
-      method: "PUT", headers: { authorization, "content-type": "application/json" },
-      body: JSON.stringify({ sourceProjectId: 2_000_000_000 }),
+    assert.equal(legacyNumericLink.status, 400);
+    const invalidCodeLink = await fetch(linkUrl, {
+      method: "PUT", headers: { authorization: engineerAuth, "content-type": "application/json" },
+      body: JSON.stringify({ sourceProjectCode: wrongProjectCode }),
     });
-    assert.equal(invalidProjectLink.status, 404);
+    assert.equal(invalidCodeLink.status, 404);
+    const invalidCodeBody = await invalidCodeLink.json() as { error: string };
+    assert.match(invalidCodeBody.error, /رمز الربط المحدد/);
     const forbiddenSourceLink = await fetch(linkUrl, {
       method: "PUT", headers: { authorization: engineerAuth, "content-type": "application/json" },
-      body: JSON.stringify({ sourceProjectId: httpSource.id }),
+      body: JSON.stringify({ sourceProjectCode: projectCodeOne }),
     });
-    assert.equal(forbiddenSourceLink.status, 403);
+    assert.equal(forbiddenSourceLink.status, 200);
+    const forbiddenSourceBody = await forbiddenSourceLink.json() as { group: Record<string, unknown>; created: number };
+    assert.equal(forbiddenSourceBody.group.linkedProjectActive, true);
+    assert.equal(Object.hasOwn(forbiddenSourceBody.group, "linkedProjectId"), false);
+    assert.equal(JSON.stringify(forbiddenSourceBody.group).includes(projectCodeOne), false);
+    assert.equal(forbiddenSourceBody.created, 0);
     const viewerLink = await fetch(linkUrl, {
       method: "PUT", headers: { authorization: viewerAuth, "content-type": "application/json" },
-      body: JSON.stringify({ sourceProjectId: httpSource.id }),
+      body: JSON.stringify({ sourceProjectCode: projectCodeOne }),
     });
     assert.equal(viewerLink.status, 403);
-    const attach = await fetch(linkUrl, {
-      method: "PUT", headers: { authorization, "content-type": "application/json" },
-      body: JSON.stringify({ sourceProjectId: httpSource.id }),
+    const secondLinkUrl = `http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups/${httpTargetGroupTwo.id}/linked-project`;
+    const attachSecondProject = await fetch(secondLinkUrl, {
+      method: "PUT", headers: { authorization: engineerAuth, "content-type": "application/json" },
+      body: JSON.stringify({ sourceProjectCode: projectCodeTwo }),
     });
-    assert.equal(attach.status, 200);
-    const attachBody = await attach.json() as { group: { linkedProjectId: number }; created: number };
-    assert.equal(attachBody.group.linkedProjectId, httpSource.id);
-    assert.equal(attachBody.created, 0);
+    assert.equal(attachSecondProject.status, 200);
+    assert.equal((await attachSecondProject.json() as { group: { linkedProjectActive: boolean } }).group.linkedProjectActive, true);
+    const targetGroupsRead = await fetch(`http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups`, {
+      headers: { authorization: engineerAuth },
+    });
+    const targetGroupsJson = await targetGroupsRead.json() as Array<Record<string, unknown>>;
+    assert.equal(targetGroupsJson.length, 3);
+    assert.equal(targetGroupsJson.filter(group => group.linkedProjectActive === true).length, 2);
+    assert.equal(targetGroupsJson.some(group => Object.hasOwn(group, "linkedProjectId")), false);
+    assert.equal(targetGroupsJson.some(group => group.id === ordinaryTargetGroup.id && group.linkedProjectActive !== false), false);
     const emptySync = await fetch(`http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups/${httpTargetGroup.id}/sync`, {
       method: "POST", headers: { authorization },
     });
@@ -202,6 +290,12 @@ async function main() {
     });
     assert.equal(sourceGroupResponse.status, 201);
     const httpSourceGroup = await sourceGroupResponse.json() as { id: number };
+    const sourceGroupTwoResponse = await fetch(`http://127.0.0.1:${address.port}/projects/${httpSource2.id}/activity-groups`, {
+      method: "POST", headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ name: "HTTP source two group" }),
+    });
+    assert.equal(sourceGroupTwoResponse.status, 201);
+    const httpSourceGroupTwo = await sourceGroupTwoResponse.json() as { id: number };
     let httpManaged = await db.select().from(activitiesTable).where(eq(activitiesTable.managedByGroupId, httpTargetGroup.id));
     assert.equal(httpManaged.length, 1);
 
@@ -218,6 +312,14 @@ async function main() {
     });
     assert.equal(sourceActivityResponse.status, 201);
     const sourceActivityBody = await sourceActivityResponse.json() as { id: number };
+    const sourceActivityTwoResponse = await fetch(`http://127.0.0.1:${address.port}/projects/${httpSource2.id}/activities`, {
+      method: "POST", headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "HTTP source two activity", groupId: httpSourceGroupTwo.id,
+        actualProgress: 35, plannedStartDate: "2026-03-01", plannedEndDate: "2026-04-01",
+      }),
+    });
+    assert.equal(sourceActivityTwoResponse.status, 201);
     const materializedSync = await fetch(`http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups/${httpTargetGroup.id}/sync`, {
       method: "POST", headers: { authorization },
     });
@@ -225,18 +327,76 @@ async function main() {
     const materializedSyncBody = await materializedSync.json() as { created: number; updated: number };
     assert.equal(materializedSyncBody.created, 0);
     assert.equal(materializedSyncBody.updated, 0);
+    const materializedSecondSync = await fetch(`http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups/${httpTargetGroupTwo.id}/sync`, {
+      method: "POST", headers: { authorization: engineerAuth },
+    });
+    assert.equal(materializedSecondSync.status, 200);
+    assert.equal((await materializedSecondSync.json() as { created: number }).created, 0);
     const httpActivitiesUrl = `http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activities`;
-    let httpActivities = await fetch(httpActivitiesUrl, { headers: { authorization } });
+    let httpActivities = await fetch(httpActivitiesUrl, { headers: { authorization: engineerAuth } });
     assert.equal(httpActivities.status, 200);
     const httpActivityRows = await httpActivities.json() as Array<{
-      id: number; actualProgress: number; externalSource?: { available: boolean };
+      id: number; actualProgress: number; externalSource?: Record<string, unknown>;
     }>;
     const generatedHttpActivity = httpActivityRows.find(activity => activity.id === httpManaged[0].id)!;
     assert.equal(generatedHttpActivity.actualProgress, 75);
     assert.equal(generatedHttpActivity.externalSource?.available, true);
+    assert.equal(generatedHttpActivity.externalSource?.groupName, "HTTP source group");
+    assert.equal(Object.hasOwn(generatedHttpActivity.externalSource!, "projectName"), false);
+    assert.equal(Object.hasOwn(generatedHttpActivity.externalSource!, "linkCode"), false);
+    assert.equal(Object.hasOwn(generatedHttpActivity.externalSource!, "projectId"), false);
+    assert.equal(Object.hasOwn(generatedHttpActivity.externalSource!, "groupId"), false);
+    assert.equal(JSON.stringify(generatedHttpActivity.externalSource).includes(projectCodeOne), false);
+    assert.equal(Object.hasOwn(generatedHttpActivity, "externalSourceGroupId"), false);
+    assert.equal(Object.hasOwn(generatedHttpActivity, "managedSourceProjectId"), false);
+    const [httpManagedTwo] = await db.select().from(activitiesTable).where(eq(activitiesTable.managedByGroupId, httpTargetGroupTwo.id));
+    assert.equal(httpManagedTwo.externalSourceGroupId, httpSourceGroupTwo.id);
+    assert.equal(httpManagedTwo.actualProgress, 35);
+    const targetOnlyMutation = await fetch(`${httpActivitiesUrl}/${httpManaged[0].id}`, {
+      method: "PATCH", headers: { authorization: engineerAuth, "content-type": "application/json" },
+      body: JSON.stringify({ weight: 2 }),
+    });
+    assert.equal(targetOnlyMutation.status, 200);
+    const targetOnlyMutationBody = await targetOnlyMutation.json() as Record<string, unknown>;
+    assert.equal(Object.hasOwn(targetOnlyMutationBody, "externalSourceGroupId"), false);
+    assert.equal(Object.hasOwn(targetOnlyMutationBody, "managedSourceProjectId"), false);
+    assert.equal((targetOnlyMutationBody.externalSource as Record<string, unknown>).groupName, "HTTP source group");
+    const sourceAuthorizedMutation = await fetch(`${httpActivitiesUrl}/${httpManaged[0].id}`, {
+      method: "PATCH", headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ weight: 1 }),
+    });
+    assert.equal(sourceAuthorizedMutation.status, 200);
+    const sourceAuthorizedMutationBody = await sourceAuthorizedMutation.json() as Record<string, unknown>;
+    assert.equal(sourceAuthorizedMutationBody.externalSourceGroupId, httpSourceGroup.id);
+    assert.equal(sourceAuthorizedMutationBody.managedSourceProjectId, httpSource.id);
+    const ownerToken = `owner-${suffix.slice(-8)}`;
+    await db.update(projectsTable).set({ ownerAccessToken: ownerToken, ownerAccessPassword: null })
+      .where(eq(projectsTable.id, httpTarget.id));
+    const ownerVerifyResponse = await fetch(`http://127.0.0.1:${address.port}/owner/verify`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: ownerToken }),
+    });
+    assert.equal(ownerVerifyResponse.status, 200);
+    const ownerVerify = await ownerVerifyResponse.json() as {
+      ownerJwt: string; project: Record<string, unknown>; activities: Array<Record<string, unknown>>;
+    };
+    assert.equal(Object.hasOwn(ownerVerify.project, "linkCode"), false);
+    assert.equal(ownerVerify.activities.some(activity =>
+      Object.hasOwn(activity, "externalSourceGroupId") || Object.hasOwn(activity, "managedSourceProjectId")), false);
+    const ownerDataResponse = await fetch(`http://127.0.0.1:${address.port}/owner/${ownerToken}/data`, {
+      headers: { authorization: `Bearer ${ownerVerify.ownerJwt}` },
+    });
+    assert.equal(ownerDataResponse.status, 200);
+    const ownerData = await ownerDataResponse.json() as {
+      project: Record<string, unknown>; activities: Array<Record<string, unknown>>;
+    };
+    assert.equal(Object.hasOwn(ownerData.project, "linkCode"), false);
+    assert.equal(ownerData.activities.some(activity =>
+      Object.hasOwn(activity, "externalSourceGroupId") || Object.hasOwn(activity, "managedSourceProjectId")), false);
+    assert.equal((await setSourceCode(httpTarget.id, null)).status, 200);
     const [httpTargetProgress] = await db.select({ overallProgress: projectsTable.overallProgress })
       .from(projectsTable).where(eq(projectsTable.id, httpTarget.id));
-    assert.equal(httpTargetProgress.overallProgress, 75);
+    assert.equal(httpTargetProgress.overallProgress, 55);
 
     const renameSourceGroup = await fetch(`http://127.0.0.1:${address.port}/projects/${httpSource.id}/activity-groups/${httpSourceGroup.id}`, {
       method: "PUT",
@@ -261,13 +421,63 @@ async function main() {
     });
     assert.equal(unavailableSync.status, 200);
     assert.equal((await unavailableSync.json() as { unavailable: number }).unavailable, 1);
-    httpActivities = await fetch(httpActivitiesUrl, { headers: { authorization } });
+    httpActivities = await fetch(httpActivitiesUrl, { headers: { authorization: engineerAuth } });
     const unavailableRows = await httpActivities.json() as Array<{
-      id: number; actualProgress: number; externalSource?: { available: boolean };
+      id: number; actualProgress: number; externalSource?: Record<string, unknown>;
     }>;
     const unavailableActivity = unavailableRows.find(activity => activity.id === httpManaged[0].id)!;
     assert.equal(unavailableActivity.externalSource?.available, false);
+    assert.equal(Object.hasOwn(unavailableActivity.externalSource!, "groupId"), false);
     assert.equal(unavailableActivity.actualProgress, snapshotBeforeUnavailable.actualProgress);
+    const detachHttpLink = await fetch(linkUrl, {
+      method: "PUT", headers: { authorization: engineerAuth, "content-type": "application/json" },
+      body: JSON.stringify({ sourceProjectCode: null }),
+    });
+    assert.equal(detachHttpLink.status, 200);
+    assert.equal((await detachHttpLink.json() as { group: { linkedProjectActive: boolean } }).group.linkedProjectActive, false);
+    const groupsAfterIndependentDetach = await (await fetch(
+      `http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups`,
+      { headers: { authorization: engineerAuth } },
+    )).json() as Array<{ id: number; linkedProjectActive: boolean }>;
+    assert.equal(groupsAfterIndependentDetach.find(group => group.id === httpTargetGroupTwo.id)?.linkedProjectActive, true);
+    assert.equal(groupsAfterIndependentDetach.find(group => group.id === ordinaryTargetGroup.id)?.linkedProjectActive, false);
+
+    // Code rotation and attach share the graph lock. Start both operations
+    // concurrently in each order to prove an old code cannot win after rotation.
+    const [rotateFirstSource, rotateFirstTarget, attachFirstSource, attachFirstTarget] = await db.insert(projectsTable).values([
+      { ...base, name: `${suffix}-rotate-first-source`, linkCode: `ROTATE-${suffix.slice(-8)}-OLD` },
+      { ...base, name: `${suffix}-rotate-first-target` },
+      { ...base, name: `${suffix}-attach-first-source`, linkCode: `ATTACH-${suffix.slice(-8)}-OLD` },
+      { ...base, name: `${suffix}-attach-first-target` },
+    ]).returning();
+    projectIds.push(rotateFirstSource.id, rotateFirstTarget.id, attachFirstSource.id, attachFirstTarget.id);
+    const [rotateFirstGroup, attachFirstGroup] = await db.insert(activityGroupsTable).values([
+      { projectId: rotateFirstTarget.id, name: "Rotate-first target" },
+      { projectId: attachFirstTarget.id, name: "Attach-first target" },
+    ]).returning();
+    const rotateFirstCode = `ROTATE-${suffix.slice(-8)}-OLD`;
+    const attachFirstCode = `ATTACH-${suffix.slice(-8)}-OLD`;
+    const rotateFirstTask = withSourceGraphLock(async () => {
+      await db.update(projectsTable).set({ linkCode: `ROTATE-${suffix.slice(-8)}-NEW` })
+        .where(eq(projectsTable.id, rotateFirstSource.id));
+    });
+    const staleAttachTask = withSourceGraphLock(() =>
+      reconcileGroupToSideProject(rotateFirstGroup.id, rotateFirstSource.id, true, undefined, rotateFirstCode),
+    );
+    const [, staleAttachResult] = await Promise.all([rotateFirstTask, staleAttachTask]);
+    assert.equal(staleAttachResult.conflict, "code_changed");
+    assert.equal(staleAttachResult.group?.linkedProjectId, null);
+
+    const validAttachTask = withSourceGraphLock(() =>
+      reconcileGroupToSideProject(attachFirstGroup.id, attachFirstSource.id, true, undefined, attachFirstCode),
+    );
+    const rotateAfterAttachTask = withSourceGraphLock(async () => {
+      await db.update(projectsTable).set({ linkCode: `ATTACH-${suffix.slice(-8)}-NEW` })
+        .where(eq(projectsTable.id, attachFirstSource.id));
+    });
+    const [validAttachResult] = await Promise.all([validAttachTask, rotateAfterAttachTask]);
+    assert.equal(validAttachResult.conflict, undefined);
+    assert.equal(validAttachResult.group?.linkedProjectId, attachFirstSource.id);
 
     const repeat = await reconcileGroupToSideProject(targetGroup.id, sourceProject.id);
     assert.equal(repeat.created, 0);

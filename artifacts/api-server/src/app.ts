@@ -83,7 +83,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 
-app.use("/api/uploads", (req: Request, res: Response, next: NextFunction) => {
+app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) => {
   const reqPath = decodeURIComponent(req.path).replace(/^\//, "");
   if (reqPath.startsWith("logo-")) {
     return next();
@@ -92,7 +92,7 @@ app.use("/api/uploads", (req: Request, res: Response, next: NextFunction) => {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     const tokenParam = typeof req.query.token === "string" ? req.query.token : null;
     if (tokenParam) {
-      if (verifyAndMaybeRenewToken(tokenParam, res)) return next();
+      if (await verifyAndMaybeRenewToken(tokenParam, res)) return next();
       try {
         const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
         const decoded = jwt.verify(tokenParam, ownerSecret) as any;
@@ -108,7 +108,7 @@ app.use("/api/uploads", (req: Request, res: Response, next: NextFunction) => {
     return;
   }
   const token = authHeader.slice(7);
-  if (verifyAndMaybeRenewToken(token, res)) return next();
+  if (await verifyAndMaybeRenewToken(token, res)) return next();
   try {
     const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
     const decoded = jwt.verify(token, ownerSecret) as any;

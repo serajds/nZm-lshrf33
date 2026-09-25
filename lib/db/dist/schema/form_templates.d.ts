@@ -230,7 +230,6 @@ export declare const formTemplatesTable: import("drizzle-orm/pg-core").PgTableWi
 export declare const insertFormTemplateSchema: z.ZodObject<{
     name: z.ZodString;
     projectId: z.ZodInt;
-    createdById: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     fields: z.ZodOptional<z.ZodType<import("drizzle-zod").Json, unknown, z.core.$ZodTypeInternals<import("drizzle-zod").Json, unknown>>>;
     isActive: z.ZodOptional<z.ZodBoolean>;
@@ -238,6 +237,7 @@ export declare const insertFormTemplateSchema: z.ZodObject<{
     isDailyReport: z.ZodOptional<z.ZodBoolean>;
     publicToken: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     signatures: z.ZodOptional<z.ZodType<import("drizzle-zod").Json, unknown, z.core.$ZodTypeInternals<import("drizzle-zod").Json, unknown>>>;
+    createdById: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
 }, {
     out: {};
     in: {};

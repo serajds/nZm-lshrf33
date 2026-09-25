@@ -8,3 +8,5 @@
 - [Session generations and authenticated caches](session-generation-cache.md) — bind responses to request tokens; never shared-cache protected API or upload responses.
 - [Vite browser-test harness imports](vite-browser-harness-imports.md) — dynamic inline HTML must use /@fs plus fs.allow for workspace sources; bare imports are not transformed.
 - [Development database schema drift](dev-db-schema-drift.md) — broad Drizzle push may stop on unrelated populated-table constraints; apply reviewed feature migration narrowly and verify.
+- [Current-role authorization](current-role-authorization.md) — a valid JWT can outlive an admin demotion; authorization and rolling renewal must use the database role, not stale claims.
+- [Browser testing across artifacts](browser-testing-across-artifacts.md) — browser checks using local Vite ports can miss API routing; use the proxied development domain for cross-artifact requests.

@@ -201,11 +201,11 @@ export declare const insertFormSubmissionSchema: z.ZodObject<{
         reviewed: "reviewed";
     }>>;
     projectId: z.ZodInt;
-    reportDate: z.ZodString;
     notes: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     templateId: z.ZodInt;
     submittedById: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     submittedByName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    reportDate: z.ZodString;
 }, {
     out: {};
     in: {};

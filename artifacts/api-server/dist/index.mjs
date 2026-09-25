@@ -58919,6 +58919,7 @@ var init_projects = __esm({
   "../../lib/db/src/schema/projects.ts"() {
     "use strict";
     init_pg_core();
+    init_drizzle_orm();
     init_drizzle_zod();
     projectsTable = pgTable("projects", {
       id: serial("id").primaryKey(),
@@ -58935,6 +58936,7 @@ var init_projects = __esm({
       overallProgress: real("overall_progress").notNull().default(0),
       ownerAccessToken: text("owner_access_token"),
       ownerAccessPassword: text("owner_access_password"),
+      linkCode: text("link_code"),
       ownerCompanyId: integer("owner_company_id"),
       contractorCompanyId: integer("contractor_company_id"),
       supervisorCompanyId: integer("supervisor_company_id"),
@@ -58954,7 +58956,8 @@ var init_projects = __esm({
       index("projects_owner_company_idx").on(t.ownerCompanyId),
       index("projects_supervisor_company_idx").on(t.supervisorCompanyId),
       index("projects_owner_token_idx").on(t.ownerAccessToken),
-      index("projects_status_idx").on(t.status)
+      index("projects_status_idx").on(t.status),
+      uniqueIndex("projects_link_code_normalized_unique").on(sql`upper(btrim(${t.linkCode}))`)
     ]);
     insertProjectSchema = createInsertSchema(projectsTable).omit({ id: true, createdAt: true, updatedAt: true });
   }
@@ -59502,44 +59505,6 @@ var init_schema2 = __esm({
 });
 
 // ../../lib/db/src/index.ts
-var src_exports = {};
-__export(src_exports, {
-  activitiesTable: () => activitiesTable,
-  activityGroupsTable: () => activityGroupsTable,
-  attendanceRecordsTable: () => attendanceRecordsTable,
-  auditLogTable: () => auditLogTable,
-  companiesTable: () => companiesTable,
-  db: () => db,
-  expoPushTokensTable: () => expoPushTokensTable,
-  formSubmissionsTable: () => formSubmissionsTable,
-  formTemplatesTable: () => formTemplatesTable,
-  insertActivitySchema: () => insertActivitySchema,
-  insertAttendanceRecordSchema: () => insertAttendanceRecordSchema,
-  insertCompanySchema: () => insertCompanySchema,
-  insertFormSubmissionSchema: () => insertFormSubmissionSchema,
-  insertFormTemplateSchema: () => insertFormTemplateSchema,
-  insertProjectExtensionSchema: () => insertProjectExtensionSchema,
-  insertProjectFileSchema: () => insertProjectFileSchema,
-  insertProjectMemberSchema: () => insertProjectMemberSchema,
-  insertProjectSchema: () => insertProjectSchema,
-  insertProjectSuspensionSchema: () => insertProjectSuspensionSchema,
-  insertPushSubscriptionSchema: () => insertPushSubscriptionSchema,
-  insertReportSchema: () => insertReportSchema,
-  insertUserSchema: () => insertUserSchema,
-  memberGroupAssignmentsTable: () => memberGroupAssignmentsTable,
-  pool: () => pool,
-  projectExtensionsTable: () => projectExtensionsTable,
-  projectFilesTable: () => projectFilesTable,
-  projectMembersTable: () => projectMembersTable,
-  projectSuspensionsTable: () => projectSuspensionsTable,
-  projectsTable: () => projectsTable,
-  pushSubscriptionsTable: () => pushSubscriptionsTable,
-  reportCommentsTable: () => reportCommentsTable,
-  reportsTable: () => reportsTable,
-  skippedDaysTable: () => skippedDaysTable,
-  userCompaniesTable: () => userCompaniesTable,
-  usersTable: () => usersTable
-});
 var Pool3, pool, db;
 var init_src = __esm({
   "../../lib/db/src/index.ts"() {
@@ -122760,14 +122725,17 @@ var logger = (0, import_pino.default)({
 init_src();
 init_src();
 init_drizzle_orm();
-function verifyAndMaybeRenewToken(token, res) {
+async function verifyAndMaybeRenewToken(token, res) {
   const claims = verifyTokenWithClaims(token);
   if (!claims) return null;
+  const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, claims.userId));
+  if (!dbUser) return null;
+  const payload = { userId: claims.userId, phone: claims.phone, role: dbUser.role };
   const nowSec = Math.floor(Date.now() / 1e3);
   const remaining = claims.exp - nowSec;
   if (remaining > 0 && remaining < JWT_RENEWAL_THRESHOLD_SECONDS) {
     try {
-      const fresh = signToken({ userId: claims.userId, phone: claims.phone, role: claims.role });
+      const fresh = signToken(payload);
       if (!res.headersSent) {
         res.setHeader("X-Renewed-Token", fresh);
         logger.info({
@@ -122781,9 +122749,9 @@ function verifyAndMaybeRenewToken(token, res) {
     } catch {
     }
   }
-  return { userId: claims.userId, phone: claims.phone, role: claims.role };
+  return payload;
 }
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     logger.warn({ method: req.method, path: req.path, authRejection: "missing_header" }, "Authentication rejected");
@@ -122796,7 +122764,14 @@ function requireAuth(req, res, next) {
     return;
   }
   const token = authHeader.slice(7);
-  const payload = verifyAndMaybeRenewToken(token, res);
+  let payload;
+  try {
+    payload = await verifyAndMaybeRenewToken(token, res);
+  } catch (error40) {
+    logger.error({ error: error40 }, "Authentication user lookup failed");
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u0627\u0644\u062D\u0633\u0627\u0628" });
+    return;
+  }
   if (!payload) {
     logger.warn({
       method: req.method,
@@ -122870,9 +122845,7 @@ function requireProjectAccess(paramName = "projectId") {
         res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
         return;
       }
-      const { usersTable: usersTable2 } = await Promise.resolve().then(() => (init_src(), src_exports));
-      const [dbUser] = await db.select({ role: usersTable2.role }).from(usersTable2).where(eq(usersTable2.id, req.user.userId));
-      const actualRole = dbUser?.role || role;
+      const actualRole = role;
       const companyLinks = await db.select({ companyId: userCompaniesTable.companyId }).from(userCompaniesTable).where(eq(userCompaniesTable.userId, req.user.userId));
       const companyIds = companyLinks.map((c) => c.companyId);
       if (companyIds.length > 0) {
@@ -123309,6 +123282,11 @@ function normalizeLinkCode(value) {
   if (value === null || value === void 0 || String(value).trim() === "") return null;
   return String(value).trim().toLowerCase();
 }
+function normalizeProjectLinkCode(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z0-9-]{12,32}$/.test(normalized) ? normalized : null;
+}
 function groupMatchesSourceQuery(group, query) {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return false;
@@ -123499,7 +123477,7 @@ async function recalculateProjectInTransaction(tx, projectId) {
   end.setUTCDate(end.getUTCDate() + days);
   await tx.update(projectsTable).set({ expectedEndDate: end.toISOString().slice(0, 10) }).where(eq(projectsTable.id, projectId));
 }
-async function reconcileGroupToSideProject(targetGroupId, sourceProjectId, propagate = true, expectedCurrentSourceProjectId) {
+async function reconcileGroupToSideProject(targetGroupId, sourceProjectId, propagate = true, expectedCurrentSourceProjectId, expectedSourceProjectCode) {
   let result;
   const propagatedGroupIds = /* @__PURE__ */ new Set();
   result = await withSourceGraphLock(async () => db.transaction(async (tx) => {
@@ -123513,7 +123491,6 @@ async function reconcileGroupToSideProject(targetGroupId, sourceProjectId, propa
       const [group2] = await tx.update(activityGroupsTable).set({ linkedProjectId: null }).where(eq(activityGroupsTable.id, targetGroupId)).returning();
       return { group: group2, created: 0, updated: 0, unavailable: 0 };
     }
-    const sourceGroups = await tx.select().from(activityGroupsTable).where(eq(activityGroupsTable.projectId, sourceProjectId));
     if (targetGroup.linkedProjectId != null && targetGroup.linkedProjectId !== sourceProjectId && managed.length) {
       return { group: targetGroup, created: 0, updated: 0, unavailable: 0, conflict: "managed_rows_remain" };
     }
@@ -123528,6 +123505,13 @@ async function reconcileGroupToSideProject(targetGroupId, sourceProjectId, propa
       unavailable: managed.length,
       conflict: "source_missing"
     };
+    if (expectedSourceProjectCode !== void 0) {
+      const [sourceWithCode] = await tx.select({ linkCode: projectsTable.linkCode }).from(projectsTable).where(eq(projectsTable.id, sourceProjectId));
+      if (normalizeProjectLinkCode(sourceWithCode?.linkCode) !== expectedSourceProjectCode) {
+        return { group: targetGroup, created: 0, updated: 0, unavailable: 0, conflict: "code_changed" };
+      }
+    }
+    const sourceGroups = await tx.select().from(activityGroupsTable).where(eq(activityGroupsTable.projectId, sourceProjectId));
     if (await wouldCreateSourceCycle(targetGroup.projectId, sourceProjectId)) {
       return { group: targetGroup, created: 0, updated: 0, unavailable: 0, conflict: "cycle" };
     }
@@ -123776,11 +123760,7 @@ router3.get("/projects", requireAuth, async (req, res) => {
   const status = typeof rawStatus === "string" && rawStatus !== "null" && rawStatus !== "" ? rawStatus : void 0;
   const search = typeof rawSearch === "string" && rawSearch !== "null" && rawSearch !== "" ? rawSearch : void 0;
   const userId = req.user?.userId;
-  let actualRole = req.user?.role;
-  if (userId) {
-    const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, userId));
-    if (dbUser) actualRole = dbUser.role;
-  }
+  const actualRole = req.user?.role;
   let projectIds = null;
   if (actualRole !== "admin" && userId) {
     const projectIdSet = /* @__PURE__ */ new Set();
@@ -123907,7 +123887,12 @@ router3.get("/projects/:id", requireProjectAccess("id"), async (req, res) => {
     res.status(404).json({ error: "\u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
-  res.json(project);
+  if (req.user?.role === "admin") {
+    res.json(project);
+  } else {
+    const { linkCode: _linkCode, ...publicProject } = project;
+    res.json(publicProject);
+  }
 });
 router3.get("/projects/:id/company-logos", requireProjectAccess("id"), async (req, res) => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
@@ -123942,6 +123927,10 @@ router3.patch("/projects/:id", requireProjectAccess("id"), async (req, res) => {
   const id = parseInt(raw, 10);
   const body = req.body;
   const canManageProject = req.user?.role === "admin" || req.projectRole === "project_manager";
+  if (body.linkCode !== void 0 && req.user?.role !== "admin") {
+    res.status(403).json({ error: "\u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645 \u0644\u0625\u062F\u0627\u0631\u0629 \u0631\u0645\u0632 \u0631\u0628\u0637 \u0627\u0644\u0645\u0634\u0631\u0648\u0639" });
+    return;
+  }
   if (body.reportDisplayMode !== void 0 && !canManageProject) {
     res.status(403).json({ error: "\u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0623\u0648 \u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645 \u0644\u062A\u063A\u064A\u064A\u0631 \u0637\u0631\u064A\u0642\u0629 \u0639\u0631\u0636 \u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631" });
     return;
@@ -123951,6 +123940,18 @@ router3.patch("/projects/:id", requireProjectAccess("id"), async (req, res) => {
     return;
   }
   const updateData = {};
+  if (body.linkCode !== void 0) {
+    if (body.linkCode === null || typeof body.linkCode === "string" && body.linkCode.trim() === "") {
+      updateData.linkCode = null;
+    } else {
+      const normalizedCode = normalizeProjectLinkCode(body.linkCode);
+      if (!normalizedCode) {
+        res.status(400).json({ error: "\u0631\u0645\u0632 \u0631\u0628\u0637 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u064A\u062C\u0628 \u0623\u0646 \u064A\u062D\u062A\u0648\u064A \u0639\u0644\u0649 12 \u0625\u0644\u0649 32 \u062D\u0631\u0641\u064B\u0627 \u0625\u0646\u062C\u0644\u064A\u0632\u064A\u064B\u0627 \u0623\u0648 \u0631\u0642\u0645\u064B\u0627 \u0623\u0648 \u0634\u0631\u0637\u0629" });
+        return;
+      }
+      updateData.linkCode = normalizedCode;
+    }
+  }
   const parseCompanyId = (val) => val && val !== "none" && !isNaN(Number(val)) ? parseInt(String(val), 10) : null;
   const isTogglingNoSchedule = body.noSchedule !== void 0;
   const willBeNoSchedule = isTogglingNoSchedule ? body.noSchedule === true || body.noSchedule === "true" : void 0;
@@ -124036,14 +124037,32 @@ router3.patch("/projects/:id", requireProjectAccess("id"), async (req, res) => {
     res.status(400).json({ error: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0628\u064A\u0627\u0646\u0627\u062A \u0644\u0644\u062A\u062D\u062F\u064A\u062B" });
     return;
   }
-  const [project] = await db.update(projectsTable).set(updateData).where(eq(projectsTable.id, id)).returning();
+  let project;
+  try {
+    const updateProject = () => db.update(projectsTable).set(updateData).where(eq(projectsTable.id, id)).returning();
+    [project] = body.linkCode !== void 0 ? await withSourceGraphLock(updateProject) : await updateProject();
+  } catch (error40) {
+    const code = error40?.code ?? error40?.cause?.code;
+    if (code === "23505" && body.linkCode !== void 0) {
+      res.status(409).json({ error: "\u0631\u0645\u0632 \u0631\u0628\u0637 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0645\u0633\u062A\u062E\u062F\u0645 \u0628\u0627\u0644\u0641\u0639\u0644" });
+      return;
+    }
+    throw error40;
+  }
   if (!project) {
     res.status(404).json({ error: "\u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
-  logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "update", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name, details: updateData });
-  res.json(project);
+  const auditDetails = { ...updateData };
+  delete auditDetails.linkCode;
+  logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "update", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name, details: auditDetails });
+  if (req.user?.role === "admin") {
+    res.json(project);
+  } else {
+    const { linkCode: _linkCode, ...publicProject } = project;
+    res.json(publicProject);
+  }
 });
 router3.delete("/projects/:id", requireAdmin, async (req, res) => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
@@ -124534,22 +124553,42 @@ async function syncProjectProgress(projectId) {
   const computed = totalWeight > 0 ? roundPercent(weightedSum / totalWeight) : 0;
   await db.update(projectsTable).set({ overallProgress: computed }).where(eq(projectsTable.id, projectId));
 }
+async function serializeActivityForUser(activity, userId) {
+  const source = activity.externalSourceGroupId == null ? null : await getGroupSummary(activity.externalSourceGroupId);
+  const sourceProjectId = source?.projectId ?? activity.managedSourceProjectId ?? void 0;
+  const canReadSource = sourceProjectId !== void 0 && userId !== void 0 && await canReadProject(userId, sourceProjectId);
+  if (activity.externalSourceGroupId == null) {
+    if (canReadSource || activity.managedSourceProjectId == null) return activity;
+    const { managedSourceProjectId: _sourceProjectId2, ...safeActivity2 } = activity;
+    return safeActivity2;
+  }
+  if (canReadSource) {
+    return {
+      ...activity,
+      externalSource: sourceIsAvailable(source) ? { available: true, ...source } : { available: false }
+    };
+  }
+  const { externalSourceGroupId: _sourceGroupId, managedSourceProjectId: _sourceProjectId, ...safeActivity } = activity;
+  return {
+    ...safeActivity,
+    externalSource: {
+      available: sourceIsAvailable(source),
+      ...source ? {
+        groupName: source.groupName,
+        actualProgress: source.actualProgress,
+        plannedStartDate: source.plannedStartDate,
+        plannedEndDate: source.plannedEndDate
+      } : {}
+    }
+  };
+}
 router4.get("/projects/:projectId/activities", requireProjectAccess("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder, activitiesTable.id);
-  const response = await Promise.all(activities.map(async (activity) => {
-    if (activity.externalSourceGroupId == null) return activity;
-    const source = await getGroupSummary(activity.externalSourceGroupId);
-    const canReadSource = source && await canReadProject(req.user?.userId, source.projectId);
-    return canReadSource ? {
-      ...activity,
-      externalSource: sourceIsAvailable(source) ? { available: true, ...source } : { available: false, groupId: activity.externalSourceGroupId }
-    } : {
-      ...activity,
-      externalSource: { available: false, groupId: activity.externalSourceGroupId }
-    };
-  }));
+  const response = await Promise.all(activities.map(
+    (activity) => serializeActivityForUser(activity, req.user?.userId)
+  ));
   res.json(response);
 });
 router4.post("/projects/:projectId/activities", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
@@ -124689,7 +124728,7 @@ router4.post("/projects/:projectId/activities", requireProjectAccess("projectId"
   if (groupId != null) await refreshLinkedSources([Number(groupId)]);
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
   logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "create", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId });
-  res.status(201).json(activity);
+  res.status(201).json(await serializeActivityForUser(activity, req.user?.userId));
 });
 router4.patch("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
@@ -124895,7 +124934,7 @@ router4.patch("/projects/:projectId/activities/:id", requireProjectAccess("proje
   if (affectedSourceGroups.size) await refreshLinkedSources([...affectedSourceGroups]);
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
   logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "update", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId, details: updateData });
-  res.json(activity);
+  res.json(await serializeActivityForUser(activity, req.user?.userId));
 });
 router4.post("/projects/:projectId/activities/import", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), upload.single("file"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
@@ -126534,8 +126573,9 @@ async function buildOwnerProjectData(project) {
       }
     }
   }
-  const { ownerAccessPassword: _, ...safeProject } = project;
-  return { project: safeProject, activities, reports, extensions, suspensions, summary, companyLogos };
+  const { ownerAccessPassword: _, linkCode: _linkCode, ...safeProject } = project;
+  const safeActivities = activities.map(({ externalSourceGroupId: _sourceGroupId, managedSourceProjectId: _sourceProjectId, ...activity }) => activity);
+  return { project: safeProject, activities: safeActivities, reports, extensions, suspensions, summary, companyLogos };
 }
 router9.get("/owner/access/:token", async (req, res) => {
   const { token } = req.params;
@@ -126718,6 +126758,7 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
   ]);
   const [totals] = totalsRows;
   const [reportCount] = reportCountRows;
+  const safeRecentProjects = recentProjects.map(({ linkCode: _linkCode, ...project }) => project);
   const countByStatus = (status) => {
     const found = statusCounts.find((s) => s.status === status);
     return found ? Number(found.cnt) : 0;
@@ -126809,7 +126850,7 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
     completedActivities: activityCountByStatus("completed"),
     delayedActivities: delayedActivitiesCount,
     inProgressActivities: activityCountByStatus("in_progress"),
-    recentProjects,
+    recentProjects: safeRecentProjects,
     allProjects: projectsWithPlanned,
     recentReports,
     delayedActivitiesList
@@ -128658,10 +128699,33 @@ async function deleteEmptyActivityGroup(projectId, groupId) {
 
 // src/routes/activity-groups.ts
 var router17 = (0, import_express17.Router)();
+var linkAttempts = /* @__PURE__ */ new Map();
+var LINK_ATTEMPT_WINDOW_MS = 15 * 60 * 1e3;
+var LINK_ATTEMPT_LIMIT = 12;
+function publicGroup(group) {
+  const { linkedProjectId, ...safeGroup } = group;
+  return { ...safeGroup, linkedProjectActive: linkedProjectId !== null };
+}
+function allowLinkAttempt(userId) {
+  const now = Date.now();
+  const current = linkAttempts.get(userId);
+  if (!current || now - current.startedAt >= LINK_ATTEMPT_WINDOW_MS) {
+    linkAttempts.set(userId, { startedAt: now, count: 1 });
+    if (linkAttempts.size > 1e4) {
+      for (const [id, attempt] of linkAttempts) {
+        if (now - attempt.startedAt >= LINK_ATTEMPT_WINDOW_MS) linkAttempts.delete(id);
+      }
+    }
+    return true;
+  }
+  if (current.count >= LINK_ATTEMPT_LIMIT) return false;
+  current.count++;
+  return true;
+}
 router17.get("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
   const groups = await db.select().from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId)).orderBy(asc(activityGroupsTable.sortOrder));
-  res.json(groups);
+  res.json(groups.map(publicGroup));
 });
 router17.get("/projects/:projectId/activity-groups/search", requireProjectAccess("projectId"), async (req, res) => {
   const projectId = Number(req.params.projectId);
@@ -128723,7 +128787,7 @@ router17.post("/projects/:projectId/activity-groups", requireProjectAccess("proj
     return;
   }
   await reconcileTargetsLinkedToProject(projectId);
-  res.status(201).json(group);
+  res.status(201).json(publicGroup(group));
 });
 router17.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
@@ -128773,14 +128837,22 @@ router17.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("p
   }
   await reconcileTargetsLinkedToProject(projectId);
   await refreshLinkedSources([id]);
-  res.json(updated);
+  res.json(publicGroup(updated));
 });
 router17.put("/projects/:projectId/activity-groups/:id/linked-project", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const projectId = Number(req.params.projectId);
   const id = Number(req.params.id);
-  const sourceProjectId = req.body?.sourceProjectId;
-  if (sourceProjectId !== null && (!Number.isInteger(sourceProjectId) || sourceProjectId <= 0)) {
-    res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0635\u062F\u0631 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+  if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "sourceProjectId")) {
+    res.status(400).json({ error: "\u0627\u0633\u062A\u062E\u062F\u0645 \u0631\u0645\u0632 \u0631\u0628\u0637 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0628\u062F\u0644\u064B\u0627 \u0645\u0646 \u0645\u0639\u0631\u0641\u0647" });
+    return;
+  }
+  const sourceProjectCode = req.body?.sourceProjectCode;
+  if (sourceProjectCode !== null && typeof sourceProjectCode !== "string") {
+    res.status(400).json({ error: "\u0631\u0645\u0632 \u0631\u0628\u0637 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
+  if (!allowLinkAttempt(req.user.userId)) {
+    res.status(429).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u062A\u0645\u0627\u0645 \u0627\u0644\u0637\u0644\u0628\u061B \u062D\u0627\u0648\u0644 \u0645\u062C\u062F\u062F\u064B\u0627 \u0628\u0639\u062F \u0642\u0644\u064A\u0644" });
     return;
   }
   const [targetGroup] = await db.select().from(activityGroupsTable).where(and(eq(activityGroupsTable.id, id), eq(activityGroupsTable.projectId, projectId)));
@@ -128788,22 +128860,23 @@ router17.put("/projects/:projectId/activity-groups/:id/linked-project", requireP
     res.status(404).json({ error: "\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
     return;
   }
-  if (sourceProjectId !== null) {
-    if (sourceProjectId === projectId) {
-      res.status(400).json({ error: "\u0644\u0627 \u064A\u0645\u0643\u0646 \u0631\u0628\u0637 \u0645\u062C\u0645\u0648\u0639\u0629 \u0628\u0645\u0634\u0631\u0648\u0639\u0647\u0627 \u0646\u0641\u0633\u0647" });
+  let sourceProjectId = null;
+  let expectedSourceProjectCode;
+  if (sourceProjectCode !== null) {
+    const normalizedCode = normalizeProjectLinkCode(sourceProjectCode);
+    if (!normalizedCode) {
+      res.status(400).json({ error: "\u0631\u0645\u0632 \u0631\u0628\u0637 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
       return;
     }
-    const [exists2] = await db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.id, sourceProjectId));
-    if (!exists2) {
-      res.status(404).json({ error: "\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0635\u062F\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    expectedSourceProjectCode = normalizedCode;
+    const [sourceProject] = await db.select({ id: projectsTable.id }).from(projectsTable).where(sql`upper(btrim(${projectsTable.linkCode})) = ${normalizedCode}`);
+    if (!sourceProject) {
+      res.status(404).json({ error: "\u062A\u0639\u0630\u0631 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0645\u0634\u0631\u0648\u0639 \u0628\u0631\u0645\u0632 \u0627\u0644\u0631\u0628\u0637 \u0627\u0644\u0645\u062D\u062F\u062F" });
       return;
     }
-    if (!await canReadProject(req.user?.userId, sourceProjectId)) {
-      res.status(403).json({ error: "\u0644\u064A\u0633 \u0644\u062F\u064A\u0643 \u0635\u0644\u0627\u062D\u064A\u0629 \u0627\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 \u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0635\u062F\u0631" });
-      return;
-    }
+    sourceProjectId = sourceProject.id;
   }
-  const result = await reconcileGroupToSideProject(id, sourceProjectId);
+  const result = await reconcileGroupToSideProject(id, sourceProjectId, true, void 0, expectedSourceProjectCode);
   if (result.conflict === "managed_rows_remain" || result.conflict === "manual_duplicate") {
     res.status(409).json({ error: result.conflict === "managed_rows_remain" ? "\u062A\u0648\u062C\u062F \u0628\u0646\u0648\u062F \u0645\u064F\u062F\u0627\u0631\u0629 \u0645\u0646 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0633\u0627\u0628\u0642\u061B \u0627\u0641\u0635\u0644\u0647\u0627 \u0623\u0648 \u0623\u0632\u0644\u0647\u0627 \u0642\u0628\u0644 \u0631\u0628\u0637 \u0645\u0634\u0631\u0648\u0639 \u0622\u062E\u0631" : "\u064A\u0648\u062C\u062F \u0628\u0646\u062F \u0645\u0631\u062A\u0628\u0637 \u064A\u062F\u0648\u064A\u064B\u0627 \u0628\u0645\u062C\u0645\u0648\u0639\u0629 \u0645\u0635\u062F\u0631 \u0636\u0645\u0646 \u0647\u0630\u0647 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629" });
     return;
@@ -128812,11 +128885,15 @@ router17.put("/projects/:projectId/activity-groups/:id/linked-project", requireP
     res.status(400).json({ error: "\u0647\u0630\u0627 \u0627\u0644\u0631\u0628\u0637 \u064A\u0646\u0634\u0626 \u0627\u0639\u062A\u0645\u0627\u062F\u064B\u0627 \u062F\u0627\u0626\u0631\u064A\u064B\u0627 \u0628\u064A\u0646 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639" });
     return;
   }
-  if (result.conflict === "source_missing") {
-    res.status(404).json({ error: "\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0635\u062F\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+  if (result.conflict === "source_missing" || result.conflict === "code_changed") {
+    res.status(404).json({ error: "\u062A\u0639\u0630\u0631 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0645\u0634\u0631\u0648\u0639 \u0628\u0631\u0645\u0632 \u0627\u0644\u0631\u0628\u0637 \u0627\u0644\u0645\u062D\u062F\u062F" });
     return;
   }
-  res.json({ group: result.group, created: result.created, updated: result.updated, unavailable: result.unavailable });
+  if (!result.group) {
+    res.status(404).json({ error: "\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
+    return;
+  }
+  res.json({ group: publicGroup(result.group), created: result.created, updated: result.updated, unavailable: result.unavailable });
 });
 router17.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const projectId = Number(req.params.projectId);
@@ -128830,11 +128907,6 @@ router17.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAcc
     res.status(409).json({ error: "\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0645\u0631\u062A\u0628\u0637\u0629 \u0628\u0645\u0634\u0631\u0648\u0639 \u062C\u0627\u0646\u0628\u064A" });
     return;
   }
-  const [sourceProject] = await db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.id, group.linkedProjectId));
-  if (sourceProject && !await canReadProject(req.user?.userId, group.linkedProjectId)) {
-    res.status(403).json({ error: "\u0644\u064A\u0633 \u0644\u062F\u064A\u0643 \u0635\u0644\u0627\u062D\u064A\u0629 \u0627\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 \u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0635\u062F\u0631" });
-    return;
-  }
   const result = await reconcileGroupToSideProject(id, group.linkedProjectId, true, group.linkedProjectId);
   if (result.conflict === "cycle") {
     res.status(400).json({ error: "\u0647\u0630\u0627 \u0627\u0644\u0631\u0628\u0637 \u064A\u0646\u0634\u0626 \u0627\u0639\u062A\u0645\u0627\u062F\u064B\u0627 \u062F\u0627\u0626\u0631\u064A\u064B\u0627 \u0628\u064A\u0646 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639" });
@@ -128844,7 +128916,7 @@ router17.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAcc
     res.status(409).json({ error: "\u062A\u0645 \u062A\u063A\u064A\u064A\u0631 \u0627\u0631\u062A\u0628\u0627\u0637 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u0628\u0627\u0644\u062A\u0632\u0627\u0645\u0646\u061B \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644\u0647\u0627 \u062B\u0645 \u062D\u0627\u0648\u0644 \u0645\u062C\u062F\u062F\u064B\u0627" });
     return;
   }
-  res.json({ group: result.group, created: result.created, updated: result.updated, unavailable: result.unavailable });
+  res.json({ group: result.group ? publicGroup(result.group) : void 0, created: result.created, updated: result.updated, unavailable: result.unavailable });
 });
 router17.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
@@ -130759,7 +130831,7 @@ router23.get("/attendance/records/:recordId/photo", async (req, res) => {
   })();
   const queryToken = typeof req.query.token === "string" ? req.query.token : null;
   const token = headerToken || queryToken;
-  const payload = token ? verifyToken(token) : null;
+  const payload = token ? await verifyAndMaybeRenewToken(token, res) : null;
   if (!payload) {
     res.status(401).json({ error: "\u063A\u064A\u0631 \u0645\u0635\u0631\u062D" });
     return;
@@ -130977,7 +131049,7 @@ app.use((req, _res, next) => {
   next();
 });
 var uploadsDir4 = path6.join(process.cwd(), "uploads");
-app.use("/api/uploads", (req, res, next) => {
+app.use("/api/uploads", async (req, res, next) => {
   const reqPath = decodeURIComponent(req.path).replace(/^\//, "");
   if (reqPath.startsWith("logo-")) {
     return next();
@@ -130986,7 +131058,7 @@ app.use("/api/uploads", (req, res, next) => {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     const tokenParam = typeof req.query.token === "string" ? req.query.token : null;
     if (tokenParam) {
-      if (verifyAndMaybeRenewToken(tokenParam, res)) return next();
+      if (await verifyAndMaybeRenewToken(tokenParam, res)) return next();
       try {
         const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
         const decoded = import_jsonwebtoken4.default.verify(tokenParam, ownerSecret);
@@ -131003,7 +131075,7 @@ app.use("/api/uploads", (req, res, next) => {
     return;
   }
   const token = authHeader.slice(7);
-  if (verifyAndMaybeRenewToken(token, res)) return next();
+  if (await verifyAndMaybeRenewToken(token, res)) return next();
   try {
     const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
     const decoded = import_jsonwebtoken4.default.verify(token, ownerSecret);

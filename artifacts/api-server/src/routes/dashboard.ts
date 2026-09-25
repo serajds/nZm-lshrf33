@@ -138,6 +138,8 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
 
   const [totals] = totalsRows;
   const [reportCount] = reportCountRows;
+  // Project codes are capabilities and must never appear in dashboard lists.
+  const safeRecentProjects = recentProjects.map(({ linkCode: _linkCode, ...project }) => project);
 
   const countByStatus = (status: string) => {
     const found = statusCounts.find(s => s.status === status);
@@ -244,7 +246,7 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
     completedActivities: activityCountByStatus("completed"),
     delayedActivities: delayedActivitiesCount,
     inProgressActivities: activityCountByStatus("in_progress"),
-    recentProjects,
+    recentProjects: safeRecentProjects,
     allProjects: projectsWithPlanned,
     recentReports,
     delayedActivitiesList,

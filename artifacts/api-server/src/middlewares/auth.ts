@@ -10,21 +10,25 @@ import {
 } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { db } from "@workspace/db";
-import { projectMembersTable, userCompaniesTable, projectsTable } from "@workspace/db";
+import { projectMembersTable, userCompaniesTable, projectsTable, usersTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 
 // Issue a fresh token when the presented one has less than half its lifetime
 // remaining, and return it in the X-Renewed-Token response header so the
 // client can transparently replace its stored token. This gives active users
 // a rolling session without ever forcing them through a hard re-login.
-export function verifyAndMaybeRenewToken(token: string, res: Response): JwtPayload | null {
+export async function verifyAndMaybeRenewToken(token: string, res: Response): Promise<JwtPayload | null> {
   const claims = verifyTokenWithClaims(token);
   if (!claims) return null;
+  const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable)
+    .where(eq(usersTable.id, claims.userId));
+  if (!dbUser) return null;
+  const payload = { userId: claims.userId, phone: claims.phone, role: dbUser.role };
   const nowSec = Math.floor(Date.now() / 1000);
   const remaining = claims.exp - nowSec;
   if (remaining > 0 && remaining < JWT_RENEWAL_THRESHOLD_SECONDS) {
     try {
-      const fresh = signToken({ userId: claims.userId, phone: claims.phone, role: claims.role });
+      const fresh = signToken(payload);
       if (!res.headersSent) {
         res.setHeader("X-Renewed-Token", fresh);
         logger.info({
@@ -39,7 +43,7 @@ export function verifyAndMaybeRenewToken(token: string, res: Response): JwtPaylo
       // Renewal is best-effort — never let a signing failure break the request.
     }
   }
-  return { userId: claims.userId, phone: claims.phone, role: claims.role };
+  return payload;
 }
 
 declare global {
@@ -51,7 +55,7 @@ declare global {
   }
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     logger.warn({ method: req.method, path: req.path, authRejection: "missing_header" }, "Authentication rejected");
@@ -65,7 +69,14 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
 
   const token = authHeader.slice(7);
-  const payload = verifyAndMaybeRenewToken(token, res);
+  let payload: JwtPayload | null;
+  try {
+    payload = await verifyAndMaybeRenewToken(token, res);
+  } catch (error) {
+    logger.error({ error }, "Authentication user lookup failed");
+    res.status(500).json({ error: "تعذر التحقق من الحساب" });
+    return;
+  }
   if (!payload) {
     logger.warn({
       method: req.method,
@@ -161,9 +172,7 @@ export function requireProjectAccess(paramName: string = "projectId") {
         return;
       }
 
-      const { usersTable } = await import("@workspace/db");
-      const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, req.user!.userId));
-      const actualRole = dbUser?.role || role;
+      const actualRole = role;
 
       const companyLinks = await db.select({ companyId: userCompaniesTable.companyId })
         .from(userCompaniesTable)

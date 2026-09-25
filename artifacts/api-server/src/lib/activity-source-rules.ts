@@ -21,6 +21,13 @@ export function normalizeLinkCode(value: unknown): string | null {
   return String(value).trim().toLowerCase();
 }
 
+/** Project subscription codes are intentionally strict and canonicalized. */
+export function normalizeProjectLinkCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z0-9-]{12,32}$/.test(normalized) ? normalized : null;
+}
+
 export function groupMatchesSourceQuery(group: { name: string; linkCode: string | null }, query: string): boolean {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return false;

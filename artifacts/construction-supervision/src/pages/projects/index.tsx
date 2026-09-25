@@ -36,6 +36,7 @@ import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { ProjectLinkCodeSettings } from "@/components/project-link-code-settings";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
@@ -375,7 +376,7 @@ export default function Projects() {
           setIsDialogOpen(open);
           if (!open) { setEditingProject(null); form.reset(); }
         }}>
-          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-hidden p-0" dir="rtl">
+          <DialogContent className="w-[calc(100vw-1.5rem)] min-w-0 sm:max-w-[700px] max-h-[90dvh] overflow-hidden p-0" dir="rtl">
             <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
               <DialogHeader>
                 <div className="flex items-center gap-3">
@@ -392,9 +393,9 @@ export default function Projects() {
               </DialogHeader>
             </div>
 
-            <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+            <div className="min-w-0 overflow-y-auto max-h-[calc(90dvh-140px)]">
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-4 space-y-8">
+                <form onSubmit={form.handleSubmit(onSubmit)} className="min-w-0 px-4 py-4 space-y-8 sm:px-6">
                   
                   {/* Section 1: Basic Info */}
                   <div className="space-y-4">
@@ -642,7 +643,10 @@ export default function Projects() {
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
+                  {editingProject && user?.role === "admin" && (
+                    <ProjectLinkCodeSettings key={editingProject.id} projectId={editingProject.id} />
+                  )}
+                  <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
                     <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
                     <Button type="submit" className="w-full sm:w-auto shadow-md" disabled={isSubmitting}>
                       {isSubmitting ? "جاري الحفظ..." : editingProject ? "حفظ تعديلات المشروع" : "تأكيد إضافة المشروع"}
