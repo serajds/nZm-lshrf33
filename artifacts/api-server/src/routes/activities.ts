@@ -5,7 +5,7 @@ import { eq, and, avg, max } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
-import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
+import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
 import { canReadProject, getGroupSummary, hasLinkedGroupSourceDuplicate, refreshLinkedSources, withSourceGraphLock, wouldCreateSourceCycle } from "../lib/external-sources";
 import { linkedSourceIdAfterPatch, sourceIsAvailable } from "../lib/activity-source-rules";
 import multer from "multer";
@@ -67,27 +67,40 @@ async function syncProjectProgress(projectId: number) {
 async function serializeActivityForUser(
   activity: typeof activitiesTable.$inferSelect,
   userId: number | undefined,
+  asOf: Date = new Date(),
+  hasSchedule = true,
 ) {
   const source = activity.externalSourceGroupId == null
     ? null
-    : await getGroupSummary(activity.externalSourceGroupId);
+    : await getGroupSummary(activity.externalSourceGroupId, asOf);
+  const plannedProgress = hasSchedule
+    ? source?.plannedProgress
+      ?? (activity.externalSourceGroupId == null
+        ? calcActivityPlannedProgress(activity, asOf)
+        : activity.plannedProgress)
+    : 0;
+  const liveActivity = {
+    ...activity,
+    actualProgress: source?.actualProgress ?? activity.actualProgress,
+    plannedProgress: roundPercent(plannedProgress),
+  };
   const sourceProjectId = source?.projectId ?? activity.managedSourceProjectId ?? undefined;
   const canReadSource = sourceProjectId !== undefined && userId !== undefined
     && await canReadProject(userId, sourceProjectId);
   if (activity.externalSourceGroupId == null) {
-    if (canReadSource || activity.managedSourceProjectId == null) return activity;
-    const { managedSourceProjectId: _sourceProjectId, ...safeActivity } = activity;
+    if (canReadSource || activity.managedSourceProjectId == null) return liveActivity;
+    const { managedSourceProjectId: _sourceProjectId, ...safeActivity } = liveActivity;
     return safeActivity;
   }
   if (canReadSource) {
     return {
-      ...activity,
+      ...liveActivity,
       externalSource: sourceIsAvailable(source)
         ? { available: true, ...source }
         : { available: false },
     };
   }
-  const { externalSourceGroupId: _sourceGroupId, managedSourceProjectId: _sourceProjectId, ...safeActivity } = activity;
+  const { externalSourceGroupId: _sourceGroupId, managedSourceProjectId: _sourceProjectId, ...safeActivity } = liveActivity;
   return {
     ...safeActivity,
     externalSource: {
@@ -106,12 +119,21 @@ router.get("/projects/:projectId/activities", requireProjectAccess("projectId"),
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
+  const [project] = await db.select({
+    noSchedule: projectsTable.noSchedule,
+    startDate: projectsTable.startDate,
+    expectedEndDate: projectsTable.expectedEndDate,
+  }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  const hasSchedule = project?.noSchedule !== true
+    && hasValidProjectSchedule(project?.startDate, project?.expectedEndDate);
+
   const activities = await db.select().from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId))
     .orderBy(activitiesTable.sortOrder, activitiesTable.id);
 
+  const asOf = new Date();
   const response = await Promise.all(activities.map(activity =>
-    serializeActivityForUser(activity, req.user?.userId),
+    serializeActivityForUser(activity, req.user?.userId, asOf, hasSchedule),
   ));
   res.json(response);
 });

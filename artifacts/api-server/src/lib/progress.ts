@@ -3,9 +3,36 @@ interface ActivityLike {
   plannedEndDate: string | null;
   actualProgress: number;
   weight?: number;
+  externalSourceGroupId?: number | null;
+  plannedProgress?: number | null;
 }
 
 export type PlannedCurve = "linear" | "scurve";
+
+const MS_PER_DAY = 86400000;
+
+/** Normalize a date/instant to its UTC calendar day. */
+export function utcDay(value: Date | string): Date {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return new Date(Number.NaN);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+/** Signed calendar-day difference between two values, using UTC days. */
+export function utcDayDifference(later: Date | string, earlier: Date | string): number {
+  return Math.floor((utcDay(later).getTime() - utcDay(earlier).getTime()) / MS_PER_DAY);
+}
+
+/** A usable scheduled project has valid dates in chronological order. */
+export function hasValidProjectSchedule(
+  startDate: Date | string | null | undefined,
+  endDate: Date | string | null | undefined,
+): boolean {
+  if (!startDate || !endDate) return false;
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+  return Number.isFinite(start) && Number.isFinite(end) && end >= start;
+}
 
 /**
  * Standard rounding for ALL displayed percentages across the system.
@@ -39,14 +66,12 @@ export function isActivityDelayed(
   
   const startOfDay = (d: string | null | undefined) => {
     if (!d) return null;
-    const date = new Date(d);
+    const date = utcDay(d);
     if (isNaN(date.getTime())) return null;
-    date.setHours(0, 0, 0, 0);
     return date;
   };
 
-  const t = new Date(today.getTime());
-  t.setHours(0, 0, 0, 0);
+  const t = utcDay(today);
   const plannedEnd = startOfDay(activity.plannedEndDate);
   const plannedStart = startOfDay(activity.plannedStartDate);
 
@@ -85,17 +110,29 @@ function scurveProgress(fraction: number): number {
 }
 
 export function calcActivityPlannedProgress(
-  activity: { plannedStartDate: string | null; plannedEndDate: string | null },
+  activity: {
+    plannedStartDate: string | null;
+    plannedEndDate: string | null;
+    externalSourceGroupId?: number | null;
+    plannedProgress?: number | null;
+  },
   today: Date = new Date(),
   curve: PlannedCurve = "linear",
 ): number {
+  if (activity.externalSourceGroupId != null && Number.isFinite(activity.plannedProgress)) {
+    return Math.max(0, Math.min(100, activity.plannedProgress!));
+  }
   if (!activity.plannedStartDate || !activity.plannedEndDate) return 0;
   const start = new Date(activity.plannedStartDate);
   const end = new Date(activity.plannedEndDate);
-  const duration = end.getTime() - start.getTime();
-  if (duration <= 0) return today >= start ? 100 : 0;
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+  const startDay = utcDay(start).getTime();
+  const endDay = utcDay(end).getTime();
+  const asOfDay = utcDay(today).getTime();
+  const duration = endDay - startDay;
+  if (duration <= 0) return asOfDay >= startDay ? 100 : 0;
 
-  const elapsed = today.getTime() - start.getTime();
+  const elapsed = asOfDay - startDay;
   if (elapsed <= 0) return 0;
   if (elapsed >= duration) return 100;
   const fraction = elapsed / duration;
@@ -122,7 +159,7 @@ export function calcPlannedProgressForProject(
 ): number {
   if (activities.length === 0) {
     if (totalDays <= 0) return 0;
-    return Math.min(100, (daysElapsed / totalDays) * 100);
+    return Math.max(0, Math.min(100, (daysElapsed / totalDays) * 100));
   }
 
   let weightedSum = 0;
@@ -145,7 +182,8 @@ export function calcActualProgressForProject(activities: ActivityLike[]): number
   let totalWeight = 0;
   for (const a of activities) {
     const w = activityWeight(a);
-    weightedSum += (a.actualProgress ?? 0) * w;
+    const actualProgress = Number.isFinite(a.actualProgress) ? a.actualProgress : 0;
+    weightedSum += actualProgress * w;
     totalWeight += w;
   }
   if (totalWeight <= 0) return 0;
@@ -171,11 +209,9 @@ export function calcOverrunDays(
   actualProgress: number,
 ): number {
   if (actualProgress >= 100 || plannedEnd == null) return 0;
-  const end = plannedEnd instanceof Date ? new Date(plannedEnd) : new Date(plannedEnd);
+  const end = utcDay(plannedEnd);
   if (Number.isNaN(end.getTime())) return 0;
-  const t = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  const e = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
-  const diff = Math.floor((t - e) / 86400000);
+  const diff = utcDayDifference(today, end);
   return Math.max(0, diff);
 }
 

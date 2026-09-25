@@ -30,6 +30,34 @@ import {
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
+type OwnerReportSnapshotActivity = ReportActivitiesSnapshotItem & {
+  actualRecordedAt?: string | null;
+  plannedAsOfDate?: string | null;
+  plannedHistoricalUnverified?: boolean;
+};
+
+function isAfterReportDate(timestamp: string | null | undefined, reportDate: string): boolean {
+  if (!timestamp) return false;
+  const valueDate = new Date(timestamp);
+  const reportDateValue = new Date(reportDate);
+  if (Number.isNaN(valueDate.getTime()) || Number.isNaN(reportDateValue.getTime())) return false;
+  return valueDate.toISOString().slice(0, 10) > reportDateValue.toISOString().slice(0, 10);
+}
+
+function getSnapshotVerification(report: Report) {
+  const snapshots = (report.activitiesSnapshot ?? []) as OwnerReportSnapshotActivity[];
+  return {
+    actualUnverified: report.status === "approved" && report.activitiesSnapshot != null && snapshots.some((activity) =>
+      isAfterReportDate(activity.actualRecordedAt ?? report.createdAt, report.reportDate)
+    ),
+    plannedUnverified: report.activitiesSnapshot != null && snapshots.some((activity) => activity.plannedHistoricalUnverified === true),
+  };
+}
+
+type OwnerProjectViewWithSpi = Omit<OwnerProjectView, "summary"> & {
+  summary: OwnerProjectView["summary"] & { spi?: number | null };
+};
+
 export default function OwnerPortal() {
   usePageTitle("بوابة المالك");
   const params = useParams();
@@ -38,7 +66,7 @@ export default function OwnerPortal() {
 
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [ownerData, setOwnerData] = useState<OwnerProjectView | null>(null);
+  const [ownerData, setOwnerData] = useState<OwnerProjectViewWithSpi | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
   const [projectInfo, setProjectInfo] = useState<{ projectName: string; hasPassword?: boolean; companyLogos: Record<string, { name: string; logoUrl: string | null }> } | null>(null);
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
@@ -70,7 +98,7 @@ export default function OwnerPortal() {
       if (data.ownerJwt) {
         sessionStorage.setItem(`owner_jwt_${token}`, data.ownerJwt);
       }
-      setOwnerData(data as OwnerProjectView);
+      setOwnerData(data as OwnerProjectViewWithSpi);
     } catch {
     } finally {
       setIsRestoring(false);
@@ -96,7 +124,7 @@ export default function OwnerPortal() {
           });
           if (!r.ok) throw new Error("expired");
           const data = await r.json();
-          setOwnerData(data as OwnerProjectView);
+          setOwnerData(data as OwnerProjectViewWithSpi);
           setIsRestoring(false);
           return;
         } catch {
@@ -126,7 +154,7 @@ export default function OwnerPortal() {
       if (jwt) {
         sessionStorage.setItem(`owner_jwt_${token}`, jwt);
       }
-      setOwnerData(res);
+      setOwnerData(res as OwnerProjectViewWithSpi);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "الرجاء التأكد من كلمة المرور";
       toast({
@@ -289,7 +317,13 @@ export default function OwnerPortal() {
   const totalSuspDays = (suspensions as ProjectSuspension[]).reduce((s: number, x: ProjectSuspension) => s + x.calendarDays, 0);
 
   const sm = summary;
-  const progressDiff = (sm.overallProgress ?? 0) - (sm.plannedProgress ?? 0);
+  const scheduleStart = project.startDate ? new Date(project.startDate).getTime() : Number.NaN;
+  const scheduleEnd = project.expectedEndDate ? new Date(project.expectedEndDate).getTime() : Number.NaN;
+  const hasValidSchedule = !sm.noSchedule && !project.noSchedule
+    && Number.isFinite(scheduleStart) && Number.isFinite(scheduleEnd) && scheduleEnd > scheduleStart
+    && Number.isFinite(sm.plannedProgress) && sm.plannedProgress > 0;
+  const progressDiff = hasValidSchedule ? (sm.overallProgress ?? 0) - sm.plannedProgress : null;
+  const spi = hasValidSchedule ? sm.spi : null;
 
   const ownerJwt = sessionStorage.getItem(`owner_jwt_${token}`) ?? "";
 
@@ -434,21 +468,37 @@ export default function OwnerPortal() {
     const imageUrls = (report.imageUrls ?? []).map((url) =>
       url.includes("?") ? url : `${url}?token=${ownerJwt}`
     );
-    // Owner backend (`buildOwnerProjectData` in api-server/src/routes/owner.ts)
-    // returns reports with `activitiesSnapshot` already populated, so the
-    // snapshot is on the row we already have. Prefer it so the print preview
-    // shows the timeline as it was when the report was created; fall back to
-    // current `activities` only for legacy reports created before snapshots
-    // existed (`activitiesSnapshot` is null).
-    const snapshotActivities = report.activitiesSnapshot ?? null;
-    const sourceActivities: Array<ReportActivitiesSnapshotItem | Activity> =
-      snapshotActivities ?? (activities as Activity[]);
-    const activityList: ActivityForReport[] = sourceActivities.map((a) => ({
-      name: a.name ?? "",
+    const snapshotActivities = report.activitiesSnapshot;
+    const verification = getSnapshotVerification(report);
+    const snapshotRows = (snapshotActivities ?? []) as OwnerReportSnapshotActivity[];
+    const activityList: ActivityForReport[] = snapshotRows.map((a) => {
+      const actualRecordedAt = a.actualRecordedAt ?? report.createdAt;
+      const actualUnverified = report.status === "approved" && isAfterReportDate(actualRecordedAt, report.reportDate);
+      const plannedUnverified = a.plannedHistoricalUnverified === true;
+      const actualProvenance = actualUnverified
+        ? ` — فعلي غير متحقق لتاريخ التقرير (سُجل ${fmtDate(actualRecordedAt)})`
+        : "";
+      return {
+      name: `${a.name ?? ""}${actualProvenance}`,
       plannedProgress: a.plannedProgress ?? 0,
       actualProgress: a.actualProgress ?? 0,
       status: (a.status as ActivityForReport["status"]) ?? "not_started",
-    }));
+      plannedHistoricalUnverified: plannedUnverified,
+      plannedAsOfDate: a.plannedAsOfDate ?? undefined,
+      };
+    });
+    const snapshotWeight = (activity: OwnerReportSnapshotActivity) =>
+      activity.weight != null && activity.weight > 0 ? activity.weight : 1;
+    const totalWeight = snapshotRows.reduce((sum, activity) => sum + snapshotWeight(activity), 0);
+    const actualProgress = totalWeight > 0
+      ? snapshotRows.reduce((sum, activity) => sum + (activity.actualProgress ?? 0) * snapshotWeight(activity), 0) / totalWeight
+      : null;
+    const plannedProgress = totalWeight > 0
+      ? snapshotRows.reduce((sum, activity) => sum + (activity.plannedProgress ?? 0) * snapshotWeight(activity), 0) / totalWeight
+      : null;
+    const spi = !verification.actualUnverified && !verification.plannedUnverified && plannedProgress != null && plannedProgress > 0 && actualProgress != null
+      ? actualProgress / plannedProgress
+      : null;
     previewReport({
       projectName: project.name,
       ownerEntity: project.ownerEntity,
@@ -468,10 +518,15 @@ export default function OwnerPortal() {
       reportNumber: report.reportNumber,
       reportDisplayMode: project.reportDisplayMode,
       activities: activityList,
+      snapshotAvailable: snapshotActivities != null,
+      actualProgress: verification.actualUnverified ? null : actualProgress,
+      plannedProgress: verification.plannedUnverified ? null : plannedProgress,
+      spi,
+      actualHistoricalUnverified: verification.actualUnverified,
+      plannedHistoricalUnverified: verification.plannedUnverified,
       contractValue: (project as any).contractValue ?? null,
       startDate: (project as any).startDate ?? null,
       expectedEndDate: (project as any).expectedEndDate ?? null,
-      plannedProgress: (project as any).plannedProgress ?? null,
       companyLogos: (ownerData as any)?.companyLogos,
       apiBase,
     });
@@ -577,12 +632,14 @@ export default function OwnerPortal() {
               <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden" dir="ltr">
                 <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${sm.overallProgress}%` }} />
               </div>
-              <div className="flex justify-between mt-1.5 text-xs text-muted-foreground">
-                <span>المخطط: {(sm.plannedProgress ?? 0).toFixed(1)}%</span>
-                <span className={progressDiff >= 0 ? 'text-emerald-600' : 'text-red-500'}>
-                  {progressDiff > 0 ? '+' : ''}{progressDiff.toFixed(1)}%
-                </span>
-              </div>
+              {hasValidSchedule && progressDiff != null && (
+                <div className="flex justify-between mt-1.5 text-xs text-muted-foreground">
+                  <span>المخطط: {sm.plannedProgress.toFixed(1)}%</span>
+                  <span className={progressDiff >= 0 ? 'text-emerald-600' : 'text-red-500'}>
+                    {progressDiff > 0 ? '+' : ''}{progressDiff.toFixed(1)}%
+                  </span>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -766,14 +823,13 @@ export default function OwnerPortal() {
                 <div className="pt-2 border-t">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">مؤشر الكفاءة (SPI)</span>
-                    {(() => {
-                      const spi = sm.plannedProgress > 0 ? (sm.overallProgress / sm.plannedProgress) : 1;
-                      return (
-                        <span className={`font-bold ${spi >= 1 ? 'text-emerald-600' : spi >= 0.8 ? 'text-amber-600' : 'text-red-600'}`}>
-                          {spi.toFixed(2)}
-                        </span>
-                      );
-                    })()}
+                    {spi == null ? (
+                      <span className="font-medium text-muted-foreground">غير متاح</span>
+                    ) : (
+                      <span className={`font-bold ${spi >= 1 ? 'text-emerald-600' : spi >= 0.8 ? 'text-amber-600' : 'text-red-600'}`}>
+                        {spi.toFixed(2)}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -917,23 +973,27 @@ export default function OwnerPortal() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="text-center p-4 rounded-lg bg-blue-50 border border-blue-100">
-                    <div className="text-3xl font-black text-blue-600">{(sm.plannedProgress ?? 0).toFixed(1)}%</div>
-                    <div className="text-sm text-blue-600/80 mt-1">الإنجاز المخطط</div>
-                  </div>
+                <div className={`grid gap-4 ${hasValidSchedule ? "md:grid-cols-3" : "md:grid-cols-1"}`}>
+                  {hasValidSchedule && (
+                    <div className="text-center p-4 rounded-lg bg-blue-50 border border-blue-100">
+                      <div className="text-3xl font-black text-blue-600">{sm.plannedProgress.toFixed(1)}%</div>
+                      <div className="text-sm text-blue-600/80 mt-1">الإنجاز المخطط</div>
+                    </div>
+                  )}
                   <div className="text-center p-4 rounded-lg bg-emerald-50 border border-emerald-100">
                     <div className="text-3xl font-black text-emerald-600">{(sm.overallProgress ?? 0).toFixed(1)}%</div>
                     <div className="text-sm text-emerald-600/80 mt-1">الإنجاز الفعلي</div>
                   </div>
-                  <div className={`text-center p-4 rounded-lg ${progressDiff >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
-                    <div className={`text-3xl font-black ${progressDiff >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {progressDiff > 0 ? '+' : ''}{progressDiff.toFixed(1)}%
+                  {hasValidSchedule && progressDiff != null && (
+                    <div className={`text-center p-4 rounded-lg ${progressDiff >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+                      <div className={`text-3xl font-black ${progressDiff >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {progressDiff > 0 ? '+' : ''}{progressDiff.toFixed(1)}%
+                      </div>
+                      <div className={`text-sm mt-1 ${progressDiff >= 0 ? 'text-emerald-600/80' : 'text-red-600/80'}`}>
+                        {progressDiff >= 0 ? 'متقدم عن الخطة' : 'متأخر عن الخطة'}
+                      </div>
                     </div>
-                    <div className={`text-sm mt-1 ${progressDiff >= 0 ? 'text-emerald-600/80' : 'text-red-600/80'}`}>
-                      {progressDiff >= 0 ? 'متقدم عن الخطة' : 'متأخر عن الخطة'}
-                    </div>
-                  </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -997,6 +1057,17 @@ export default function OwnerPortal() {
                         )}
                       </div>
 
+                      {getSnapshotVerification(report).actualUnverified && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
+                          بعض قيم الإنجاز الفعلي سُجلت بعد تاريخ التقرير؛ ستظهر مواعيد التسجيل بجوار البنود. هذه القيم غير متحققة كتقدم فعلي في تاريخ التقرير. نسبة الإنجاز أعلاه هي النسبة اليدوية المسجلة في التقرير.
+                        </div>
+                      )}
+                      {getSnapshotVerification(report).plannedUnverified && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
+                          بعض قيم الخطة محفوظة لتواريخ مرجعية مختلفة عن تاريخ التقرير؛ ستظهر مرجعية كل بند بجوار قيمته، ولا يمكن اعتماد هذه الخطة كتقدم مخطط لهذا التاريخ.
+                        </div>
+                      )}
+
                       {report.workDescription && (
                         <div>
                           <h4 className="text-sm font-semibold mb-1.5 flex items-center gap-1.5">
@@ -1007,36 +1078,63 @@ export default function OwnerPortal() {
                       )}
 
                       {(() => {
-                        const rawActivities = (report.activitiesSnapshot as any[] | null) ?? activities;
-                        const reportActivities = rawActivities.map((act: any) => ({
+                        if (report.activitiesSnapshot == null) {
+                          return (
+                            <div className="pt-3 border-t">
+                              <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                                <ActivityIcon className="h-4 w-4 text-blue-500" /> بنود الأعمال
+                              </h4>
+                              <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
+                                بيانات بنود الأعمال التاريخية غير متاحة لهذا التقرير؛ لا توجد لقطة محفوظة. نسبة الإنجاز المعروضة أعلاه هي النسبة اليدوية المسجلة في التقرير، وليست بيانات حالية للمشروع.
+                              </div>
+                            </div>
+                          );
+                        }
+                        const reportActivities = report.activitiesSnapshot.map((act) => ({
                           ...act,
                           plannedProgress: act.plannedProgress ?? 0,
-                        }));
+                        })) as OwnerReportSnapshotActivity[];
+                        const verification = getSnapshotVerification(report);
                         if (reportActivities.length === 0) return null;
                         return (
                           <div className="pt-3 border-t">
                             <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
                               <ActivityIcon className="h-4 w-4 text-blue-500" /> بنود الأعمال ({reportActivities.length})
-                              {!report.activitiesSnapshot && (
-                                <span className="text-[10px] text-muted-foreground font-normal">(بيانات حالية)</span>
-                              )}
                             </h4>
                             <div className="overflow-x-auto rounded-lg border">
                               <Table className="min-w-[500px]">
                                 <TableHeader>
                                   <TableRow className="bg-muted/40">
                                     <TableHead className="text-right text-xs py-2">البند</TableHead>
-                                    <TableHead className="text-center text-xs py-2 w-24">المخطط %</TableHead>
-                                    <TableHead className="text-center text-xs py-2 w-24">الفعلي %</TableHead>
-                                    <TableHead className="text-center text-xs py-2 w-28">الحالة</TableHead>
+                                    <TableHead className="text-center text-xs py-2 w-24">{verification.plannedUnverified ? "مخطط غير متحقق" : "المخطط %"}</TableHead>
+                                    <TableHead className="text-center text-xs py-2 w-24">{verification.actualUnverified ? "فعلي غير متحقق" : "الفعلي %"}</TableHead>
+                                    <TableHead className="text-center text-xs py-2 w-28">{verification.actualUnverified ? "الحالة عند التسجيل" : "الحالة"}</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                  {reportActivities.map((act: any) => (
+                                  {reportActivities.map((act) => {
+                                    const actualRecordedAt = act.actualRecordedAt ?? report.createdAt;
+                                    const actualUnverified = report.status === "approved" && isAfterReportDate(actualRecordedAt, report.reportDate);
+                                    const plannedUnverified = act.plannedHistoricalUnverified === true;
+                                    return (
                                     <TableRow key={act.id}>
                                       <TableCell className="text-sm py-1.5">{act.name}</TableCell>
-                                      <TableCell className="text-center text-sm py-1.5 tabular-nums">{act.plannedProgress}%</TableCell>
-                                      <TableCell className="text-center text-sm py-1.5 tabular-nums font-medium">{act.actualProgress}%</TableCell>
+                                      <TableCell className="text-center text-sm py-1.5 tabular-nums">
+                                        {act.plannedProgress}%
+                                        {plannedUnverified && (
+                                          <span className="block text-[10px] leading-tight text-amber-700 dark:text-amber-400">
+                                            غير متحقق{act.plannedAsOfDate ? ` · ${fmtDate(act.plannedAsOfDate)}` : ""}
+                                          </span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-center text-sm py-1.5 tabular-nums font-medium">
+                                        {act.actualProgress}%
+                                        {actualUnverified && (
+                                          <span className="block text-[10px] leading-tight text-amber-700 dark:text-amber-400">
+                                            غير متحقق · سُجل {fmtDate(actualRecordedAt)}
+                                          </span>
+                                        )}
+                                      </TableCell>
                                       <TableCell className="text-center py-1.5">
                                         {act.status === "completed" ? (
                                           <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] px-1.5">مكتمل</Badge>
@@ -1049,7 +1147,7 @@ export default function OwnerPortal() {
                                         )}
                                       </TableCell>
                                     </TableRow>
-                                  ))}
+                                  );})}
                                 </TableBody>
                               </Table>
                             </div>

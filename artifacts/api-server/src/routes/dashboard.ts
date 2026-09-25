@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectSuspensionsTable, projectMembersTable } from "@workspace/db";
 import { eq, count, avg, sql, desc, asc, inArray } from "drizzle-orm";
 import { requireStaffOrContractor, requireProjectAccess } from "../middlewares/auth";
+import { resolveLinkedActivityProgress } from "../lib/external-sources";
 import {
   calcPlannedProgressForProject,
   calcActualProgressForProject,
@@ -15,6 +16,9 @@ import {
   isActivityDelayed,
   roundPercent,
   type PlannedCurve,
+  hasValidProjectSchedule,
+  utcDay,
+  utcDayDifference,
 } from "../lib/progress";
 
 const router: IRouter = Router();
@@ -22,8 +26,12 @@ const router: IRouter = Router();
 type ActivitySnapshotItem = {
   plannedStartDate: string | null;
   plannedEndDate: string | null;
+  plannedProgress: number;
   actualProgress: number;
   weight: number;
+  externalSourceGroupId: number | null;
+  actualRecordedAt: string | null;
+  plannedHistoricalUnverified: boolean;
 };
 
 function parseActivitiesSnapshot(raw: unknown): ActivitySnapshotItem[] {
@@ -35,14 +43,19 @@ function parseActivitiesSnapshot(raw: unknown): ActivitySnapshotItem[] {
     out.push({
       plannedStartDate: typeof o.plannedStartDate === "string" ? o.plannedStartDate : null,
       plannedEndDate: typeof o.plannedEndDate === "string" ? o.plannedEndDate : null,
+      plannedProgress: typeof o.plannedProgress === "number" ? o.plannedProgress : 0,
       actualProgress: typeof o.actualProgress === "number" ? o.actualProgress : 0,
       weight: typeof o.weight === "number" && o.weight > 0 ? o.weight : 1,
+      externalSourceGroupId: typeof o.externalSourceGroupId === "number" ? o.externalSourceGroupId : null,
+      actualRecordedAt: typeof o.actualRecordedAt === "string" ? o.actualRecordedAt : null,
+      plannedHistoricalUnverified: o.plannedHistoricalUnverified === true,
     });
   }
   return out;
 }
 
 router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Promise<void> => {
+  const today = utcDay(new Date());
   const userRole = _req.user?.role;
   const userId = _req.user?.userId;
 
@@ -139,8 +152,6 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
   const [totals] = totalsRows;
   const [reportCount] = reportCountRows;
   // Project codes are capabilities and must never appear in dashboard lists.
-  const safeRecentProjects = recentProjects.map(({ linkCode: _linkCode, ...project }) => project);
-
   const countByStatus = (status: string) => {
     const found = statusCounts.find(s => s.status === status);
     return found ? Number(found.cnt) : 0;
@@ -151,25 +162,30 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
     return found ? Number(found.cnt) : 0;
   };
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
   const allActivities = allProjects.length > 0
     ? await db.select().from(activitiesTable).where(
         inArray(activitiesTable.projectId, allProjects.map(p => p.id))
       )
     : [];
+  const resolvedActivities = await resolveLinkedActivityProgress(allActivities, today);
 
-  const activitiesByProject = new Map<number, typeof allActivities>();
-  for (const a of allActivities) {
+  const activitiesByProject = new Map<number, typeof resolvedActivities>();
+  for (const a of resolvedActivities) {
     const list = activitiesByProject.get(a.projectId) ?? [];
     list.push(a);
     activitiesByProject.set(a.projectId, list);
   }
 
+  const safeRecentProjects = recentProjects.map(({ linkCode: _linkCode, ...project }) => {
+    const projectActivities = activitiesByProject.get(project.id) ?? [];
+    const actualRaw = projectActivities.length > 0
+      ? calcActualProgressForProject(projectActivities)
+      : (project.overallProgress ?? 0);
+    return { ...project, overallProgress: roundPercent(actualRaw) };
+  });
   const projectNameMap = new Map(allProjects.map(p => [p.id, p.name]));
   const noScheduleProjectIds = new Set(allProjects.filter(p => p.noSchedule === true).map(p => p.id));
-  const delayedActivitiesAll = allActivities.filter(a =>
+  const delayedActivitiesAll = resolvedActivities.filter(a =>
     isActivityDelayed(a, today, noScheduleProjectIds.has(a.projectId))
   );
   const delayedActivitiesCount = delayedActivitiesAll.length;
@@ -193,37 +209,41 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
 
   const projectsWithPlanned = allProjects.map(p => {
     const isNoSchedule = p.noSchedule === true;
-    if (isNoSchedule) {
+    const hasSchedule = !isNoSchedule && hasValidProjectSchedule(p.startDate, p.expectedEndDate);
+    const projActivities = activitiesByProject.get(p.id) ?? [];
+    const actualRaw = projActivities.length > 0
+      ? calcActualProgressForProject(projActivities)
+      : (p.overallProgress ?? 0);
+    const computedActual = roundPercent(actualRaw);
+    if (!hasSchedule) {
       return {
         id: p.id,
         name: p.name,
-        overallProgress: roundPercent(p.overallProgress ?? 0),
+        overallProgress: computedActual,
         plannedProgress: 0,
+        spi: null,
         status: p.status,
         daysRemaining: 0,
         ownerEntity: p.ownerEntity,
         startDate: p.startDate,
         expectedEndDate: p.expectedEndDate,
-        noSchedule: true,
+        noSchedule: isNoSchedule,
         overrunDays: 0,
       };
     }
-    const startDate = new Date(p.startDate ?? Date.now());
-    const endDate = new Date(p.expectedEndDate ?? Date.now());
-    const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const startDate = new Date(p.startDate!);
+    const totalDays = Math.max(1, utcDayDifference(p.expectedEndDate!, p.startDate!));
+    const daysElapsed = Math.max(0, utcDayDifference(today, startDate));
     const daysRemaining = Math.max(0, totalDays - daysElapsed);
-    const projActivities = activitiesByProject.get(p.id) ?? [];
-    const plannedProgress = roundPercent(calcPlannedProgressForProject(projActivities, daysElapsed, totalDays));
-    const computedActual = projActivities.length > 0
-      ? roundPercent(calcActualProgressForProject(projActivities))
-      : roundPercent(p.overallProgress ?? 0);
+    const plannedRaw = calcPlannedProgressForProject(projActivities, daysElapsed, totalDays, today);
+    const plannedProgress = roundPercent(plannedRaw);
     const overrunDays = calcOverrunDays(today, p.expectedEndDate, computedActual);
     return {
       id: p.id,
       name: p.name,
       overallProgress: computedActual,
       plannedProgress,
+      spi: calcSPI(plannedRaw, actualRaw),
       status: p.status,
       daysRemaining,
       ownerEntity: p.ownerEntity,
@@ -240,7 +260,14 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
     completedProjects: countByStatus("completed"),
     delayedProjects: countByStatus("delayed"),
     suspendedProjects: countByStatus("suspended"),
-    averageProgress: roundPercent(Number(totals?.avgProgress ?? 0)),
+    averageProgress: roundPercent(allProjects.length
+      ? allProjects.reduce((sum, project) => {
+          const projectActivities = activitiesByProject.get(project.id) ?? [];
+          return sum + (projectActivities.length > 0
+            ? calcActualProgressForProject(projectActivities)
+            : (project.overallProgress ?? 0));
+        }, 0) / allProjects.length
+      : 0),
     totalReports: Number(reportCount?.count ?? 0),
     totalActivities: activityCounts.reduce((s, a) => s + Number(a.cnt), 0),
     completedActivities: activityCountByStatus("completed"),
@@ -279,60 +306,39 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
     return;
   }
 
+  const today = utcDay(new Date());
+  const resolvedActivities = await resolveLinkedActivityProgress(activities, today);
   const isNoSchedule = project.noSchedule === true;
-
-  if (isNoSchedule) {
-    res.json({
-      projectId,
-      noSchedule: true,
-      overallProgress: roundPercent(project.overallProgress),
-      plannedProgress: 0,
-      activitiesTotal: activities.length,
-      activitiesCompleted: activities.filter(a => a.status === "completed").length,
-      activitiesDelayed: 0,
-      daysElapsed: 0,
-      totalDays: 0,
-      daysRemaining: 0,
-      delayDays: 0,
-      suspensionDays: 0,
-      netDelayDays: 0,
-      overrunDays: 0,
-      reportsCount: Number(reportCount?.count ?? 0),
-      filesCount: Number(fileCount?.count ?? 0),
-    });
-    return;
-  }
-
-  const today = new Date();
-  const hasSchedule = !!(project.startDate && project.expectedEndDate);
-  const startDate = new Date(project.startDate ?? Date.now());
-  const endDate = new Date(project.expectedEndDate ?? Date.now());
-  const totalDays = hasSchedule
-    ? Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
-    : 0;
-  const daysElapsed = hasSchedule
-    ? Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
-    : 0;
+  const hasSchedule = !isNoSchedule && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
+  const startDate = hasSchedule ? new Date(project.startDate!) : null;
+  const totalDays = hasSchedule ? Math.max(1, utcDayDifference(project.expectedEndDate!, project.startDate!)) : 0;
+  const daysElapsed = hasSchedule ? Math.max(0, utcDayDifference(today, startDate!)) : 0;
   const daysRemaining = hasSchedule ? Math.max(0, totalDays - daysElapsed) : 0;
-  const plannedProgress = hasSchedule ? calcPlannedProgressForProject(activities, daysElapsed, totalDays) : 0;
-  const actualProgressForSummary = activities.length > 0
-    ? roundPercent(calcActualProgressForProject(activities))
-    : roundPercent(project.overallProgress);
-  const delayDays = hasSchedule ? calcDelayDays(plannedProgress, actualProgressForSummary, totalDays) : 0;
-  const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
+  const plannedRaw = hasSchedule
+    ? calcPlannedProgressForProject(resolvedActivities, daysElapsed, totalDays, today)
+    : 0;
+  const actualRaw = resolvedActivities.length > 0
+    ? calcActualProgressForProject(resolvedActivities)
+    : (project.overallProgress ?? 0);
+  const actualProgressForSummary = roundPercent(actualRaw);
+  const delayDays = hasSchedule ? calcDelayDays(plannedRaw, actualRaw, totalDays) : 0;
+  const suspensionDays = hasSchedule
+    ? suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0)
+    : 0;
   // Net delay is gross delay minus suspension days, but only if gross delay exists.
   // Also ensuring we don't double count if schedule was already shifted.
   const netDelayDays = Math.max(0, delayDays - suspensionDays);
-  const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualProgressForSummary) : 0;
+  const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualRaw) : 0;
 
   res.json({
     projectId,
-    noSchedule: false,
+    noSchedule: isNoSchedule,
     overallProgress: actualProgressForSummary,
-    plannedProgress: roundPercent(plannedProgress),
-    activitiesTotal: activities.length,
-    activitiesCompleted: activities.filter(a => a.status === "completed").length,
-    activitiesDelayed: activities.filter(a => isActivityDelayed(a, today, false)).length,
+    plannedProgress: roundPercent(plannedRaw),
+    spi: hasSchedule ? calcSPI(plannedRaw, actualRaw) : null,
+    activitiesTotal: resolvedActivities.length,
+    activitiesCompleted: resolvedActivities.filter(a => a.status === "completed").length,
+    activitiesDelayed: resolvedActivities.filter(a => isActivityDelayed(a, today, !hasSchedule)).length,
     daysElapsed,
     totalDays,
     daysRemaining,
@@ -360,12 +366,17 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
   const activities = await db.select().from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId))
     .orderBy(asc(activitiesTable.sortOrder), asc(activitiesTable.id));
+  const today = utcDay(new Date());
+  const resolvedActivities = await resolveLinkedActivityProgress(activities, today, curve);
   const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId));
 
   const isNoSchedule = project.noSchedule === true;
 
   if (isNoSchedule) {
-    const activitiesAnalysis = activities.map(a => ({
+    const actualRaw = resolvedActivities.length > 0
+      ? calcActualProgressForProject(resolvedActivities)
+      : (project.overallProgress ?? 0);
+    const activitiesAnalysis = resolvedActivities.map(a => ({
       activityId: a.id,
       activityName: a.name,
       plannedProgress: 0,
@@ -383,7 +394,7 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
       timeDeviation: 0,
       progressDeviation: 0,
       plannedProgress: 0,
-      actualProgress: roundPercent(project.overallProgress),
+      actualProgress: roundPercent(actualRaw),
       suspensionDays: 0,
       grossDelayDays: 0,
       netDelayDays: 0,
@@ -401,27 +412,33 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
     return;
   }
 
-  const today = new Date();
-  const startDate = new Date(project.startDate ?? Date.now());
-  const endDate = new Date(project.expectedEndDate ?? Date.now());
-  const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-  const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-  const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, curve);
-  const actualProgress = activities.length > 0
-    ? roundPercent(calcActualProgressForProject(activities))
-    : roundPercent(project.overallProgress);
+  const hasSchedule = !isNoSchedule && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
+  const startDate = hasSchedule ? new Date(project.startDate!) : today;
+  const endDate = hasSchedule ? new Date(project.expectedEndDate!) : today;
+  const totalDays = hasSchedule ? Math.max(1, utcDayDifference(endDate, startDate)) : 0;
+  const daysElapsed = hasSchedule ? Math.max(0, utcDayDifference(today, startDate)) : 0;
+  const plannedRaw = hasSchedule
+    ? calcPlannedProgressForProject(resolvedActivities, daysElapsed, totalDays, today, curve)
+    : 0;
+  const plannedProgress = roundPercent(plannedRaw);
+  const actualRaw = resolvedActivities.length > 0
+    ? calcActualProgressForProject(resolvedActivities)
+    : (project.overallProgress ?? 0);
+  const actualProgress = roundPercent(actualRaw);
 
-  const progressDeviation = actualProgress - plannedProgress;
-  const timeDeviation = Math.max(0, plannedProgress - actualProgress) / 100 * totalDays;
-  const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
-  const grossDelayDays = calcDelayDays(plannedProgress, actualProgress, totalDays);
+  const progressDeviation = hasSchedule ? actualRaw - plannedRaw : 0;
+  const timeDeviation = hasSchedule ? Math.max(0, plannedRaw - actualRaw) / 100 * totalDays : 0;
+  const suspensionDays = hasSchedule ? suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0) : 0;
+  const grossDelayDays = hasSchedule ? calcDelayDays(plannedRaw, actualRaw, totalDays) : 0;
   const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
-  const overrunDays = calcOverrunDays(today, project.expectedEndDate, actualProgress);
+  const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualRaw) : 0;
 
-  const spi = calcSPI(plannedProgress, actualProgress);
-  const forecastCompletion = calcForecastCompletionDate(startDate, endDate, today, plannedProgress, actualProgress);
+  const spi = hasSchedule ? calcSPI(plannedRaw, actualRaw) : null;
+  const forecastCompletion = hasSchedule
+    ? calcForecastCompletionDate(startDate, endDate, today, plannedRaw, actualRaw)
+    : null;
   const forecastCompletionDate = forecastCompletion ? forecastCompletion.toISOString().slice(0, 10) : null;
-  const expectedProgressAtEnd = roundPercent(calcExpectedProgressAtEnd(plannedProgress, actualProgress));
+  const expectedProgressAtEnd = hasSchedule ? roundPercent(calcExpectedProgressAtEnd(plannedRaw, actualRaw)) : 0;
   const forecastDelayDays = forecastCompletion && project.expectedEndDate
     ? Math.ceil((forecastCompletion.getTime() - new Date(project.expectedEndDate).getTime()) / 86400000)
     : 0;
@@ -443,6 +460,9 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
     .filter(b => b.count > 0);
 
   let overallStatus: "on_track" | "slightly_delayed" | "significantly_delayed" | "ahead";
+  if (!hasSchedule) {
+    overallStatus = "on_track";
+  } else
   if (progressDeviation > 5) {
     overallStatus = "ahead";
   } else if (progressDeviation >= -5) {
@@ -453,10 +473,11 @@ router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), 
     overallStatus = "significantly_delayed";
   }
 
-  const totalWeight = activities.reduce((s, a) => s + (a.weight && a.weight > 0 ? a.weight : 1), 0) || 1;
-  const activitiesAnalysis = activities.map(a => {
-    const actPlanned = roundPercent(calcActivityPlannedProgress(a, today, curve));
-    const deviation = roundPercent(a.actualProgress - actPlanned);
+  const totalWeight = resolvedActivities.reduce((s, a) => s + (a.weight && a.weight > 0 ? a.weight : 1), 0) || 1;
+  const activitiesAnalysis = resolvedActivities.map(a => {
+    const actPlannedRaw = hasSchedule ? calcActivityPlannedProgress(a, today, curve) : 0;
+    const actPlanned = roundPercent(actPlannedRaw);
+    const deviation = roundPercent(hasSchedule ? a.actualProgress - actPlannedRaw : 0);
     const w = a.weight && a.weight > 0 ? a.weight : 1;
     const weightedImpact = roundPercent(deviation * w / totalWeight);
     const overrun: number | null = a.plannedEndDate
@@ -595,6 +616,7 @@ router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("proj
       reportDate: reportsTable.reportDate,
       progressPercentage: reportsTable.progressPercentage,
       activitiesSnapshot: reportsTable.activitiesSnapshot,
+      createdAt: reportsTable.createdAt,
     })
     .from(reportsTable)
     .where(eq(reportsTable.projectId, projectId))
@@ -602,28 +624,62 @@ router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("proj
 
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
 
-  const startDate = new Date(project.startDate ?? Date.now());
-  const endDate = new Date(project.expectedEndDate ?? Date.now());
-  const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000));
+  if (!hasValidProjectSchedule(project.startDate, project.expectedEndDate)) {
+    res.json({ projectId, noSchedule: false, points: [], suspensionsBreakdown, baselineStatus: "no_historical_baseline" });
+    return;
+  }
+  const startDate = utcDay(project.startDate!);
+  const endDate = utcDay(project.expectedEndDate!);
+  const totalDays = Math.max(1, utcDayDifference(endDate, startDate));
+  const today = utcDay(new Date());
+  const resolvedActivities = await resolveLinkedActivityProgress(activities, today, curve);
 
   const points = reports.map(r => {
-    const reportDate = new Date(r.reportDate);
-    const daysElapsed = Math.max(0, Math.ceil((reportDate.getTime() - startDate.getTime()) / 86400000));
+    const reportDate = utcDay(r.reportDate);
+    const daysElapsed = Math.max(0, utcDayDifference(reportDate, startDate));
     const snapshot = parseActivitiesSnapshot(r.activitiesSnapshot);
-    const activitiesForCalc = snapshot.length > 0 ? snapshot : activities;
-    const planned = roundPercent(calcPlannedProgressForProject(activitiesForCalc, daysElapsed, totalDays, reportDate, curve));
-    // Prefer the weighted actual computed from the per-report activities snapshot
-    // so the historical "actual" line matches the same methodology used on the
-    // deviation page (and won't drift from a manually-entered progressPercentage).
-    const actualRaw = snapshot.length > 0
-      ? calcActualProgressForProject(snapshot)
-      : (r.progressPercentage ?? 0);
-    const actual = roundPercent(actualRaw);
+    if (!Array.isArray(r.activitiesSnapshot)) {
+      return {
+        date: r.reportDate,
+        plannedProgress: null,
+        actualProgress: null,
+        deviation: null,
+        spi: null,
+        baselineStatus: "no_historical_baseline" as const,
+      };
+    }
+    if (snapshot.length === 0) {
+      return {
+        date: r.reportDate,
+        plannedProgress: 0,
+        actualProgress: 0,
+        deviation: 0,
+        spi: null,
+        baselineStatus: "available" as const,
+      };
+    }
+    const plannedHistoricalUnverified = snapshot.some(item => item.plannedHistoricalUnverified);
+    const actualVerifiable = snapshot.every(item => {
+      const recordedAt = item.actualRecordedAt ?? r.createdAt;
+      if (!recordedAt) return false;
+      const recordedDay = utcDay(recordedAt);
+      return Number.isFinite(recordedDay.getTime()) && recordedDay.getTime() <= reportDate.getTime();
+    });
+    const plannedRaw = calcPlannedProgressForProject(snapshot, daysElapsed, totalDays, reportDate, curve);
+    const actualRaw = calcActualProgressForProject(snapshot);
+    const planned = plannedHistoricalUnverified ? null : roundPercent(plannedRaw);
+    const actual = actualVerifiable ? roundPercent(actualRaw) : null;
     return {
       date: r.reportDate,
       plannedProgress: planned,
       actualProgress: actual,
-      deviation: roundPercent(actual - planned),
+      deviation: planned == null || actual == null ? null : roundPercent(actual - planned),
+      spi: planned == null || actual == null ? null : calcSPI(plannedRaw, actualRaw),
+      baselineStatus: !actualVerifiable
+        ? "actual_unverified" as const
+        : plannedHistoricalUnverified
+          ? "planned_unverified" as const
+          : "available" as const,
     };
   });
 
@@ -631,26 +687,29 @@ router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("proj
   // of jumping in mid-project at the date of the first report.
   const isoStart = startDate.toISOString().slice(0, 10);
   if (points.length === 0 || points[0].date !== isoStart) {
-    points.unshift({ date: isoStart, plannedProgress: 0, actualProgress: 0, deviation: 0 });
+    points.unshift({ date: isoStart, plannedProgress: 0, actualProgress: 0, deviation: 0, spi: null, baselineStatus: "available" as const });
   }
 
   // Always append a "today" data point so the chart shows the current state.
   // Use the weighted actual from current activities (consistent with deviation page).
-  const today = new Date();
   if (today >= startDate) {
-    const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / 86400000));
-    const planned = roundPercent(calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, curve));
-    const actualRaw = activities.length > 0
-      ? calcActualProgressForProject(activities)
+    const daysElapsed = Math.max(0, utcDayDifference(today, startDate));
+    const plannedRaw = calcPlannedProgressForProject(resolvedActivities, daysElapsed, totalDays, today, curve);
+    const actualRaw = resolvedActivities.length > 0
+      ? calcActualProgressForProject(resolvedActivities)
       : (project.overallProgress ?? 0);
+    const planned = roundPercent(plannedRaw);
     const actual = roundPercent(actualRaw);
     const isoToday = today.toISOString().slice(0, 10);
-    if (points.length === 0 || points[points.length - 1].date !== isoToday) {
+    const lastPoint = points[points.length - 1];
+    if (points.length === 0 || lastPoint.date !== isoToday || lastPoint.baselineStatus !== "available") {
       points.push({
         date: isoToday,
         plannedProgress: planned,
         actualProgress: actual,
         deviation: roundPercent(actual - planned),
+        spi: calcSPI(plannedRaw, actualRaw),
+        baselineStatus: "available" as const,
       });
     }
   }

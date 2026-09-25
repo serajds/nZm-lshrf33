@@ -2,8 +2,9 @@ import { db, pool, activitiesTable, activityGroupsTable, projectsTable, projectE
 import { and, eq, isNotNull, isNull, max, sum } from "drizzle-orm";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { recalcExpectedEndDate } from "./recalc-end-date";
-import { calcActivityPlannedProgress, roundPercent } from "./progress";
+import { calcActivityPlannedProgress, roundPercent, utcDay, type PlannedCurve } from "./progress";
 import {
+  type SourceGroupSummary,
   currentRoleCanReadProject,
   linkedActivityValues,
   normalizeLinkCode,
@@ -172,7 +173,8 @@ export async function reconcileGroupToSideProject(
     const existingBySource = new Map(managed
       .filter(item => item.externalSourceGroupId != null)
       .map(item => [item.externalSourceGroupId!, item]));
-    const summaries = await Promise.all(sourceGroups.map(source => getGroupSummary(source.id)));
+    const asOf = new Date();
+    const summaries = await Promise.all(sourceGroups.map(source => getGroupSummary(source.id, asOf)));
     let created = 0;
     let updated = 0;
     const [maxSort] = await tx.select({ value: max(activitiesTable.sortOrder) }).from(activitiesTable)
@@ -181,10 +183,7 @@ export async function reconcileGroupToSideProject(
     const now = new Date();
     for (const summary of summaries) {
       if (!summary) continue;
-      const plannedProgress = calcActivityPlannedProgress({
-        plannedStartDate: summary.plannedStartDate,
-        plannedEndDate: summary.plannedEndDate,
-      });
+      const plannedProgress = summary.plannedProgress;
       const status = managedStatus(summary.actualProgress);
       const prior = existingBySource.get(summary.groupId);
       if (!prior) {
@@ -298,24 +297,77 @@ export async function createActivityGroupUnderSourceGraphLock(
   }));
 }
 
-export async function getGroupSummary(groupId: number) {
-  const [group] = await db.select().from(activityGroupsTable).where(eq(activityGroupsTable.id, groupId));
-  if (!group) return null;
-  const [project] = await db.select({ name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, group.projectId));
-  if (!project) return null;
-  const children = await db.select({
-    actualProgress: activitiesTable.actualProgress,
-    weight: activitiesTable.weight,
-    plannedStartDate: activitiesTable.plannedStartDate,
-    plannedEndDate: activitiesTable.plannedEndDate,
-  }).from(activitiesTable).where(and(eq(activitiesTable.projectId, group.projectId), eq(activitiesTable.groupId, groupId)));
-  return summarizeSourceChildren(children, {
-    groupId: group.id,
-    projectId: group.projectId,
-    projectName: project.name,
-    groupName: group.name,
-    linkCode: group.linkCode,
-  });
+type GroupSummaryMemo = Map<string, Promise<SourceGroupSummary | null>>;
+
+export async function getGroupSummary(
+  groupId: number,
+  asOf: Date = new Date(),
+  memo: GroupSummaryMemo = new Map(),
+  curve: PlannedCurve = "linear",
+): Promise<SourceGroupSummary | null> {
+  const resolve = (id: number, ancestors: Set<number>): Promise<SourceGroupSummary | null> => {
+    if (ancestors.has(id)) return Promise.resolve(null);
+    const cacheKey = `${utcDay(asOf).getTime()}:${curve}:${id}`;
+    const cached = memo.get(cacheKey);
+    if (cached) return cached;
+    const nextAncestors = new Set(ancestors);
+    nextAncestors.add(id);
+    const pending = (async (): Promise<SourceGroupSummary | null> => {
+      const [group] = await db.select().from(activityGroupsTable).where(eq(activityGroupsTable.id, id));
+      if (!group) return null;
+      const [project] = await db.select({ name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, group.projectId));
+      if (!project) return null;
+      const children = await db.select({
+        actualProgress: activitiesTable.actualProgress,
+        weight: activitiesTable.weight,
+        plannedStartDate: activitiesTable.plannedStartDate,
+        plannedEndDate: activitiesTable.plannedEndDate,
+        plannedProgress: activitiesTable.plannedProgress,
+        externalSourceGroupId: activitiesTable.externalSourceGroupId,
+      }).from(activitiesTable).where(and(eq(activitiesTable.projectId, group.projectId), eq(activitiesTable.groupId, id)));
+      const resolvedChildren = await Promise.all(children.map(async child => {
+        if (child.externalSourceGroupId == null) {
+          return { ...child, plannedProgress: calcActivityPlannedProgress(child, asOf, curve) };
+        }
+        const source = await resolve(child.externalSourceGroupId, nextAncestors);
+        // If its source was deleted (or a corrupt cycle is encountered), the
+        // activity's stored values remain the last-known snapshot.
+        return {
+          ...child,
+          plannedProgress: source?.plannedProgress ?? child.plannedProgress,
+          actualProgress: source?.actualProgress ?? child.actualProgress,
+        };
+      }));
+      return summarizeSourceChildren(resolvedChildren, {
+        groupId: group.id,
+        projectId: group.projectId,
+        projectName: project.name,
+        groupName: group.name,
+        linkCode: group.linkCode,
+      });
+    })();
+    memo.set(cacheKey, pending);
+    return pending;
+  };
+  return resolve(groupId, new Set<number>());
+}
+
+/** Resolve linked rows to the live source-group values without mutating input rows. */
+export async function resolveLinkedActivityProgress<
+  T extends {
+    externalSourceGroupId: number | null;
+    plannedProgress: number;
+    actualProgress: number;
+  },
+>(activities: readonly T[], asOf: Date = new Date(), curve: PlannedCurve = "linear"): Promise<T[]> {
+  const memo: GroupSummaryMemo = new Map();
+  return Promise.all(activities.map(async activity => {
+    if (activity.externalSourceGroupId == null) return { ...activity };
+    const summary = await getGroupSummary(activity.externalSourceGroupId, asOf, memo, curve);
+    return summary
+      ? { ...activity, plannedProgress: summary.plannedProgress, actualProgress: summary.actualProgress }
+      : { ...activity };
+  }));
 }
 
 /** The dependency graph is target project -> source project. Adding an edge is safe only if source cannot already reach target. */
@@ -391,8 +443,9 @@ export async function refreshLinkedSources(sourceGroupIds: number[]) {
       dependencies.set(linked.sourceGroupId, [...(dependencies.get(linked.sourceGroupId) ?? []), linked.targetGroupId]);
     }
     const order = topologicalSourceGroupOrder(sourceGroupIds, dependencies);
+    const asOf = new Date();
     for (const groupId of order) {
-      const summary = await getGroupSummary(groupId);
+      const summary = await getGroupSummary(groupId, asOf);
       if (!summary) continue; // Preserve last values when a group/project has been deleted.
       const targets = await db.select().from(activitiesTable).where(eq(activitiesTable.externalSourceGroupId, groupId));
       const projects = new Set<number>();
@@ -403,10 +456,7 @@ export async function refreshLinkedSources(sourceGroupIds: number[]) {
           // Detach freezes the generated group label and restores ordinary
           // activity status edits, but the retained external group ID continues
           // to refresh this activity's individual progress and planned dates.
-          const values = linkedActivityValues(summary, calcActivityPlannedProgress({
-            plannedStartDate: summary.plannedStartDate,
-            plannedEndDate: summary.plannedEndDate,
-          }));
+          const values = linkedActivityValues(summary, summary.plannedProgress);
           if (!values) continue;
           const status = managedStatus(summary.actualProgress);
           const executionStateChanged = activity.actualProgress !== summary.actualProgress
@@ -420,11 +470,7 @@ export async function refreshLinkedSources(sourceGroupIds: number[]) {
           projects.add(activity.projectId);
           continue;
         }
-        const plannedProgress = calcActivityPlannedProgress({
-          plannedStartDate: summary.plannedStartDate,
-          plannedEndDate: summary.plannedEndDate,
-        });
-        const values = linkedActivityValues(summary, plannedProgress);
+        const values = linkedActivityValues(summary, summary.plannedProgress);
         if (!values) continue;
         await db.update(activitiesTable).set({
           ...values,

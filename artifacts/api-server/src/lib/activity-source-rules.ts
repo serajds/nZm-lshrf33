@@ -3,6 +3,7 @@ export interface SourceChild {
   weight: number | null;
   plannedStartDate: string | null;
   plannedEndDate: string | null;
+  plannedProgress?: number | null;
 }
 
 export interface SourceGroupSummary {
@@ -12,6 +13,7 @@ export interface SourceGroupSummary {
   groupName: string;
   linkCode: string | null;
   actualProgress: number;
+  plannedProgress: number;
   plannedStartDate: string | null;
   plannedEndDate: string | null;
 }
@@ -98,19 +100,23 @@ export function suspensionActivityDateShift(
 
 export function summarizeSourceChildren(
   children: SourceChild[],
-  group: Omit<SourceGroupSummary, "actualProgress" | "plannedStartDate" | "plannedEndDate">,
+  group: Omit<SourceGroupSummary, "actualProgress" | "plannedProgress" | "plannedStartDate" | "plannedEndDate">,
 ): SourceGroupSummary {
   const weight = (child: SourceChild) =>
     child.weight != null && Number.isFinite(child.weight) && child.weight > 0 ? child.weight : 1;
   const totalWeight = children.reduce((sum, child) => sum + weight(child), 0);
   const actualProgress = totalWeight
-    ? Math.round(children.reduce((sum, child) => sum + (child.actualProgress ?? 0) * weight(child), 0) / totalWeight * 10) / 10
+    ? children.reduce((sum, child) => sum + (child.actualProgress ?? 0) * weight(child), 0) / totalWeight
+    : 0;
+  const plannedProgress = totalWeight
+    ? children.reduce((sum, child) => sum + (child.plannedProgress ?? 0) * weight(child), 0) / totalWeight
     : 0;
   const starts = children.map(child => child.plannedStartDate).filter((date): date is string => Boolean(date)).sort();
   const ends = children.map(child => child.plannedEndDate).filter((date): date is string => Boolean(date)).sort();
   return {
     ...group,
     actualProgress,
+    plannedProgress,
     plannedStartDate: starts[0] ?? null,
     plannedEndDate: ends.at(-1) ?? null,
   };

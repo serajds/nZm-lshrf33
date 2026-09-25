@@ -17,6 +17,7 @@ import { signToken } from "../src/lib/auth";
 import activitiesRouter from "../src/routes/activities";
 import activityGroupsRouter from "../src/routes/activity-groups";
 import projectsRouter from "../src/routes/projects";
+import dashboardRouter from "../src/routes/dashboard";
 import ownerRouter from "../src/routes/owner";
 
 if (process.env.NODE_ENV === "production" || !process.env.DATABASE_URL) {
@@ -84,6 +85,7 @@ async function main() {
     app.use(activitiesRouter);
     app.use(activityGroupsRouter);
     app.use(projectsRouter);
+    app.use(dashboardRouter);
     app.use(ownerRouter);
     server = app.listen(0);
     await new Promise<void>(resolve => server!.once("listening", resolve));
@@ -91,6 +93,126 @@ async function main() {
     assert.ok(address && typeof address !== "string");
     const apiBase = `http://127.0.0.1:${address.port}/projects/${targetProject.id}/activities`;
     const authorization = `Bearer ${signToken({ userId: testUser.id, phone: testUser.phone, role: "admin" })}`;
+    const today = new Date();
+    const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const day = (offset: number) => {
+      const value = new Date(todayUtc);
+      value.setUTCDate(value.getUTCDate() + offset);
+      return value.toISOString().slice(0, 10);
+    };
+    const schedule = { noSchedule: false, startDate: day(-20), expectedEndDate: day(20) };
+    const [metricsSourceProject, metricsTargetProject, weightedProject] = await db.insert(projectsTable).values([
+      { ...base, ...schedule, name: `${suffix}-metrics-source` },
+      { ...base, ...schedule, name: `${suffix}-metrics-target` },
+      { ...base, ...schedule, name: `${suffix}-weighted-target` },
+    ]).returning();
+    projectIds.push(metricsSourceProject.id, metricsTargetProject.id, weightedProject.id);
+    const [metricsSourceGroup, metricsTargetGroup] = await db.insert(activityGroupsTable).values([
+      { projectId: metricsSourceProject.id, name: "Weighted source children" },
+      { projectId: metricsTargetProject.id, name: "Generated source group" },
+    ]).returning();
+    await db.insert(activitiesTable).values([
+      {
+        projectId: metricsSourceProject.id,
+        groupId: metricsSourceGroup.id,
+        name: "No planned progress",
+        actualProgress: 25,
+        weight: 1,
+        plannedStartDate: day(1),
+        plannedEndDate: day(5),
+      },
+      {
+        projectId: metricsSourceProject.id,
+        groupId: metricsSourceGroup.id,
+        name: "Half planned progress",
+        actualProgress: 25,
+        weight: 1,
+        plannedStartDate: day(-4),
+        plannedEndDate: day(4),
+      },
+    ]);
+    await db.insert(activitiesTable).values([
+      {
+        projectId: weightedProject.id,
+        name: "Heavy completed schedule",
+        actualProgress: 60,
+        weight: 3,
+        plannedStartDate: day(-10),
+        plannedEndDate: day(-1),
+      },
+      {
+        projectId: weightedProject.id,
+        name: "Not-yet-started schedule",
+        actualProgress: 0,
+        weight: 1,
+        plannedStartDate: day(1),
+        plannedEndDate: day(10),
+      },
+    ]).returning();
+    const metricsSync = await reconcileGroupToSideProject(metricsTargetGroup.id, metricsSourceProject.id);
+    assert.equal(metricsSync.created, 1);
+    const generatedMetricsActivityId = (await db.select({ id: activitiesTable.id })
+      .from(activitiesTable).where(eq(activitiesTable.managedByGroupId, metricsTargetGroup.id)))[0].id;
+    // Ensure API consumers resolve the source now instead of trusting an old
+    // generated-row snapshot.
+    await db.update(activitiesTable).set({ actualProgress: 0, plannedProgress: 0 })
+      .where(eq(activitiesTable.id, generatedMetricsActivityId));
+    const metricsActivitiesResponse = await fetch(
+      `http://127.0.0.1:${address.port}/projects/${metricsTargetProject.id}/activities`,
+      { headers: { authorization } },
+    );
+    assert.equal(metricsActivitiesResponse.status, 200);
+    const metricsActivities = await metricsActivitiesResponse.json() as Array<{
+      id: number; actualProgress: number; plannedProgress: number;
+    }>;
+    const generatedMetricsActivity = metricsActivities.find(activity => activity.id === generatedMetricsActivityId)!;
+    assert.equal(generatedMetricsActivity.actualProgress, 25);
+    assert.equal(generatedMetricsActivity.plannedProgress, 25);
+    const metricsSummary = await (await fetch(
+      `http://127.0.0.1:${address.port}/projects/${metricsTargetProject.id}/summary`,
+      { headers: { authorization } },
+    )).json() as { overallProgress: number; plannedProgress: number; spi: number };
+    assert.equal(metricsSummary.overallProgress, 25);
+    assert.equal(metricsSummary.plannedProgress, 25);
+    assert.equal(metricsSummary.spi, 1);
+    const metricsDeviation = await (await fetch(
+      `http://127.0.0.1:${address.port}/projects/${metricsTargetProject.id}/deviation`,
+      { headers: { authorization } },
+    )).json() as { actualProgress: number; plannedProgress: number; spi: number };
+    assert.equal(metricsDeviation.actualProgress, 25);
+    assert.equal(metricsDeviation.plannedProgress, 25);
+    assert.equal(metricsDeviation.spi, 1);
+    const dashboardSummary = await (await fetch(`http://127.0.0.1:${address.port}/dashboard/summary`, {
+      headers: { authorization },
+    })).json() as { allProjects: Array<{ id: number; overallProgress: number; plannedProgress: number; spi: number | null }> };
+    const dashboardMetrics = dashboardSummary.allProjects.find(project => project.id === metricsTargetProject.id)!;
+    assert.equal(dashboardMetrics.overallProgress, 25);
+    assert.equal(dashboardMetrics.plannedProgress, 25);
+    assert.equal(dashboardMetrics.spi, 1);
+
+    const weightedSummary = await (await fetch(
+      `http://127.0.0.1:${address.port}/projects/${weightedProject.id}/summary`,
+      { headers: { authorization } },
+    )).json() as { overallProgress: number; plannedProgress: number; spi: number };
+    assert.equal(weightedSummary.overallProgress, 45);
+    assert.equal(weightedSummary.plannedProgress, 75);
+    assert.equal(weightedSummary.spi, 0.6);
+    const weightedDeviation = await (await fetch(
+      `http://127.0.0.1:${address.port}/projects/${weightedProject.id}/deviation`,
+      { headers: { authorization } },
+    )).json() as { actualProgress: number; plannedProgress: number; spi: number };
+    assert.equal(weightedDeviation.actualProgress, 45);
+    assert.equal(weightedDeviation.plannedProgress, 75);
+    assert.equal(weightedDeviation.spi, 0.6);
+    const dashboardWeighted = dashboardSummary.allProjects.find(project => project.id === weightedProject.id)!;
+    assert.equal(dashboardWeighted.overallProgress, 45);
+    assert.equal(dashboardWeighted.plannedProgress, 75);
+    assert.equal(dashboardWeighted.spi, 0.6);
+
+    const noScheduleActivities = await (await fetch(apiBase, { headers: { authorization } }))
+      .json() as Array<{ plannedProgress: number }>;
+    assert.ok(noScheduleActivities.every(activity => activity.plannedProgress === 0));
+
     const duplicateCreate = await fetch(apiBase, {
       method: "POST",
       headers: { authorization, "content-type": "application/json" },

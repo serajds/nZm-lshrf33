@@ -768,18 +768,52 @@ export default function ProjectReports() {
           urls: (await Promise.all((group.urls ?? []).map(loadPreviewImage))).filter(Boolean),
         })))
       : null;
-    // Prefer the saved snapshot — that's the timeline as it was when the
-    // report was created. Only fall back to current activities for legacy
-    // reports created before snapshots were stored.
+    // A historical report without a saved snapshot cannot be reconstructed
+    // from today's activities; show that limitation instead of implying that
+    // current activity values describe the report date.
     const snapshotActivities = fullReport.activitiesSnapshot ?? null;
-    const sourceActivities: Array<ReportActivitiesSnapshotItem | Activity> =
-      snapshotActivities ?? (activities ?? []);
+    const hasSnapshot = Array.isArray(snapshotActivities);
+    const sourceActivities: ReportActivitiesSnapshotItem[] = hasSnapshot ? snapshotActivities : [];
     const activityList: ActivityForReport[] = sourceActivities.map((a) => ({
       name: a.name ?? "",
       plannedProgress: a.plannedProgress ?? 0,
       actualProgress: a.actualProgress ?? 0,
       status: (a.status as ActivityForReport["status"]) ?? "not_started",
+      plannedAsOfDate: (a as ReportActivitiesSnapshotItem & { plannedAsOfDate?: string }).plannedAsOfDate,
+      plannedHistoricalUnverified: (a as ReportActivitiesSnapshotItem & { plannedHistoricalUnverified?: boolean }).plannedHistoricalUnverified,
     }));
+    const weightedSnapshotProgress = (field: "plannedProgress" | "actualProgress") => {
+      if (!hasSnapshot) return null;
+      let totalWeight = 0;
+      let weighted = 0;
+      for (const row of sourceActivities) {
+        const weight = typeof row.weight === "number" && row.weight > 0 ? row.weight : 1;
+        totalWeight += weight;
+        weighted += (row[field] ?? 0) * weight;
+      }
+      return totalWeight > 0 ? weighted / totalWeight : 0;
+    };
+    const hasUnverifiedPlan = sourceActivities.some(row =>
+      (row as ReportActivitiesSnapshotItem & { plannedHistoricalUnverified?: boolean }).plannedHistoricalUnverified === true
+    );
+    const snapshotPlanned = hasUnverifiedPlan ? null : weightedSnapshotProgress("plannedProgress");
+    const snapshotActual = weightedSnapshotProgress("actualProgress");
+    const createdAt = fullReport.createdAt ? new Date(fullReport.createdAt) : null;
+    const createdUtcDay = createdAt && Number.isFinite(createdAt.getTime())
+      ? createdAt.toISOString().slice(0, 10)
+      : null;
+    const actualHistoricalUnverified = hasSnapshot && (
+      !createdUtcDay
+      || fullReport.reportDate < createdUtcDay
+      || sourceActivities.some(row => {
+        if (typeof row.actualProgress !== "number" || !Number.isFinite(row.actualProgress)) return true;
+        const recordedAt = (row as ReportActivitiesSnapshotItem & { actualRecordedAt?: string }).actualRecordedAt;
+        if (!recordedAt) return false;
+        const recordedDate = new Date(recordedAt);
+        return !Number.isFinite(recordedDate.getTime())
+          || fullReport.reportDate < recordedDate.toISOString().slice(0, 10);
+      })
+    );
     const apiBase = API_BASE.replace("/api", "");
     previewReport({
       projectName: project.name,
@@ -800,10 +834,18 @@ export default function ProjectReports() {
       reportId: fullReport.id,
       reportNumber: fullReport.reportNumber,
       activities: activityList,
+      snapshotAvailable: hasSnapshot,
       contractValue: (project as any).contractValue ?? null,
       startDate: (project as any).startDate ?? null,
       expectedEndDate: (project as any).expectedEndDate ?? null,
-      plannedProgress: (project as any).plannedProgress ?? null,
+      noSchedule: project.noSchedule === true,
+      plannedProgress: snapshotPlanned,
+      actualProgress: snapshotActual,
+      actualHistoricalUnverified,
+      plannedHistoricalUnverified: hasUnverifiedPlan,
+      spi: !actualHistoricalUnverified && !hasUnverifiedPlan && snapshotPlanned != null && snapshotPlanned > 0 && snapshotActual != null
+        ? snapshotActual / snapshotPlanned
+        : null,
       companyLogos: companyLogos as any,
       apiBase,
       reportSignatures: (project as any).reportSignatures ?? null,
@@ -1737,6 +1779,11 @@ export default function ProjectReports() {
           let runningCounter = 0;
           return (
             <div className="space-y-5">
+              {(report as Report & { historicalSnapshotAvailable?: boolean }).historicalSnapshotAvailable === false && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+                  البيانات التاريخية غير متاحة لهذا التقرير القديم؛ لا توجد لقطة أنشطة محفوظة، ولا تمثل الأنشطة الحالية حالة التقرير السابقة.
+                </div>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                 {!periodOnly && (
                   <div>
@@ -1760,7 +1807,7 @@ export default function ProjectReports() {
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground mb-0.5">الإنجاز التراكمي</div>
-                  <Badge className="bg-primary text-white">{report.progressPercentage}%</Badge>
+                  <Badge className="bg-primary text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>
                 </div>
                 <div className="col-span-2 sm:col-span-4">
                   <div className="text-xs text-muted-foreground mb-0.5">الفترة</div>
@@ -1917,7 +1964,7 @@ export default function ProjectReports() {
                                 {fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}
                               </td>
                               <td className="px-3 py-2.5 whitespace-nowrap">
-                                <Badge className="bg-primary text-white">{report.progressPercentage}%</Badge>
+                                <Badge className="bg-primary text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>
                               </td>
                               <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
                                 <span className="inline-flex items-center gap-1">
@@ -1975,7 +2022,7 @@ export default function ProjectReports() {
                                 <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 text-xs">معتمد</Badge>
                               )}
                             </div>
-                            <Badge className="bg-primary shrink-0 text-white">{report.progressPercentage}%</Badge>
+                            <Badge className="bg-primary shrink-0 text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>
                           </div>
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <span className="font-mono">{fmtDate(report.reportDate)}</span>
