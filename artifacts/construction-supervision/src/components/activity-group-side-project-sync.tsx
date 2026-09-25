@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { fetchWithSession } from "@workspace/api-client-react";
-import { AlertTriangle, Link2, Loader2, RefreshCw, Unlink } from "lucide-react";
+import { Edit2, Link2, Loader2, MoreHorizontal, RefreshCw, Trash2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -12,7 +17,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 interface ActivityGroupSideProjectSyncProps {
   currentProjectId: number;
   group: { id: number; name: string; linkedProjectActive?: boolean };
-  unavailableCount: number;
+  itemCount: number;
+  onEdit: () => void;
+  onDelete: () => void;
   onUpdated: () => void;
 }
 
@@ -28,7 +35,8 @@ function countResult(value: unknown): number {
   return 0;
 }
 
-export function ActivityGroupSideProjectSync({ currentProjectId, group, unavailableCount, onUpdated }: ActivityGroupSideProjectSyncProps) {
+export function ActivityGroupSideProjectSync({ currentProjectId, group, itemCount, onEdit, onDelete, onUpdated }: ActivityGroupSideProjectSyncProps) {
+  const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [code, setCode] = useState("");
@@ -72,50 +80,65 @@ export function ActivityGroupSideProjectSync({ currentProjectId, group, unavaila
           setDialogOpen(false);
           setCode("");
         }
+        toast({
+          title: kind === "connect" ? "تم ربط المجموعة ومزامنتها" : "اكتملت المزامنة",
+          description: `${countResult(body?.created)} جديد، ${countResult(body?.updated)} محدّث، ${countResult(body?.unavailable)} مصدر غير متاح`,
+        });
       }
+      if (kind === "disconnect") toast({ title: "تم فصل ربط المجموعة" });
       onUpdated();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "تعذر تنفيذ العملية");
+      const message = cause instanceof Error ? cause.message : "تعذر تنفيذ العملية";
+      setError(message);
+      if (kind === "sync") toast({ variant: "destructive", title: "تعذرت المزامنة", description: message });
     } finally {
       setPending(null);
     }
   };
 
   return (
-    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2" onClick={(event) => event.stopPropagation()}>
-      {group.linkedProjectActive ? (
-        <>
-          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1.5 text-xs text-muted-foreground">
-            <Link2 className="h-3.5 w-3.5 shrink-0" /> مشروع جانبي مرتبط
-          </span>
-          <Button type="button" size="sm" variant="outline" className="min-h-9 gap-1.5 px-3 text-xs" aria-label={`إعادة مزامنة مجموعة ${group.name}`} disabled={pending !== null} onClick={() => void send("sync")}>
-            {pending === "sync" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            مزامنة
+    <>
+      <DropdownMenu dir="rtl">
+        <DropdownMenuTrigger asChild>
+          <Button type="button" size="icon" variant="ghost" className="h-11 w-11 shrink-0 rounded-lg" aria-label={`إعدادات مجموعة ${group.name}`} title={`إعدادات مجموعة ${group.name}`} disabled={pending !== null}>
+            {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : <MoreHorizontal className="h-5 w-5" />}
           </Button>
-          <Button type="button" size="sm" variant="ghost" className="min-h-9 px-3 text-xs" aria-label={`تغيير ربط مجموعة ${group.name}`} disabled={pending !== null} onClick={openConnect}>
-            تغيير الرمز
-          </Button>
-          <Button type="button" size="sm" variant="ghost" className="min-h-9 gap-1 px-3 text-xs" aria-label={`فصل المشروع الجانبي عن مجموعة ${group.name}`} disabled={pending !== null} onClick={() => { setError(""); setDisconnectOpen(true); }}>
-            <Unlink className="h-3.5 w-3.5" /> فصل
-          </Button>
-        </>
-      ) : (
-        <Button type="button" size="sm" variant="outline" className="min-h-9 gap-1.5 px-3 text-xs" aria-label={`ربط مجموعة ${group.name} بمشروع جانبي`} disabled={pending !== null} onClick={openConnect}>
-          <Link2 className="h-3.5 w-3.5" /> ربط برمز مشروع
-        </Button>
-      )}
-      {unavailableCount > 0 && (
-        <span role="status" className="basis-full break-words text-xs leading-relaxed text-amber-700 dark:text-amber-400">
-          <AlertTriangle className="ml-1 inline h-3.5 w-3.5" />
-          {unavailableCount} مصدر غير متاح؛ القيم المحفوظة ما زالت ظاهرة
-        </span>
-      )}
-      {summary && (
-        <span role="status" className="basis-full break-words text-xs leading-relaxed text-muted-foreground">
-          تمت المزامنة: {summary.created} جديد، {summary.updated} محدّث، {summary.unavailable} مصدر غير متاح
-        </span>
-      )}
-      {error && !dialogOpen && !disconnectOpen && <span role="alert" className="basis-full break-words text-xs text-destructive">{error}</span>}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={6} collisionPadding={12} className="w-56 max-w-[calc(100vw-1.5rem)] text-right">
+          <DropdownMenuLabel className="max-w-full truncate text-xs text-muted-foreground" title={group.name}>{group.name}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {group.linkedProjectActive ? (
+            <>
+              <DropdownMenuItem className="min-h-11 gap-2" onSelect={openConnect}>
+                <Link2 className="h-4 w-4 shrink-0" /> تغيير رمز الربط
+              </DropdownMenuItem>
+              <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => void send("sync")}>
+                <RefreshCw className="h-4 w-4 shrink-0" /> مزامنة الآن
+              </DropdownMenuItem>
+              <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => { setError(""); setDisconnectOpen(true); }}>
+                <Unlink className="h-4 w-4 shrink-0" /> فصل المشروع الجانبي
+              </DropdownMenuItem>
+            </>
+          ) : (
+            <DropdownMenuItem className="min-h-11 gap-2" onSelect={openConnect}>
+              <Link2 className="h-4 w-4 shrink-0" /> ربط برمز مشروع
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="min-h-11 gap-2" onSelect={onEdit}>
+            <Edit2 className="h-4 w-4 shrink-0" /> تعديل المجموعة
+          </DropdownMenuItem>
+          <DropdownMenuItem className="min-h-11 gap-2 text-destructive focus:text-destructive" onSelect={onDelete}>
+            <Trash2 className="h-4 w-4 shrink-0" />
+            <span className="min-w-0">
+              <span className="block">حذف المجموعة</span>
+              {itemCount > 0 && <span className="block text-[11px] text-muted-foreground">غير متاح: تحتوي على {itemCount} بند</span>}
+            </span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {summary && <span className="sr-only" role="status">تمت المزامنة: {summary.created} جديد، {summary.updated} محدّث، {summary.unavailable} مصدر غير متاح</span>}
+      {error && !dialogOpen && !disconnectOpen && <span className="sr-only" role="alert">{error}</span>}
 
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!pending) { setDialogOpen(open); if (!open) setError(""); } }}>
         <DialogContent className="w-[calc(100vw-1.5rem)] max-w-md min-w-0 p-5 sm:p-6" dir="rtl">
@@ -159,6 +182,6 @@ export function ActivityGroupSideProjectSync({ currentProjectId, group, unavaila
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

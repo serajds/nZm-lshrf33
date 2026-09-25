@@ -1,0 +1,112 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap');
+
+@font-face {
+  font-family: 'Activity Latin Digits';
+  src: local('Arial'), local('Helvetica Neue'), local('sans-serif');
+  unicode-range: U+0030-0039, U+002E, U+002C, U+0025, U+002B, U+002D;
+}
+
+.activity-groups-scope {
+  --button-outline: rgba(0, 0, 0, .05);
+  --badge-outline: rgba(0, 0, 0, .05);
+  --opaque-button-border-intensity: -6;
+  --elevate-1: rgba(0, 0, 0, .03);
+  --elevate-2: rgba(0, 0, 0, .06);
+  --background: 220 27% 97%;
+  --foreground: 222 38% 13%;
+  --border: 216 24% 88%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 38% 13%;
+  --card-border: 216 24% 88%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --popover-border: 214 32% 91%;
+  --primary: 193 83% 36%;
+  --primary-foreground: 0 0% 100%;
+  --primary-border: hsl(193 83% 30%);
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222 47% 11%;
+  --secondary-border: hsl(210 40% 90%);
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --muted-border: hsl(210 40% 90%);
+  --accent: 38 92% 54%;
+  --accent-foreground: 222 38% 13%;
+  --accent-border: hsl(38 92% 48%);
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --destructive-border: hsl(0 84.2% 54%);
+  --input: 214.3 31.8% 88.4%;
+  --ring: 193 83% 44%;
+  --chart-1: 221 83% 40%;
+  --chart-2: 43 96% 56%;
+  --chart-3: 158 52% 42%;
+  --chart-4: 270 42% 52%;
+  --chart-5: 0 58% 50%;
+  --sidebar: 224 42% 12%;
+  --sidebar-foreground: 216 28% 82%;
+  --sidebar-border: 224 28% 20%;
+  --sidebar-primary: 188 86% 48%;
+  --sidebar-primary-foreground: 224 42% 10%;
+  --sidebar-accent: 224 31% 19%;
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-ring: 188 86% 48%;
+  --app-font-sans: 'Noto Kufi Arabic', 'IBM Plex Sans Arabic', 'Segoe UI', sans-serif;
+  --font-sans: var(--app-font-sans);
+  --font-serif: Georgia, serif;
+  --font-mono: 'IBM Plex Mono', Menlo, monospace;
+  --radius: 0.9rem;
+  font-family: 'Activity Latin Digits', 'Noto Kufi Arabic', 'Noto Sans Arabic', sans-serif;
+}
+
+.dark .activity-groups-scope {
+  --button-outline: rgba(255, 255, 255, .10);
+  --badge-outline: rgba(255, 255, 255, .05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255, 255, 255, .04);
+  --elevate-2: rgba(255, 255, 255, .09);
+  --background: 222 47% 7%;
+  --foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --card: 222 47% 9%;
+  --card-foreground: 210 40% 98%;
+  --card-border: 217.2 32.6% 17.5%;
+  --popover: 222 47% 9%;
+  --popover-foreground: 210 40% 98%;
+  --popover-border: 217.2 32.6% 17.5%;
+  --primary: 221 83% 53.3%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --primary-border: hsl(221 83% 62.3%);
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --secondary-border: hsl(217.2 32.6% 26.5%);
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --muted-border: hsl(217.2 32.6% 26.5%);
+  --accent: 43 96% 56%;
+  --accent-foreground: 222 47% 11%;
+  --accent-border: hsl(43 96% 65%);
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --destructive-border: hsl(0 62.8% 39.6%);
+  --input: 217.2 32.6% 17.5%;
+  --ring: 221 83% 53.3%;
+  --chart-1: 221 83% 53.3%;
+  --chart-2: 43 96% 56%;
+  --chart-3: 158 52% 42%;
+  --chart-4: 270 42% 56%;
+  --chart-5: 0 58% 54%;
+  --sidebar: 222 47% 7%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-border: 217.2 32.6% 17.5%;
+  --sidebar-primary: 221 83% 53.3%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 217.2 32.6% 17.5%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-ring: 221 83% 53.3%;
+}
+
+.activity-groups-scope,
+.activity-groups-scope * {
+  font-family: 'Activity Latin Digits', 'Noto Kufi Arabic', 'Noto Sans Arabic', sans-serif;
+}
