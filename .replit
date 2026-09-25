@@ -1,6 +1,10 @@
 modules = ["nodejs-24", "python-base-3.13", "postgresql-16"]
 
 [[ports]]
+localPort = 5000
+externalPort = 5000
+
+[[ports]]
 localPort = 8080
 externalPort = 80
 
