@@ -9,11 +9,11 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { verifyToken } from "./lib/auth";
 import { diagnoseRejectedToken } from "./lib/auth";
-import { verifyAndMaybeRenewToken } from "./middlewares/auth";
+import { canViewAttendancePhoto, verifyAndMaybeRenewToken } from "./middlewares/auth";
 import { streamFromCloud, migrateExistingUploads } from "./lib/fileStorage";
 import { db } from "@workspace/db";
-import { usersTable, userCompaniesTable, projectMembersTable, projectsTable } from "@workspace/db";
-import { eq, count, inArray } from "drizzle-orm";
+import { usersTable, userCompaniesTable, projectMembersTable, projectsTable, projectFilesTable, attendanceRecordsTable } from "@workspace/db";
+import { eq, count, inArray, and } from "drizzle-orm";
 
 const app: Express = express();
 
@@ -83,22 +83,99 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 
+async function canAccessPrivateUpload(filename: string, token: string, res: Response): Promise<boolean> {
+  const [projectFiles, attendanceRecords] = await Promise.all([
+    db.select({ projectId: projectFilesTable.projectId })
+      .from(projectFilesTable)
+      .where(eq(projectFilesTable.filename, filename)),
+    db.select({
+      id: attendanceRecordsTable.id,
+      projectId: attendanceRecordsTable.projectId,
+      userId: attendanceRecordsTable.userId,
+    })
+      .from(attendanceRecordsTable)
+      .where(eq(attendanceRecordsTable.selfieFilename, filename)),
+  ]);
+  // A filename that belongs to multiple records or projects has no reliable
+  // owner at this delivery layer. Fail closed instead of picking the first row.
+  if (projectFiles.length + attendanceRecords.length !== 1) return false;
+
+  const unverifiedClaims = jwt.decode(token);
+  const user = unverifiedClaims && typeof unverifiedClaims !== "string"
+    && typeof unverifiedClaims.userId === "number"
+    ? await verifyAndMaybeRenewToken(token, res)
+    : null;
+
+  if (attendanceRecords.length === 1) {
+    const record = attendanceRecords[0];
+    if (!user) return false;
+    return canViewAttendancePhoto(user.userId, user.role, record.userId, record.projectId);
+  }
+
+  const file = projectFiles[0];
+  if (user) {
+    if (user.role === "admin") return true;
+    if (user.role === "contractor") return false;
+
+    const [memberships, projects] = await Promise.all([
+      db.select({ id: projectMembersTable.id, role: projectMembersTable.role })
+        .from(projectMembersTable)
+        .where(and(
+          eq(projectMembersTable.projectId, file.projectId),
+          eq(projectMembersTable.userId, user.userId),
+        ))
+        .limit(1),
+      db.select({ contractorCompanyId: projectsTable.contractorCompanyId })
+        .from(projectsTable)
+        .where(eq(projectsTable.id, file.projectId))
+        .limit(1),
+    ]);
+
+    const contractorCompanyId = projects[0]?.contractorCompanyId;
+    if (user.role !== "project_manager" && contractorCompanyId != null) {
+      const companyLink = await db.select({ companyId: userCompaniesTable.companyId })
+        .from(userCompaniesTable)
+        .where(and(
+          eq(userCompaniesTable.userId, user.userId),
+          eq(userCompaniesTable.companyId, contractorCompanyId),
+        ))
+        .limit(1);
+      if (companyLink.length > 0) return false;
+    }
+    return memberships.length > 0 && memberships[0].role !== "contractor";
+  }
+
+  try {
+    const owner = jwt.verify(
+      token,
+      process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod",
+    ) as { ownerToken?: string; projectId?: number };
+    if (typeof owner.ownerToken !== "string" || typeof owner.projectId !== "number"
+      || owner.projectId !== file.projectId) return false;
+
+    const [project] = await db.select({ id: projectsTable.id })
+      .from(projectsTable)
+      .where(and(
+        eq(projectsTable.id, file.projectId),
+        eq(projectsTable.ownerAccessToken, owner.ownerToken),
+      ))
+      .limit(1);
+    return Boolean(project);
+  } catch {
+    return false;
+  }
+}
+
 app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) => {
   const reqPath = decodeURIComponent(req.path).replace(/^\//, "");
   if (reqPath.startsWith("logo-")) {
     return next();
   }
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    const tokenParam = typeof req.query.token === "string" ? req.query.token : null;
-    if (tokenParam) {
-      if (await verifyAndMaybeRenewToken(tokenParam, res)) return next();
-      try {
-        const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
-        const decoded = jwt.verify(tokenParam, ownerSecret) as any;
-        if (decoded.ownerToken && decoded.projectId) return next();
-      } catch {}
-    }
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : typeof req.query.token === "string" ? req.query.token : null;
+  if (!token) {
     logger.warn({
       method: req.method,
       path: req.path,
@@ -107,13 +184,12 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
     res.status(401).json({ error: "غير مصرح" });
     return;
   }
-  const token = authHeader.slice(7);
-  if (await verifyAndMaybeRenewToken(token, res)) return next();
   try {
-    const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
-    const decoded = jwt.verify(token, ownerSecret) as any;
-    if (decoded.ownerToken && decoded.projectId) return next();
-  } catch {}
+    if (await canAccessPrivateUpload(reqPath, token, res)) return next();
+  } catch (error) {
+    next(error);
+    return;
+  }
   logger.warn({
     method: req.method,
     path: req.path,
@@ -122,6 +198,10 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
   res.status(401).json({ error: "رمز الدخول غير صالح" });
 }, (req: Request, res: Response, next: NextFunction) => {
   const filename = decodeURIComponent(req.path).replace(/^\//, "");
+  if (path.basename(filename) !== filename) {
+    res.status(404).json({ error: "الملف غير موجود" });
+    return;
+  }
   const localPath = path.join(uploadsDir, filename);
 
   if (fs.existsSync(localPath)) {

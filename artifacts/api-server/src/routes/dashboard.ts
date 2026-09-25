@@ -176,7 +176,12 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
     activitiesByProject.set(a.projectId, list);
   }
 
-  const safeRecentProjects = recentProjects.map(({ linkCode: _linkCode, ...project }) => {
+  const safeRecentProjects = recentProjects.map(({
+    linkCode: _linkCode,
+    ownerAccessToken: _ownerAccessToken,
+    ownerAccessPassword: _ownerAccessPassword,
+    ...project
+  }) => {
     const projectActivities = activitiesByProject.get(project.id) ?? [];
     const actualRaw = projectActivities.length > 0
       ? calcActualProgressForProject(projectActivities)

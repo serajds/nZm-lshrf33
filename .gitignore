@@ -1,1 +1,12 @@
 .local/dev-db-backups/
+
+# Keep generated files and local/user-provided data out of clean source history.
+attached_assets/
+docker-compose.yml
+**/dist/
+**/uploads/
+.env
+.env.*
+*.hdbkp
+*.dump
+*.sqlite

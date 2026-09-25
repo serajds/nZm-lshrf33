@@ -189,7 +189,23 @@ router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, r
   res.status(201).json(company);
 });
 
-router.patch("/companies/:id", requireAdminOrPM, upload.single("logo"), async (req, res): Promise<void> => {
+router.patch("/companies/:id", requireAdminOrPM, async (req, res, next): Promise<void> => {
+  const id = parseCompanyId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "معرف الشركة غير صالح" });
+    return;
+  }
+  if (req.user?.role === "project_manager") {
+    const [existing] = await db.select({ createdById: companiesTable.createdById })
+      .from(companiesTable)
+      .where(eq(companiesTable.id, id));
+    if (!existing || existing.createdById !== req.user.userId) {
+      res.status(403).json({ error: "لا يمكنك تعديل شركة لم تقم بإنشائها" });
+      return;
+    }
+  }
+  next();
+}, upload.single("logo"), async (req, res): Promise<void> => {
   const id = parseCompanyId(req.params.id);
   if (id === null) {
     res.status(400).json({ error: "معرف الشركة غير صالح" });
