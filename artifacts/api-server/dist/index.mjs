@@ -124541,6 +124541,9 @@ async function checkGroupPermission(userId, projectId, activityId) {
 }
 var upload = (0, import_multer.default)({ storage: import_multer.default.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 var router4 = (0, import_express4.Router)();
+function isValidActualProgress(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
+}
 async function syncProjectProgress(projectId) {
   const acts = await db.select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
   let totalWeight = 0;
@@ -124633,6 +124636,10 @@ router4.post("/projects/:projectId/activities", requireProjectAccess("projectId"
       res.status(403).json({ error: "\u0644\u064A\u0633 \u0644\u062F\u064A\u0643 \u0635\u0644\u0627\u062D\u064A\u0629 \u0627\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 \u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0635\u062F\u0631" });
       return;
     }
+  }
+  if (actualProgress !== void 0 && !isValidActualProgress(actualProgress)) {
+    res.status(400).json({ error: "\u0646\u0633\u0628\u0629 \u0627\u0644\u0625\u0646\u062C\u0627\u0632 \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u0628\u064A\u0646 0 \u0648100" });
+    return;
   }
   const effectiveStart = externalSummary?.plannedStartDate ?? plannedStartDate;
   const effectiveEnd = externalSummary?.plannedEndDate ?? plannedEndDate;
@@ -124777,6 +124784,10 @@ router4.patch("/projects/:projectId/activities/:id", requireProjectAccess("proje
       res.status(403).json({ error: "\u0644\u064A\u0633 \u0644\u062F\u064A\u0643 \u0635\u0644\u0627\u062D\u064A\u0629 \u0627\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 \u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0635\u062F\u0631" });
       return;
     }
+  }
+  if (body.actualProgress !== void 0 && !isValidActualProgress(body.actualProgress)) {
+    res.status(400).json({ error: "\u0646\u0633\u0628\u0629 \u0627\u0644\u0625\u0646\u062C\u0627\u0632 \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u0628\u064A\u0646 0 \u0648100" });
+    return;
   }
   if (body.externalSourceGroupId !== void 0) updateData.externalSourceGroupId = finalExternalGroupId;
   if (externalSummary) {

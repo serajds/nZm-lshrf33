@@ -37,6 +37,10 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 
 const router: IRouter = Router();
 
+function isValidActualProgress(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
+}
+
 async function syncProjectProgress(projectId: number) {
   const acts = await db
     .select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight })
@@ -148,6 +152,11 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
       res.status(403).json({ error: "ليس لديك صلاحية الوصول إلى مشروع المصدر" });
       return;
     }
+  }
+
+  if (actualProgress !== undefined && !isValidActualProgress(actualProgress)) {
+    res.status(400).json({ error: "نسبة الإنجاز يجب أن تكون بين 0 و100" });
+    return;
   }
 
   const effectiveStart = externalSummary?.plannedStartDate ?? plannedStartDate;
@@ -310,6 +319,10 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
       res.status(403).json({ error: "ليس لديك صلاحية الوصول إلى مشروع المصدر" });
       return;
     }
+  }
+  if (body.actualProgress !== undefined && !isValidActualProgress(body.actualProgress)) {
+    res.status(400).json({ error: "نسبة الإنجاز يجب أن تكون بين 0 و100" });
+    return;
   }
   if (body.externalSourceGroupId !== undefined) updateData.externalSourceGroupId = finalExternalGroupId;
   if (externalSummary) {
