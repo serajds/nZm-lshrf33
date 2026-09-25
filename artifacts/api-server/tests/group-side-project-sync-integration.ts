@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import express from "express";
-import { db, pool, projectsTable, activityGroupsTable, activitiesTable, usersTable, projectMembersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, pool, projectsTable, activityGroupsTable, activitiesTable, usersTable, projectMembersTable, auditLogTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import {
   deleteProjectUnderSourceGraphLock,
   createActivityGroupUnderSourceGraphLock,
@@ -319,6 +319,40 @@ async function main() {
     });
     assert.equal(ordinaryGroupResponse.status, 201);
     const ordinaryTargetGroup = await ordinaryGroupResponse.json() as { id: number };
+    const privateLinkCode = `AUDIT-MUST-NOT-CONTAIN-${suffix.slice(-8)}`;
+    const auditSafeGroupResponse = await fetch(`http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups`, {
+      method: "POST", headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ name: "HTTP audit-safe target", linkCode: privateLinkCode }),
+    });
+    assert.equal(auditSafeGroupResponse.status, 201);
+    const auditSafeGroup = await auditSafeGroupResponse.json() as { id: number };
+    const deleteAuditGroupResponse = await fetch(`http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups`, {
+      method: "POST", headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ name: "HTTP delete-audit target" }),
+    });
+    assert.equal(deleteAuditGroupResponse.status, 201);
+    const deleteAuditGroup = await deleteAuditGroupResponse.json() as { id: number };
+    const groupAudit = await db.select({
+      entityId: auditLogTable.entityId, details: auditLogTable.details,
+    }).from(auditLogTable).where(and(
+      eq(auditLogTable.projectId, httpTarget.id),
+      eq(auditLogTable.entityType, "activity_group"),
+      eq(auditLogTable.entityId, auditSafeGroup.id),
+    ));
+    assert.equal(groupAudit.length, 1);
+    assert.equal(JSON.stringify(groupAudit[0].details).includes(privateLinkCode), false);
+
+    const reorderUrl = `http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups/reorder`;
+    const invalidReorder = await fetch(reorderUrl, {
+      method: "PUT", headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ order: [httpTargetGroup.id, httpTargetGroup.id] }),
+    });
+    assert.equal(invalidReorder.status, 409);
+    const foreignReorder = await fetch(reorderUrl, {
+      method: "PUT", headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({ order: [httpTargetGroup.id, sourceGroup.id, httpTargetGroupTwo.id, ordinaryTargetGroup.id, auditSafeGroup.id, deleteAuditGroup.id] }),
+    });
+    assert.equal(foreignReorder.status, 409);
 
     const [engineer] = await db.insert(usersTable).values({
       phone: `${suffix}-engineer`, passwordHash: "integration-test", fullName: "Integration Engineer", role: "engineer",
@@ -395,7 +429,7 @@ async function main() {
       headers: { authorization: engineerAuth },
     });
     const targetGroupsJson = await targetGroupsRead.json() as Array<Record<string, unknown>>;
-    assert.equal(targetGroupsJson.length, 3);
+    assert.equal(targetGroupsJson.length, 5);
     assert.equal(targetGroupsJson.filter(group => group.linkedProjectActive === true).length, 2);
     assert.equal(targetGroupsJson.some(group => Object.hasOwn(group, "linkedProjectId")), false);
     assert.equal(targetGroupsJson.some(group => group.id === ordinaryTargetGroup.id && group.linkedProjectActive !== false), false);
@@ -404,6 +438,29 @@ async function main() {
     });
     assert.equal(emptySync.status, 200);
     assert.equal((await emptySync.json() as { created: number }).created, 0);
+    const linkAndSyncAudit = await db.select({ details: auditLogTable.details })
+      .from(auditLogTable).where(and(
+        eq(auditLogTable.projectId, httpTarget.id),
+        eq(auditLogTable.entityType, "activity_group"),
+        eq(auditLogTable.entityId, httpTargetGroup.id),
+      ));
+    const groupAuditText = JSON.stringify(linkAndSyncAudit);
+    assert.match(groupAuditText, /link_project/);
+    assert.match(groupAuditText, /sync/);
+    assert.equal(groupAuditText.includes(projectCodeOne), false);
+
+    const deleteEmptyGroup = await fetch(
+      `http://127.0.0.1:${address.port}/projects/${httpTarget.id}/activity-groups/${deleteAuditGroup.id}`,
+      { method: "DELETE", headers: { authorization } },
+    );
+    assert.equal(deleteEmptyGroup.status, 204);
+    const deleteAudit = await db.select({ details: auditLogTable.details }).from(auditLogTable)
+      .where(and(
+        eq(auditLogTable.projectId, httpTarget.id),
+        eq(auditLogTable.entityType, "activity_group"),
+        eq(auditLogTable.entityId, deleteAuditGroup.id),
+      ));
+    assert.ok(deleteAudit.some(row => (row.details as { sourceSnapshotsPreserved?: boolean } | null)?.sourceSnapshotsPreserved));
 
     const sourceGroupResponse = await fetch(`http://127.0.0.1:${address.port}/projects/${httpSource.id}/activity-groups`, {
       method: "POST",
@@ -837,6 +894,7 @@ async function main() {
   } finally {
     if (server) await new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve()));
     for (const projectId of projectIds) {
+      await db.delete(auditLogTable).where(eq(auditLogTable.projectId, projectId));
       await db.delete(activitiesTable).where(eq(activitiesTable.projectId, projectId));
       await db.delete(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId));
       await db.delete(projectsTable).where(eq(projectsTable.id, projectId));

@@ -4,10 +4,11 @@ import { activityGroupsTable, projectsTable } from "@workspace/db";
 import { eq, and, asc, ilike, sql } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
-import { canReadProject, createActivityGroupUnderSourceGraphLock, getGroupSummary, normalizeLinkCode, reconcileGroupToSideProject, reconcileTargetsLinkedToProject, refreshLinkedSources } from "../lib/external-sources";
+import { canReadProject, createActivityGroupUnderSourceGraphLock, getGroupSummary, normalizeLinkCode, reconcileGroupToSideProject, reconcileTargetsLinkedToProject, refreshLinkedSources, withSourceGraphLock } from "../lib/external-sources";
 import { normalizeProjectLinkCode } from "../lib/activity-source-rules";
 import { groupMatchesSourceQuery, resolveSourceSuggestions } from "../lib/activity-source-rules";
 import { deleteEmptyActivityGroup } from "../lib/delete-empty-activity-group";
+import { logAudit } from "../lib/audit";
 
 const router: IRouter = Router();
 const linkAttempts = new Map<number, { startedAt: number; count: number }>();
@@ -34,6 +35,34 @@ function allowLinkAttempt(userId: number): boolean {
   if (current.count >= LINK_ATTEMPT_LIMIT) return false;
   current.count++;
   return true;
+}
+
+export async function reorderActivityGroups(
+  projectId: number,
+  order: unknown,
+): Promise<"reordered" | "invalid_order" | "not_found"> {
+  if (!Array.isArray(order) || order.some(id => !Number.isInteger(id) || id <= 0)
+      || new Set(order).size !== order.length) return "invalid_order";
+
+  return withSourceGraphLock(() => db.transaction(async tx => {
+    const [project] = await tx.select({ id: projectsTable.id }).from(projectsTable)
+      .where(eq(projectsTable.id, projectId));
+    if (!project) return "not_found";
+
+    const currentGroups = await tx.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
+      .where(eq(activityGroupsTable.projectId, projectId));
+    const currentIds = new Set(currentGroups.map(group => group.id));
+    if (currentGroups.length !== order.length || order.some(id => !currentIds.has(id))) {
+      return "invalid_order";
+    }
+
+    for (let index = 0; index < order.length; index++) {
+      await tx.update(activityGroupsTable)
+        .set({ sortOrder: index })
+        .where(and(eq(activityGroupsTable.id, order[index]), eq(activityGroupsTable.projectId, projectId)));
+    }
+    return "reordered";
+  }));
 }
 
 router.get("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
@@ -116,6 +145,15 @@ router.post("/projects/:projectId/activity-groups", requireProjectAccess("projec
     return;
   }
   await reconcileTargetsLinkedToProject(projectId);
+  await logAudit({
+    userId: req.user!.userId,
+    action: "create",
+    entityType: "activity_group",
+    entityId: group.id,
+    entityName: `مجموعة #${group.id}`,
+    projectId,
+    details: { linkCodeConfigured: Boolean(linkCode) },
+  });
   res.status(201).json(publicGroup(group));
 });
 
@@ -126,11 +164,23 @@ router.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess(
     res.status(400).json({ error: "order مطلوب" });
     return;
   }
-  for (let i = 0; i < order.length; i++) {
-    await db.update(activityGroupsTable)
-      .set({ sortOrder: i })
-      .where(and(eq(activityGroupsTable.id, order[i]), eq(activityGroupsTable.projectId, projectId)));
+  const result = await reorderActivityGroups(projectId, order);
+  if (result === "not_found") {
+    res.status(404).json({ error: "المشروع غير موجود" });
+    return;
   }
+  if (result === "invalid_order") {
+    res.status(409).json({ error: "يجب أن يتضمن الترتيب كل مجموعات المشروع مرة واحدة" });
+    return;
+  }
+  await logAudit({
+    userId: req.user!.userId,
+    action: "update",
+    entityType: "activity_group",
+    entityName: "group order",
+    projectId,
+    details: { operation: "reorder", groupCount: order.length },
+  });
   res.json({ success: true });
 });
 
@@ -178,6 +228,15 @@ router.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("pro
   // still useful for returning current source metadata to consumers.
   await reconcileTargetsLinkedToProject(projectId);
   await refreshLinkedSources([id]);
+  await logAudit({
+    userId: req.user!.userId,
+    action: "update",
+    entityType: "activity_group",
+    entityId: updated.id,
+    entityName: `مجموعة #${updated.id}`,
+    projectId,
+    details: { operation: "update", updatedFields: Object.keys(updateData) },
+  });
   res.json(publicGroup(updated));
 });
 
@@ -239,6 +298,22 @@ router.put("/projects/:projectId/activity-groups/:id/linked-project", requirePro
     res.status(404).json({ error: "المجموعة غير موجودة" });
     return;
   }
+  await logAudit({
+    userId: req.user!.userId,
+    action: "update",
+    entityType: "activity_group",
+    entityId: result.group.id,
+    entityName: `مجموعة #${result.group.id}`,
+    projectId,
+    details: {
+      operation: sourceProjectId === null ? "unlink_project" : "link_project",
+      previousSourceProjectId: targetGroup.linkedProjectId,
+      sourceProjectId: result.group.linkedProjectId,
+      created: result.created,
+      updated: result.updated,
+      unavailable: result.unavailable,
+    },
+  });
   res.json({ group: publicGroup(result.group), created: result.created, updated: result.updated, unavailable: result.unavailable });
 });
 
@@ -264,6 +339,17 @@ router.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAcces
     res.status(409).json({ error: "تم تغيير ارتباط المجموعة بالتزامن؛ أعد تحميلها ثم حاول مجددًا" });
     return;
   }
+  if (result.group) {
+    await logAudit({
+      userId: req.user!.userId,
+      action: "update",
+      entityType: "activity_group",
+      entityId: result.group.id,
+      entityName: `مجموعة #${result.group.id}`,
+      projectId,
+      details: { operation: "sync", sourceProjectId: group.linkedProjectId, created: result.created, updated: result.updated, unavailable: result.unavailable },
+    });
+  }
   res.json({ group: result.group ? publicGroup(result.group) : undefined, created: result.created, updated: result.updated, unavailable: result.unavailable });
 });
 
@@ -279,6 +365,15 @@ router.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess("
     res.status(409).json({ error: "لا يمكن حذف المجموعة قبل نقل أو حذف البنود الموجودة داخلها" });
     return;
   }
+  await logAudit({
+    userId: req.user!.userId,
+    action: "delete",
+    entityType: "activity_group",
+    entityId: id,
+    entityName: "Activity group",
+    projectId,
+    details: { sourceSnapshotsPreserved: true },
+  });
   // An empty group can still be an external source. Its linked targets keep
   // their last copied values and will show the source as unavailable.
   res.sendStatus(204);

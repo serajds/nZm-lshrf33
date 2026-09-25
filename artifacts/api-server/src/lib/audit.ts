@@ -1,5 +1,6 @@
 import { db, auditLogTable, projectsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { sanitizeAuditDetails } from "./audit-sanitize";
 
 interface AuditEntry {
   userId?: number;
@@ -30,14 +31,16 @@ export async function logAudit(entry: AuditEntry) {
     }
     await db.insert(auditLogTable).values({
       userId: entry.userId ?? null,
-      userName: entry.userName ?? null,
+      // Do not persist phone numbers or other request-derived identifiers as
+      // actor names. Audit views resolve a display name from the user record.
+      userName: null,
       action: entry.action,
       entityType: entry.entityType,
       entityId: entry.entityId ?? null,
       entityName: entry.entityName ?? null,
       projectId: entry.projectId ?? null,
       projectName,
-      details: entry.details ?? null,
+      details: sanitizeAuditDetails(entry.details),
     });
   } catch {
     // audit logging should never break the main operation

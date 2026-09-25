@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { db, auditLogTable, usersTable } from "@workspace/db";
+import { db, auditLogTable, usersTable, reportsTable } from "@workspace/db";
 import { desc, eq, and, gte, lte, type SQL } from "drizzle-orm";
 import { requireAdmin, requireProjectAccess } from "../middlewares/auth";
+import { sanitizeAuditDetails } from "../lib/audit-sanitize";
 
 const router: IRouter = Router();
 
@@ -18,10 +19,18 @@ router.get(
   async (req, res): Promise<void> => {
     const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
     const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const projectId = parseInt(rawProjectId, 10);
-    const reportId = parseInt(rawId, 10);
-    if (isNaN(projectId) || isNaN(reportId)) {
+    const projectId = Number(rawProjectId);
+    const reportId = Number(rawId);
+    if (!Number.isSafeInteger(projectId) || projectId <= 0 || !Number.isSafeInteger(reportId) || reportId <= 0) {
       res.status(400).json({ error: "معرف غير صالح" });
+      return;
+    }
+
+    const [report] = await db.select({ id: reportsTable.id })
+      .from(reportsTable)
+      .where(and(eq(reportsTable.id, reportId), eq(reportsTable.projectId, projectId)));
+    if (!report) {
+      res.status(404).json({ error: "التقرير غير موجود" });
       return;
     }
 
@@ -31,7 +40,6 @@ router.get(
         action: auditLogTable.action,
         entityName: auditLogTable.entityName,
         userId: auditLogTable.userId,
-        userName: auditLogTable.userName,
         userFullName: usersTable.fullName,
         createdAt: auditLogTable.createdAt,
       })
@@ -69,24 +77,34 @@ router.get("/audit-log", requireAdmin, async (req, res): Promise<void> => {
   }
 
   if (dateFrom && typeof dateFrom === "string") {
-    conditions.push(gte(auditLogTable.createdAt, new Date(dateFrom)));
+    const from = new Date(dateFrom);
+    if (Number.isNaN(from.getTime())) {
+      res.status(400).json({ error: "تاريخ البداية غير صالح" });
+      return;
+    }
+    conditions.push(gte(auditLogTable.createdAt, from));
   }
 
   if (dateTo && typeof dateTo === "string") {
     const d = new Date(dateTo);
+    if (Number.isNaN(d.getTime())) {
+      res.status(400).json({ error: "تاريخ النهاية غير صالح" });
+      return;
+    }
     d.setDate(d.getDate() + 1);
     conditions.push(lte(auditLogTable.createdAt, d));
   }
 
-  const maxRows = Math.min(parseInt(limitStr as string, 10) || 100, 500);
+  const requestedLimit = typeof limitStr === "string" ? Number(limitStr) : 100;
+  if (!Number.isInteger(requestedLimit) || requestedLimit < 1) {
+    res.status(400).json({ error: "الحد الأقصى للسجلات غير صالح" });
+    return;
+  }
+  const maxRows = Math.min(requestedLimit, 500);
 
-  // Skip the `details` JSONB column in the list view — it's typically
-  // a large change-diff that's only needed when expanding a single log
-  // entry. Massive payload reduction for the audit log page.
   const logs = await db.select({
     id: auditLogTable.id,
     userId: auditLogTable.userId,
-    userName: auditLogTable.userName,
     userFullName: usersTable.fullName,
     action: auditLogTable.action,
     entityType: auditLogTable.entityType,
@@ -94,6 +112,7 @@ router.get("/audit-log", requireAdmin, async (req, res): Promise<void> => {
     entityName: auditLogTable.entityName,
     projectId: auditLogTable.projectId,
     projectName: auditLogTable.projectName,
+    details: auditLogTable.details,
     createdAt: auditLogTable.createdAt,
   }).from(auditLogTable)
     .leftJoin(usersTable, eq(usersTable.id, auditLogTable.userId))
@@ -101,7 +120,8 @@ router.get("/audit-log", requireAdmin, async (req, res): Promise<void> => {
     .orderBy(desc(auditLogTable.createdAt))
     .limit(maxRows);
 
-  res.json(logs);
+  // Historical rows may predate the allowlisted writer; sanitize on read too.
+  res.json(logs.map(log => ({ ...log, details: sanitizeAuditDetails(log.details) })));
 });
 
 export default router;

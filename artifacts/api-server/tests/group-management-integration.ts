@@ -3,6 +3,7 @@ import { db, pool, projectsTable, activityGroupsTable, activitiesTable } from "@
 import { and, eq } from "drizzle-orm";
 import { deleteEmptyActivityGroup } from "../src/lib/delete-empty-activity-group";
 import { getGroupSummary, withSourceGraphLock } from "../src/lib/external-sources";
+import { reorderActivityGroups } from "../src/routes/activity-groups";
 
 if (process.env.NODE_ENV === "production" || !process.env.DATABASE_URL) {
   throw new Error("This integration check requires a development database");
@@ -34,6 +35,35 @@ async function main() {
       projectId: targetProject.id, externalSourceGroupId: occupied.id, name: "Linked",
       actualProgress: 40, plannedStartDate: "2026-01-01", plannedEndDate: "2026-02-01",
     }).returning();
+
+    const beforeInvalidReorder = await db.select({
+      id: activityGroupsTable.id, sortOrder: activityGroupsTable.sortOrder,
+    }).from(activityGroupsTable).where(eq(activityGroupsTable.projectId, sourceProject.id));
+    assert.equal(await reorderActivityGroups(sourceProject.id, [occupied.id, occupied.id]), "invalid_order");
+    assert.equal(await reorderActivityGroups(sourceProject.id, [occupied.id, linked.id]), "invalid_order");
+    assert.equal(await reorderActivityGroups(sourceProject.id, [occupied.id]), "invalid_order");
+    assert.equal(await reorderActivityGroups(sourceProject.id, [occupied.id, 0]), "invalid_order");
+    assert.deepEqual(
+      await db.select({ id: activityGroupsTable.id, sortOrder: activityGroupsTable.sortOrder })
+        .from(activityGroupsTable).where(eq(activityGroupsTable.projectId, sourceProject.id)),
+      beforeInvalidReorder,
+    );
+    assert.equal(await reorderActivityGroups(sourceProject.id, [empty.id, occupied.id]), "reordered");
+    let groupOrder = await db.select({ id: activityGroupsTable.id, sortOrder: activityGroupsTable.sortOrder })
+      .from(activityGroupsTable).where(eq(activityGroupsTable.projectId, sourceProject.id))
+      .orderBy(activityGroupsTable.sortOrder);
+    assert.deepEqual(groupOrder.map(group => group.id), [empty.id, occupied.id]);
+    assert.deepEqual(groupOrder.map(group => group.sortOrder), [0, 1]);
+    const concurrentReorders = await Promise.all([
+      reorderActivityGroups(sourceProject.id, [occupied.id, empty.id]),
+      reorderActivityGroups(sourceProject.id, [empty.id, occupied.id]),
+    ]);
+    assert.deepEqual(concurrentReorders, ["reordered", "reordered"]);
+    groupOrder = await db.select({ id: activityGroupsTable.id, sortOrder: activityGroupsTable.sortOrder })
+      .from(activityGroupsTable).where(eq(activityGroupsTable.projectId, sourceProject.id))
+      .orderBy(activityGroupsTable.sortOrder);
+    assert.deepEqual(groupOrder.map(group => group.sortOrder), [0, 1]);
+    assert.deepEqual(new Set(groupOrder.map(group => group.id)), new Set([occupied.id, empty.id]));
 
     // The existing update endpoint changes only the group metadata.
     await db.update(activityGroupsTable).set({ name: "After", linkCode: `${name}-renamed`, color: "#3b82f6" })

@@ -283,7 +283,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
   if (groupId != null) await refreshLinkedSources([Number(groupId)]);
 
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "create", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId });
+  await logAudit({ userId: (req as any).user?.userId, action: "create", entityType: "activity", entityId: activity.id, entityName: `بند #${activity.id}`, projectId, details: { actualProgress: activity.actualProgress, plannedProgress: activity.plannedProgress, groupId: activity.groupId, externalSourceGroupId: activity.externalSourceGroupId } });
 
   res.status(201).json(await serializeActivityForUser(activity, req.user?.userId));
 });
@@ -530,7 +530,7 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   if (affectedSourceGroups.size) await refreshLinkedSources([...affectedSourceGroups]);
 
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "update", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId, details: updateData });
+  await logAudit({ userId: (req as any).user?.userId, action: "update", entityType: "activity", entityId: activity.id, entityName: `بند #${activity.id}`, projectId, details: { ...updateData, actualProgressBefore: existing.actualProgress, actualProgressAfter: activity.actualProgress, externalSourceGroupIdBefore: existing.externalSourceGroupId, externalSourceGroupIdAfter: activity.externalSourceGroupId, changedFields: Object.keys(updateData) } });
 
   res.json(await serializeActivityForUser(activity, req.user?.userId));
 });
@@ -633,6 +633,18 @@ router.post("/projects/:projectId/activities/import", requireProjectAccess("proj
     await syncProjectProgress(projectId);
     await recalcExpectedEndDate(projectId);
 
+    if (inserted.length > 0) {
+      const { logAudit } = await import("../lib/audit");
+      await logAudit({
+        userId: (req as any).user?.userId,
+        action: "create",
+        entityType: "activity_import",
+        entityName: "استيراد بنود",
+        projectId,
+        details: { created: inserted.length },
+      });
+    }
+
     res.status(201).json({
       imported: inserted.length,
       errors: errors.length > 0 ? errors : undefined,
@@ -717,7 +729,7 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
   if (activity.groupId != null) await refreshLinkedSources([activity.groupId]);
 
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "delete", entityType: "activity", entityId: id, entityName: activity.name, projectId });
+  await logAudit({ userId: (req as any).user?.userId, action: "delete", entityType: "activity", entityId: id, entityName: `بند #${id}`, projectId, details: { actualProgress: activity.actualProgress, plannedProgress: activity.plannedProgress, groupId: activity.groupId, externalSourceGroupId: activity.externalSourceGroupId } });
 
   res.sendStatus(204);
 });
@@ -782,7 +794,10 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
       .where(eq(activitiesTable.projectId, projectId));
     const sourceGroupIds = [...new Set([...oldGroups, ...sourceGroups]
       .map(a => a.groupId).filter((groupId): groupId is number => groupId != null))];
-    return { invalidGroup: false, managedLocked: false, duplicate: false, sourceGroupIds };
+    const updated = new Set((items as any[])
+      .filter(item => currentById.has(item.id))
+      .map(item => item.id)).size;
+    return { invalidGroup: false, managedLocked: false, duplicate: false, sourceGroupIds, updated };
   }));
   if (result.invalidGroup) {
     res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
@@ -799,6 +814,17 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
   // Keep propagation outside the graph lock; refreshLinkedSources acquires it
   // itself and nested acquisition would deadlock.
   if (result.sourceGroupIds.length) await refreshLinkedSources(result.sourceGroupIds);
+  if ((result.updated ?? 0) > 0) {
+    const { logAudit } = await import("../lib/audit");
+    await logAudit({
+      userId: (req as any).user?.userId,
+      action: "update",
+      entityType: "activity_reorder",
+      entityName: "إعادة ترتيب البنود",
+      projectId,
+      details: { operation: "reorder", updated: result.updated },
+    });
+  }
   res.json({ success: true });
 });
 
