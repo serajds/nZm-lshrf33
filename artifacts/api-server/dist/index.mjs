@@ -123058,6 +123058,26 @@ function requireProjectManager(paramName = "projectId") {
     });
   };
 }
+async function canViewAttendancePhoto(userId, userRole, recordUserId, projectId) {
+  if (userId === recordUserId || userRole === "admin") return true;
+  if (userRole === "contractor") return false;
+  const [[membership], [project]] = await Promise.all([
+    db.select({ role: projectMembersTable.role }).from(projectMembersTable).where(and(
+      eq(projectMembersTable.projectId, projectId),
+      eq(projectMembersTable.userId, userId)
+    )),
+    db.select({ contractorCompanyId: projectsTable.contractorCompanyId }).from(projectsTable).where(eq(projectsTable.id, projectId))
+  ]);
+  if (membership?.role !== "project_manager") return false;
+  if (project?.contractorCompanyId != null) {
+    const [companyLink] = await db.select({ companyId: userCompaniesTable.companyId }).from(userCompaniesTable).where(and(
+      eq(userCompaniesTable.userId, userId),
+      eq(userCompaniesTable.companyId, project.contractorCompanyId)
+    ));
+    if (companyLink) return false;
+  }
+  return true;
+}
 
 // src/routes/auth.ts
 var router2 = (0, import_express2.Router)();
@@ -124000,7 +124020,6 @@ router3.get("/projects", requireAuth, async (req, res) => {
     actualEndDate: projectsTable.actualEndDate,
     status: projectsTable.status,
     overallProgress: projectsTable.overallProgress,
-    ownerAccessToken: projectsTable.ownerAccessToken,
     ownerCompanyId: projectsTable.ownerCompanyId,
     contractorCompanyId: projectsTable.contractorCompanyId,
     supervisorCompanyId: projectsTable.supervisorCompanyId,
@@ -124078,10 +124097,16 @@ router3.get("/projects/:id", requireProjectAccess("id"), async (req, res) => {
     return;
   }
   if (req.user?.role === "admin") {
-    res.json(project);
+    const { ownerAccessPassword: _ownerAccessPassword, ...safeProject } = project;
+    res.json(safeProject);
   } else {
-    const { linkCode: _linkCode, ...publicProject } = project;
-    res.json(publicProject);
+    const { linkCode: _linkCode, ownerAccessPassword: _ownerAccessPassword, ...publicProject } = project;
+    if (req.projectRole === "project_manager") {
+      res.json(publicProject);
+    } else {
+      const { ownerAccessToken: _ownerAccessToken, ...safeProject } = publicProject;
+      res.json(safeProject);
+    }
   }
 });
 router3.get("/projects/:id/company-logos", requireProjectAccess("id"), async (req, res) => {
@@ -124248,10 +124273,16 @@ router3.patch("/projects/:id", requireProjectAccess("id"), async (req, res) => {
   delete auditDetails.linkCode;
   logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "update", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name, details: auditDetails });
   if (req.user?.role === "admin") {
-    res.json(project);
+    const { ownerAccessPassword: _ownerAccessPassword, ...safeProject } = project;
+    res.json(safeProject);
   } else {
-    const { linkCode: _linkCode, ...publicProject } = project;
-    res.json(publicProject);
+    const { linkCode: _linkCode, ownerAccessPassword: _ownerAccessPassword, ...publicProject } = project;
+    if (req.projectRole === "project_manager") {
+      res.json(publicProject);
+    } else {
+      const { ownerAccessToken: _ownerAccessToken, ...safeProject } = publicProject;
+      res.json(safeProject);
+    }
   }
 });
 router3.delete("/projects/:id", requireAdmin, async (req, res) => {
@@ -127061,7 +127092,12 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
     list.push(a);
     activitiesByProject.set(a.projectId, list);
   }
-  const safeRecentProjects = recentProjects.map(({ linkCode: _linkCode, ...project }) => {
+  const safeRecentProjects = recentProjects.map(({
+    linkCode: _linkCode,
+    ownerAccessToken: _ownerAccessToken,
+    ownerAccessPassword: _ownerAccessPassword,
+    ...project
+  }) => {
     const projectActivities = activitiesByProject.get(project.id) ?? [];
     const actualRaw = projectActivities.length > 0 ? calcActualProgressForProject(projectActivities) : project.overallProgress ?? 0;
     return { ...project, overallProgress: roundPercent(actualRaw) };
@@ -128577,7 +128613,21 @@ router14.post("/companies", requireAdminOrPM, upload3.single("logo"), async (req
   }).returning();
   res.status(201).json(company);
 });
-router14.patch("/companies/:id", requireAdminOrPM, upload3.single("logo"), async (req, res) => {
+router14.patch("/companies/:id", requireAdminOrPM, async (req, res, next) => {
+  const id = parseCompanyId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
+  if (req.user?.role === "project_manager") {
+    const [existing] = await db.select({ createdById: companiesTable.createdById }).from(companiesTable).where(eq(companiesTable.id, id));
+    if (!existing || existing.createdById !== req.user.userId) {
+      res.status(403).json({ error: "\u0644\u0627 \u064A\u0645\u0643\u0646\u0643 \u062A\u0639\u062F\u064A\u0644 \u0634\u0631\u0643\u0629 \u0644\u0645 \u062A\u0642\u0645 \u0628\u0625\u0646\u0634\u0627\u0626\u0647\u0627" });
+      return;
+    }
+  }
+  next();
+}, upload3.single("logo"), async (req, res) => {
   const id = parseCompanyId(req.params.id);
   if (id === null) {
     res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
@@ -130173,7 +130223,14 @@ router20.delete("/projects/:id/form-submissions/:submissionId", requireProjectAc
     res.status(403).json({ error: "\u0627\u0644\u0645\u0642\u0627\u0648\u0644 \u063A\u064A\u0631 \u0645\u0635\u0631\u062D \u0644\u0647 \u0628\u062D\u0630\u0641 \u0627\u0644\u0646\u0645\u0627\u0630\u062C \u0627\u0644\u0645\u0631\u0633\u0644\u0629" });
     return;
   }
-  await db.delete(formSubmissionsTable).where(eq(formSubmissionsTable.id, submissionId));
+  if (!isOwner && !isManagerOrAdmin) {
+    res.status(403).json({ error: "\u0644\u0627 \u064A\u0645\u0643\u0646\u0643 \u062D\u0630\u0641 \u0647\u0630\u0647 \u0627\u0644\u062A\u0639\u0628\u0626\u0629" });
+    return;
+  }
+  await db.delete(formSubmissionsTable).where(and(
+    eq(formSubmissionsTable.id, submissionId),
+    eq(formSubmissionsTable.projectId, projectId)
+  ));
   res.sendStatus(204);
 });
 router20.get("/projects/:id/daily-gaps", requireProjectAccess("id"), async (req, res) => {
@@ -130223,7 +130280,7 @@ router20.get("/projects/:id/daily-gaps", requireProjectAccess("id"), async (req,
   gaps.sort((a, b) => b.date.localeCompare(a.date));
   res.json(gaps);
 });
-router20.post("/projects/:id/skip-day", requireProjectAccess("id"), rejectContractor, rejectViewer, async (req, res) => {
+router20.post("/projects/:id/skip-day", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
   if (isContractor) {
@@ -131539,14 +131596,12 @@ router23.get("/attendance/records/:recordId/photo", async (req, res) => {
     res.status(404).json({ error: "\u0627\u0644\u0635\u0648\u0631\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
     return;
   }
-  let allowed = payload.userId === record2.userId || payload.role === "admin";
-  if (!allowed) {
-    const [member] = await db.select({ role: projectMembersTable.role }).from(projectMembersTable).where(and(
-      eq(projectMembersTable.projectId, record2.projectId),
-      eq(projectMembersTable.userId, payload.userId)
-    ));
-    if (member?.role === "project_manager") allowed = true;
-  }
+  const allowed = await canViewAttendancePhoto(
+    payload.userId,
+    payload.role,
+    record2.userId,
+    record2.projectId
+  );
   if (!allowed) {
     res.status(403).json({ error: "\u0644\u064A\u0633 \u0644\u062F\u064A\u0643 \u0635\u0644\u0627\u062D\u064A\u0629 \u0644\u0639\u0631\u0636 \u0647\u0630\u0647 \u0627\u0644\u0635\u0648\u0631\u0629" });
     return;
@@ -131737,23 +131792,67 @@ app.use((req, _res, next) => {
   next();
 });
 var uploadsDir4 = path6.join(process.cwd(), "uploads");
+async function canAccessPrivateUpload(filename, token, res) {
+  const [projectFiles, attendanceRecords] = await Promise.all([
+    db.select({ projectId: projectFilesTable.projectId }).from(projectFilesTable).where(eq(projectFilesTable.filename, filename)),
+    db.select({
+      id: attendanceRecordsTable.id,
+      projectId: attendanceRecordsTable.projectId,
+      userId: attendanceRecordsTable.userId
+    }).from(attendanceRecordsTable).where(eq(attendanceRecordsTable.selfieFilename, filename))
+  ]);
+  if (projectFiles.length + attendanceRecords.length !== 1) return false;
+  const unverifiedClaims = import_jsonwebtoken4.default.decode(token);
+  const user = unverifiedClaims && typeof unverifiedClaims !== "string" && typeof unverifiedClaims.userId === "number" ? await verifyAndMaybeRenewToken(token, res) : null;
+  if (attendanceRecords.length === 1) {
+    const record2 = attendanceRecords[0];
+    if (!user) return false;
+    return canViewAttendancePhoto(user.userId, user.role, record2.userId, record2.projectId);
+  }
+  const file2 = projectFiles[0];
+  if (user) {
+    if (user.role === "admin") return true;
+    if (user.role === "contractor") return false;
+    const [memberships, projects] = await Promise.all([
+      db.select({ id: projectMembersTable.id, role: projectMembersTable.role }).from(projectMembersTable).where(and(
+        eq(projectMembersTable.projectId, file2.projectId),
+        eq(projectMembersTable.userId, user.userId)
+      )).limit(1),
+      db.select({ contractorCompanyId: projectsTable.contractorCompanyId }).from(projectsTable).where(eq(projectsTable.id, file2.projectId)).limit(1)
+    ]);
+    const contractorCompanyId = projects[0]?.contractorCompanyId;
+    if (user.role !== "project_manager" && contractorCompanyId != null) {
+      const companyLink = await db.select({ companyId: userCompaniesTable.companyId }).from(userCompaniesTable).where(and(
+        eq(userCompaniesTable.userId, user.userId),
+        eq(userCompaniesTable.companyId, contractorCompanyId)
+      )).limit(1);
+      if (companyLink.length > 0) return false;
+    }
+    return memberships.length > 0 && memberships[0].role !== "contractor";
+  }
+  try {
+    const owner = import_jsonwebtoken4.default.verify(
+      token,
+      process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod"
+    );
+    if (typeof owner.ownerToken !== "string" || typeof owner.projectId !== "number" || owner.projectId !== file2.projectId) return false;
+    const [project] = await db.select({ id: projectsTable.id }).from(projectsTable).where(and(
+      eq(projectsTable.id, file2.projectId),
+      eq(projectsTable.ownerAccessToken, owner.ownerToken)
+    )).limit(1);
+    return Boolean(project);
+  } catch {
+    return false;
+  }
+}
 app.use("/api/uploads", async (req, res, next) => {
   const reqPath = decodeURIComponent(req.path).replace(/^\//, "");
   if (reqPath.startsWith("logo-")) {
     return next();
   }
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    const tokenParam = typeof req.query.token === "string" ? req.query.token : null;
-    if (tokenParam) {
-      if (await verifyAndMaybeRenewToken(tokenParam, res)) return next();
-      try {
-        const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
-        const decoded = import_jsonwebtoken4.default.verify(tokenParam, ownerSecret);
-        if (decoded.ownerToken && decoded.projectId) return next();
-      } catch {
-      }
-    }
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : typeof req.query.token === "string" ? req.query.token : null;
+  if (!token) {
     logger.warn({
       method: req.method,
       path: req.path,
@@ -131762,13 +131861,11 @@ app.use("/api/uploads", async (req, res, next) => {
     res.status(401).json({ error: "\u063A\u064A\u0631 \u0645\u0635\u0631\u062D" });
     return;
   }
-  const token = authHeader.slice(7);
-  if (await verifyAndMaybeRenewToken(token, res)) return next();
   try {
-    const ownerSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
-    const decoded = import_jsonwebtoken4.default.verify(token, ownerSecret);
-    if (decoded.ownerToken && decoded.projectId) return next();
-  } catch {
+    if (await canAccessPrivateUpload(reqPath, token, res)) return next();
+  } catch (error40) {
+    next(error40);
+    return;
   }
   logger.warn({
     method: req.method,
@@ -131778,6 +131875,10 @@ app.use("/api/uploads", async (req, res, next) => {
   res.status(401).json({ error: "\u0631\u0645\u0632 \u0627\u0644\u062F\u062E\u0648\u0644 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
 }, (req, res, next) => {
   const filename = decodeURIComponent(req.path).replace(/^\//, "");
+  if (path6.basename(filename) !== filename) {
+    res.status(404).json({ error: "\u0627\u0644\u0645\u0644\u0641 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    return;
+  }
   const localPath = path6.join(uploadsDir4, filename);
   if (fs6.existsSync(localPath)) {
     const isPublicLogo = filename.startsWith("logo-");
