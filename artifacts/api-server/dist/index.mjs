@@ -59524,6 +59524,146 @@ var init_src = __esm({
   }
 });
 
+// src/lib/audit-sanitize.ts
+function sanitizeAuditDetails(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const result = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (key === "operation" && typeof value === "string" && groupOperations.has(value)) {
+      result[key] = value;
+      continue;
+    }
+    if ((key === "linkCodeConfigured" || key === "sourceSnapshotsPreserved") && typeof value === "boolean") {
+      result[key] = value;
+      continue;
+    }
+    if (key === "updatedFields" && Array.isArray(value) && value.length <= 3 && value.every((field) => typeof field === "string" && groupUpdatedFields.has(field))) {
+      result[key] = [...new Set(value)];
+      continue;
+    }
+    if (numberFields.has(key)) {
+      if (value === null || typeof value === "number" && Number.isFinite(value) && (key.includes("Progress") || key === "progressPercentage" ? value >= 0 && value <= 100 : value >= 0)) {
+        result[key] = value;
+      }
+      continue;
+    }
+    if (dateFields.has(key) && (value === null || typeof value === "string" && /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z)?$/.test(value))) {
+      result[key] = value;
+      continue;
+    }
+    if (statusFields.has(key) && typeof value === "string" && (activityStatuses.has(value) || reportStatuses.has(value))) {
+      result[key] = value;
+      continue;
+    }
+    if (roleFields.has(key) && typeof value === "string" && projectRoles.has(value)) {
+      result[key] = value;
+      continue;
+    }
+    if (groupIdFields.has(key) && Array.isArray(value) && value.length <= 500 && value.every((id) => Number.isInteger(id) && id > 0)) {
+      result[key] = [...value];
+      continue;
+    }
+    if (key === "changedFields" && Array.isArray(value) && value.length <= 30 && value.every((field) => typeof field === "string" && changedFieldNames.has(field))) {
+      result[key] = [...new Set(value)];
+      continue;
+    }
+    if (tabPermissionFields.has(key) && value && typeof value === "object" && !Array.isArray(value)) {
+      const permissions = {};
+      for (const [tab, access] of Object.entries(value)) {
+        if (tabKeys.has(tab) && (access === "view" || access === "edit")) {
+          permissions[tab] = access;
+        }
+      }
+      result[key] = permissions;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+var numberFields, dateFields, statusFields, roleFields, activityStatuses, reportStatuses, projectRoles, groupIdFields, tabPermissionFields, groupOperations, groupUpdatedFields, changedFieldNames, tabKeys;
+var init_audit_sanitize = __esm({
+  "src/lib/audit-sanitize.ts"() {
+    "use strict";
+    numberFields = /* @__PURE__ */ new Set([
+      "actualProgress",
+      "plannedProgress",
+      "weight",
+      "progressPercentage",
+      "groupId",
+      "externalSourceGroupId",
+      "actualProgressBefore",
+      "actualProgressAfter",
+      "plannedProgressBefore",
+      "plannedProgressAfter",
+      "externalSourceGroupIdBefore",
+      "externalSourceGroupIdAfter",
+      "previousSourceProjectId",
+      "sourceProjectId",
+      "created",
+      "updated",
+      "unavailable",
+      "groupCount"
+    ]);
+    dateFields = /* @__PURE__ */ new Set([
+      "actualStartDate",
+      "actualEndDate",
+      "plannedStartDate",
+      "plannedEndDate",
+      "reportDate"
+    ]);
+    statusFields = /* @__PURE__ */ new Set(["status", "statusBefore", "statusAfter"]);
+    roleFields = /* @__PURE__ */ new Set(["roleBefore", "roleAfter"]);
+    activityStatuses = /* @__PURE__ */ new Set(["not_started", "in_progress", "completed", "delayed"]);
+    reportStatuses = /* @__PURE__ */ new Set(["draft", "approved"]);
+    projectRoles = /* @__PURE__ */ new Set(["project_manager", "engineer", "contractor", "viewer"]);
+    groupIdFields = /* @__PURE__ */ new Set(["groupIdsBefore", "groupIdsAfter"]);
+    tabPermissionFields = /* @__PURE__ */ new Set(["tabPermissionsBefore", "tabPermissionsAfter"]);
+    groupOperations = /* @__PURE__ */ new Set([
+      "reorder",
+      "update",
+      "link_project",
+      "unlink_project",
+      "sync"
+    ]);
+    groupUpdatedFields = /* @__PURE__ */ new Set(["name", "color", "linkCode"]);
+    changedFieldNames = /* @__PURE__ */ new Set([
+      "name",
+      "actualProgress",
+      "plannedProgress",
+      "weight",
+      "actualStartDate",
+      "actualEndDate",
+      "plannedStartDate",
+      "plannedEndDate",
+      "status",
+      "groupId",
+      "externalSourceGroupId",
+      "type",
+      "reportDate",
+      "periodStart",
+      "periodEnd",
+      "workDescription",
+      "technicalNotes",
+      "recommendations",
+      "imageGroups",
+      "imageUrls",
+      "activitiesSnapshot",
+      "progressPercentage",
+      "tabPermissions"
+    ]);
+    tabKeys = /* @__PURE__ */ new Set([
+      "overview",
+      "activities",
+      "extensions",
+      "suspensions",
+      "reports",
+      "forms",
+      "attendance",
+      "files",
+      "deviation"
+    ]);
+  }
+});
+
 // src/lib/audit.ts
 var audit_exports = {};
 __export(audit_exports, {
@@ -59546,14 +59686,16 @@ async function logAudit(entry) {
     }
     await db.insert(auditLogTable).values({
       userId: entry.userId ?? null,
-      userName: entry.userName ?? null,
+      // Do not persist phone numbers or other request-derived identifiers as
+      // actor names. Audit views resolve a display name from the user record.
+      userName: null,
       action: entry.action,
       entityType: entry.entityType,
       entityId: entry.entityId ?? null,
       entityName: entry.entityName ?? null,
       projectId: entry.projectId ?? null,
       projectName,
-      details: entry.details ?? null
+      details: sanitizeAuditDetails(entry.details)
     });
   } catch {
   }
@@ -59563,6 +59705,7 @@ var init_audit = __esm({
     "use strict";
     init_src();
     init_drizzle_orm();
+    init_audit_sanitize();
   }
 });
 
@@ -110075,7 +110218,7 @@ var require_bn = __commonJS({
         assert2((this.negative | num.negative) === 0);
         return this.iuor(num);
       };
-      BN.prototype.or = function or3(num) {
+      BN.prototype.or = function or2(num) {
         if (this.length > num.length) return this.clone().ior(num);
         return num.clone().ior(this);
       };
@@ -123999,7 +124142,7 @@ router3.patch("/projects/:id", requireProjectAccess("id"), async (req, res) => {
       updateData.linkCode = normalizedCode;
     }
   }
-  const parseCompanyId = (val) => val && val !== "none" && !isNaN(Number(val)) ? parseInt(String(val), 10) : null;
+  const parseCompanyId2 = (val) => val && val !== "none" && !isNaN(Number(val)) ? parseInt(String(val), 10) : null;
   const isTogglingNoSchedule = body.noSchedule !== void 0;
   const willBeNoSchedule = isTogglingNoSchedule ? body.noSchedule === true || body.noSchedule === "true" : void 0;
   const [existingProject] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
@@ -124040,9 +124183,9 @@ router3.patch("/projects/:id", requireProjectAccess("id"), async (req, res) => {
   if (body.actualEndDate !== void 0) updateData.actualEndDate = body.actualEndDate;
   if (body.status !== void 0) updateData.status = body.status;
   if (body.overallProgress !== void 0) updateData.overallProgress = body.overallProgress;
-  if (body.ownerCompanyId !== void 0) updateData.ownerCompanyId = parseCompanyId(body.ownerCompanyId);
-  if (body.contractorCompanyId !== void 0) updateData.contractorCompanyId = parseCompanyId(body.contractorCompanyId);
-  if (body.supervisorCompanyId !== void 0) updateData.supervisorCompanyId = parseCompanyId(body.supervisorCompanyId);
+  if (body.ownerCompanyId !== void 0) updateData.ownerCompanyId = parseCompanyId2(body.ownerCompanyId);
+  if (body.contractorCompanyId !== void 0) updateData.contractorCompanyId = parseCompanyId2(body.contractorCompanyId);
+  if (body.supervisorCompanyId !== void 0) updateData.supervisorCompanyId = parseCompanyId2(body.supervisorCompanyId);
   if (body.onedriveTestResultsFolderId !== void 0) updateData.onedriveTestResultsFolderId = body.onedriveTestResultsFolderId || null;
   if (body.siteLatitude !== void 0) {
     const v = body.siteLatitude;
@@ -124797,7 +124940,7 @@ router4.post("/projects/:projectId/activities", requireProjectAccess("projectId"
   await recalcExpectedEndDate(projectId);
   if (groupId != null) await refreshLinkedSources([Number(groupId)]);
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
-  logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "create", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId });
+  await logAudit2({ userId: req.user?.userId, action: "create", entityType: "activity", entityId: activity.id, entityName: `\u0628\u0646\u062F #${activity.id}`, projectId, details: { actualProgress: activity.actualProgress, plannedProgress: activity.plannedProgress, groupId: activity.groupId, externalSourceGroupId: activity.externalSourceGroupId } });
   res.status(201).json(await serializeActivityForUser(activity, req.user?.userId));
 });
 router4.patch("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
@@ -125007,7 +125150,7 @@ router4.patch("/projects/:projectId/activities/:id", requireProjectAccess("proje
   if (activity.externalSourceGroupId != null) affectedSourceGroups.add(activity.externalSourceGroupId);
   if (affectedSourceGroups.size) await refreshLinkedSources([...affectedSourceGroups]);
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
-  logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "update", entityType: "activity", entityId: activity.id, entityName: activity.name, projectId, details: updateData });
+  await logAudit2({ userId: req.user?.userId, action: "update", entityType: "activity", entityId: activity.id, entityName: `\u0628\u0646\u062F #${activity.id}`, projectId, details: { ...updateData, actualProgressBefore: existing.actualProgress, actualProgressAfter: activity.actualProgress, externalSourceGroupIdBefore: existing.externalSourceGroupId, externalSourceGroupIdAfter: activity.externalSourceGroupId, changedFields: Object.keys(updateData) } });
   res.json(await serializeActivityForUser(activity, req.user?.userId));
 });
 router4.post("/projects/:projectId/activities/import", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), upload.single("file"), async (req, res) => {
@@ -125089,6 +125232,17 @@ router4.post("/projects/:projectId/activities/import", requireProjectAccess("pro
     ).returning();
     await syncProjectProgress(projectId);
     await recalcExpectedEndDate(projectId);
+    if (inserted.length > 0) {
+      const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
+      await logAudit2({
+        userId: req.user?.userId,
+        action: "create",
+        entityType: "activity_import",
+        entityName: "\u0627\u0633\u062A\u064A\u0631\u0627\u062F \u0628\u0646\u0648\u062F",
+        projectId,
+        details: { created: inserted.length }
+      });
+    }
     res.status(201).json({
       imported: inserted.length,
       errors: errors.length > 0 ? errors : void 0,
@@ -125162,7 +125316,7 @@ router4.delete("/projects/:projectId/activities/:id", requireProjectAccess("proj
   await recalcExpectedEndDate(projectId);
   if (activity.groupId != null) await refreshLinkedSources([activity.groupId]);
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
-  logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "delete", entityType: "activity", entityId: id, entityName: activity.name, projectId });
+  await logAudit2({ userId: req.user?.userId, action: "delete", entityType: "activity", entityId: id, entityName: `\u0628\u0646\u062F #${id}`, projectId, details: { actualProgress: activity.actualProgress, plannedProgress: activity.plannedProgress, groupId: activity.groupId, externalSourceGroupId: activity.externalSourceGroupId } });
   res.sendStatus(204);
 });
 router4.put("/projects/:projectId/activities/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
@@ -125215,7 +125369,8 @@ router4.put("/projects/:projectId/activities/reorder", requireProjectAccess("pro
     }));
     const sourceGroups = await tx.select({ groupId: activitiesTable.groupId }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
     const sourceGroupIds = [...new Set([...oldGroups, ...sourceGroups].map((a) => a.groupId).filter((groupId) => groupId != null))];
-    return { invalidGroup: false, managedLocked: false, duplicate: false, sourceGroupIds };
+    const updated = new Set(items.filter((item) => currentById.has(item.id)).map((item) => item.id)).size;
+    return { invalidGroup: false, managedLocked: false, duplicate: false, sourceGroupIds, updated };
   }));
   if (result.invalidGroup) {
     res.status(400).json({ error: "\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0647\u0630\u0627 \u0627\u0644\u0645\u0634\u0631\u0648\u0639" });
@@ -125230,6 +125385,17 @@ router4.put("/projects/:projectId/activities/reorder", requireProjectAccess("pro
     return;
   }
   if (result.sourceGroupIds.length) await refreshLinkedSources(result.sourceGroupIds);
+  if ((result.updated ?? 0) > 0) {
+    const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
+    await logAudit2({
+      userId: req.user?.userId,
+      action: "update",
+      entityType: "activity_reorder",
+      entityName: "\u0625\u0639\u0627\u062F\u0629 \u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0628\u0646\u0648\u062F",
+      projectId,
+      details: { operation: "reorder", updated: result.updated }
+    });
+  }
   res.json({ success: true });
 });
 var activities_default = router4;
@@ -125606,7 +125772,7 @@ router5.post("/projects/:projectId/reports", requireProjectAccess("projectId"), 
     createdById: req.user?.userId ?? null
   }).returning();
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
-  logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "create", entityType: "report", entityId: report.id, entityName: `\u062A\u0642\u0631\u064A\u0631 #${nextNumber}`, projectId });
+  await logAudit2({ userId: req.user?.userId, action: "create", entityType: "report", entityId: report.id, entityName: `\u062A\u0642\u0631\u064A\u0631 #${nextNumber}`, projectId, details: { reportDate: report.reportDate, progressPercentage: report.progressPercentage, statusAfter: report.status } });
   res.status(201).json(report);
 });
 router5.post("/projects/:projectId/reports/:id/duplicate", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res) => {
@@ -125645,7 +125811,7 @@ router5.post("/projects/:projectId/reports/:id/duplicate", requireProjectAccess(
     return;
   }
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
-  logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "create", entityType: "report", entityId: copy.id, entityName: `\u0646\u0633\u062E\u0629 \u0645\u0646 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 #${sourceId}`, projectId });
+  await logAudit2({ userId: req.user?.userId, action: "create", entityType: "report", entityId: copy.id, entityName: `\u0646\u0633\u062E\u0629 \u0645\u0646 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 #${sourceId}`, projectId, details: { reportDate: copy.reportDate, progressPercentage: copy.progressPercentage, statusAfter: copy.status } });
   res.status(201).json(copy);
 });
 router5.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, async (req, res) => {
@@ -125729,7 +125895,7 @@ router5.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectI
     return;
   }
   const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
-  logAudit2({ userId: req.user?.userId, userName: req.user?.phone, action: "update", entityType: "report", entityId: report.id, entityName: `\u062A\u0642\u0631\u064A\u0631 #${report.reportNumber}`, projectId });
+  await logAudit2({ userId: req.user?.userId, action: "update", entityType: "report", entityId: report.id, entityName: `\u062A\u0642\u0631\u064A\u0631 #${report.reportNumber}`, projectId, details: { reportDate: report.reportDate, progressPercentage: report.progressPercentage, statusAfter: report.status, changedFields: Object.keys(updateData) } });
   res.json(report);
 });
 router5.patch("/projects/:projectId/reports/:id/status", requireProjectManager("projectId"), async (req, res) => {
@@ -125740,6 +125906,11 @@ router5.patch("/projects/:projectId/reports/:id/status", requireProjectManager("
   const status = req.body?.status;
   if (status !== "draft" && status !== "approved") {
     res.status(400).json({ error: "\u062D\u0627\u0644\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629" });
+    return;
+  }
+  const [existing] = await db.select({ status: reportsTable.status }).from(reportsTable).where(and(eq(reportsTable.id, id), eq(reportsTable.projectId, projectId)));
+  if (!existing) {
+    res.status(404).json({ error: "\u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
   const updateData = { status };
@@ -125756,14 +125927,14 @@ router5.patch("/projects/:projectId/reports/:id/status", requireProjectManager("
     return;
   }
   const { logAudit: logAuditStatus } = await Promise.resolve().then(() => (init_audit(), audit_exports));
-  logAuditStatus({
+  await logAuditStatus({
     userId: req.user?.userId,
-    userName: req.user?.phone,
     action: "update",
     entityType: "report",
     entityId: report.id,
     entityName: `\u062A\u0642\u0631\u064A\u0631 #${report.reportNumber} (${status === "approved" ? "\u0627\u0639\u062A\u0645\u0627\u062F" : "\u0625\u0631\u062C\u0627\u0639 \u0644\u0645\u0633\u0648\u062F\u0629"})`,
-    projectId
+    projectId,
+    details: { statusBefore: existing.status, statusAfter: report.status, reportDate: report.reportDate, progressPercentage: report.progressPercentage }
   });
   if (status === "approved" && report.createdById && report.createdById !== req.user?.userId) {
     Promise.resolve().then(() => (init_expoPush(), expoPush_exports)).then(({ sendExpoPushToUser: sendExpoPushToUser2 }) => {
@@ -125798,7 +125969,7 @@ router5.delete("/projects/:projectId/reports/:id", requireProjectAccess("project
     return;
   }
   const { logAudit: logAudit3 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
-  logAudit3({ userId: req.user?.userId, userName: req.user?.phone, action: "delete", entityType: "report", entityId: id, entityName: `\u062A\u0642\u0631\u064A\u0631 #${report.reportNumber}`, projectId });
+  await logAudit3({ userId: req.user?.userId, action: "delete", entityType: "report", entityId: id, entityName: `\u062A\u0642\u0631\u064A\u0631 #${report.reportNumber}`, projectId, details: { reportDate: report.reportDate, progressPercentage: report.progressPercentage, statusBefore: report.status } });
   res.sendStatus(204);
 });
 var reports_default = router5;
@@ -128284,6 +128455,49 @@ var upload3 = (0, import_multer3.default)({
   }
 });
 var router14 = (0, import_express14.Router)();
+var companyTypes = ["owner", "contractor", "supervisor"];
+var memberCompanyFields = {
+  id: companiesTable.id,
+  name: companiesTable.name,
+  type: companiesTable.type,
+  logoUrl: companiesTable.logoUrl
+};
+function parseCompanyId(raw) {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value || !/^[1-9]\d*$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) ? id : null;
+}
+function isCompanyType(value) {
+  return typeof value === "string" && companyTypes.includes(value);
+}
+async function getRelatedCompanyIds(userId, role) {
+  const [memberships, linkedCompanies] = await Promise.all([
+    db.select({ projectId: projectMembersTable.projectId, role: projectMembersTable.role }).from(projectMembersTable).where(eq(projectMembersTable.userId, userId)),
+    db.select({ companyId: userCompaniesTable.companyId }).from(userCompaniesTable).where(eq(userCompaniesTable.userId, userId))
+  ]);
+  const companyIds = new Set(linkedCompanies.map((link) => link.companyId));
+  if (role !== "contractor" && memberships.length > 0) {
+    const memberProjectIds = memberships.map((membership) => membership.projectId);
+    const memberProjects = await db.select({
+      id: projectsTable.id,
+      ownerCompanyId: projectsTable.ownerCompanyId,
+      contractorCompanyId: projectsTable.contractorCompanyId,
+      supervisorCompanyId: projectsTable.supervisorCompanyId
+    }).from(projectsTable).where(inArray(projectsTable.id, memberProjectIds));
+    for (const project of memberProjects) {
+      const membership = memberships.find((member) => member.projectId === project.id);
+      if (membership?.role === "contractor" || project.contractorCompanyId !== null && companyIds.has(project.contractorCompanyId)) {
+        if (project.contractorCompanyId !== null) companyIds.add(project.contractorCompanyId);
+        continue;
+      }
+      if (project.ownerCompanyId !== null) companyIds.add(project.ownerCompanyId);
+      if (project.contractorCompanyId !== null) companyIds.add(project.contractorCompanyId);
+      if (project.supervisorCompanyId !== null) companyIds.add(project.supervisorCompanyId);
+    }
+  }
+  return [...companyIds];
+}
 router14.get("/companies", requireAuth, async (req, res) => {
   const role = req.user?.role;
   const userId = req.user?.userId;
@@ -128294,14 +128508,39 @@ router14.get("/companies", requireAuth, async (req, res) => {
     const companies = await db.select().from(companiesTable).where(eq(companiesTable.createdById, userId)).orderBy(companiesTable.name);
     res.json(companies);
   } else {
-    const companies = await db.select().from(companiesTable).orderBy(companiesTable.name);
+    const companyIds = await getRelatedCompanyIds(userId, role);
+    const companies = companyIds.length > 0 ? await db.select(memberCompanyFields).from(companiesTable).where(inArray(companiesTable.id, companyIds)).orderBy(companiesTable.name) : [];
     res.json(companies);
   }
 });
 router14.get("/companies/:id", requireAuth, async (req, res) => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
-  const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
+  const id = parseCompanyId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
+  const role = req.user?.role;
+  const userId = req.user?.userId;
+  if (role === "admin") {
+    const [company2] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
+    if (!company2) {
+      res.status(404).json({ error: "\u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
+      return;
+    }
+    res.json(company2);
+    return;
+  }
+  if (role === "project_manager") {
+    const [company2] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
+    if (!company2 || company2.createdById !== userId) {
+      res.status(404).json({ error: "\u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
+      return;
+    }
+    res.json(company2);
+    return;
+  }
+  const companyIds = await getRelatedCompanyIds(userId, role);
+  const [company] = companyIds.includes(id) ? await db.select(memberCompanyFields).from(companiesTable).where(eq(companiesTable.id, id)) : [];
   if (!company) {
     res.status(404).json({ error: "\u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
     return;
@@ -128310,8 +128549,12 @@ router14.get("/companies/:id", requireAuth, async (req, res) => {
 });
 router14.post("/companies", requireAdminOrPM, upload3.single("logo"), async (req, res) => {
   const { name, type, phone, email: email3, address } = req.body;
-  if (!name || !type) {
+  if (typeof name !== "string" || !name.trim() || !type) {
     res.status(400).json({ error: "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u0648\u0646\u0648\u0639\u0647\u0627 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" });
+    return;
+  }
+  if (!isCompanyType(type)) {
+    res.status(400).json({ error: "\u0646\u0648\u0639 \u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
     return;
   }
   let logoUrl = null;
@@ -128324,7 +128567,7 @@ router14.post("/companies", requireAdminOrPM, upload3.single("logo"), async (req
     logoUrl = `/api/uploads/${req.file.filename}`;
   }
   const [company] = await db.insert(companiesTable).values({
-    name,
+    name: name.trim(),
     type,
     logoUrl,
     phone: phone || null,
@@ -128335,10 +128578,14 @@ router14.post("/companies", requireAdminOrPM, upload3.single("logo"), async (req
   res.status(201).json(company);
 });
 router14.patch("/companies/:id", requireAdminOrPM, upload3.single("logo"), async (req, res) => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseCompanyId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
+  let existing;
   if (req.user?.role === "project_manager") {
-    const [existing] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
+    [existing] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
     if (!existing || existing.createdById !== req.user.userId) {
       res.status(403).json({ error: "\u0644\u0627 \u064A\u0645\u0643\u0646\u0643 \u062A\u0639\u062F\u064A\u0644 \u0634\u0631\u0643\u0629 \u0644\u0645 \u062A\u0642\u0645 \u0628\u0625\u0646\u0634\u0627\u0626\u0647\u0627" });
       return;
@@ -128346,8 +128593,24 @@ router14.patch("/companies/:id", requireAdminOrPM, upload3.single("logo"), async
   }
   const updateData = {};
   const body = req.body;
-  if (body.name !== void 0) updateData.name = body.name || null;
-  if (body.type !== void 0) updateData.type = body.type || null;
+  if (body.name !== void 0) {
+    if (typeof body.name !== "string" || !body.name.trim()) {
+      res.status(400).json({ error: "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+      return;
+    }
+    updateData.name = body.name.trim();
+  }
+  if (body.type !== void 0) {
+    if (!isCompanyType(body.type)) {
+      res.status(400).json({ error: "\u0646\u0648\u0639 \u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+      return;
+    }
+    if (req.user?.role === "project_manager" && existing?.type !== body.type) {
+      res.status(403).json({ error: "\u0644\u0627 \u064A\u0645\u0643\u0646\u0643 \u062A\u063A\u064A\u064A\u0631 \u062A\u0635\u0646\u064A\u0641 \u0627\u0644\u0634\u0631\u0643\u0629" });
+      return;
+    }
+    updateData.type = body.type;
+  }
   if (body.phone !== void 0) updateData.phone = body.phone || null;
   if (body.email !== void 0) updateData.email = body.email || null;
   if (body.address !== void 0) updateData.address = body.address || null;
@@ -128371,8 +128634,11 @@ router14.patch("/companies/:id", requireAdminOrPM, upload3.single("logo"), async
   res.json(company);
 });
 router14.delete("/companies/:id", requireAdminOrPM, async (req, res) => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseCompanyId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
   const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
   if (!company) {
     res.status(404).json({ error: "\u0627\u0644\u0634\u0631\u0643\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
@@ -128401,6 +128667,7 @@ var import_express15 = __toESM(require_express2(), 1);
 init_src();
 init_src();
 init_drizzle_orm();
+init_audit();
 var router15 = (0, import_express15.Router)();
 async function getGroupIdsForMember(memberId) {
   const rows = await db.select({ groupId: memberGroupAssignmentsTable.groupId }).from(memberGroupAssignmentsTable).where(eq(memberGroupAssignmentsTable.memberId, memberId));
@@ -128629,6 +128896,15 @@ router15.post("/projects/:projectId/members", requireProjectManager("projectId")
       await setGroupsForMember(member.id, assignedGroupIds, projectId);
     }
     invalidateProfileCache(userId);
+    await logAudit({
+      userId: req.user?.userId,
+      action: "create",
+      entityType: "project_member",
+      entityId: member.id,
+      entityName: `\u0639\u0636\u0648 \u0645\u0634\u0631\u0648\u0639 #${member.id}`,
+      projectId,
+      details: { roleAfter: member.role, groupIdsAfter: assignedGroupIds ?? [] }
+    });
     const memberWithUser = await getMemberWithUser(member.id);
     res.status(201).json(memberWithUser);
   } catch (e) {
@@ -128660,11 +128936,30 @@ router15.patch("/projects/:projectId/members/:id", requireProjectManager("projec
       res.status(404).json({ error: "\u0627\u0644\u0639\u0636\u0648 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
       return;
     }
+    await logAudit({
+      userId: req.user?.userId,
+      action: "update",
+      entityType: "project_member",
+      entityId: memberId,
+      entityName: `\u0639\u0636\u0648 \u0645\u0634\u0631\u0648\u0639 #${memberId}`,
+      projectId,
+      details: { roleBefore: targetMember.role, roleAfter: updated.role }
+    });
     invalidateProfileCache(targetMember.userId);
   }
   if (Array.isArray(assignedGroupIds)) {
     try {
+      const groupIdsBefore = await getGroupIdsForMember(memberId);
       await setGroupsForMember(memberId, assignedGroupIds, projectId);
+      await logAudit({
+        userId: req.user?.userId,
+        action: "update",
+        entityType: "project_member",
+        entityId: memberId,
+        entityName: `\u062A\u0639\u064A\u064A\u0646\u0627\u062A \u0645\u062C\u0645\u0648\u0639\u0627\u062A \u0627\u0644\u0639\u0636\u0648 #${memberId}`,
+        projectId,
+        details: { groupIdsBefore, groupIdsAfter: assignedGroupIds }
+      });
     } catch (e) {
       res.status(400).json({ error: e.message });
       return;
@@ -128691,12 +128986,22 @@ router15.put("/projects/:projectId/members/:id/groups", requireProjectManager("p
     res.status(404).json({ error: "\u0627\u0644\u0639\u0636\u0648 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F \u0641\u064A \u0647\u0630\u0627 \u0627\u0644\u0645\u0634\u0631\u0648\u0639" });
     return;
   }
+  const groupIdsBefore = await getGroupIdsForMember(memberId);
   try {
     await setGroupsForMember(memberId, groupIds, projectId);
   } catch (e) {
     res.status(400).json({ error: e.message });
     return;
   }
+  await logAudit({
+    userId: req.user?.userId,
+    action: "update",
+    entityType: "project_member",
+    entityId: memberId,
+    entityName: `\u062A\u0639\u064A\u064A\u0646\u0627\u062A \u0645\u062C\u0645\u0648\u0639\u0627\u062A \u0627\u0644\u0639\u0636\u0648 #${memberId}`,
+    projectId,
+    details: { groupIdsBefore, groupIdsAfter: groupIds }
+  });
   res.json({ groupIds });
 });
 router15.get("/projects/:projectId/my-permissions", requireProjectAccess("projectId"), async (req, res) => {
@@ -128816,7 +129121,8 @@ router15.put("/projects/:projectId/members/:id/permissions", requireProjectManag
   }
   const [existing] = await db.select({
     role: projectMembersTable.role,
-    userId: projectMembersTable.userId
+    userId: projectMembersTable.userId,
+    tabPermissions: projectMembersTable.tabPermissions
   }).from(projectMembersTable).where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)));
   if (!existing) {
     res.status(404).json({ error: "\u0627\u0644\u0639\u0636\u0648 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
@@ -128831,6 +129137,15 @@ router15.put("/projects/:projectId/members/:id/permissions", requireProjectManag
     res.status(404).json({ error: "\u0627\u0644\u0639\u0636\u0648 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
+  await logAudit({
+    userId: req.user?.userId,
+    action: "update",
+    entityType: "project_member",
+    entityId: memberId,
+    entityName: `\u0635\u0644\u0627\u062D\u064A\u0627\u062A \u0627\u0644\u0639\u0636\u0648 #${memberId}`,
+    projectId,
+    details: { tabPermissionsBefore: existing.tabPermissions, tabPermissionsAfter: updated.tabPermissions }
+  });
   res.json({
     memberId: updated.id,
     projectId: updated.projectId,
@@ -128850,12 +129165,22 @@ router15.delete("/projects/:projectId/members/:id", requireProjectManager("proje
     res.status(403).json({ error: "\u0644\u0627 \u064A\u0645\u0643\u0646\u0643 \u0625\u0632\u0627\u0644\u0629 \u0646\u0641\u0633\u0643 \u0645\u0646 \u0627\u0644\u0645\u0634\u0631\u0648\u0639" });
     return;
   }
+  const groupIdsBefore = await getGroupIdsForMember(memberId);
   const [deleted] = await db.delete(projectMembersTable).where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId))).returning();
   if (!deleted) {
     res.status(404).json({ error: "\u0627\u0644\u0639\u0636\u0648 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
   invalidateProfileCache(deleted.userId);
+  await logAudit({
+    userId: user?.userId,
+    action: "delete",
+    entityType: "project_member",
+    entityId: deleted.id,
+    entityName: `\u0639\u0636\u0648 \u0645\u0634\u0631\u0648\u0639 #${deleted.id}`,
+    projectId,
+    details: { roleBefore: deleted.role, groupIdsBefore }
+  });
   res.sendStatus(204);
 });
 var project_members_default = router15;
@@ -128864,6 +129189,7 @@ var project_members_default = router15;
 var import_express16 = __toESM(require_express2(), 1);
 init_src();
 init_drizzle_orm();
+init_audit_sanitize();
 var router16 = (0, import_express16.Router)();
 router16.get(
   "/projects/:projectId/reports/:id/audit-log",
@@ -128871,10 +129197,15 @@ router16.get(
   async (req, res) => {
     const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
     const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const projectId = parseInt(rawProjectId, 10);
-    const reportId = parseInt(rawId, 10);
-    if (isNaN(projectId) || isNaN(reportId)) {
+    const projectId = Number(rawProjectId);
+    const reportId = Number(rawId);
+    if (!Number.isSafeInteger(projectId) || projectId <= 0 || !Number.isSafeInteger(reportId) || reportId <= 0) {
       res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+      return;
+    }
+    const [report] = await db.select({ id: reportsTable.id }).from(reportsTable).where(and(eq(reportsTable.id, reportId), eq(reportsTable.projectId, projectId)));
+    if (!report) {
+      res.status(404).json({ error: "\u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
       return;
     }
     const entries = await db.select({
@@ -128882,7 +129213,6 @@ router16.get(
       action: auditLogTable.action,
       entityName: auditLogTable.entityName,
       userId: auditLogTable.userId,
-      userName: auditLogTable.userName,
       userFullName: usersTable.fullName,
       createdAt: auditLogTable.createdAt
     }).from(auditLogTable).leftJoin(usersTable, eq(usersTable.id, auditLogTable.userId)).where(
@@ -128909,18 +129239,31 @@ router16.get("/audit-log", requireAdmin, async (req, res) => {
     if (!isNaN(pid)) conditions.push(eq(auditLogTable.projectId, pid));
   }
   if (dateFrom && typeof dateFrom === "string") {
-    conditions.push(gte(auditLogTable.createdAt, new Date(dateFrom)));
+    const from = new Date(dateFrom);
+    if (Number.isNaN(from.getTime())) {
+      res.status(400).json({ error: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0628\u062F\u0627\u064A\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+      return;
+    }
+    conditions.push(gte(auditLogTable.createdAt, from));
   }
   if (dateTo && typeof dateTo === "string") {
     const d = new Date(dateTo);
+    if (Number.isNaN(d.getTime())) {
+      res.status(400).json({ error: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+      return;
+    }
     d.setDate(d.getDate() + 1);
     conditions.push(lte(auditLogTable.createdAt, d));
   }
-  const maxRows = Math.min(parseInt(limitStr, 10) || 100, 500);
+  const requestedLimit = typeof limitStr === "string" ? Number(limitStr) : 100;
+  if (!Number.isInteger(requestedLimit) || requestedLimit < 1) {
+    res.status(400).json({ error: "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0644\u0633\u062C\u0644\u0627\u062A \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
+  const maxRows = Math.min(requestedLimit, 500);
   const logs = await db.select({
     id: auditLogTable.id,
     userId: auditLogTable.userId,
-    userName: auditLogTable.userName,
     userFullName: usersTable.fullName,
     action: auditLogTable.action,
     entityType: auditLogTable.entityType,
@@ -128928,9 +129271,10 @@ router16.get("/audit-log", requireAdmin, async (req, res) => {
     entityName: auditLogTable.entityName,
     projectId: auditLogTable.projectId,
     projectName: auditLogTable.projectName,
+    details: auditLogTable.details,
     createdAt: auditLogTable.createdAt
   }).from(auditLogTable).leftJoin(usersTable, eq(usersTable.id, auditLogTable.userId)).where(conditions.length > 0 ? and(...conditions) : void 0).orderBy(desc(auditLogTable.createdAt)).limit(maxRows);
-  res.json(logs);
+  res.json(logs.map((log) => ({ ...log, details: sanitizeAuditDetails(log.details) })));
 });
 var audit_log_default = router16;
 
@@ -128957,6 +129301,7 @@ async function deleteEmptyActivityGroup(projectId, groupId) {
 }
 
 // src/routes/activity-groups.ts
+init_audit();
 var router17 = (0, import_express17.Router)();
 var linkAttempts = /* @__PURE__ */ new Map();
 var LINK_ATTEMPT_WINDOW_MS = 15 * 60 * 1e3;
@@ -128980,6 +129325,22 @@ function allowLinkAttempt(userId) {
   if (current.count >= LINK_ATTEMPT_LIMIT) return false;
   current.count++;
   return true;
+}
+async function reorderActivityGroups(projectId, order) {
+  if (!Array.isArray(order) || order.some((id) => !Number.isInteger(id) || id <= 0) || new Set(order).size !== order.length) return "invalid_order";
+  return withSourceGraphLock(() => db.transaction(async (tx) => {
+    const [project] = await tx.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.id, projectId));
+    if (!project) return "not_found";
+    const currentGroups = await tx.select({ id: activityGroupsTable.id }).from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId));
+    const currentIds = new Set(currentGroups.map((group) => group.id));
+    if (currentGroups.length !== order.length || order.some((id) => !currentIds.has(id))) {
+      return "invalid_order";
+    }
+    for (let index2 = 0; index2 < order.length; index2++) {
+      await tx.update(activityGroupsTable).set({ sortOrder: index2 }).where(and(eq(activityGroupsTable.id, order[index2]), eq(activityGroupsTable.projectId, projectId)));
+    }
+    return "reordered";
+  }));
 }
 router17.get("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
@@ -129046,6 +129407,15 @@ router17.post("/projects/:projectId/activity-groups", requireProjectAccess("proj
     return;
   }
   await reconcileTargetsLinkedToProject(projectId);
+  await logAudit({
+    userId: req.user.userId,
+    action: "create",
+    entityType: "activity_group",
+    entityId: group.id,
+    entityName: `\u0645\u062C\u0645\u0648\u0639\u0629 #${group.id}`,
+    projectId,
+    details: { linkCodeConfigured: Boolean(linkCode) }
+  });
   res.status(201).json(publicGroup(group));
 });
 router17.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
@@ -129055,9 +129425,23 @@ router17.put("/projects/:projectId/activity-groups/reorder", requireProjectAcces
     res.status(400).json({ error: "order \u0645\u0637\u0644\u0648\u0628" });
     return;
   }
-  for (let i = 0; i < order.length; i++) {
-    await db.update(activityGroupsTable).set({ sortOrder: i }).where(and(eq(activityGroupsTable.id, order[i]), eq(activityGroupsTable.projectId, projectId)));
+  const result = await reorderActivityGroups(projectId, order);
+  if (result === "not_found") {
+    res.status(404).json({ error: "\u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    return;
   }
+  if (result === "invalid_order") {
+    res.status(409).json({ error: "\u064A\u062C\u0628 \u0623\u0646 \u064A\u062A\u0636\u0645\u0646 \u0627\u0644\u062A\u0631\u062A\u064A\u0628 \u0643\u0644 \u0645\u062C\u0645\u0648\u0639\u0627\u062A \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0645\u0631\u0629 \u0648\u0627\u062D\u062F\u0629" });
+    return;
+  }
+  await logAudit({
+    userId: req.user.userId,
+    action: "update",
+    entityType: "activity_group",
+    entityName: "group order",
+    projectId,
+    details: { operation: "reorder", groupCount: order.length }
+  });
   res.json({ success: true });
 });
 router17.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
@@ -129096,6 +129480,15 @@ router17.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("p
   }
   await reconcileTargetsLinkedToProject(projectId);
   await refreshLinkedSources([id]);
+  await logAudit({
+    userId: req.user.userId,
+    action: "update",
+    entityType: "activity_group",
+    entityId: updated.id,
+    entityName: `\u0645\u062C\u0645\u0648\u0639\u0629 #${updated.id}`,
+    projectId,
+    details: { operation: "update", updatedFields: Object.keys(updateData) }
+  });
   res.json(publicGroup(updated));
 });
 router17.put("/projects/:projectId/activity-groups/:id/linked-project", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
@@ -129152,6 +129545,22 @@ router17.put("/projects/:projectId/activity-groups/:id/linked-project", requireP
     res.status(404).json({ error: "\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
     return;
   }
+  await logAudit({
+    userId: req.user.userId,
+    action: "update",
+    entityType: "activity_group",
+    entityId: result.group.id,
+    entityName: `\u0645\u062C\u0645\u0648\u0639\u0629 #${result.group.id}`,
+    projectId,
+    details: {
+      operation: sourceProjectId === null ? "unlink_project" : "link_project",
+      previousSourceProjectId: targetGroup.linkedProjectId,
+      sourceProjectId: result.group.linkedProjectId,
+      created: result.created,
+      updated: result.updated,
+      unavailable: result.unavailable
+    }
+  });
   res.json({ group: publicGroup(result.group), created: result.created, updated: result.updated, unavailable: result.unavailable });
 });
 router17.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
@@ -129175,6 +129584,17 @@ router17.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAcc
     res.status(409).json({ error: "\u062A\u0645 \u062A\u063A\u064A\u064A\u0631 \u0627\u0631\u062A\u0628\u0627\u0637 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u0628\u0627\u0644\u062A\u0632\u0627\u0645\u0646\u061B \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644\u0647\u0627 \u062B\u0645 \u062D\u0627\u0648\u0644 \u0645\u062C\u062F\u062F\u064B\u0627" });
     return;
   }
+  if (result.group) {
+    await logAudit({
+      userId: req.user.userId,
+      action: "update",
+      entityType: "activity_group",
+      entityId: result.group.id,
+      entityName: `\u0645\u062C\u0645\u0648\u0639\u0629 #${result.group.id}`,
+      projectId,
+      details: { operation: "sync", sourceProjectId: group.linkedProjectId, created: result.created, updated: result.updated, unavailable: result.unavailable }
+    });
+  }
   res.json({ group: result.group ? publicGroup(result.group) : void 0, created: result.created, updated: result.updated, unavailable: result.unavailable });
 });
 router17.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
@@ -129189,6 +129609,15 @@ router17.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess
     res.status(409).json({ error: "\u0644\u0627 \u064A\u0645\u0643\u0646 \u062D\u0630\u0641 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u0642\u0628\u0644 \u0646\u0642\u0644 \u0623\u0648 \u062D\u0630\u0641 \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u0648\u062C\u0648\u062F\u0629 \u062F\u0627\u062E\u0644\u0647\u0627" });
     return;
   }
+  await logAudit({
+    userId: req.user.userId,
+    action: "delete",
+    entityType: "activity_group",
+    entityId: id,
+    entityName: "Activity group",
+    projectId,
+    details: { sourceSnapshotsPreserved: true }
+  });
   res.sendStatus(204);
 });
 var activity_groups_default = router17;

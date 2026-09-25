@@ -11,3 +11,4 @@
 - [Current-role authorization](current-role-authorization.md) — a valid JWT can outlive an admin demotion; authorization and rolling renewal must use the database role, not stale claims.
 - [Browser testing across artifacts](browser-testing-across-artifacts.md) — use the proxied domain for API requests; Radix menu triggers need real pointer events in CDP.
 - [Historical report provenance](historical-report-provenance.md) — backdated actuals copied from today's activities are unverified at the report date; do not infer historical SPI from them.
+- [Remote stability tag safety](remote-stability-tag-safety.md) — pushing an old tag can expose sensitive tracked snapshots in Git history even after removing them from the working tree.

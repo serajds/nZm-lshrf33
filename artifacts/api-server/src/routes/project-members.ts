@@ -5,6 +5,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import { requireProjectManager, requireProjectAccess, requireAdmin, rejectContractor } from "../middlewares/auth";
 import { resolveTabPermissions, isValidTabPermissions, TAB_KEYS } from "../lib/tab-permissions";
 import { invalidateProfileCache } from "../app";
+import { logAudit } from "../lib/audit";
 
 const router: IRouter = Router();
 
@@ -332,6 +333,16 @@ router.post("/projects/:projectId/members", requireProjectManager("projectId"), 
     // Newly added project membership flips a user from "incomplete" → "complete".
     invalidateProfileCache(userId);
 
+    await logAudit({
+      userId: (req as any).user?.userId,
+      action: "create",
+      entityType: "project_member",
+      entityId: member.id,
+      entityName: `عضو مشروع #${member.id}`,
+      projectId,
+      details: { roleAfter: member.role, groupIdsAfter: assignedGroupIds ?? [] },
+    });
+
     const memberWithUser = await getMemberWithUser(member.id);
     res.status(201).json(memberWithUser);
   } catch (e: any) {
@@ -373,6 +384,15 @@ router.patch("/projects/:projectId/members/:id", requireProjectManager("projectI
       res.status(404).json({ error: "العضو غير موجود" });
       return;
     }
+    await logAudit({
+      userId: (req as any).user?.userId,
+      action: "update",
+      entityType: "project_member",
+      entityId: memberId,
+      entityName: `عضو مشروع #${memberId}`,
+      projectId,
+      details: { roleBefore: targetMember.role, roleAfter: updated.role },
+    });
     // Role change doesn't affect completeness today, but invalidate
     // anyway to keep semantics consistent if logic changes.
     invalidateProfileCache(targetMember.userId);
@@ -380,7 +400,17 @@ router.patch("/projects/:projectId/members/:id", requireProjectManager("projectI
 
   if (Array.isArray(assignedGroupIds)) {
     try {
+      const groupIdsBefore = await getGroupIdsForMember(memberId);
       await setGroupsForMember(memberId, assignedGroupIds, projectId);
+      await logAudit({
+        userId: (req as any).user?.userId,
+        action: "update",
+        entityType: "project_member",
+        entityId: memberId,
+        entityName: `تعيينات مجموعات العضو #${memberId}`,
+        projectId,
+        details: { groupIdsBefore, groupIdsAfter: assignedGroupIds },
+      });
     } catch (e: any) {
       res.status(400).json({ error: e.message });
       return;
@@ -414,12 +444,22 @@ router.put("/projects/:projectId/members/:id/groups", requireProjectManager("pro
     return;
   }
 
+  const groupIdsBefore = await getGroupIdsForMember(memberId);
   try {
     await setGroupsForMember(memberId, groupIds, projectId);
   } catch (e: any) {
     res.status(400).json({ error: e.message });
     return;
   }
+  await logAudit({
+    userId: (req as any).user?.userId,
+    action: "update",
+    entityType: "project_member",
+    entityId: memberId,
+    entityName: `تعيينات مجموعات العضو #${memberId}`,
+    projectId,
+    details: { groupIdsBefore, groupIdsAfter: groupIds },
+  });
   res.json({ groupIds });
 });
 
@@ -583,6 +623,7 @@ router.put("/projects/:projectId/members/:id/permissions", requireProjectManager
   const [existing] = await db.select({
     role: projectMembersTable.role,
     userId: projectMembersTable.userId,
+    tabPermissions: projectMembersTable.tabPermissions,
   }).from(projectMembersTable)
     .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)));
   if (!existing) {
@@ -603,6 +644,16 @@ router.put("/projects/:projectId/members/:id/permissions", requireProjectManager
     res.status(404).json({ error: "العضو غير موجود" });
     return;
   }
+
+  await logAudit({
+    userId: (req as any).user?.userId,
+    action: "update",
+    entityType: "project_member",
+    entityId: memberId,
+    entityName: `صلاحيات العضو #${memberId}`,
+    projectId,
+    details: { tabPermissionsBefore: existing.tabPermissions, tabPermissionsAfter: updated.tabPermissions },
+  });
 
   res.json({
     memberId: updated.id,
@@ -627,6 +678,7 @@ router.delete("/projects/:projectId/members/:id", requireProjectManager("project
     return;
   }
 
+  const groupIdsBefore = await getGroupIdsForMember(memberId);
   const [deleted] = await db.delete(projectMembersTable)
     .where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId)))
     .returning();
@@ -638,6 +690,16 @@ router.delete("/projects/:projectId/members/:id", requireProjectManager("project
 
   // Removing a membership may flip user back to "incomplete".
   invalidateProfileCache(deleted.userId);
+
+  await logAudit({
+    userId: user?.userId,
+    action: "delete",
+    entityType: "project_member",
+    entityId: deleted.id,
+    entityName: `عضو مشروع #${deleted.id}`,
+    projectId,
+    details: { roleBefore: deleted.role, groupIdsBefore },
+  });
 
   res.sendStatus(204);
 });

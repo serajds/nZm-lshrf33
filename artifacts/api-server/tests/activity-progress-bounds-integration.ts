@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import express from "express";
-import { db, pool, activitiesTable, projectsTable, usersTable } from "@workspace/db";
+import { db, pool, activitiesTable, projectsTable, usersTable, auditLogTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { signToken } from "../src/lib/auth";
 import activitiesRouter from "../src/routes/activities";
@@ -84,6 +84,7 @@ async function main() {
     if (server) await new Promise<void>((resolve, reject) =>
       server!.close(error => error ? reject(error) : resolve()));
     if (projectId !== undefined) {
+      await db.delete(auditLogTable).where(eq(auditLogTable.projectId, projectId));
       await db.delete(activitiesTable).where(eq(activitiesTable.projectId, projectId));
       await db.delete(projectsTable).where(eq(projectsTable.id, projectId));
     }

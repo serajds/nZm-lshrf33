@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { companiesTable } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { companiesTable, projectMembersTable, projectsTable, userCompaniesTable } from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
 import { requireAuth, requireAdminOrPM } from "../middlewares/auth";
 import multer from "multer";
 import path from "path";
@@ -33,6 +33,62 @@ const upload = multer({
 });
 
 const router: IRouter = Router();
+const companyTypes = ["owner", "contractor", "supervisor"] as const;
+type CompanyType = (typeof companyTypes)[number];
+const memberCompanyFields = {
+  id: companiesTable.id,
+  name: companiesTable.name,
+  type: companiesTable.type,
+  logoUrl: companiesTable.logoUrl,
+};
+
+function parseCompanyId(raw: string | string[] | undefined): number | null {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value || !/^[1-9]\d*$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) ? id : null;
+}
+
+function isCompanyType(value: unknown): value is CompanyType {
+  return typeof value === "string" && companyTypes.includes(value as CompanyType);
+}
+
+async function getRelatedCompanyIds(userId: number, role: string | undefined): Promise<number[]> {
+  const [memberships, linkedCompanies] = await Promise.all([
+    db.select({ projectId: projectMembersTable.projectId, role: projectMembersTable.role })
+      .from(projectMembersTable)
+      .where(eq(projectMembersTable.userId, userId)),
+    db.select({ companyId: userCompaniesTable.companyId })
+      .from(userCompaniesTable)
+      .where(eq(userCompaniesTable.userId, userId)),
+  ]);
+  const companyIds = new Set(linkedCompanies.map(link => link.companyId));
+
+  // Mirror requireProjectAccess: a contractor-company link takes precedence
+  // over an engineer membership, and a contractor membership is also limited.
+  if (role !== "contractor" && memberships.length > 0) {
+    const memberProjectIds = memberships.map(membership => membership.projectId);
+    const memberProjects = await db.select({
+      id: projectsTable.id,
+      ownerCompanyId: projectsTable.ownerCompanyId,
+      contractorCompanyId: projectsTable.contractorCompanyId,
+      supervisorCompanyId: projectsTable.supervisorCompanyId,
+    }).from(projectsTable).where(inArray(projectsTable.id, memberProjectIds));
+    for (const project of memberProjects) {
+      const membership = memberships.find(member => member.projectId === project.id);
+      if (membership?.role === "contractor" || (project.contractorCompanyId !== null
+        && companyIds.has(project.contractorCompanyId))) {
+        if (project.contractorCompanyId !== null) companyIds.add(project.contractorCompanyId);
+        continue;
+      }
+      if (project.ownerCompanyId !== null) companyIds.add(project.ownerCompanyId);
+      if (project.contractorCompanyId !== null) companyIds.add(project.contractorCompanyId);
+      if (project.supervisorCompanyId !== null) companyIds.add(project.supervisorCompanyId);
+    }
+  }
+
+  return [...companyIds];
+}
 
 router.get("/companies", requireAuth, async (req, res): Promise<void> => {
   const role = req.user?.role;
@@ -47,15 +103,50 @@ router.get("/companies", requireAuth, async (req, res): Promise<void> => {
       .orderBy(companiesTable.name);
     res.json(companies);
   } else {
-    const companies = await db.select().from(companiesTable).orderBy(companiesTable.name);
+    const companyIds = await getRelatedCompanyIds(userId!, role);
+    const companies = companyIds.length > 0
+      ? await db.select(memberCompanyFields).from(companiesTable)
+        .where(inArray(companiesTable.id, companyIds)).orderBy(companiesTable.name)
+      : [];
     res.json(companies);
   }
 });
 
 router.get("/companies/:id", requireAuth, async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
-  const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
+  const id = parseCompanyId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "معرف الشركة غير صالح" });
+    return;
+  }
+
+  const role = req.user?.role;
+  const userId = req.user?.userId!;
+  if (role === "admin") {
+    const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
+    if (!company) {
+      res.status(404).json({ error: "الشركة غير موجودة" });
+      return;
+    }
+    res.json(company);
+    return;
+  }
+
+  if (role === "project_manager") {
+    const [company] = await db.select().from(companiesTable)
+      .where(eq(companiesTable.id, id));
+    if (!company || company.createdById !== userId) {
+      res.status(404).json({ error: "الشركة غير موجودة" });
+      return;
+    }
+    res.json(company);
+    return;
+  }
+
+  const companyIds = await getRelatedCompanyIds(userId, role);
+  const [company] = companyIds.includes(id)
+    ? await db.select(memberCompanyFields).from(companiesTable)
+      .where(eq(companiesTable.id, id))
+    : [];
   if (!company) {
     res.status(404).json({ error: "الشركة غير موجودة" });
     return;
@@ -66,8 +157,12 @@ router.get("/companies/:id", requireAuth, async (req, res): Promise<void> => {
 router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, res): Promise<void> => {
   const { name, type, phone, email, address } = req.body;
 
-  if (!name || !type) {
+  if (typeof name !== "string" || !name.trim() || !type) {
     res.status(400).json({ error: "اسم الشركة ونوعها مطلوبان" });
+    return;
+  }
+  if (!isCompanyType(type)) {
+    res.status(400).json({ error: "نوع الشركة غير صالح" });
     return;
   }
 
@@ -82,8 +177,8 @@ router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, r
   }
 
   const [company] = await db.insert(companiesTable).values({
-    name,
-    type: type as "owner" | "contractor" | "supervisor",
+    name: name.trim(),
+    type,
     logoUrl,
     phone: phone || null,
     email: email || null,
@@ -95,11 +190,15 @@ router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, r
 });
 
 router.patch("/companies/:id", requireAdminOrPM, upload.single("logo"), async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseCompanyId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "معرف الشركة غير صالح" });
+    return;
+  }
 
+  let existing: typeof companiesTable.$inferSelect | undefined;
   if (req.user?.role === "project_manager") {
-    const [existing] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
+    [existing] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
     if (!existing || existing.createdById !== req.user.userId) {
       res.status(403).json({ error: "لا يمكنك تعديل شركة لم تقم بإنشائها" });
       return;
@@ -108,8 +207,24 @@ router.patch("/companies/:id", requireAdminOrPM, upload.single("logo"), async (r
 
   const updateData: Record<string, unknown> = {};
   const body = req.body;
-  if (body.name !== undefined) updateData.name = body.name || null;
-  if (body.type !== undefined) updateData.type = body.type || null;
+  if (body.name !== undefined) {
+    if (typeof body.name !== "string" || !body.name.trim()) {
+      res.status(400).json({ error: "اسم الشركة غير صالح" });
+      return;
+    }
+    updateData.name = body.name.trim();
+  }
+  if (body.type !== undefined) {
+    if (!isCompanyType(body.type)) {
+      res.status(400).json({ error: "نوع الشركة غير صالح" });
+      return;
+    }
+    if (req.user?.role === "project_manager" && existing?.type !== body.type) {
+      res.status(403).json({ error: "لا يمكنك تغيير تصنيف الشركة" });
+      return;
+    }
+    updateData.type = body.type;
+  }
   if (body.phone !== undefined) updateData.phone = body.phone || null;
   if (body.email !== undefined) updateData.email = body.email || null;
   if (body.address !== undefined) updateData.address = body.address || null;
@@ -138,8 +253,11 @@ router.patch("/companies/:id", requireAdminOrPM, upload.single("logo"), async (r
 });
 
 router.delete("/companies/:id", requireAdminOrPM, async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(raw, 10);
+  const id = parseCompanyId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "معرف الشركة غير صالح" });
+    return;
+  }
 
   const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
   if (!company) {

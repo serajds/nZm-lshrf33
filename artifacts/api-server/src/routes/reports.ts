@@ -478,7 +478,7 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
   }).returning();
 
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "create", entityType: "report", entityId: report.id, entityName: `تقرير #${nextNumber}`, projectId });
+  await logAudit({ userId: (req as any).user?.userId, action: "create", entityType: "report", entityId: report.id, entityName: `تقرير #${nextNumber}`, projectId, details: { reportDate: report.reportDate, progressPercentage: report.progressPercentage, statusAfter: report.status } });
 
   res.status(201).json(report);
 });
@@ -522,7 +522,7 @@ router.post("/projects/:projectId/reports/:id/duplicate", requireProjectAccess("
     return;
   }
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: req.user?.userId, userName: req.user?.phone, action: "create", entityType: "report", entityId: copy.id, entityName: `نسخة من التقرير #${sourceId}`, projectId });
+  await logAudit({ userId: req.user?.userId, action: "create", entityType: "report", entityId: copy.id, entityName: `نسخة من التقرير #${sourceId}`, projectId, details: { reportDate: copy.reportDate, progressPercentage: copy.progressPercentage, statusAfter: copy.status } });
   res.status(201).json(copy);
 });
 
@@ -637,7 +637,7 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
   }
 
   const { logAudit: logAudit2 } = await import("../lib/audit");
-  logAudit2({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "update", entityType: "report", entityId: report.id, entityName: `تقرير #${report.reportNumber}`, projectId });
+  await logAudit2({ userId: (req as any).user?.userId, action: "update", entityType: "report", entityId: report.id, entityName: `تقرير #${report.reportNumber}`, projectId, details: { reportDate: report.reportDate, progressPercentage: report.progressPercentage, statusAfter: report.status, changedFields: Object.keys(updateData) } });
 
   res.json(report);
 });
@@ -651,6 +651,13 @@ router.patch("/projects/:projectId/reports/:id/status", requireProjectManager("p
   const status = req.body?.status;
   if (status !== "draft" && status !== "approved") {
     res.status(400).json({ error: "حالة غير صالحة" });
+    return;
+  }
+
+  const [existing] = await db.select({ status: reportsTable.status }).from(reportsTable)
+    .where(and(eq(reportsTable.id, id), eq(reportsTable.projectId, projectId)));
+  if (!existing) {
+    res.status(404).json({ error: "التقرير غير موجود" });
     return;
   }
 
@@ -674,14 +681,14 @@ router.patch("/projects/:projectId/reports/:id/status", requireProjectManager("p
   }
 
   const { logAudit: logAuditStatus } = await import("../lib/audit");
-  logAuditStatus({
+  await logAuditStatus({
     userId: req.user?.userId,
-    userName: req.user?.phone,
     action: "update",
     entityType: "report",
     entityId: report.id,
     entityName: `تقرير #${report.reportNumber} (${status === "approved" ? "اعتماد" : "إرجاع لمسودة"})`,
     projectId,
+    details: { statusBefore: existing.status, statusAfter: report.status, reportDate: report.reportDate, progressPercentage: report.progressPercentage },
   });
 
   // Notify report author of approval (fire-and-forget).
@@ -721,7 +728,7 @@ router.delete("/projects/:projectId/reports/:id", requireProjectAccess("projectI
   }
 
   const { logAudit: logAudit3 } = await import("../lib/audit");
-  logAudit3({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "delete", entityType: "report", entityId: id, entityName: `تقرير #${report.reportNumber}`, projectId });
+  await logAudit3({ userId: (req as any).user?.userId, action: "delete", entityType: "report", entityId: id, entityName: `تقرير #${report.reportNumber}`, projectId, details: { reportDate: report.reportDate, progressPercentage: report.progressPercentage, statusBefore: report.status } });
 
   res.sendStatus(204);
 });
