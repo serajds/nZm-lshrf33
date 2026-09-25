@@ -4,15 +4,29 @@ import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projec
 import { eq, and, count, desc } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
 import jwt from "jsonwebtoken";
-import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcOverrunDays, isActivityDelayed, roundPercent } from "../lib/progress";
+import { resolveLinkedActivityProgress } from "../lib/external-sources";
+import {
+  calcPlannedProgressForProject,
+  calcActualProgressForProject,
+  calcDelayDays,
+  calcOverrunDays,
+  calcSPI,
+  hasValidProjectSchedule,
+  isActivityDelayed,
+  roundPercent,
+  utcDay,
+  utcDayDifference,
+} from "../lib/progress";
 
 const router: IRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
 
 async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect) {
-  const activities = await db.select().from(activitiesTable)
+  const rawActivities = await db.select().from(activitiesTable)
     .where(eq(activitiesTable.projectId, project.id))
     .orderBy(activitiesTable.sortOrder);
+  const today = utcDay(new Date());
+  const activities = await resolveLinkedActivityProgress(rawActivities, today);
 
   // The owner portal renders each report's activities table inline (and on
   // its print preview), so we MUST include `activitiesSnapshot` on every
@@ -33,6 +47,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     .orderBy(projectSuspensionsTable.startDate);
 
   const isNoSchedule = project.noSchedule === true;
+  const hasSchedule = !isNoSchedule && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
   const [filesCountResult] = await db.select({ count: count() }).from(projectFilesTable).where(eq(projectFilesTable.projectId, project.id));
   const activitiesCompleted = activities.filter(a => a.status === "completed").length;
 
@@ -41,6 +56,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     noSchedule: boolean;
     overallProgress: number;
     plannedProgress: number;
+    spi: number | null;
     activitiesTotal: number;
     activitiesCompleted: number;
     activitiesDelayed: number;
@@ -57,16 +73,18 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
 
   let summary: OwnerSummary;
 
-  const computedActual = activities.length > 0
-    ? roundPercent(calcActualProgressForProject(activities))
-    : roundPercent(project.overallProgress ?? 0);
+  const actualRaw = activities.length > 0
+    ? calcActualProgressForProject(activities)
+    : (project.overallProgress ?? 0);
+  const computedActual = roundPercent(actualRaw);
 
-  if (isNoSchedule) {
+  if (!hasSchedule) {
     summary = {
       projectId: project.id,
-      noSchedule: true,
+      noSchedule: isNoSchedule,
       overallProgress: computedActual,
       plannedProgress: 0,
+      spi: null,
       activitiesTotal: activities.length,
       activitiesCompleted,
       activitiesDelayed: 0,
@@ -81,18 +99,16 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
       filesCount: filesCountResult?.count ?? 0,
     };
   } else {
-    const today = new Date();
-    const startDate = new Date(project.startDate ?? Date.now());
-    const endDate = new Date(project.expectedEndDate ?? Date.now());
-    const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const rawDaysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const totalDays = Math.max(1, utcDayDifference(project.expectedEndDate!, project.startDate!));
+    const daysElapsed = Math.max(0, utcDayDifference(today, project.startDate!));
+    const rawDaysRemaining = utcDayDifference(project.expectedEndDate!, today);
     const daysRemaining = Math.max(0, rawDaysRemaining);
-    const plannedProgress = roundPercent(calcPlannedProgressForProject(activities, daysElapsed, totalDays));
+    const plannedRaw = calcPlannedProgressForProject(activities, daysElapsed, totalDays, today);
+    const plannedProgress = roundPercent(plannedRaw);
     // انحراف عن الخطة (planned vs actual progress only)
-    const delayDays = calcDelayDays(plannedProgress, computedActual, totalDays);
+    const delayDays = calcDelayDays(plannedRaw, actualRaw, totalDays);
     // تجاوز المدة (calendar overrun past expectedEndDate while not complete)
-    const overrunDays = calcOverrunDays(today, project.expectedEndDate, computedActual);
+    const overrunDays = calcOverrunDays(today, project.expectedEndDate, actualRaw);
     const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
     const netDelayDays = Math.max(0, delayDays - suspensionDays);
     const activitiesDelayed = activities.filter(a => isActivityDelayed(a, today, false)).length;
@@ -102,6 +118,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
       noSchedule: false,
       overallProgress: computedActual,
       plannedProgress,
+      spi: calcSPI(plannedRaw, actualRaw),
       activitiesTotal: activities.length,
       activitiesCompleted,
       activitiesDelayed,

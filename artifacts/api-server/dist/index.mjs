@@ -123149,6 +123149,21 @@ async function recalcExpectedEndDate(projectId) {
 }
 
 // src/lib/progress.ts
+var MS_PER_DAY = 864e5;
+function utcDay(value) {
+  const date6 = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date6.getTime())) return new Date(Number.NaN);
+  return new Date(Date.UTC(date6.getUTCFullYear(), date6.getUTCMonth(), date6.getUTCDate()));
+}
+function utcDayDifference(later, earlier) {
+  return Math.floor((utcDay(later).getTime() - utcDay(earlier).getTime()) / MS_PER_DAY);
+}
+function hasValidProjectSchedule(startDate, endDate) {
+  if (!startDate || !endDate) return false;
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+  return Number.isFinite(start) && Number.isFinite(end) && end >= start;
+}
 function roundPercent(n) {
   if (n == null || !Number.isFinite(n)) return 0;
   return Math.round(n * 10) / 10;
@@ -123157,13 +123172,11 @@ function isActivityDelayed(activity, today = /* @__PURE__ */ new Date(), noSched
   if (noSchedule) return false;
   const startOfDay = (d) => {
     if (!d) return null;
-    const date6 = new Date(d);
+    const date6 = utcDay(d);
     if (isNaN(date6.getTime())) return null;
-    date6.setHours(0, 0, 0, 0);
     return date6;
   };
-  const t = new Date(today.getTime());
-  t.setHours(0, 0, 0, 0);
+  const t = utcDay(today);
   const plannedEnd = startOfDay(activity.plannedEndDate);
   const plannedStart = startOfDay(activity.plannedStartDate);
   if (activity.status === "completed" || activity.actualProgress >= 100) {
@@ -123189,12 +123202,19 @@ function scurveProgress(fraction) {
   return Math.max(0, Math.min(100, v * 100));
 }
 function calcActivityPlannedProgress(activity, today = /* @__PURE__ */ new Date(), curve = "linear") {
+  if (activity.externalSourceGroupId != null && Number.isFinite(activity.plannedProgress)) {
+    return Math.max(0, Math.min(100, activity.plannedProgress));
+  }
   if (!activity.plannedStartDate || !activity.plannedEndDate) return 0;
   const start = new Date(activity.plannedStartDate);
   const end = new Date(activity.plannedEndDate);
-  const duration3 = end.getTime() - start.getTime();
-  if (duration3 <= 0) return today >= start ? 100 : 0;
-  const elapsed = today.getTime() - start.getTime();
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+  const startDay = utcDay(start).getTime();
+  const endDay = utcDay(end).getTime();
+  const asOfDay = utcDay(today).getTime();
+  const duration3 = endDay - startDay;
+  if (duration3 <= 0) return asOfDay >= startDay ? 100 : 0;
+  const elapsed = asOfDay - startDay;
   if (elapsed <= 0) return 0;
   if (elapsed >= duration3) return 100;
   const fraction = elapsed / duration3;
@@ -123208,7 +123228,7 @@ function activityWeight(a) {
 function calcPlannedProgressForProject(activities, daysElapsed, totalDays, today = /* @__PURE__ */ new Date(), curve = "linear") {
   if (activities.length === 0) {
     if (totalDays <= 0) return 0;
-    return Math.min(100, daysElapsed / totalDays * 100);
+    return Math.max(0, Math.min(100, daysElapsed / totalDays * 100));
   }
   let weightedSum = 0;
   let totalWeight = 0;
@@ -123226,7 +123246,8 @@ function calcActualProgressForProject(activities) {
   let totalWeight = 0;
   for (const a of activities) {
     const w = activityWeight(a);
-    weightedSum += (a.actualProgress ?? 0) * w;
+    const actualProgress = Number.isFinite(a.actualProgress) ? a.actualProgress : 0;
+    weightedSum += actualProgress * w;
     totalWeight += w;
   }
   if (totalWeight <= 0) return 0;
@@ -123238,11 +123259,9 @@ function calcDelayDays(plannedProgress, actualProgress, totalDays) {
 }
 function calcOverrunDays(today, plannedEnd, actualProgress) {
   if (actualProgress >= 100 || plannedEnd == null) return 0;
-  const end = plannedEnd instanceof Date ? new Date(plannedEnd) : new Date(plannedEnd);
+  const end = utcDay(plannedEnd);
   if (Number.isNaN(end.getTime())) return 0;
-  const t = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  const e = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
-  const diff = Math.floor((t - e) / 864e5);
+  const diff = utcDayDifference(today, end);
   return Math.max(0, diff);
 }
 function calcSPI(plannedProgress, actualProgress) {
@@ -123336,12 +123355,14 @@ function suspensionActivityDateShift(activity, suspensionStart, calendarDays, di
 function summarizeSourceChildren(children, group) {
   const weight = (child) => child.weight != null && Number.isFinite(child.weight) && child.weight > 0 ? child.weight : 1;
   const totalWeight = children.reduce((sum2, child) => sum2 + weight(child), 0);
-  const actualProgress = totalWeight ? Math.round(children.reduce((sum2, child) => sum2 + (child.actualProgress ?? 0) * weight(child), 0) / totalWeight * 10) / 10 : 0;
+  const actualProgress = totalWeight ? children.reduce((sum2, child) => sum2 + (child.actualProgress ?? 0) * weight(child), 0) / totalWeight : 0;
+  const plannedProgress = totalWeight ? children.reduce((sum2, child) => sum2 + (child.plannedProgress ?? 0) * weight(child), 0) / totalWeight : 0;
   const starts = children.map((child) => child.plannedStartDate).filter((date6) => Boolean(date6)).sort();
   const ends = children.map((child) => child.plannedEndDate).filter((date6) => Boolean(date6)).sort();
   return {
     ...group,
     actualProgress,
+    plannedProgress,
     plannedStartDate: starts[0] ?? null,
     plannedEndDate: ends.at(-1) ?? null
   };
@@ -123525,7 +123546,8 @@ async function reconcileGroupToSideProject(targetGroupId, sourceProjectId, propa
       return { group: targetGroup, created: 0, updated: 0, unavailable: 0, conflict: "manual_duplicate" };
     }
     const existingBySource = new Map(managed.filter((item) => item.externalSourceGroupId != null).map((item) => [item.externalSourceGroupId, item]));
-    const summaries = await Promise.all(sourceGroups.map((source) => getGroupSummary(source.id)));
+    const asOf = /* @__PURE__ */ new Date();
+    const summaries = await Promise.all(sourceGroups.map((source) => getGroupSummary(source.id, asOf)));
     let created = 0;
     let updated = 0;
     const [maxSort] = await tx.select({ value: max(activitiesTable.sortOrder) }).from(activitiesTable).where(eq(activitiesTable.projectId, targetGroup.projectId));
@@ -123533,10 +123555,7 @@ async function reconcileGroupToSideProject(targetGroupId, sourceProjectId, propa
     const now = /* @__PURE__ */ new Date();
     for (const summary of summaries) {
       if (!summary) continue;
-      const plannedProgress = calcActivityPlannedProgress({
-        plannedStartDate: summary.plannedStartDate,
-        plannedEndDate: summary.plannedEndDate
-      });
+      const plannedProgress = summary.plannedProgress;
       const status = managedStatus(summary.actualProgress);
       const prior = existingBySource.get(summary.groupId);
       if (!prior) {
@@ -123625,24 +123644,58 @@ async function createActivityGroupUnderSourceGraphLock(projectId, values) {
     return created;
   }));
 }
-async function getGroupSummary(groupId) {
-  const [group] = await db.select().from(activityGroupsTable).where(eq(activityGroupsTable.id, groupId));
-  if (!group) return null;
-  const [project] = await db.select({ name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, group.projectId));
-  if (!project) return null;
-  const children = await db.select({
-    actualProgress: activitiesTable.actualProgress,
-    weight: activitiesTable.weight,
-    plannedStartDate: activitiesTable.plannedStartDate,
-    plannedEndDate: activitiesTable.plannedEndDate
-  }).from(activitiesTable).where(and(eq(activitiesTable.projectId, group.projectId), eq(activitiesTable.groupId, groupId)));
-  return summarizeSourceChildren(children, {
-    groupId: group.id,
-    projectId: group.projectId,
-    projectName: project.name,
-    groupName: group.name,
-    linkCode: group.linkCode
-  });
+async function getGroupSummary(groupId, asOf = /* @__PURE__ */ new Date(), memo = /* @__PURE__ */ new Map(), curve = "linear") {
+  const resolve = (id, ancestors) => {
+    if (ancestors.has(id)) return Promise.resolve(null);
+    const cacheKey = `${utcDay(asOf).getTime()}:${curve}:${id}`;
+    const cached2 = memo.get(cacheKey);
+    if (cached2) return cached2;
+    const nextAncestors = new Set(ancestors);
+    nextAncestors.add(id);
+    const pending = (async () => {
+      const [group] = await db.select().from(activityGroupsTable).where(eq(activityGroupsTable.id, id));
+      if (!group) return null;
+      const [project] = await db.select({ name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, group.projectId));
+      if (!project) return null;
+      const children = await db.select({
+        actualProgress: activitiesTable.actualProgress,
+        weight: activitiesTable.weight,
+        plannedStartDate: activitiesTable.plannedStartDate,
+        plannedEndDate: activitiesTable.plannedEndDate,
+        plannedProgress: activitiesTable.plannedProgress,
+        externalSourceGroupId: activitiesTable.externalSourceGroupId
+      }).from(activitiesTable).where(and(eq(activitiesTable.projectId, group.projectId), eq(activitiesTable.groupId, id)));
+      const resolvedChildren = await Promise.all(children.map(async (child) => {
+        if (child.externalSourceGroupId == null) {
+          return { ...child, plannedProgress: calcActivityPlannedProgress(child, asOf, curve) };
+        }
+        const source = await resolve(child.externalSourceGroupId, nextAncestors);
+        return {
+          ...child,
+          plannedProgress: source?.plannedProgress ?? child.plannedProgress,
+          actualProgress: source?.actualProgress ?? child.actualProgress
+        };
+      }));
+      return summarizeSourceChildren(resolvedChildren, {
+        groupId: group.id,
+        projectId: group.projectId,
+        projectName: project.name,
+        groupName: group.name,
+        linkCode: group.linkCode
+      });
+    })();
+    memo.set(cacheKey, pending);
+    return pending;
+  };
+  return resolve(groupId, /* @__PURE__ */ new Set());
+}
+async function resolveLinkedActivityProgress(activities, asOf = /* @__PURE__ */ new Date(), curve = "linear") {
+  const memo = /* @__PURE__ */ new Map();
+  return Promise.all(activities.map(async (activity) => {
+    if (activity.externalSourceGroupId == null) return { ...activity };
+    const summary = await getGroupSummary(activity.externalSourceGroupId, asOf, memo, curve);
+    return summary ? { ...activity, plannedProgress: summary.plannedProgress, actualProgress: summary.actualProgress } : { ...activity };
+  }));
 }
 async function wouldCreateSourceCycle(targetProjectId, sourceProjectId) {
   if (targetProjectId === sourceProjectId) return true;
@@ -123704,8 +123757,9 @@ async function refreshLinkedSources(sourceGroupIds) {
       dependencies.set(linked.sourceGroupId, [...dependencies.get(linked.sourceGroupId) ?? [], linked.targetGroupId]);
     }
     const order = topologicalSourceGroupOrder(sourceGroupIds, dependencies);
+    const asOf = /* @__PURE__ */ new Date();
     for (const groupId of order) {
-      const summary = await getGroupSummary(groupId);
+      const summary = await getGroupSummary(groupId, asOf);
       if (!summary) continue;
       const targets = await db.select().from(activitiesTable).where(eq(activitiesTable.externalSourceGroupId, groupId));
       const projects = /* @__PURE__ */ new Set();
@@ -123713,10 +123767,7 @@ async function refreshLinkedSources(sourceGroupIds) {
         if (activity.managedByGroupId != null) {
           const ownerGroup = managedGroupById.get(activity.managedByGroupId);
           const activeManagedGroup = ownerGroup?.linkedProjectId === summary.projectId;
-          const values2 = linkedActivityValues(summary, calcActivityPlannedProgress({
-            plannedStartDate: summary.plannedStartDate,
-            plannedEndDate: summary.plannedEndDate
-          }));
+          const values2 = linkedActivityValues(summary, summary.plannedProgress);
           if (!values2) continue;
           const status = managedStatus(summary.actualProgress);
           const executionStateChanged = activity.actualProgress !== summary.actualProgress || activeManagedGroup && activity.status !== status;
@@ -123729,11 +123780,7 @@ async function refreshLinkedSources(sourceGroupIds) {
           projects.add(activity.projectId);
           continue;
         }
-        const plannedProgress = calcActivityPlannedProgress({
-          plannedStartDate: summary.plannedStartDate,
-          plannedEndDate: summary.plannedEndDate
-        });
-        const values = linkedActivityValues(summary, plannedProgress);
+        const values = linkedActivityValues(summary, summary.plannedProgress);
         if (!values) continue;
         await db.update(activitiesTable).set({
           ...values,
@@ -124191,7 +124238,9 @@ router3.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("p
       res.status(404).json({ error: "\u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
       return;
     }
-    const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder);
+    const today = utcDay(/* @__PURE__ */ new Date());
+    const rawActivities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder);
+    const activities = await resolveLinkedActivityProgress(rawActivities, today);
     const reportsCountResult = await db.select({ count: sql`count(*)` }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
     const reportsCount = reportsCountResult[0]?.count ?? 0;
     const statusCounts = activities.reduce((counts, activity) => {
@@ -124202,21 +124251,22 @@ router3.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("p
     const [suspensions] = await Promise.all([
       db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId))
     ]);
-    const today = /* @__PURE__ */ new Date();
-    const hasSchedule = project.noSchedule !== true && !!project.startDate && !!project.expectedEndDate;
-    const startDate = new Date(project.startDate ?? today);
-    const endDate = new Date(project.expectedEndDate ?? today);
-    const totalDays = hasSchedule ? Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 864e5)) : 0;
-    const daysElapsed = hasSchedule ? Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / 864e5)) : 0;
-    const plannedProgress = hasSchedule ? roundPercent(calcPlannedProgressForProject(activities, daysElapsed, totalDays, today)) : 0;
-    const actualProgress = activities.length > 0 ? roundPercent(calcActualProgressForProject(activities)) : roundPercent(project.overallProgress);
-    const progressDeviation = roundPercent(actualProgress - plannedProgress);
-    const grossDelayDays = hasSchedule ? calcDelayDays(plannedProgress, actualProgress, totalDays) : 0;
+    const hasSchedule = project.noSchedule !== true && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
+    const startDate = hasSchedule ? new Date(project.startDate) : today;
+    const endDate = hasSchedule ? new Date(project.expectedEndDate) : today;
+    const totalDays = hasSchedule ? Math.max(1, utcDayDifference(endDate, startDate)) : 0;
+    const daysElapsed = hasSchedule ? Math.max(0, utcDayDifference(today, startDate)) : 0;
+    const plannedRaw = hasSchedule ? calcPlannedProgressForProject(activities, daysElapsed, totalDays, today) : 0;
+    const actualRaw = activities.length > 0 ? calcActualProgressForProject(activities) : project.overallProgress ?? 0;
+    const plannedProgress = roundPercent(plannedRaw);
+    const actualProgress = roundPercent(actualRaw);
+    const progressDeviation = roundPercent(hasSchedule ? actualRaw - plannedRaw : 0);
+    const grossDelayDays = hasSchedule ? calcDelayDays(plannedRaw, actualRaw, totalDays) : 0;
     const suspensionDays = suspensions.reduce((sum2, item) => sum2 + (item.type !== "contractor_delay" ? item.calendarDays : 0), 0);
     const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
-    const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualProgress) : 0;
-    const spi = hasSchedule ? calcSPI(plannedProgress, actualProgress) : null;
-    const forecastCompletion = hasSchedule ? calcForecastCompletionDate(startDate, endDate, today, plannedProgress, actualProgress) : null;
+    const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualRaw) : 0;
+    const spi = hasSchedule ? calcSPI(plannedRaw, actualRaw) : null;
+    const forecastCompletion = hasSchedule ? calcForecastCompletionDate(startDate, endDate, today, plannedRaw, actualRaw) : null;
     const forecastCompletionDate = forecastCompletion ? forecastCompletion.toISOString().slice(0, 10) : null;
     const forecastDelayDays = forecastCompletion && project.expectedEndDate ? Math.ceil((forecastCompletion.getTime() - endDate.getTime()) / 864e5) : 0;
     const delayedActivities = activities.filter((activity) => isActivityDelayed(activity, today, !hasSchedule));
@@ -124224,23 +124274,23 @@ router3.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("p
       name: a.name,
       status: a.status,
       actualProgress: roundPercent(a.actualProgress),
-      plannedProgress: roundPercent(calcActivityPlannedProgress(a, today)),
-      variance: roundPercent(a.actualProgress - calcActivityPlannedProgress(a, today)),
+      plannedProgress: roundPercent(hasSchedule ? calcActivityPlannedProgress(a, today) : 0),
+      variance: roundPercent(hasSchedule ? a.actualProgress - calcActivityPlannedProgress(a, today) : 0),
       plannedStartDate: a.plannedStartDate,
       plannedEndDate: a.plannedEndDate,
       actualEndDate: a.actualEndDate,
       delayed: isActivityDelayed(a, today, !hasSchedule)
     });
     const exceptionActivities = activities.filter((activity) => {
-      const planned = calcActivityPlannedProgress(activity, today);
+      const planned = hasSchedule ? calcActivityPlannedProgress(activity, today) : 0;
       const variance = activity.actualProgress - planned;
       return isActivityDelayed(activity, today, !hasSchedule) || variance <= -5;
     }).sort((a, b) => {
       const aDelayed = isActivityDelayed(a, today, !hasSchedule);
       const bDelayed = isActivityDelayed(b, today, !hasSchedule);
       if (aDelayed !== bDelayed) return Number(bDelayed) - Number(aDelayed);
-      const aVariance = a.actualProgress - calcActivityPlannedProgress(a, today);
-      const bVariance = b.actualProgress - calcActivityPlannedProgress(b, today);
+      const aVariance = a.actualProgress - (hasSchedule ? calcActivityPlannedProgress(a, today) : 0);
+      const bVariance = b.actualProgress - (hasSchedule ? calcActivityPlannedProgress(b, today) : 0);
       return aVariance - bVariance;
     });
     const activitiesSummary = exceptionActivities.map(activitySummary);
@@ -124556,22 +124606,28 @@ async function syncProjectProgress(projectId) {
   const computed = totalWeight > 0 ? roundPercent(weightedSum / totalWeight) : 0;
   await db.update(projectsTable).set({ overallProgress: computed }).where(eq(projectsTable.id, projectId));
 }
-async function serializeActivityForUser(activity, userId) {
-  const source = activity.externalSourceGroupId == null ? null : await getGroupSummary(activity.externalSourceGroupId);
+async function serializeActivityForUser(activity, userId, asOf = /* @__PURE__ */ new Date(), hasSchedule = true) {
+  const source = activity.externalSourceGroupId == null ? null : await getGroupSummary(activity.externalSourceGroupId, asOf);
+  const plannedProgress = hasSchedule ? source?.plannedProgress ?? (activity.externalSourceGroupId == null ? calcActivityPlannedProgress(activity, asOf) : activity.plannedProgress) : 0;
+  const liveActivity = {
+    ...activity,
+    actualProgress: source?.actualProgress ?? activity.actualProgress,
+    plannedProgress: roundPercent(plannedProgress)
+  };
   const sourceProjectId = source?.projectId ?? activity.managedSourceProjectId ?? void 0;
   const canReadSource = sourceProjectId !== void 0 && userId !== void 0 && await canReadProject(userId, sourceProjectId);
   if (activity.externalSourceGroupId == null) {
-    if (canReadSource || activity.managedSourceProjectId == null) return activity;
-    const { managedSourceProjectId: _sourceProjectId2, ...safeActivity2 } = activity;
+    if (canReadSource || activity.managedSourceProjectId == null) return liveActivity;
+    const { managedSourceProjectId: _sourceProjectId2, ...safeActivity2 } = liveActivity;
     return safeActivity2;
   }
   if (canReadSource) {
     return {
-      ...activity,
+      ...liveActivity,
       externalSource: sourceIsAvailable(source) ? { available: true, ...source } : { available: false }
     };
   }
-  const { externalSourceGroupId: _sourceGroupId, managedSourceProjectId: _sourceProjectId, ...safeActivity } = activity;
+  const { externalSourceGroupId: _sourceGroupId, managedSourceProjectId: _sourceProjectId, ...safeActivity } = liveActivity;
   return {
     ...safeActivity,
     externalSource: {
@@ -124588,9 +124644,16 @@ async function serializeActivityForUser(activity, userId) {
 router4.get("/projects/:projectId/activities", requireProjectAccess("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
+  const [project] = await db.select({
+    noSchedule: projectsTable.noSchedule,
+    startDate: projectsTable.startDate,
+    expectedEndDate: projectsTable.expectedEndDate
+  }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  const hasSchedule = project?.noSchedule !== true && hasValidProjectSchedule(project?.startDate, project?.expectedEndDate);
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder, activitiesTable.id);
+  const asOf = /* @__PURE__ */ new Date();
   const response = await Promise.all(activities.map(
-    (activity) => serializeActivityForUser(activity, req.user?.userId)
+    (activity) => serializeActivityForUser(activity, req.user?.userId, asOf, hasSchedule)
   ));
   res.json(response);
 });
@@ -125195,7 +125258,7 @@ function calcWeightedProgress(rows) {
     totalWeight += w;
     weightedSum += (r.actualProgress ?? 0) * w;
   }
-  return totalWeight > 0 ? roundPercent(weightedSum / totalWeight) : 0;
+  return totalWeight > 0 ? weightedSum / totalWeight : 0;
 }
 function mergeSnapshot(existing, incoming) {
   if (!Array.isArray(existing) || existing.length === 0) return null;
@@ -125208,7 +125271,8 @@ function mergeSnapshot(existing, incoming) {
     if (!Number.isFinite(idNum)) continue;
     const patch = {};
     if (r.actualProgress !== void 0) {
-      patch.actualProgress = roundPercent(clampPercent(r.actualProgress));
+      patch.actualProgress = clampPercent(r.actualProgress);
+      patch.actualRecordedAt = (/* @__PURE__ */ new Date()).toISOString();
     }
     if (typeof r.status === "string" && ALLOWED_ACTIVITY_STATUSES.has(r.status)) {
       patch.status = r.status;
@@ -125462,6 +125526,7 @@ router5.get("/projects/:projectId/reports", requireProjectAccess("projectId"), r
     recommendations: reportsTable.recommendations,
     imageUrls: reportsTable.imageUrls,
     imageGroups: reportsTable.imageGroups,
+    historicalSnapshotAvailable: sql`${reportsTable.activitiesSnapshot} IS NOT NULL`,
     status: reportsTable.status,
     approvedAt: reportsTable.approvedAt,
     approvedById: reportsTable.approvedById,
@@ -125495,18 +125560,31 @@ router5.post("/projects/:projectId/reports", requireProjectAccess("projectId"), 
   const [maxResult] = await db.select({ maxNum: sql`COALESCE(MAX(${reportsTable.reportNumber}), 0)` }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
   const nextNumber = (maxResult?.maxNum ?? 0) + 1;
   const currentActivities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder);
-  const snapshot = currentActivities.map((a) => ({
+  const [schedule] = await db.select({
+    noSchedule: projectsTable.noSchedule,
+    startDate: projectsTable.startDate,
+    expectedEndDate: projectsTable.expectedEndDate
+  }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  const hasSchedule = schedule?.noSchedule !== true && hasValidProjectSchedule(schedule?.startDate, schedule?.expectedEndDate);
+  const reportAsOf = /* @__PURE__ */ new Date(`${reportDate}T00:00:00.000Z`);
+  const resolvedActivities = await resolveLinkedActivityProgress(currentActivities, reportAsOf);
+  const actualRecordedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const snapshot = resolvedActivities.map((a) => ({
     id: a.id,
     name: a.name,
     plannedStartDate: a.plannedStartDate,
     plannedEndDate: a.plannedEndDate,
     actualStartDate: a.actualStartDate,
     actualEndDate: a.actualEndDate,
-    plannedProgress: roundPercent(calcActivityPlannedProgress({
+    externalSourceGroupId: a.externalSourceGroupId,
+    plannedProgress: hasSchedule ? clampPercent(a.externalSourceGroupId != null ? a.plannedProgress : calcActivityPlannedProgress({
       plannedStartDate: a.plannedStartDate,
       plannedEndDate: a.plannedEndDate
-    })),
-    actualProgress: roundPercent(a.actualProgress),
+    }, reportAsOf)) : 0,
+    plannedAsOfDate: reportDate,
+    plannedHistoricalUnverified: false,
+    actualProgress: clampPercent(a.actualProgress),
+    actualRecordedAt,
     weight: a.weight ?? 1,
     status: a.status,
     sortOrder: a.sortOrder
@@ -125610,17 +125688,33 @@ router5.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectI
     updateData.imageUrls = Array.isArray(body.imageUrls) ? body.imageUrls.filter((u) => typeof u === "string") : [];
     updateData.imageGroups = null;
   }
-  if (body.activitiesSnapshot !== void 0) {
+  if (body.activitiesSnapshot !== void 0 || body.reportDate !== void 0) {
     const [current] = await db.select({ snapshot: reportsTable.activitiesSnapshot }).from(reportsTable).where(and(eq(reportsTable.id, id), eq(reportsTable.projectId, projectId)));
     if (!current) {
       res.status(404).json({ error: "\u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
       return;
     }
     const existing = current.snapshot ?? null;
-    const merged = mergeSnapshot(existing, body.activitiesSnapshot);
+    const merged = body.activitiesSnapshot !== void 0 ? mergeSnapshot(existing, body.activitiesSnapshot) : existing;
     if (merged) {
-      updateData.activitiesSnapshot = merged;
-      if (body.progressPercentage === void 0) {
+      updateData.activitiesSnapshot = body.reportDate !== void 0 ? merged.map((row) => {
+        if (row.externalSourceGroupId != null) {
+          return {
+            ...row,
+            plannedHistoricalUnverified: row.plannedAsOfDate !== body.reportDate
+          };
+        }
+        return {
+          ...row,
+          plannedProgress: calcActivityPlannedProgress({
+            plannedStartDate: row.plannedStartDate ?? null,
+            plannedEndDate: row.plannedEndDate ?? null
+          }, /* @__PURE__ */ new Date(`${body.reportDate}T00:00:00.000Z`)),
+          plannedAsOfDate: body.reportDate,
+          plannedHistoricalUnverified: false
+        };
+      }) : merged;
+      if (body.activitiesSnapshot !== void 0 && body.progressPercentage === void 0) {
         updateData.progressPercentage = calcWeightedProgress(merged);
       }
     }
@@ -126511,21 +126605,26 @@ var import_jsonwebtoken2 = __toESM(require_jsonwebtoken(), 1);
 var router9 = (0, import_express9.Router)();
 var JWT_SECRET2 = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
 async function buildOwnerProjectData(project) {
-  const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, project.id)).orderBy(activitiesTable.sortOrder);
+  const rawActivities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, project.id)).orderBy(activitiesTable.sortOrder);
+  const today = utcDay(/* @__PURE__ */ new Date());
+  const activities = await resolveLinkedActivityProgress(rawActivities, today);
   const reports = await db.select().from(reportsTable).where(and(eq(reportsTable.projectId, project.id), eq(reportsTable.status, "approved"))).orderBy(desc(reportsTable.reportDate));
   const extensions = await db.select().from(projectExtensionsTable).where(eq(projectExtensionsTable.projectId, project.id)).orderBy(projectExtensionsTable.extensionDate);
   const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, project.id)).orderBy(projectSuspensionsTable.startDate);
   const isNoSchedule = project.noSchedule === true;
+  const hasSchedule = !isNoSchedule && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
   const [filesCountResult] = await db.select({ count: count() }).from(projectFilesTable).where(eq(projectFilesTable.projectId, project.id));
   const activitiesCompleted = activities.filter((a) => a.status === "completed").length;
   let summary;
-  const computedActual = activities.length > 0 ? roundPercent(calcActualProgressForProject(activities)) : roundPercent(project.overallProgress ?? 0);
-  if (isNoSchedule) {
+  const actualRaw = activities.length > 0 ? calcActualProgressForProject(activities) : project.overallProgress ?? 0;
+  const computedActual = roundPercent(actualRaw);
+  if (!hasSchedule) {
     summary = {
       projectId: project.id,
-      noSchedule: true,
+      noSchedule: isNoSchedule,
       overallProgress: computedActual,
       plannedProgress: 0,
+      spi: null,
       activitiesTotal: activities.length,
       activitiesCompleted,
       activitiesDelayed: 0,
@@ -126540,16 +126639,14 @@ async function buildOwnerProjectData(project) {
       filesCount: filesCountResult?.count ?? 0
     };
   } else {
-    const today = /* @__PURE__ */ new Date();
-    const startDate = new Date(project.startDate ?? Date.now());
-    const endDate = new Date(project.expectedEndDate ?? Date.now());
-    const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24)));
-    const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24)));
-    const rawDaysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1e3 * 60 * 60 * 24));
+    const totalDays = Math.max(1, utcDayDifference(project.expectedEndDate, project.startDate));
+    const daysElapsed = Math.max(0, utcDayDifference(today, project.startDate));
+    const rawDaysRemaining = utcDayDifference(project.expectedEndDate, today);
     const daysRemaining = Math.max(0, rawDaysRemaining);
-    const plannedProgress = roundPercent(calcPlannedProgressForProject(activities, daysElapsed, totalDays));
-    const delayDays = calcDelayDays(plannedProgress, computedActual, totalDays);
-    const overrunDays = calcOverrunDays(today, project.expectedEndDate, computedActual);
+    const plannedRaw = calcPlannedProgressForProject(activities, daysElapsed, totalDays, today);
+    const plannedProgress = roundPercent(plannedRaw);
+    const delayDays = calcDelayDays(plannedRaw, actualRaw, totalDays);
+    const overrunDays = calcOverrunDays(today, project.expectedEndDate, actualRaw);
     const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
     const netDelayDays = Math.max(0, delayDays - suspensionDays);
     const activitiesDelayed = activities.filter((a) => isActivityDelayed(a, today, false)).length;
@@ -126558,6 +126655,7 @@ async function buildOwnerProjectData(project) {
       noSchedule: false,
       overallProgress: computedActual,
       plannedProgress,
+      spi: calcSPI(plannedRaw, actualRaw),
       activitiesTotal: activities.length,
       activitiesCompleted,
       activitiesDelayed,
@@ -126680,13 +126778,18 @@ function parseActivitiesSnapshot(raw) {
     out.push({
       plannedStartDate: typeof o.plannedStartDate === "string" ? o.plannedStartDate : null,
       plannedEndDate: typeof o.plannedEndDate === "string" ? o.plannedEndDate : null,
+      plannedProgress: typeof o.plannedProgress === "number" ? o.plannedProgress : 0,
       actualProgress: typeof o.actualProgress === "number" ? o.actualProgress : 0,
-      weight: typeof o.weight === "number" && o.weight > 0 ? o.weight : 1
+      weight: typeof o.weight === "number" && o.weight > 0 ? o.weight : 1,
+      externalSourceGroupId: typeof o.externalSourceGroupId === "number" ? o.externalSourceGroupId : null,
+      actualRecordedAt: typeof o.actualRecordedAt === "string" ? o.actualRecordedAt : null,
+      plannedHistoricalUnverified: o.plannedHistoricalUnverified === true
     });
   }
   return out;
 }
 router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) => {
+  const today = utcDay(/* @__PURE__ */ new Date());
   const userRole = _req.user?.role;
   const userId = _req.user?.userId;
   let projectFilter = null;
@@ -126769,7 +126872,6 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
   ]);
   const [totals] = totalsRows;
   const [reportCount] = reportCountRows;
-  const safeRecentProjects = recentProjects.map(({ linkCode: _linkCode, ...project }) => project);
   const countByStatus = (status) => {
     const found = statusCounts.find((s) => s.status === status);
     return found ? Number(found.cnt) : 0;
@@ -126778,20 +126880,24 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
     const found = activityCounts.find((a) => a.status === status);
     return found ? Number(found.cnt) : 0;
   };
-  const today = /* @__PURE__ */ new Date();
-  today.setHours(0, 0, 0, 0);
   const allActivities = allProjects.length > 0 ? await db.select().from(activitiesTable).where(
     inArray(activitiesTable.projectId, allProjects.map((p) => p.id))
   ) : [];
+  const resolvedActivities = await resolveLinkedActivityProgress(allActivities, today);
   const activitiesByProject = /* @__PURE__ */ new Map();
-  for (const a of allActivities) {
+  for (const a of resolvedActivities) {
     const list = activitiesByProject.get(a.projectId) ?? [];
     list.push(a);
     activitiesByProject.set(a.projectId, list);
   }
+  const safeRecentProjects = recentProjects.map(({ linkCode: _linkCode, ...project }) => {
+    const projectActivities = activitiesByProject.get(project.id) ?? [];
+    const actualRaw = projectActivities.length > 0 ? calcActualProgressForProject(projectActivities) : project.overallProgress ?? 0;
+    return { ...project, overallProgress: roundPercent(actualRaw) };
+  });
   const projectNameMap = new Map(allProjects.map((p) => [p.id, p.name]));
   const noScheduleProjectIds = new Set(allProjects.filter((p) => p.noSchedule === true).map((p) => p.id));
-  const delayedActivitiesAll = allActivities.filter(
+  const delayedActivitiesAll = resolvedActivities.filter(
     (a) => isActivityDelayed(a, today, noScheduleProjectIds.has(a.projectId))
   );
   const delayedActivitiesCount = delayedActivitiesAll.length;
@@ -126811,35 +126917,39 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
   }).sort((a, b) => b.delayDays - a.delayDays).slice(0, 10);
   const projectsWithPlanned = allProjects.map((p) => {
     const isNoSchedule = p.noSchedule === true;
-    if (isNoSchedule) {
+    const hasSchedule = !isNoSchedule && hasValidProjectSchedule(p.startDate, p.expectedEndDate);
+    const projActivities = activitiesByProject.get(p.id) ?? [];
+    const actualRaw = projActivities.length > 0 ? calcActualProgressForProject(projActivities) : p.overallProgress ?? 0;
+    const computedActual = roundPercent(actualRaw);
+    if (!hasSchedule) {
       return {
         id: p.id,
         name: p.name,
-        overallProgress: roundPercent(p.overallProgress ?? 0),
+        overallProgress: computedActual,
         plannedProgress: 0,
+        spi: null,
         status: p.status,
         daysRemaining: 0,
         ownerEntity: p.ownerEntity,
         startDate: p.startDate,
         expectedEndDate: p.expectedEndDate,
-        noSchedule: true,
+        noSchedule: isNoSchedule,
         overrunDays: 0
       };
     }
-    const startDate = new Date(p.startDate ?? Date.now());
-    const endDate = new Date(p.expectedEndDate ?? Date.now());
-    const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24)));
-    const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24)));
+    const startDate = new Date(p.startDate);
+    const totalDays = Math.max(1, utcDayDifference(p.expectedEndDate, p.startDate));
+    const daysElapsed = Math.max(0, utcDayDifference(today, startDate));
     const daysRemaining = Math.max(0, totalDays - daysElapsed);
-    const projActivities = activitiesByProject.get(p.id) ?? [];
-    const plannedProgress = roundPercent(calcPlannedProgressForProject(projActivities, daysElapsed, totalDays));
-    const computedActual = projActivities.length > 0 ? roundPercent(calcActualProgressForProject(projActivities)) : roundPercent(p.overallProgress ?? 0);
+    const plannedRaw = calcPlannedProgressForProject(projActivities, daysElapsed, totalDays, today);
+    const plannedProgress = roundPercent(plannedRaw);
     const overrunDays = calcOverrunDays(today, p.expectedEndDate, computedActual);
     return {
       id: p.id,
       name: p.name,
       overallProgress: computedActual,
       plannedProgress,
+      spi: calcSPI(plannedRaw, actualRaw),
       status: p.status,
       daysRemaining,
       ownerEntity: p.ownerEntity,
@@ -126855,7 +126965,10 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
     completedProjects: countByStatus("completed"),
     delayedProjects: countByStatus("delayed"),
     suspendedProjects: countByStatus("suspended"),
-    averageProgress: roundPercent(Number(totals?.avgProgress ?? 0)),
+    averageProgress: roundPercent(allProjects.length ? allProjects.reduce((sum2, project) => {
+      const projectActivities = activitiesByProject.get(project.id) ?? [];
+      return sum2 + (projectActivities.length > 0 ? calcActualProgressForProject(projectActivities) : project.overallProgress ?? 0);
+    }, 0) / allProjects.length : 0),
     totalReports: Number(reportCount?.count ?? 0),
     totalActivities: activityCounts.reduce((s, a) => s + Number(a.cnt), 0),
     completedActivities: activityCountByStatus("completed"),
@@ -126887,49 +127000,30 @@ router10.get("/projects/:projectId/summary", requireProjectAccess("projectId"), 
     res.status(404).json({ error: "\u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
+  const today = utcDay(/* @__PURE__ */ new Date());
+  const resolvedActivities = await resolveLinkedActivityProgress(activities, today);
   const isNoSchedule = project.noSchedule === true;
-  if (isNoSchedule) {
-    res.json({
-      projectId,
-      noSchedule: true,
-      overallProgress: roundPercent(project.overallProgress),
-      plannedProgress: 0,
-      activitiesTotal: activities.length,
-      activitiesCompleted: activities.filter((a) => a.status === "completed").length,
-      activitiesDelayed: 0,
-      daysElapsed: 0,
-      totalDays: 0,
-      daysRemaining: 0,
-      delayDays: 0,
-      suspensionDays: 0,
-      netDelayDays: 0,
-      overrunDays: 0,
-      reportsCount: Number(reportCount?.count ?? 0),
-      filesCount: Number(fileCount?.count ?? 0)
-    });
-    return;
-  }
-  const today = /* @__PURE__ */ new Date();
-  const hasSchedule = !!(project.startDate && project.expectedEndDate);
-  const startDate = new Date(project.startDate ?? Date.now());
-  const endDate = new Date(project.expectedEndDate ?? Date.now());
-  const totalDays = hasSchedule ? Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24))) : 0;
-  const daysElapsed = hasSchedule ? Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24))) : 0;
+  const hasSchedule = !isNoSchedule && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
+  const startDate = hasSchedule ? new Date(project.startDate) : null;
+  const totalDays = hasSchedule ? Math.max(1, utcDayDifference(project.expectedEndDate, project.startDate)) : 0;
+  const daysElapsed = hasSchedule ? Math.max(0, utcDayDifference(today, startDate)) : 0;
   const daysRemaining = hasSchedule ? Math.max(0, totalDays - daysElapsed) : 0;
-  const plannedProgress = hasSchedule ? calcPlannedProgressForProject(activities, daysElapsed, totalDays) : 0;
-  const actualProgressForSummary = activities.length > 0 ? roundPercent(calcActualProgressForProject(activities)) : roundPercent(project.overallProgress);
-  const delayDays = hasSchedule ? calcDelayDays(plannedProgress, actualProgressForSummary, totalDays) : 0;
-  const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
+  const plannedRaw = hasSchedule ? calcPlannedProgressForProject(resolvedActivities, daysElapsed, totalDays, today) : 0;
+  const actualRaw = resolvedActivities.length > 0 ? calcActualProgressForProject(resolvedActivities) : project.overallProgress ?? 0;
+  const actualProgressForSummary = roundPercent(actualRaw);
+  const delayDays = hasSchedule ? calcDelayDays(plannedRaw, actualRaw, totalDays) : 0;
+  const suspensionDays = hasSchedule ? suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0) : 0;
   const netDelayDays = Math.max(0, delayDays - suspensionDays);
-  const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualProgressForSummary) : 0;
+  const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualRaw) : 0;
   res.json({
     projectId,
-    noSchedule: false,
+    noSchedule: isNoSchedule,
     overallProgress: actualProgressForSummary,
-    plannedProgress: roundPercent(plannedProgress),
-    activitiesTotal: activities.length,
-    activitiesCompleted: activities.filter((a) => a.status === "completed").length,
-    activitiesDelayed: activities.filter((a) => isActivityDelayed(a, today, false)).length,
+    plannedProgress: roundPercent(plannedRaw),
+    spi: hasSchedule ? calcSPI(plannedRaw, actualRaw) : null,
+    activitiesTotal: resolvedActivities.length,
+    activitiesCompleted: resolvedActivities.filter((a) => a.status === "completed").length,
+    activitiesDelayed: resolvedActivities.filter((a) => isActivityDelayed(a, today, !hasSchedule)).length,
     daysElapsed,
     totalDays,
     daysRemaining,
@@ -126952,10 +127046,13 @@ router10.get("/projects/:projectId/deviation", requireProjectAccess("projectId")
     return;
   }
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(asc(activitiesTable.sortOrder), asc(activitiesTable.id));
+  const today = utcDay(/* @__PURE__ */ new Date());
+  const resolvedActivities = await resolveLinkedActivityProgress(activities, today, curve);
   const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId));
   const isNoSchedule = project.noSchedule === true;
   if (isNoSchedule) {
-    const activitiesAnalysis2 = activities.map((a) => ({
+    const actualRaw2 = resolvedActivities.length > 0 ? calcActualProgressForProject(resolvedActivities) : project.overallProgress ?? 0;
+    const activitiesAnalysis2 = resolvedActivities.map((a) => ({
       activityId: a.id,
       activityName: a.name,
       plannedProgress: 0,
@@ -126972,7 +127069,7 @@ router10.get("/projects/:projectId/deviation", requireProjectAccess("projectId")
       timeDeviation: 0,
       progressDeviation: 0,
       plannedProgress: 0,
-      actualProgress: roundPercent(project.overallProgress),
+      actualProgress: roundPercent(actualRaw2),
       suspensionDays: 0,
       grossDelayDays: 0,
       netDelayDays: 0,
@@ -126989,23 +127086,25 @@ router10.get("/projects/:projectId/deviation", requireProjectAccess("projectId")
     });
     return;
   }
-  const today = /* @__PURE__ */ new Date();
-  const startDate = new Date(project.startDate ?? Date.now());
-  const endDate = new Date(project.expectedEndDate ?? Date.now());
-  const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24)));
-  const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24)));
-  const plannedProgress = calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, curve);
-  const actualProgress = activities.length > 0 ? roundPercent(calcActualProgressForProject(activities)) : roundPercent(project.overallProgress);
-  const progressDeviation = actualProgress - plannedProgress;
-  const timeDeviation = Math.max(0, plannedProgress - actualProgress) / 100 * totalDays;
-  const suspensionDays = suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0);
-  const grossDelayDays = calcDelayDays(plannedProgress, actualProgress, totalDays);
+  const hasSchedule = !isNoSchedule && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
+  const startDate = hasSchedule ? new Date(project.startDate) : today;
+  const endDate = hasSchedule ? new Date(project.expectedEndDate) : today;
+  const totalDays = hasSchedule ? Math.max(1, utcDayDifference(endDate, startDate)) : 0;
+  const daysElapsed = hasSchedule ? Math.max(0, utcDayDifference(today, startDate)) : 0;
+  const plannedRaw = hasSchedule ? calcPlannedProgressForProject(resolvedActivities, daysElapsed, totalDays, today, curve) : 0;
+  const plannedProgress = roundPercent(plannedRaw);
+  const actualRaw = resolvedActivities.length > 0 ? calcActualProgressForProject(resolvedActivities) : project.overallProgress ?? 0;
+  const actualProgress = roundPercent(actualRaw);
+  const progressDeviation = hasSchedule ? actualRaw - plannedRaw : 0;
+  const timeDeviation = hasSchedule ? Math.max(0, plannedRaw - actualRaw) / 100 * totalDays : 0;
+  const suspensionDays = hasSchedule ? suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0) : 0;
+  const grossDelayDays = hasSchedule ? calcDelayDays(plannedRaw, actualRaw, totalDays) : 0;
   const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
-  const overrunDays = calcOverrunDays(today, project.expectedEndDate, actualProgress);
-  const spi = calcSPI(plannedProgress, actualProgress);
-  const forecastCompletion = calcForecastCompletionDate(startDate, endDate, today, plannedProgress, actualProgress);
+  const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualRaw) : 0;
+  const spi = hasSchedule ? calcSPI(plannedRaw, actualRaw) : null;
+  const forecastCompletion = hasSchedule ? calcForecastCompletionDate(startDate, endDate, today, plannedRaw, actualRaw) : null;
   const forecastCompletionDate = forecastCompletion ? forecastCompletion.toISOString().slice(0, 10) : null;
-  const expectedProgressAtEnd = roundPercent(calcExpectedProgressAtEnd(plannedProgress, actualProgress));
+  const expectedProgressAtEnd = hasSchedule ? roundPercent(calcExpectedProgressAtEnd(plannedRaw, actualRaw)) : 0;
   const forecastDelayDays = forecastCompletion && project.expectedEndDate ? Math.ceil((forecastCompletion.getTime() - new Date(project.expectedEndDate).getTime()) / 864e5) : 0;
   const breakdownMap = {
     official_holiday: { days: 0, count: 0 },
@@ -127021,7 +127120,9 @@ router10.get("/projects/:projectId/deviation", requireProjectAccess("projectId")
   }
   const suspensionsBreakdown = Object.entries(breakdownMap).map(([type, v]) => ({ type, days: v.days, count: v.count })).filter((b) => b.count > 0);
   let overallStatus;
-  if (progressDeviation > 5) {
+  if (!hasSchedule) {
+    overallStatus = "on_track";
+  } else if (progressDeviation > 5) {
     overallStatus = "ahead";
   } else if (progressDeviation >= -5) {
     overallStatus = "on_track";
@@ -127030,10 +127131,11 @@ router10.get("/projects/:projectId/deviation", requireProjectAccess("projectId")
   } else {
     overallStatus = "significantly_delayed";
   }
-  const totalWeight = activities.reduce((s, a) => s + (a.weight && a.weight > 0 ? a.weight : 1), 0) || 1;
-  const activitiesAnalysis = activities.map((a) => {
-    const actPlanned = roundPercent(calcActivityPlannedProgress(a, today, curve));
-    const deviation = roundPercent(a.actualProgress - actPlanned);
+  const totalWeight = resolvedActivities.reduce((s, a) => s + (a.weight && a.weight > 0 ? a.weight : 1), 0) || 1;
+  const activitiesAnalysis = resolvedActivities.map((a) => {
+    const actPlannedRaw = hasSchedule ? calcActivityPlannedProgress(a, today, curve) : 0;
+    const actPlanned = roundPercent(actPlannedRaw);
+    const deviation = roundPercent(hasSchedule ? a.actualProgress - actPlannedRaw : 0);
     const w = a.weight && a.weight > 0 ? a.weight : 1;
     const weightedImpact = roundPercent(deviation * w / totalWeight);
     const overrun = a.plannedEndDate ? calcOverrunDays(today, a.plannedEndDate, a.actualProgress) : null;
@@ -127153,44 +127255,83 @@ router10.get("/projects/:projectId/deviation/timeline", requireProjectAccess("pr
   const reports = await db.select({
     reportDate: reportsTable.reportDate,
     progressPercentage: reportsTable.progressPercentage,
-    activitiesSnapshot: reportsTable.activitiesSnapshot
+    activitiesSnapshot: reportsTable.activitiesSnapshot,
+    createdAt: reportsTable.createdAt
   }).from(reportsTable).where(eq(reportsTable.projectId, projectId)).orderBy(asc(reportsTable.reportDate));
   const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
-  const startDate = new Date(project.startDate ?? Date.now());
-  const endDate = new Date(project.expectedEndDate ?? Date.now());
-  const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 864e5));
+  if (!hasValidProjectSchedule(project.startDate, project.expectedEndDate)) {
+    res.json({ projectId, noSchedule: false, points: [], suspensionsBreakdown, baselineStatus: "no_historical_baseline" });
+    return;
+  }
+  const startDate = utcDay(project.startDate);
+  const endDate = utcDay(project.expectedEndDate);
+  const totalDays = Math.max(1, utcDayDifference(endDate, startDate));
+  const today = utcDay(/* @__PURE__ */ new Date());
+  const resolvedActivities = await resolveLinkedActivityProgress(activities, today, curve);
   const points = reports.map((r) => {
-    const reportDate = new Date(r.reportDate);
-    const daysElapsed = Math.max(0, Math.ceil((reportDate.getTime() - startDate.getTime()) / 864e5));
+    const reportDate = utcDay(r.reportDate);
+    const daysElapsed = Math.max(0, utcDayDifference(reportDate, startDate));
     const snapshot = parseActivitiesSnapshot(r.activitiesSnapshot);
-    const activitiesForCalc = snapshot.length > 0 ? snapshot : activities;
-    const planned = roundPercent(calcPlannedProgressForProject(activitiesForCalc, daysElapsed, totalDays, reportDate, curve));
-    const actualRaw = snapshot.length > 0 ? calcActualProgressForProject(snapshot) : r.progressPercentage ?? 0;
-    const actual = roundPercent(actualRaw);
+    if (!Array.isArray(r.activitiesSnapshot)) {
+      return {
+        date: r.reportDate,
+        plannedProgress: null,
+        actualProgress: null,
+        deviation: null,
+        spi: null,
+        baselineStatus: "no_historical_baseline"
+      };
+    }
+    if (snapshot.length === 0) {
+      return {
+        date: r.reportDate,
+        plannedProgress: 0,
+        actualProgress: 0,
+        deviation: 0,
+        spi: null,
+        baselineStatus: "available"
+      };
+    }
+    const plannedHistoricalUnverified = snapshot.some((item) => item.plannedHistoricalUnverified);
+    const actualVerifiable = snapshot.every((item) => {
+      const recordedAt = item.actualRecordedAt ?? r.createdAt;
+      if (!recordedAt) return false;
+      const recordedDay = utcDay(recordedAt);
+      return Number.isFinite(recordedDay.getTime()) && recordedDay.getTime() <= reportDate.getTime();
+    });
+    const plannedRaw = calcPlannedProgressForProject(snapshot, daysElapsed, totalDays, reportDate, curve);
+    const actualRaw = calcActualProgressForProject(snapshot);
+    const planned = plannedHistoricalUnverified ? null : roundPercent(plannedRaw);
+    const actual = actualVerifiable ? roundPercent(actualRaw) : null;
     return {
       date: r.reportDate,
       plannedProgress: planned,
       actualProgress: actual,
-      deviation: roundPercent(actual - planned)
+      deviation: planned == null || actual == null ? null : roundPercent(actual - planned),
+      spi: planned == null || actual == null ? null : calcSPI(plannedRaw, actualRaw),
+      baselineStatus: !actualVerifiable ? "actual_unverified" : plannedHistoricalUnverified ? "planned_unverified" : "available"
     };
   });
   const isoStart = startDate.toISOString().slice(0, 10);
   if (points.length === 0 || points[0].date !== isoStart) {
-    points.unshift({ date: isoStart, plannedProgress: 0, actualProgress: 0, deviation: 0 });
+    points.unshift({ date: isoStart, plannedProgress: 0, actualProgress: 0, deviation: 0, spi: null, baselineStatus: "available" });
   }
-  const today = /* @__PURE__ */ new Date();
   if (today >= startDate) {
-    const daysElapsed = Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / 864e5));
-    const planned = roundPercent(calcPlannedProgressForProject(activities, daysElapsed, totalDays, today, curve));
-    const actualRaw = activities.length > 0 ? calcActualProgressForProject(activities) : project.overallProgress ?? 0;
+    const daysElapsed = Math.max(0, utcDayDifference(today, startDate));
+    const plannedRaw = calcPlannedProgressForProject(resolvedActivities, daysElapsed, totalDays, today, curve);
+    const actualRaw = resolvedActivities.length > 0 ? calcActualProgressForProject(resolvedActivities) : project.overallProgress ?? 0;
+    const planned = roundPercent(plannedRaw);
     const actual = roundPercent(actualRaw);
     const isoToday = today.toISOString().slice(0, 10);
-    if (points.length === 0 || points[points.length - 1].date !== isoToday) {
+    const lastPoint = points[points.length - 1];
+    if (points.length === 0 || lastPoint.date !== isoToday || lastPoint.baselineStatus !== "available") {
       points.push({
         date: isoToday,
         plannedProgress: planned,
         actualProgress: actual,
-        deviation: roundPercent(actual - planned)
+        deviation: roundPercent(actual - planned),
+        spi: calcSPI(plannedRaw, actualRaw),
+        baselineStatus: "available"
       });
     }
   }
@@ -127238,7 +127379,9 @@ var C = {
 var router11 = (0, import_express11.Router)();
 function formatDate(d) {
   if (!d) return "\u2014";
-  return new Date(d).toLocaleDateString("ar-SA-u-nu-latn", { year: "numeric", month: "2-digit", day: "2-digit" });
+  const date6 = new Date(d);
+  if (!Number.isFinite(date6.getTime())) return "\u2014";
+  return date6.toLocaleDateString("ar-SA-u-nu-latn", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 function statusLabel(s) {
   return { not_started: "\u0644\u0645 \u064A\u0628\u062F\u0623", in_progress: "\u0642\u064A\u062F \u0627\u0644\u062A\u0646\u0641\u064A\u0630", completed: "\u0645\u0643\u062A\u0645\u0644", delayed: "\u0645\u062A\u0623\u062E\u0631" }[s] ?? s;
@@ -127269,6 +127412,29 @@ function ensurePage(doc, neededHeight) {
   }
   return doc.y;
 }
+function snapshotProgress(rows, field) {
+  let totalWeight = 0;
+  let weightedProgress = 0;
+  for (const row of rows) {
+    const weight = typeof row.weight === "number" && row.weight > 0 ? row.weight : 1;
+    const value = typeof row[field] === "number" && Number.isFinite(row[field]) ? row[field] : 0;
+    totalWeight += weight;
+    weightedProgress += value * weight;
+  }
+  return totalWeight > 0 ? weightedProgress / totalWeight : 0;
+}
+function snapshotActualIsHistoricallyUnverified(reportDate, createdAt, rows) {
+  const reportDay = utcDay(reportDate).getTime();
+  if (!Number.isFinite(reportDay)) return true;
+  if (rows.length === 0) return false;
+  return rows.some((row) => {
+    if (typeof row.actualProgress !== "number" || !Number.isFinite(row.actualProgress)) return true;
+    const recordedAt = row.actualRecordedAt ?? createdAt;
+    if (!recordedAt) return true;
+    const recordedDay = utcDay(recordedAt).getTime();
+    return !Number.isFinite(recordedDay) || reportDay < recordedDay;
+  });
+}
 router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
@@ -127289,7 +127455,9 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
     res.status(404).json({ error: "\u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
-  const activities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder);
+  const activityRows = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder);
+  const currentAsOf = /* @__PURE__ */ new Date();
+  const activities = await resolveLinkedActivityProgress(activityRows, currentAsOf);
   const extensions = await db.select().from(projectExtensionsTable).where(eq(projectExtensionsTable.projectId, projectId)).orderBy(projectExtensionsTable.extensionDate);
   const suspensions = await db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId)).orderBy(projectSuspensionsTable.startDate);
   const hasFont = fs3.existsSync(AMIRI_FONT);
@@ -127329,15 +127497,16 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
   setFont(14, C.primary);
   doc.text(project.name, MARGIN + 10, y + 10, { width: CONTENT_W - 20, align: "center" });
   y += 52;
-  const isNoSchedule = project.noSchedule === true;
+  const hasSchedule = project.noSchedule !== true && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
+  const isNoSchedule = !hasSchedule;
   const infoItems = [
     ["\u0627\u0644\u062C\u0647\u0629 \u0627\u0644\u0645\u0627\u0644\u0643\u0629", project.ownerEntity],
     ["\u0627\u0644\u0645\u0642\u0627\u0648\u0644 \u0627\u0644\u0645\u0646\u0641\u0630", project.contractor],
     ["\u0627\u0644\u062C\u0647\u0629 \u0627\u0644\u0645\u0634\u0631\u0641\u0629", project.supervisorEntity],
     ["\u0645\u0648\u0642\u0639 \u0627\u0644\u0645\u0634\u0631\u0648\u0639", project.location],
-    ...project.startDate ? [["\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0628\u062F\u0627\u064A\u0629", formatDate(project.startDate)]] : [],
-    ...!isNoSchedule && project.expectedEndDate ? [["\u0627\u0644\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u062A\u0648\u0642\u0639 \u0644\u0644\u0625\u0646\u0647\u0627\u0621", formatDate(project.expectedEndDate)]] : [],
-    ...isNoSchedule ? [["\u062D\u0627\u0644\u0629 \u0627\u0644\u062C\u062F\u0648\u0644 \u0627\u0644\u0632\u0645\u0646\u064A", "\u0628\u062F\u0648\u0646 \u062C\u062F\u0648\u0644 \u0632\u0645\u0646\u064A \u0645\u0639\u062A\u0645\u062F"]] : []
+    ...hasSchedule ? [["\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0628\u062F\u0627\u064A\u0629", formatDate(project.startDate)]] : [],
+    ...hasSchedule ? [["\u0627\u0644\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u062A\u0648\u0642\u0639 \u0644\u0644\u0625\u0646\u0647\u0627\u0621", formatDate(project.expectedEndDate)]] : [],
+    ...!hasSchedule ? [["\u062D\u0627\u0644\u0629 \u0627\u0644\u062C\u062F\u0648\u0644 \u0627\u0644\u0632\u0645\u0646\u064A", project.noSchedule === true ? "\u0628\u062F\u0648\u0646 \u062C\u062F\u0648\u0644 \u0632\u0645\u0646\u064A \u0645\u0639\u062A\u0645\u062F" : "\u0627\u0644\u062C\u062F\u0648\u0644 \u0627\u0644\u0632\u0645\u0646\u064A \u063A\u064A\u0631 \u0645\u0643\u062A\u0645\u0644 \u0623\u0648 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D"]] : []
   ];
   const colW = (CONTENT_W - 8) / 2;
   doc.rect(MARGIN, y, CONTENT_W, infoItems.length / 2 * 26 + 8).fill(C.white).stroke(C.border);
@@ -127367,14 +127536,17 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
     setFont(9, C.textDark);
     doc.text(`${overall}%`, MARGIN + CONTENT_W - 75, barY1 - 1, { width: 70, align: "right" });
     setFont(8, C.textMuted);
-    doc.text("\u0645\u0634\u0631\u0648\u0639 \u0628\u062F\u0648\u0646 \u062C\u062F\u0648\u0644 \u0632\u0645\u0646\u064A \u0645\u0639\u062A\u0645\u062F \u2014 \u0644\u0627 \u064A\u064F\u062D\u0633\u0628 \u0627\u0644\u062A\u0623\u062E\u064A\u0631", MARGIN + 8, y + 44, { width: CONTENT_W - 16, align: "right" });
+    doc.text(
+      project.noSchedule === true ? "\u0645\u0634\u0631\u0648\u0639 \u0628\u062F\u0648\u0646 \u062C\u062F\u0648\u0644 \u0632\u0645\u0646\u064A \u0645\u0639\u062A\u0645\u062F \u2014 \u0644\u0627 \u064A\u064F\u062D\u0633\u0628 \u0627\u0644\u0645\u062E\u0637\u0637 \u0623\u0648 \u0627\u0644\u062A\u0623\u062E\u064A\u0631" : "\u0627\u0644\u062C\u062F\u0648\u0644 \u0627\u0644\u0632\u0645\u0646\u064A \u063A\u064A\u0631 \u0645\u0643\u062A\u0645\u0644 \u0623\u0648 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D \u2014 \u0644\u0627 \u064A\u064F\u062D\u0633\u0628 \u0627\u0644\u0645\u062E\u0637\u0637 \u0623\u0648 \u0627\u0644\u062A\u0623\u062E\u064A\u0631",
+      MARGIN + 8,
+      y + 44,
+      { width: CONTENT_W - 16, align: "right" }
+    );
     y += 70;
   } else {
-    const today = /* @__PURE__ */ new Date();
-    const start = new Date(project.startDate);
-    const end = new Date(project.expectedEndDate);
-    const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 864e5));
-    const elapsed = Math.max(0, Math.ceil((today.getTime() - start.getTime()) / 864e5));
+    const today = currentAsOf;
+    const totalDays = Math.max(1, utcDayDifference(project.expectedEndDate, project.startDate));
+    const elapsed = Math.max(0, utcDayDifference(today, project.startDate));
     const planned = roundPercent(calcPlannedProgressForProject(activities, elapsed, totalDays));
     const deviation = roundPercent(overall - planned);
     const delayDays = calcDelayDays(planned, overall, totalDays);
@@ -127432,7 +127604,7 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
     doc.addPage();
     if (hasFont) doc.font("Amiri");
     y = MARGIN;
-    y = drawSectionHeader(doc, "\u062C\u062F\u0648\u0644 \u0628\u0646\u0648\u062F \u0627\u0644\u0623\u0639\u0645\u0627\u0644 \u0648\u0627\u0644\u0625\u0646\u062C\u0627\u0632", y);
+    y = drawSectionHeader(doc, "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u062D\u0627\u0644\u064A\u0629 \u2014 \u062C\u062F\u0648\u0644 \u0628\u0646\u0648\u062F \u0627\u0644\u0623\u0639\u0645\u0627\u0644 \u0648\u0627\u0644\u0625\u0646\u062C\u0627\u0632", y);
     const today = /* @__PURE__ */ new Date();
     const cols = isNoSchedule ? { name: 250, actual: 70, status: 100, period: 90, planned: 0, dev: 0 } : { name: 200, planned: 55, actual: 55, dev: 45, status: 70, period: 85 };
     const headerH = 20;
@@ -127540,10 +127712,86 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
       doc.roundedRect(MARGIN, y, CONTENT_W, 32, 4).fill(C.light).stroke(C.border);
       setFont(8, C.textMuted);
       doc.text("\u0646\u0633\u0628\u0629 \u0627\u0644\u0625\u0646\u062C\u0627\u0632 \u0627\u0644\u0645\u064F\u0628\u0644\u064E\u0651\u063A \u0639\u0646\u0647\u0627 \u0641\u064A \u0647\u0630\u0647 \u0627\u0644\u0641\u062A\u0631\u0629", MARGIN + 8, y + 6, { width: CONTENT_W - 100, align: "right" });
-      drawProgressBar(doc, MARGIN + 8, y + 20, CONTENT_W - 100, 8, report.progressPercentage ?? 0, typeColor);
+      const displayedReportedProgress = roundPercent(report.progressPercentage ?? 0);
+      drawProgressBar(doc, MARGIN + 8, y + 20, CONTENT_W - 100, 8, displayedReportedProgress, typeColor);
       setFont(14, typeColor);
-      doc.text(`${report.progressPercentage ?? 0}%`, MARGIN + CONTENT_W - 88, y + 8, { width: 80, align: "center" });
+      doc.text(`${displayedReportedProgress}%`, MARGIN + CONTENT_W - 88, y + 8, { width: 80, align: "center" });
       y += 42;
+      const reportSnapshot = Array.isArray(report.activitiesSnapshot) ? report.activitiesSnapshot : [];
+      if (!Array.isArray(report.activitiesSnapshot)) {
+        y = ensurePage(doc, 34);
+        doc.roundedRect(MARGIN, y, CONTENT_W, 28, 4).fill("#fff7ed").stroke(C.warning);
+        setFont(9, "#9a3412");
+        doc.text(
+          "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062A\u0642\u062F\u0645 \u0627\u0644\u062A\u0627\u0631\u064A\u062E\u064A\u0629 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D\u0629 \u0644\u0647\u0630\u0627 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0642\u062F\u064A\u0645 (\u0644\u0627 \u062A\u0648\u062C\u062F \u0644\u0642\u0637\u0629 \u0623\u0646\u0634\u0637\u0629 \u0645\u062D\u0641\u0648\u0638\u0629). \u0644\u0627 \u062A\u0645\u062B\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u062D\u0627\u0644\u064A\u0629 \u062D\u0627\u0644\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0633\u0627\u0628\u0642\u0629.",
+          MARGIN + 8,
+          y + 7,
+          { width: CONTENT_W - 16, align: "right" }
+        );
+        y += 36;
+      } else {
+        const rawHistoricalPlanned = snapshotProgress(reportSnapshot, "plannedProgress");
+        const rawHistoricalActual = snapshotProgress(reportSnapshot, "actualProgress");
+        const plannedUnverified = reportSnapshot.some((row) => row.plannedHistoricalUnverified === true);
+        const actualUnverified = snapshotActualIsHistoricallyUnverified(
+          report.reportDate,
+          report.createdAt,
+          reportSnapshot
+        );
+        const plannedUnavailable = !hasSchedule || plannedUnverified;
+        const historicalSpi = actualUnverified || plannedUnavailable ? null : calcSPI(rawHistoricalPlanned, rawHistoricalActual);
+        const displayedPlanned = roundPercent(rawHistoricalPlanned);
+        const displayedActual = roundPercent(rawHistoricalActual);
+        y = ensurePage(doc, 45);
+        y = drawSectionHeader(doc, `\u0644\u0642\u0637\u0629 \u0627\u0644\u0623\u0646\u0634\u0637\u0629 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0629 \u0644\u0644\u062A\u0642\u0631\u064A\u0631 (${formatDate(report.reportDate)})`, y);
+        setFont(9, C.textDark);
+        doc.text(
+          `${!hasSchedule ? "\u0627\u0644\u0645\u062E\u0637\u0637 \u0627\u0644\u0645\u0648\u0632\u0648\u0646: \u063A\u064A\u0631 \u0645\u062A\u0627\u062D (\u0644\u0627 \u064A\u0648\u062C\u062F \u062C\u062F\u0648\u0644 \u0635\u0627\u0644\u062D)" : plannedUnverified ? "\u0627\u0644\u0645\u062E\u0637\u0637 \u0627\u0644\u0645\u0648\u0632\u0648\u0646: \u063A\u064A\u0631 \u0645\u0648\u062B\u0642 \u0644\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0642\u0631\u064A\u0631" : `\u0627\u0644\u0645\u062E\u0637\u0637 \u0627\u0644\u0645\u0648\u0632\u0648\u0646: ${displayedPlanned}%`}    \u0627\u0644\u0641\u0639\u0644\u064A \u0627\u0644\u0645\u0633\u062C\u0644 \u0639\u0646\u062F \u0627\u0644\u0625\u0646\u0634\u0627\u0621: ${displayedActual}%    SPI: ${historicalSpi == null ? !hasSchedule ? "\u063A\u064A\u0631 \u0645\u062A\u0627\u062D" : actualUnverified || plannedUnverified ? "\u063A\u064A\u0631 \u0645\u0648\u062B\u0642 \u062A\u0627\u0631\u064A\u062E\u064A\u0627\u064B" : "\u063A\u064A\u0631 \u0645\u062A\u0627\u062D (\u0627\u0644\u0645\u062E\u0637\u0637 \u0635\u0641\u0631)" : historicalSpi}`,
+          MARGIN + 4,
+          y,
+          { width: CONTENT_W - 8, align: "right" }
+        );
+        y += 18;
+        if (actualUnverified) {
+          y = ensurePage(doc, 30);
+          doc.roundedRect(MARGIN, y, CONTENT_W, 24, 4).fill("#fff7ed").stroke(C.warning);
+          setFont(8, "#9a3412");
+          doc.text(
+            "\u0627\u0644\u0642\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A\u0629 \u0623\u062F\u0646\u0627\u0647 \u0645\u0633\u062C\u0644\u0629 \u0648\u0642\u062A \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062A\u0642\u0631\u064A\u0631\u060C \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u062A\u0648\u062B\u064A\u0642\u0647\u0627 \u0643\u0625\u0646\u062C\u0627\u0632 \u0641\u0639\u0644\u064A \u0641\u064A \u062A\u0627\u0631\u064A\u062E \u062A\u0642\u0631\u064A\u0631 \u0623\u0633\u0628\u0642.",
+            MARGIN + 8,
+            y + 6,
+            { width: CONTENT_W - 16, align: "right" }
+          );
+          y += 30;
+        }
+        if (plannedUnverified && hasSchedule) {
+          y = ensurePage(doc, 30);
+          doc.roundedRect(MARGIN, y, CONTENT_W, 24, 4).fill("#fff7ed").stroke(C.warning);
+          setFont(8, "#9a3412");
+          doc.text(
+            "\u062A\u063A\u064A\u0651\u0631 \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0628\u0639\u062F \u062D\u0641\u0638 \u062E\u0637\u0629 \u0628\u0646\u062F \u0645\u0631\u062A\u0628\u0637\u061B \u0627\u0644\u062E\u0637\u0629 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0629 \u062A\u062E\u0635 \u0627\u0644\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0623\u0635\u0644\u064A \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u0625\u0639\u0627\u062F\u0629 \u0628\u0646\u0627\u0626\u0647\u0627 \u062A\u0627\u0631\u064A\u062E\u064A\u0627\u064B.",
+            MARGIN + 8,
+            y + 6,
+            { width: CONTENT_W - 16, align: "right" }
+          );
+          y += 30;
+        }
+        for (const [activityIndex, activity] of reportSnapshot.entries()) {
+          y = ensurePage(doc, 18);
+          const actual = roundPercent(typeof activity.actualProgress === "number" ? activity.actualProgress : 0);
+          const planned = roundPercent(typeof activity.plannedProgress === "number" ? activity.plannedProgress : 0);
+          const plannedText = !hasSchedule ? "\u063A\u064A\u0631 \u0645\u062A\u0627\u062D" : plannedUnverified && activity.plannedHistoricalUnverified ? `${planned}% (\u0627\u0644\u062E\u0637\u0629 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0629 \u0628\u062A\u0627\u0631\u064A\u062E ${formatDate(activity.plannedAsOfDate)})` : `${planned}%`;
+          setFont(8, C.textDark);
+          doc.text(
+            `${activity.name ?? "\u0628\u0646\u062F"} \u2014 \u0645\u062E\u0637\u0637 ${plannedText}\u060C \u0641\u0639\u0644\u064A ${actual}%\u060C \u0627\u0644\u062D\u0627\u0644\u0629: ${statusLabel(activity.status ?? "not_started")}`,
+            MARGIN + 6,
+            y,
+            { width: CONTENT_W - 12, align: "right" }
+          );
+          y += 14;
+        }
+        y += 4;
+      }
       if (report.workDescription) {
         y = ensurePage(doc, 40);
         y = drawSectionHeader(doc, "\u0627\u0644\u0623\u0639\u0645\u0627\u0644 \u0627\u0644\u0645\u0646\u062C\u0632\u0629 \u062E\u0644\u0627\u0644 \u0627\u0644\u0641\u062A\u0631\u0629", y);
@@ -127641,7 +127889,7 @@ router11.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("pr
     setFont(8, C.textMuted);
     doc.text("\u0627\u0644\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0623\u0635\u0644\u064A \u0644\u0644\u0625\u0646\u0647\u0627\u0621", MARGIN + 8, y + 8, { width: 120, align: "right" });
     setFont(9, C.textDark);
-    doc.text(project.expectedEndDate ? formatDate(project.expectedEndDate) : "\u2014", MARGIN + 8, y + 20, { width: 120, align: "right" });
+    doc.text(hasSchedule ? formatDate(project.expectedEndDate) : "\u2014", MARGIN + 8, y + 20, { width: 120, align: "right" });
     setFont(8, C.textMuted);
     doc.text("\u0625\u062C\u0645\u0627\u0644\u064A \u0623\u064A\u0627\u0645 \u0627\u0644\u062A\u0645\u062F\u064A\u062F", MARGIN + 140, y + 8, { width: 100, align: "right" });
     setFont(14, C.warning);

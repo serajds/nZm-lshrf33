@@ -148,30 +148,6 @@ const createActivitySchema = (isNoSchedule: boolean) => z.object({
   sortOrder: z.coerce.number().default(0),
 });
 
-function calcPlannedProgress(a: { plannedStartDate?: string | null; plannedEndDate?: string | null }): number {
-  if (!a.plannedStartDate || !a.plannedEndDate) return 0;
-  
-  const startOfDay = (d: string) => {
-    const date = new Date(d);
-    date.setHours(0, 0, 0, 0);
-    return date.getTime();
-  };
-
-  const start = startOfDay(a.plannedStartDate);
-  const end = startOfDay(a.plannedEndDate);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const nowTime = now.getTime();
-  
-  const duration = end - start;
-  if (duration <= 0) return nowTime >= end ? 100 : 0;
-  
-  const elapsed = nowTime - start;
-  if (elapsed <= 0) return 0;
-  if (elapsed >= duration) return 100;
-  return Math.round((elapsed / duration) * 100);
-}
-
 const activitySchema = createActivitySchema(false);
 type ActivityFormValues = z.infer<typeof activitySchema>;
 
@@ -750,7 +726,7 @@ export default function ProjectActivities() {
         a.plannedEndDate?.split("T")[0] || "",
         a.actualStartDate?.split("T")[0] || "",
         a.actualEndDate?.split("T")[0] || "",
-        calcPlannedProgress(a),
+        a.plannedProgress ?? 0,
         a.actualProgress ?? 0,
         statusLabels[a.status] || a.status,
       ]),
@@ -1021,7 +997,7 @@ export default function ProjectActivities() {
   const effectiveViewMode = isContractorBase ? "gantt" : viewMode;
   const ganttData = activityRows.map((a) => ({
     name: a.name.length > 14 ? a.name.slice(0, 14) + "…" : a.name,
-    "المخطط": calcPlannedProgress(a),
+    "المخطط": a.plannedProgress ?? 0,
     "الفعلي": a.actualProgress,
   }));
 
@@ -1065,11 +1041,12 @@ export default function ProjectActivities() {
     return counts;
   }, [allActivityRows]);
   const totalWeight = allActivityRows.reduce((sum, a) => sum + (a.weight && a.weight > 0 ? a.weight : 1), 0);
+  const weightOf = (a: Activity) => a.weight && a.weight > 0 ? a.weight : 1;
   const actualProgress = totalWeight > 0
-    ? Math.round((allActivityRows.reduce((sum, a) => sum + (a.actualProgress ?? 0) * (a.weight && a.weight > 0 ? a.weight : 1), 0) / totalWeight) * 10) / 10
+    ? Math.round((allActivityRows.reduce((sum, a) => sum + (a.actualProgress ?? 0) * weightOf(a), 0) / totalWeight) * 10) / 10
     : 0;
   const plannedProgress = allActivityRows.length > 0
-    ? Math.round((allActivityRows.reduce((sum, a) => sum + calcPlannedProgress(a), 0) / allActivityRows.length) * 10) / 10
+    ? Math.round((allActivityRows.reduce((sum, a) => sum + (a.plannedProgress ?? 0) * weightOf(a), 0) / totalWeight) * 10) / 10
     : 0;
   const progressDelta = Math.round((actualProgress - plannedProgress) * 10) / 10;
 
@@ -2064,7 +2041,7 @@ export default function ProjectActivities() {
 
               const renderActivityRow = (a: Activity) => {
                 const isBusy = updatingId === a.id;
-                const planned = calcPlannedProgress(a);
+                const planned = a.plannedProgress ?? 0;
                 const deviation = a.actualProgress - planned;
                 const delayInfo = calcActivityDelay(a);
                 const editable = canEditActivity(a);
@@ -2351,7 +2328,7 @@ export default function ProjectActivities() {
 
               const renderMobileCard = (a: Activity) => {
                 const isBusy = updatingId === a.id;
-                const planned = calcPlannedProgress(a);
+                const planned = a.plannedProgress ?? 0;
                 const deviation = a.actualProgress - planned;
                 const delayInfo = calcActivityDelay(a);
                 const editable = canEditActivity(a);

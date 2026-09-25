@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { reportsTable, activitiesTable } from "@workspace/db";
+import { reportsTable, activitiesTable, projectsTable } from "@workspace/db";
 import { eq, and, or, desc, sql, gte, lte, isNull, isNotNull } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectManager } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
-import { calcActivityPlannedProgress, roundPercent } from "../lib/progress";
+import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
+import { resolveLinkedActivityProgress } from "../lib/external-sources";
 
 type ImageGroup = { category: string; urls: string[] };
 
@@ -15,6 +16,10 @@ type SnapshotRow = {
   plannedEndDate?: string | null;
   actualStartDate?: string | null;
   actualEndDate?: string | null;
+  externalSourceGroupId?: number | null;
+  actualRecordedAt?: string;
+  plannedAsOfDate?: string;
+  plannedHistoricalUnverified?: boolean;
   plannedProgress?: number;
   actualProgress?: number;
   weight?: number;
@@ -43,7 +48,7 @@ function calcWeightedProgress(rows: SnapshotRow[]): number {
     totalWeight += w;
     weightedSum += (r.actualProgress ?? 0) * w;
   }
-  return totalWeight > 0 ? roundPercent(weightedSum / totalWeight) : 0;
+  return totalWeight > 0 ? weightedSum / totalWeight : 0;
 }
 
 /**
@@ -67,7 +72,8 @@ function mergeSnapshot(
     if (!Number.isFinite(idNum)) continue;
     const patch: Partial<SnapshotRow> = {};
     if (r.actualProgress !== undefined) {
-      patch.actualProgress = roundPercent(clampPercent(r.actualProgress));
+      patch.actualProgress = clampPercent(r.actualProgress);
+      patch.actualRecordedAt = new Date().toISOString();
     }
     if (typeof r.status === "string" && ALLOWED_ACTIVITY_STATUSES.has(r.status)) {
       patch.status = r.status;
@@ -372,6 +378,7 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), re
     recommendations: reportsTable.recommendations,
     imageUrls: reportsTable.imageUrls,
     imageGroups: reportsTable.imageGroups,
+    historicalSnapshotAvailable: sql<boolean>`${reportsTable.activitiesSnapshot} IS NOT NULL`,
     status: reportsTable.status,
     approvedAt: reportsTable.approvedAt,
     approvedById: reportsTable.approvedById,
@@ -417,19 +424,37 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
   const currentActivities = await db.select().from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId))
     .orderBy(activitiesTable.sortOrder);
+  const [schedule] = await db.select({
+    noSchedule: projectsTable.noSchedule,
+    startDate: projectsTable.startDate,
+    expectedEndDate: projectsTable.expectedEndDate,
+  }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  const hasSchedule = schedule?.noSchedule !== true
+    && hasValidProjectSchedule(schedule?.startDate, schedule?.expectedEndDate);
 
-  const snapshot = currentActivities.map(a => ({
+  // Planned progress is a historical value: calculate it at the report's
+  // date, not at the date on which the report happens to be entered.
+  const reportAsOf = new Date(`${reportDate}T00:00:00.000Z`);
+  const resolvedActivities = await resolveLinkedActivityProgress(currentActivities, reportAsOf);
+  const actualRecordedAt = new Date().toISOString();
+  const snapshot = resolvedActivities.map(a => ({
     id: a.id,
     name: a.name,
     plannedStartDate: a.plannedStartDate,
     plannedEndDate: a.plannedEndDate,
     actualStartDate: a.actualStartDate,
     actualEndDate: a.actualEndDate,
-    plannedProgress: roundPercent(calcActivityPlannedProgress({
-      plannedStartDate: a.plannedStartDate,
-      plannedEndDate: a.plannedEndDate,
-    })),
-    actualProgress: roundPercent(a.actualProgress),
+    externalSourceGroupId: a.externalSourceGroupId,
+    plannedProgress: hasSchedule ? clampPercent(a.externalSourceGroupId != null
+      ? a.plannedProgress
+      : calcActivityPlannedProgress({
+          plannedStartDate: a.plannedStartDate,
+          plannedEndDate: a.plannedEndDate,
+        }, reportAsOf)) : 0,
+    plannedAsOfDate: reportDate,
+    plannedHistoricalUnverified: false,
+    actualProgress: clampPercent(a.actualProgress),
+    actualRecordedAt,
     weight: a.weight ?? 1,
     status: a.status,
     sortOrder: a.sortOrder,
@@ -558,7 +583,7 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
   // `progressPercentage` — recompute the report's overall % as a weighted
   // average using each row's stored `weight`. The project's master
   // `activities` table is never touched by this path.
-  if (body.activitiesSnapshot !== undefined) {
+  if (body.activitiesSnapshot !== undefined || body.reportDate !== undefined) {
     const [current] = await db.select({ snapshot: reportsTable.activitiesSnapshot })
       .from(reportsTable)
       .where(and(eq(reportsTable.id, id), eq(reportsTable.projectId, projectId)));
@@ -567,10 +592,30 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
       return;
     }
     const existing = (current.snapshot ?? null) as SnapshotRow[] | null;
-    const merged = mergeSnapshot(existing, body.activitiesSnapshot);
+    const merged = body.activitiesSnapshot !== undefined
+      ? mergeSnapshot(existing, body.activitiesSnapshot)
+      : existing;
     if (merged) {
-      updateData.activitiesSnapshot = merged;
-      if (body.progressPercentage === undefined) {
+      updateData.activitiesSnapshot = body.reportDate !== undefined
+        ? merged.map(row => {
+            if (row.externalSourceGroupId != null) {
+              return {
+                ...row,
+                plannedHistoricalUnverified: row.plannedAsOfDate !== body.reportDate,
+              };
+            }
+            return {
+              ...row,
+              plannedProgress: calcActivityPlannedProgress({
+                plannedStartDate: row.plannedStartDate ?? null,
+                plannedEndDate: row.plannedEndDate ?? null,
+              }, new Date(`${body.reportDate}T00:00:00.000Z`)),
+              plannedAsOfDate: body.reportDate,
+              plannedHistoricalUnverified: false,
+            };
+          })
+        : merged;
+      if (body.activitiesSnapshot !== undefined && body.progressPercentage === undefined) {
         updateData.progressPercentage = calcWeightedProgress(merged);
       }
     }

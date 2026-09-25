@@ -13,6 +13,12 @@ import {
   topologicalSourceGroupOrder,
   wouldCreateDependencyCycle,
 } from "../artifacts/api-server/src/lib/activity-source-rules.ts";
+import {
+  calcActivityPlannedProgress,
+  calcActualProgressForProject,
+  calcPlannedProgressForProject,
+  calcSPI,
+} from "../artifacts/api-server/src/lib/progress.ts";
 
 test("source search matches code prefixes case-insensitively and favors code suggestions", () => {
   const codeSuggestion = { groupId: 1, name: "Foundation", linkCode: "alpha-east" };
@@ -46,6 +52,133 @@ test("source summary uses weighted progress and earliest/latest child dates", ()
   assert.equal(summary.actualProgress, 65);
   assert.equal(summary.plannedStartDate, "2026-04-01");
   assert.equal(summary.plannedEndDate, "2026-04-18");
+});
+
+test("planned and actual project progress use the same weighted raw activities", () => {
+  const asOf = new Date("2026-05-04T23:59:00Z");
+  const activities = [
+    {
+      actualProgress: 60,
+      weight: 3,
+      plannedStartDate: "2026-05-01",
+      plannedEndDate: "2026-05-03",
+    },
+    {
+      actualProgress: 0,
+      weight: 1,
+      plannedStartDate: "2026-05-05",
+      plannedEndDate: "2026-05-10",
+    },
+  ];
+  assert.equal(calcActivityPlannedProgress(activities[0], asOf), 100);
+  const planned = calcPlannedProgressForProject(activities, 0, 0, asOf);
+  const actual = calcActualProgressForProject(activities);
+  assert.equal(planned, 75);
+  assert.equal(actual, 45);
+  assert.equal(calcSPI(planned, actual), 0.6);
+  assert.equal(calcSPI(0, actual), null);
+});
+
+test("generated activity uses its resolved source plan instead of its date envelope", () => {
+  const asOf = new Date("2026-05-04T12:00:00Z");
+  const generated = {
+    externalSourceGroupId: 17,
+    plannedProgress: 25,
+    actualProgress: 25,
+    weight: 2,
+    plannedStartDate: "2026-05-01",
+    plannedEndDate: "2026-05-11",
+  };
+
+  assert.equal(calcActivityPlannedProgress(generated, asOf), 25);
+  assert.equal(calcPlannedProgressForProject([generated], 0, 0, asOf), 25);
+});
+
+test("source group planned progress uses weighted child curves, not its date envelope", () => {
+  const asOf = new Date("2026-05-04T12:00:00Z");
+  const children = [
+    {
+      actualProgress: 0,
+      weight: 1,
+      plannedStartDate: "2026-05-04",
+      plannedEndDate: "2026-05-11",
+    },
+    {
+      actualProgress: 50,
+      weight: 1,
+      plannedStartDate: "2026-05-01",
+      plannedEndDate: "2026-05-07",
+    },
+  ].map(child => ({
+    ...child,
+    plannedProgress: calcActivityPlannedProgress(child, asOf),
+  }));
+  const summary = summarizeSourceChildren(children, {
+    groupId: 17,
+    projectId: 3,
+    projectName: "Source",
+    groupName: "Concrete",
+    linkCode: "concrete",
+  });
+
+  assert.equal(summary.actualProgress, 25);
+  assert.equal(summary.plannedProgress, 25);
+  assert.equal(calcActivityPlannedProgress(summary, asOf), 30);
+  assert.deepEqual(linkedActivityValues(summary, summary.plannedProgress), {
+    actualProgress: 25,
+    plannedStartDate: "2026-05-01",
+    plannedEndDate: "2026-05-11",
+    plannedProgress: 25,
+  });
+});
+
+test("source-group child weighting preserves the selected S-curve", () => {
+  const asOf = new Date("2026-05-04T12:00:00Z");
+  const children = [
+    {
+      actualProgress: 0,
+      weight: 1,
+      plannedStartDate: "2026-05-01",
+      plannedEndDate: "2026-05-13",
+    },
+    {
+      actualProgress: 0,
+      weight: 1,
+      plannedStartDate: "2026-05-05",
+      plannedEndDate: "2026-05-10",
+    },
+  ];
+  const summarizeAtCurve = curve => summarizeSourceChildren(children.map(child => ({
+    ...child,
+    plannedProgress: calcActivityPlannedProgress(child, asOf, curve),
+  })), {
+    groupId: 19,
+    projectId: 3,
+    projectName: "Source",
+    groupName: "S-curve group",
+    linkCode: null,
+  });
+
+  const linear = summarizeAtCurve("linear");
+  const scurve = summarizeAtCurve("scurve");
+  assert.equal(linear.plannedProgress, 12.5);
+  assert.ok(scurve.plannedProgress > 0);
+  assert.ok(scurve.plannedProgress < linear.plannedProgress);
+});
+
+test("source summaries retain raw weighted progress before higher-level aggregation", () => {
+  const summary = summarizeSourceChildren([
+    { actualProgress: 10.14, plannedProgress: 10.14, weight: 1, plannedStartDate: null, plannedEndDate: null },
+    { actualProgress: 20.15, plannedProgress: 20.15, weight: 1, plannedStartDate: null, plannedEndDate: null },
+  ], {
+    groupId: 18,
+    projectId: 3,
+    projectName: "Source",
+    groupName: "Electrical",
+    linkCode: null,
+  });
+  assert.ok(Math.abs(summary.actualProgress - 15.145) < 1e-10);
+  assert.ok(Math.abs(summary.plannedProgress - 15.145) < 1e-10);
 });
 
 test("stable-ID links remain available across rename/recode or code removal", () => {

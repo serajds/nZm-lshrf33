@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
 import { deleteProjectUnderSourceGraphLock, withSourceGraphLock } from "../lib/external-sources";
 import { normalizeProjectLinkCode } from "../lib/activity-source-rules";
+import { resolveLinkedActivityProgress } from "../lib/external-sources";
 import {
   calcActivityPlannedProgress,
   calcActualProgressForProject,
@@ -17,6 +18,9 @@ import {
   calcOverrunDays,
   isActivityDelayed,
   roundPercent,
+  hasValidProjectSchedule,
+  utcDay,
+  utcDayDifference,
 } from "../lib/progress";
 
 const router: IRouter = Router();
@@ -559,9 +563,11 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
     const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
     if (!project) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
 
-    const activities = await db.select().from(activitiesTable)
+    const today = utcDay(new Date());
+    const rawActivities = await db.select().from(activitiesTable)
       .where(eq(activitiesTable.projectId, projectId))
       .orderBy(activitiesTable.sortOrder);
+    const activities = await resolveLinkedActivityProgress(rawActivities, today);
 
     const reportsCountResult = await db.select({ count: sql<number>`count(*)` }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
     const reportsCount = reportsCountResult[0]?.count ?? 0;
@@ -575,26 +581,27 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
     const [suspensions] = await Promise.all([
       db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId)),
     ]);
-    const today = new Date();
-    const hasSchedule = project.noSchedule !== true && !!project.startDate && !!project.expectedEndDate;
-    const startDate = new Date(project.startDate ?? today);
-    const endDate = new Date(project.expectedEndDate ?? today);
-    const totalDays = hasSchedule ? Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000)) : 0;
-    const daysElapsed = hasSchedule ? Math.max(0, Math.ceil((today.getTime() - startDate.getTime()) / 86400000)) : 0;
-    const plannedProgress = hasSchedule
-      ? roundPercent(calcPlannedProgressForProject(activities, daysElapsed, totalDays, today))
+    const hasSchedule = project.noSchedule !== true && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
+    const startDate = hasSchedule ? new Date(project.startDate!) : today;
+    const endDate = hasSchedule ? new Date(project.expectedEndDate!) : today;
+    const totalDays = hasSchedule ? Math.max(1, utcDayDifference(endDate, startDate)) : 0;
+    const daysElapsed = hasSchedule ? Math.max(0, utcDayDifference(today, startDate)) : 0;
+    const plannedRaw = hasSchedule
+      ? calcPlannedProgressForProject(activities, daysElapsed, totalDays, today)
       : 0;
-    const actualProgress = activities.length > 0
-      ? roundPercent(calcActualProgressForProject(activities))
-      : roundPercent(project.overallProgress);
-    const progressDeviation = roundPercent(actualProgress - plannedProgress);
-    const grossDelayDays = hasSchedule ? calcDelayDays(plannedProgress, actualProgress, totalDays) : 0;
+    const actualRaw = activities.length > 0
+      ? calcActualProgressForProject(activities)
+      : (project.overallProgress ?? 0);
+    const plannedProgress = roundPercent(plannedRaw);
+    const actualProgress = roundPercent(actualRaw);
+    const progressDeviation = roundPercent(hasSchedule ? actualRaw - plannedRaw : 0);
+    const grossDelayDays = hasSchedule ? calcDelayDays(plannedRaw, actualRaw, totalDays) : 0;
     const suspensionDays = suspensions.reduce((sum, item) => sum + (item.type !== "contractor_delay" ? item.calendarDays : 0), 0);
     const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
-    const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualProgress) : 0;
-    const spi = hasSchedule ? calcSPI(plannedProgress, actualProgress) : null;
+    const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualRaw) : 0;
+    const spi = hasSchedule ? calcSPI(plannedRaw, actualRaw) : null;
     const forecastCompletion = hasSchedule
-      ? calcForecastCompletionDate(startDate, endDate, today, plannedProgress, actualProgress)
+      ? calcForecastCompletionDate(startDate, endDate, today, plannedRaw, actualRaw)
       : null;
     const forecastCompletionDate = forecastCompletion ? forecastCompletion.toISOString().slice(0, 10) : null;
     const forecastDelayDays = forecastCompletion && project.expectedEndDate
@@ -605,8 +612,8 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
       name: a.name,
       status: a.status,
       actualProgress: roundPercent(a.actualProgress),
-      plannedProgress: roundPercent(calcActivityPlannedProgress(a, today)),
-      variance: roundPercent(a.actualProgress - calcActivityPlannedProgress(a, today)),
+      plannedProgress: roundPercent(hasSchedule ? calcActivityPlannedProgress(a, today) : 0),
+      variance: roundPercent(hasSchedule ? a.actualProgress - calcActivityPlannedProgress(a, today) : 0),
       plannedStartDate: a.plannedStartDate,
       plannedEndDate: a.plannedEndDate,
       actualEndDate: a.actualEndDate,
@@ -614,7 +621,7 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
     });
     const exceptionActivities = activities
       .filter(activity => {
-        const planned = calcActivityPlannedProgress(activity, today);
+        const planned = hasSchedule ? calcActivityPlannedProgress(activity, today) : 0;
         const variance = activity.actualProgress - planned;
         return isActivityDelayed(activity, today, !hasSchedule) || variance <= -5;
       })
@@ -622,8 +629,8 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
         const aDelayed = isActivityDelayed(a, today, !hasSchedule);
         const bDelayed = isActivityDelayed(b, today, !hasSchedule);
         if (aDelayed !== bDelayed) return Number(bDelayed) - Number(aDelayed);
-        const aVariance = a.actualProgress - calcActivityPlannedProgress(a, today);
-        const bVariance = b.actualProgress - calcActivityPlannedProgress(b, today);
+        const aVariance = a.actualProgress - (hasSchedule ? calcActivityPlannedProgress(a, today) : 0);
+        const bVariance = b.actualProgress - (hasSchedule ? calcActivityPlannedProgress(b, today) : 0);
         return aVariance - bVariance;
       });
     // تُرسل جميع البنود المتأخرة، بينما تُرسل البنود غير المتأخرة فقط إذا كانت فجوتها >= 5 نقاط.

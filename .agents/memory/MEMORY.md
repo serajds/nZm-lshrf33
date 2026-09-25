@@ -10,3 +10,4 @@
 - [Development database schema drift](dev-db-schema-drift.md) — broad Drizzle push may stop on unrelated populated-table constraints; apply reviewed feature migration narrowly and verify.
 - [Current-role authorization](current-role-authorization.md) — a valid JWT can outlive an admin demotion; authorization and rolling renewal must use the database role, not stale claims.
 - [Browser testing across artifacts](browser-testing-across-artifacts.md) — use the proxied domain for API requests; Radix menu triggers need real pointer events in CDP.
+- [Historical report provenance](historical-report-provenance.md) — backdated actuals copied from today's activities are unverified at the report date; do not infer historical SPI from them.

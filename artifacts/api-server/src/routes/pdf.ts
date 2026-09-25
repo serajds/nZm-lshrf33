@@ -3,7 +3,8 @@ import { db } from "@workspace/db";
 import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable, projectSuspensionsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
-import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcActivityPlannedProgress, isActivityDelayed, roundPercent } from "../lib/progress";
+import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcActivityPlannedProgress, calcSPI, hasValidProjectSchedule, isActivityDelayed, roundPercent, utcDay, utcDayDifference } from "../lib/progress";
+import { resolveLinkedActivityProgress } from "../lib/external-sources";
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
@@ -53,7 +54,9 @@ const router: IRouter = Router();
 // ─────────────────────────────────────────────
 function formatDate(d: string | Date | null | undefined): string {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("ar-SA-u-nu-latn", { year: "numeric", month: "2-digit", day: "2-digit" });
+  const date = new Date(d);
+  if (!Number.isFinite(date.getTime())) return "—";
+  return date.toLocaleDateString("ar-SA-u-nu-latn", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
 function statusLabel(s: string) {
@@ -91,6 +94,49 @@ function ensurePage(doc: InstanceType<typeof PDFDocument>, neededHeight: number)
   return doc.y;
 }
 
+type ReportSnapshotRow = {
+  name?: string;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  plannedProgress?: number;
+  actualProgress?: number;
+  externalSourceGroupId?: number | null;
+  actualRecordedAt?: string;
+  plannedAsOfDate?: string;
+  plannedHistoricalUnverified?: boolean;
+  weight?: number;
+  status?: string;
+};
+
+function snapshotProgress(rows: ReportSnapshotRow[], field: "plannedProgress" | "actualProgress"): number {
+  let totalWeight = 0;
+  let weightedProgress = 0;
+  for (const row of rows) {
+    const weight = typeof row.weight === "number" && row.weight > 0 ? row.weight : 1;
+    const value = typeof row[field] === "number" && Number.isFinite(row[field]) ? row[field]! : 0;
+    totalWeight += weight;
+    weightedProgress += value * weight;
+  }
+  return totalWeight > 0 ? weightedProgress / totalWeight : 0;
+}
+
+function snapshotActualIsHistoricallyUnverified(
+  reportDate: string | Date,
+  createdAt: string | Date | null | undefined,
+  rows: ReportSnapshotRow[],
+): boolean {
+  const reportDay = utcDay(reportDate).getTime();
+  if (!Number.isFinite(reportDay)) return true;
+  if (rows.length === 0) return false;
+  return rows.some(row => {
+    if (typeof row.actualProgress !== "number" || !Number.isFinite(row.actualProgress)) return true;
+    const recordedAt = row.actualRecordedAt ?? createdAt;
+    if (!recordedAt) return true;
+    const recordedDay = utcDay(recordedAt).getTime();
+    return !Number.isFinite(recordedDay) || reportDay < recordedDay;
+  });
+}
+
 // ─────────────────────────────────────────────
 // Route
 // ─────────────────────────────────────────────
@@ -123,9 +169,11 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     return;
   }
 
-  const activities = await db.select().from(activitiesTable)
+  const activityRows = await db.select().from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId))
     .orderBy(activitiesTable.sortOrder);
+  const currentAsOf = new Date();
+  const activities = await resolveLinkedActivityProgress(activityRows, currentAsOf);
 
   const extensions = await db.select().from(projectExtensionsTable)
     .where(eq(projectExtensionsTable.projectId, projectId))
@@ -186,16 +234,18 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
   doc.text(project.name, MARGIN + 10, y + 10, { width: CONTENT_W - 20, align: "center" });
   y += 52;
 
-  const isNoSchedule = project.noSchedule === true;
+  const hasSchedule = project.noSchedule !== true
+    && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
+  const isNoSchedule = !hasSchedule;
 
   const infoItems: [string, string | null][] = [
     ["الجهة المالكة", project.ownerEntity],
     ["المقاول المنفذ", project.contractor],
     ["الجهة المشرفة", project.supervisorEntity],
     ["موقع المشروع", project.location],
-    ...(project.startDate ? [["تاريخ البداية", formatDate(project.startDate)] as [string, string]] : []),
-    ...(!isNoSchedule && project.expectedEndDate ? [["التاريخ المتوقع للإنهاء", formatDate(project.expectedEndDate)] as [string, string]] : []),
-    ...(isNoSchedule ? [["حالة الجدول الزمني", "بدون جدول زمني معتمد"] as [string, string]] : []),
+    ...(hasSchedule ? [["تاريخ البداية", formatDate(project.startDate)] as [string, string]] : []),
+    ...(hasSchedule ? [["التاريخ المتوقع للإنهاء", formatDate(project.expectedEndDate)] as [string, string]] : []),
+    ...(!hasSchedule ? [["حالة الجدول الزمني", project.noSchedule === true ? "بدون جدول زمني معتمد" : "الجدول الزمني غير مكتمل أو غير صالح"] as [string, string]] : []),
   ];
 
   const colW = (CONTENT_W - 8) / 2;
@@ -236,15 +286,20 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     doc.text(`${overall}%`, MARGIN + CONTENT_W - 75, barY1 - 1, { width: 70, align: "right" });
 
     setFont(8, C.textMuted);
-    doc.text("مشروع بدون جدول زمني معتمد — لا يُحسب التأخير", MARGIN + 8, y + 44, { width: CONTENT_W - 16, align: "right" });
+    doc.text(
+      project.noSchedule === true
+        ? "مشروع بدون جدول زمني معتمد — لا يُحسب المخطط أو التأخير"
+        : "الجدول الزمني غير مكتمل أو غير صالح — لا يُحسب المخطط أو التأخير",
+      MARGIN + 8,
+      y + 44,
+      { width: CONTENT_W - 16, align: "right" },
+    );
 
     y += 70;
   } else {
-    const today = new Date();
-    const start = new Date(project.startDate!);
-    const end = new Date(project.expectedEndDate!);
-    const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
-    const elapsed = Math.max(0, Math.ceil((today.getTime() - start.getTime()) / 86400000));
+    const today = currentAsOf;
+    const totalDays = Math.max(1, utcDayDifference(project.expectedEndDate!, project.startDate!));
+    const elapsed = Math.max(0, utcDayDifference(today, project.startDate!));
     const planned = roundPercent(calcPlannedProgressForProject(activities, elapsed, totalDays));
     const deviation = roundPercent(overall - planned);
     const delayDays = calcDelayDays(planned, overall, totalDays);
@@ -315,7 +370,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     doc.addPage();
     if (hasFont) doc.font("Amiri");
     y = MARGIN;
-    y = drawSectionHeader(doc, "جدول بنود الأعمال والإنجاز", y);
+    y = drawSectionHeader(doc, "بيانات المشروع الحالية — جدول بنود الأعمال والإنجاز", y);
 
     const today = new Date();
 
@@ -455,10 +510,95 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
       doc.roundedRect(MARGIN, y, CONTENT_W, 32, 4).fill(C.light).stroke(C.border);
       setFont(8, C.textMuted);
       doc.text("نسبة الإنجاز المُبلَّغ عنها في هذه الفترة", MARGIN + 8, y + 6, { width: CONTENT_W - 100, align: "right" });
-      drawProgressBar(doc, MARGIN + 8, y + 20, CONTENT_W - 100, 8, report.progressPercentage ?? 0, typeColor);
+      const displayedReportedProgress = roundPercent(report.progressPercentage ?? 0);
+      drawProgressBar(doc, MARGIN + 8, y + 20, CONTENT_W - 100, 8, displayedReportedProgress, typeColor);
       setFont(14, typeColor);
-      doc.text(`${report.progressPercentage ?? 0}%`, MARGIN + CONTENT_W - 88, y + 8, { width: 80, align: "center" });
+      doc.text(`${displayedReportedProgress}%`, MARGIN + CONTENT_W - 88, y + 8, { width: 80, align: "center" });
       y += 42;
+
+      const reportSnapshot = Array.isArray(report.activitiesSnapshot)
+        ? report.activitiesSnapshot as ReportSnapshotRow[]
+        : [];
+      if (!Array.isArray(report.activitiesSnapshot)) {
+        y = ensurePage(doc, 34);
+        doc.roundedRect(MARGIN, y, CONTENT_W, 28, 4).fill("#fff7ed").stroke(C.warning);
+        setFont(9, "#9a3412");
+        doc.text(
+          "بيانات التقدم التاريخية غير متاحة لهذا التقرير القديم (لا توجد لقطة أنشطة محفوظة). لا تمثل بيانات المشروع الحالية حالة التقرير السابقة.",
+          MARGIN + 8,
+          y + 7,
+          { width: CONTENT_W - 16, align: "right" },
+        );
+        y += 36;
+      } else {
+        const rawHistoricalPlanned = snapshotProgress(reportSnapshot, "plannedProgress");
+        const rawHistoricalActual = snapshotProgress(reportSnapshot, "actualProgress");
+        const plannedUnverified = reportSnapshot.some(row => row.plannedHistoricalUnverified === true);
+        const actualUnverified = snapshotActualIsHistoricallyUnverified(
+          report.reportDate,
+          report.createdAt,
+          reportSnapshot,
+        );
+        const plannedUnavailable = !hasSchedule || plannedUnverified;
+        const historicalSpi = actualUnverified || plannedUnavailable
+          ? null
+          : calcSPI(rawHistoricalPlanned, rawHistoricalActual);
+        const displayedPlanned = roundPercent(rawHistoricalPlanned);
+        const displayedActual = roundPercent(rawHistoricalActual);
+        y = ensurePage(doc, 45);
+        y = drawSectionHeader(doc, `لقطة الأنشطة المحفوظة للتقرير (${formatDate(report.reportDate)})`, y);
+        setFont(9, C.textDark);
+        doc.text(
+          `${!hasSchedule ? "المخطط الموزون: غير متاح (لا يوجد جدول صالح)" : plannedUnverified ? "المخطط الموزون: غير موثق لتاريخ التقرير" : `المخطط الموزون: ${displayedPlanned}%`}    الفعلي المسجل عند الإنشاء: ${displayedActual}%    SPI: ${historicalSpi == null ? (!hasSchedule ? "غير متاح" : actualUnverified || plannedUnverified ? "غير موثق تاريخياً" : "غير متاح (المخطط صفر)") : historicalSpi}`,
+          MARGIN + 4,
+          y,
+          { width: CONTENT_W - 8, align: "right" },
+        );
+        y += 18;
+        if (actualUnverified) {
+          y = ensurePage(doc, 30);
+          doc.roundedRect(MARGIN, y, CONTENT_W, 24, 4).fill("#fff7ed").stroke(C.warning);
+          setFont(8, "#9a3412");
+          doc.text(
+            "القيم الفعلية أدناه مسجلة وقت إنشاء التقرير، ولا يمكن توثيقها كإنجاز فعلي في تاريخ تقرير أسبق.",
+            MARGIN + 8,
+            y + 6,
+            { width: CONTENT_W - 16, align: "right" },
+          );
+          y += 30;
+        }
+        if (plannedUnverified && hasSchedule) {
+          y = ensurePage(doc, 30);
+          doc.roundedRect(MARGIN, y, CONTENT_W, 24, 4).fill("#fff7ed").stroke(C.warning);
+          setFont(8, "#9a3412");
+          doc.text(
+            "تغيّر تاريخ التقرير بعد حفظ خطة بند مرتبط؛ الخطة المحفوظة تخص التاريخ الأصلي ولا يمكن إعادة بنائها تاريخياً.",
+            MARGIN + 8,
+            y + 6,
+            { width: CONTENT_W - 16, align: "right" },
+          );
+          y += 30;
+        }
+        for (const [activityIndex, activity] of reportSnapshot.entries()) {
+          y = ensurePage(doc, 18);
+          const actual = roundPercent(typeof activity.actualProgress === "number" ? activity.actualProgress : 0);
+          const planned = roundPercent(typeof activity.plannedProgress === "number" ? activity.plannedProgress : 0);
+          const plannedText = !hasSchedule
+            ? "غير متاح"
+            : plannedUnverified && activity.plannedHistoricalUnverified
+              ? `${planned}% (الخطة المحفوظة بتاريخ ${formatDate(activity.plannedAsOfDate)})`
+              : `${planned}%`;
+          setFont(8, C.textDark);
+          doc.text(
+            `${activity.name ?? "بند"} — مخطط ${plannedText}، فعلي ${actual}%، الحالة: ${statusLabel(activity.status ?? "not_started")}`,
+            MARGIN + 6,
+            y,
+            { width: CONTENT_W - 12, align: "right" },
+          );
+          y += 14;
+        }
+        y += 4;
+      }
 
       // Work description
       if (report.workDescription) {
@@ -568,7 +708,7 @@ router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("proj
     setFont(8, C.textMuted);
     doc.text("التاريخ الأصلي للإنهاء", MARGIN + 8, y + 8, { width: 120, align: "right" });
     setFont(9, C.textDark);
-    doc.text(project.expectedEndDate ? formatDate(project.expectedEndDate) : "—", MARGIN + 8, y + 20, { width: 120, align: "right" });
+    doc.text(hasSchedule ? formatDate(project.expectedEndDate) : "—", MARGIN + 8, y + 20, { width: 120, align: "right" });
 
     setFont(8, C.textMuted);
     doc.text("إجمالي أيام التمديد", MARGIN + 140, y + 8, { width: 100, align: "right" });
