@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, activityGroupsTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, usersTable, formSubmissionsTable, formTemplatesTable, projectSuspensionsTable } from "@workspace/db";
+import { projectsTable, activitiesTable, activityGroupsTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, formSubmissionsTable, formTemplatesTable, projectSuspensionsTable } from "@workspace/db";
 import { eq, ilike, or, sql, inArray, and } from "drizzle-orm";
 import { requireAuth, requireEngineerOrAdmin, requireProjectAccess, requireAdmin } from "../middlewares/auth";
 import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
-import { deleteProjectUnderSourceGraphLock } from "../lib/external-sources";
+import { deleteProjectUnderSourceGraphLock, withSourceGraphLock } from "../lib/external-sources";
+import { normalizeProjectLinkCode } from "../lib/activity-source-rules";
 import {
   calcActivityPlannedProgress,
   calcActualProgressForProject,
@@ -27,11 +28,7 @@ router.get("/projects", requireAuth, async (req, res): Promise<void> => {
   const search = typeof rawSearch === "string" && rawSearch !== "null" && rawSearch !== "" ? rawSearch : undefined;
   const userId = req.user?.userId;
 
-  let actualRole = req.user?.role;
-  if (userId) {
-    const [dbUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, userId));
-    if (dbUser) actualRole = dbUser.role;
-  }
+  const actualRole = req.user?.role;
 
   let projectIds: number[] | null = null;
 
@@ -184,7 +181,12 @@ router.get("/projects/:id", requireProjectAccess("id"), async (req, res): Promis
     return;
   }
 
-  res.json(project);
+  if (req.user?.role === "admin") {
+    res.json(project);
+  } else {
+    const { linkCode: _linkCode, ...publicProject } = project;
+    res.json(publicProject);
+  }
 });
 
 router.get("/projects/:id/company-logos", requireProjectAccess("id"), async (req, res): Promise<void> => {
@@ -221,6 +223,11 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
   const body = req.body;
   const canManageProject = req.user?.role === "admin" || req.projectRole === "project_manager";
 
+  if (body.linkCode !== undefined && req.user?.role !== "admin") {
+    res.status(403).json({ error: "يجب أن تكون مدير النظام لإدارة رمز ربط المشروع" });
+    return;
+  }
+
   // Keep report presentation settings protected server-side even if another
   // project field gains broader edit permissions later.
   if (body.reportDisplayMode !== undefined && !canManageProject) {
@@ -234,6 +241,18 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
   }
 
   const updateData: Record<string, unknown> = {};
+  if (body.linkCode !== undefined) {
+    if (body.linkCode === null || (typeof body.linkCode === "string" && body.linkCode.trim() === "")) {
+      updateData.linkCode = null;
+    } else {
+      const normalizedCode = normalizeProjectLinkCode(body.linkCode);
+      if (!normalizedCode) {
+        res.status(400).json({ error: "رمز ربط المشروع يجب أن يحتوي على 12 إلى 32 حرفًا إنجليزيًا أو رقمًا أو شرطة" });
+        return;
+      }
+      updateData.linkCode = normalizedCode;
+    }
+  }
   const parseCompanyId = (val: unknown) => val && val !== "none" && !isNaN(Number(val)) ? parseInt(String(val), 10) : null;
   const isTogglingNoSchedule = body.noSchedule !== undefined;
   const willBeNoSchedule = isTogglingNoSchedule
@@ -326,16 +345,37 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
     return;
   }
 
-  const [project] = await db.update(projectsTable).set(updateData).where(eq(projectsTable.id, id)).returning();
+  let project: typeof projectsTable.$inferSelect | undefined;
+  try {
+    const updateProject = () => db.update(projectsTable).set(updateData).where(eq(projectsTable.id, id)).returning();
+    [project] = body.linkCode !== undefined
+      ? await withSourceGraphLock(updateProject)
+      : await updateProject();
+  } catch (error) {
+    const code = (error as { code?: string; cause?: { code?: string } })?.code
+      ?? (error as { cause?: { code?: string } })?.cause?.code;
+    if (code === "23505" && body.linkCode !== undefined) {
+      res.status(409).json({ error: "رمز ربط المشروع مستخدم بالفعل" });
+      return;
+    }
+    throw error;
+  }
   if (!project) {
     res.status(404).json({ error: "المشروع غير موجود" });
     return;
   }
 
   const { logAudit } = await import("../lib/audit");
-  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "update", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name, details: updateData });
+  const auditDetails = { ...updateData };
+  delete auditDetails.linkCode;
+  logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "update", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name, details: auditDetails });
 
-  res.json(project);
+  if (req.user?.role === "admin") {
+    res.json(project);
+  } else {
+    const { linkCode: _linkCode, ...publicProject } = project;
+    res.json(publicProject);
+  }
 });
 
 router.delete("/projects/:id", requireAdmin, async (req, res): Promise<void> => {

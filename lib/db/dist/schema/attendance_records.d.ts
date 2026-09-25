@@ -314,12 +314,12 @@ export declare const attendanceRecordsTable: import("drizzle-orm/pg-core").PgTab
 }>;
 export declare const insertAttendanceRecordSchema: z.ZodObject<{
     projectId: z.ZodInt;
+    notes: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     type: z.ZodEnum<{
         check_in: "check_in";
         check_out: "check_out";
     }>;
     userId: z.ZodInt;
-    notes: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     recordedAt: z.ZodOptional<z.ZodDate>;
     latitude: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     longitude: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;

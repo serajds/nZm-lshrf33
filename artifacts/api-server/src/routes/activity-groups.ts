@@ -1,14 +1,40 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { activityGroupsTable, projectsTable } from "@workspace/db";
-import { eq, and, asc, ilike } from "drizzle-orm";
+import { eq, and, asc, ilike, sql } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { canReadProject, createActivityGroupUnderSourceGraphLock, getGroupSummary, normalizeLinkCode, reconcileGroupToSideProject, reconcileTargetsLinkedToProject, refreshLinkedSources } from "../lib/external-sources";
+import { normalizeProjectLinkCode } from "../lib/activity-source-rules";
 import { groupMatchesSourceQuery, resolveSourceSuggestions } from "../lib/activity-source-rules";
 import { deleteEmptyActivityGroup } from "../lib/delete-empty-activity-group";
 
 const router: IRouter = Router();
+const linkAttempts = new Map<number, { startedAt: number; count: number }>();
+const LINK_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const LINK_ATTEMPT_LIMIT = 12;
+
+function publicGroup(group: typeof activityGroupsTable.$inferSelect) {
+  const { linkedProjectId, ...safeGroup } = group;
+  return { ...safeGroup, linkedProjectActive: linkedProjectId !== null };
+}
+
+function allowLinkAttempt(userId: number): boolean {
+  const now = Date.now();
+  const current = linkAttempts.get(userId);
+  if (!current || now - current.startedAt >= LINK_ATTEMPT_WINDOW_MS) {
+    linkAttempts.set(userId, { startedAt: now, count: 1 });
+    if (linkAttempts.size > 10_000) {
+      for (const [id, attempt] of linkAttempts) {
+        if (now - attempt.startedAt >= LINK_ATTEMPT_WINDOW_MS) linkAttempts.delete(id);
+      }
+    }
+    return true;
+  }
+  if (current.count >= LINK_ATTEMPT_LIMIT) return false;
+  current.count++;
+  return true;
+}
 
 router.get("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
@@ -16,7 +42,7 @@ router.get("/projects/:projectId/activity-groups", requireProjectAccess("project
     .from(activityGroupsTable)
     .where(eq(activityGroupsTable.projectId, projectId))
     .orderBy(asc(activityGroupsTable.sortOrder));
-  res.json(groups);
+  res.json(groups.map(publicGroup));
 });
 
 router.get("/projects/:projectId/activity-groups/search", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
@@ -90,7 +116,7 @@ router.post("/projects/:projectId/activity-groups", requireProjectAccess("projec
     return;
   }
   await reconcileTargetsLinkedToProject(projectId);
-  res.status(201).json(group);
+  res.status(201).json(publicGroup(group));
 });
 
 router.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
@@ -152,15 +178,23 @@ router.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("pro
   // still useful for returning current source metadata to consumers.
   await reconcileTargetsLinkedToProject(projectId);
   await refreshLinkedSources([id]);
-  res.json(updated);
+  res.json(publicGroup(updated));
 });
 
 router.put("/projects/:projectId/activity-groups/:id/linked-project", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
   const projectId = Number(req.params.projectId);
   const id = Number(req.params.id);
-  const sourceProjectId = req.body?.sourceProjectId;
-  if (sourceProjectId !== null && (!Number.isInteger(sourceProjectId) || sourceProjectId <= 0)) {
-    res.status(400).json({ error: "معرف مشروع المصدر غير صالح" });
+  if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "sourceProjectId")) {
+    res.status(400).json({ error: "استخدم رمز ربط المشروع بدلًا من معرفه" });
+    return;
+  }
+  const sourceProjectCode = req.body?.sourceProjectCode;
+  if (sourceProjectCode !== null && typeof sourceProjectCode !== "string") {
+    res.status(400).json({ error: "رمز ربط المشروع غير صالح" });
+    return;
+  }
+  if (!allowLinkAttempt(req.user!.userId)) {
+    res.status(429).json({ error: "تعذر إتمام الطلب؛ حاول مجددًا بعد قليل" });
     return;
   }
   const [targetGroup] = await db.select().from(activityGroupsTable)
@@ -169,23 +203,24 @@ router.put("/projects/:projectId/activity-groups/:id/linked-project", requirePro
     res.status(404).json({ error: "المجموعة غير موجودة" });
     return;
   }
-  if (sourceProjectId !== null) {
-    if (sourceProjectId === projectId) {
-      res.status(400).json({ error: "لا يمكن ربط مجموعة بمشروعها نفسه" });
+  let sourceProjectId: number | null = null;
+  let expectedSourceProjectCode: string | undefined;
+  if (sourceProjectCode !== null) {
+    const normalizedCode = normalizeProjectLinkCode(sourceProjectCode);
+    if (!normalizedCode) {
+      res.status(400).json({ error: "رمز ربط المشروع غير صالح" });
       return;
     }
-    // A project need not have groups to be attachable, so verify it directly.
-    const [exists] = await db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.id, sourceProjectId));
-    if (!exists) {
-      res.status(404).json({ error: "مشروع المصدر غير موجود" });
+    expectedSourceProjectCode = normalizedCode;
+    const [sourceProject] = await db.select({ id: projectsTable.id }).from(projectsTable)
+      .where(sql`upper(btrim(${projectsTable.linkCode})) = ${normalizedCode}`);
+    if (!sourceProject) {
+      res.status(404).json({ error: "تعذر العثور على مشروع برمز الربط المحدد" });
       return;
     }
-    if (!(await canReadProject((req as any).user?.userId, sourceProjectId))) {
-      res.status(403).json({ error: "ليس لديك صلاحية الوصول إلى مشروع المصدر" });
-      return;
-    }
+    sourceProjectId = sourceProject.id;
   }
-  const result = await reconcileGroupToSideProject(id, sourceProjectId);
+  const result = await reconcileGroupToSideProject(id, sourceProjectId, true, undefined, expectedSourceProjectCode);
   if (result.conflict === "managed_rows_remain" || result.conflict === "manual_duplicate") {
     res.status(409).json({ error: result.conflict === "managed_rows_remain"
       ? "توجد بنود مُدارة من المشروع السابق؛ افصلها أو أزلها قبل ربط مشروع آخر"
@@ -196,11 +231,15 @@ router.put("/projects/:projectId/activity-groups/:id/linked-project", requirePro
     res.status(400).json({ error: "هذا الربط ينشئ اعتمادًا دائريًا بين المشاريع" });
     return;
   }
-  if (result.conflict === "source_missing") {
-    res.status(404).json({ error: "مشروع المصدر غير موجود" });
+  if (result.conflict === "source_missing" || result.conflict === "code_changed") {
+    res.status(404).json({ error: "تعذر العثور على مشروع برمز الربط المحدد" });
     return;
   }
-  res.json({ group: result.group, created: result.created, updated: result.updated, unavailable: result.unavailable });
+  if (!result.group) {
+    res.status(404).json({ error: "المجموعة غير موجودة" });
+    return;
+  }
+  res.json({ group: publicGroup(result.group), created: result.created, updated: result.updated, unavailable: result.unavailable });
 });
 
 router.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
@@ -216,12 +255,6 @@ router.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAcces
     res.status(409).json({ error: "المجموعة غير مرتبطة بمشروع جانبي" });
     return;
   }
-  const [sourceProject] = await db.select({ id: projectsTable.id }).from(projectsTable)
-    .where(eq(projectsTable.id, group.linkedProjectId));
-  if (sourceProject && !(await canReadProject((req as any).user?.userId, group.linkedProjectId))) {
-    res.status(403).json({ error: "ليس لديك صلاحية الوصول إلى مشروع المصدر" });
-    return;
-  }
   const result = await reconcileGroupToSideProject(id, group.linkedProjectId, true, group.linkedProjectId);
   if (result.conflict === "cycle") {
     res.status(400).json({ error: "هذا الربط ينشئ اعتمادًا دائريًا بين المشاريع" });
@@ -231,7 +264,7 @@ router.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAcces
     res.status(409).json({ error: "تم تغيير ارتباط المجموعة بالتزامن؛ أعد تحميلها ثم حاول مجددًا" });
     return;
   }
-  res.json({ group: result.group, created: result.created, updated: result.updated, unavailable: result.unavailable });
+  res.json({ group: result.group ? publicGroup(result.group) : undefined, created: result.created, updated: result.updated, unavailable: result.unavailable });
 });
 
 router.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {

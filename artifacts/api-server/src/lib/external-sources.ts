@@ -7,6 +7,7 @@ import {
   currentRoleCanReadProject,
   linkedActivityValues,
   normalizeLinkCode,
+  normalizeProjectLinkCode,
   summarizeSourceChildren,
   topologicalSourceGroupOrder,
   wouldCreateDependencyCycle,
@@ -111,6 +112,7 @@ export async function reconcileGroupToSideProject(
   sourceProjectId: number | null,
   propagate = true,
   expectedCurrentSourceProjectId?: number,
+  expectedSourceProjectCode?: string,
 ): Promise<{ group: typeof activityGroupsTable.$inferSelect | undefined; created: number; updated: number; unavailable: number; conflict?: string }> {
   let result: { group: typeof activityGroupsTable.$inferSelect | undefined; created: number; updated: number; unavailable: number; conflict?: string };
   const propagatedGroupIds = new Set<number>();
@@ -128,8 +130,6 @@ export async function reconcileGroupToSideProject(
       return { group, created: 0, updated: 0, unavailable: 0 };
     }
 
-    const sourceGroups = await tx.select().from(activityGroupsTable)
-      .where(eq(activityGroupsTable.projectId, sourceProjectId));
     if (targetGroup.linkedProjectId != null && targetGroup.linkedProjectId !== sourceProjectId && managed.length) {
       return { group: targetGroup, created: 0, updated: 0, unavailable: 0, conflict: "managed_rows_remain" };
     }
@@ -146,6 +146,15 @@ export async function reconcileGroupToSideProject(
       unavailable: managed.length,
       conflict: "source_missing",
     };
+    if (expectedSourceProjectCode !== undefined) {
+      const [sourceWithCode] = await tx.select({ linkCode: projectsTable.linkCode }).from(projectsTable)
+        .where(eq(projectsTable.id, sourceProjectId));
+      if (normalizeProjectLinkCode(sourceWithCode?.linkCode) !== expectedSourceProjectCode) {
+        return { group: targetGroup, created: 0, updated: 0, unavailable: 0, conflict: "code_changed" };
+      }
+    }
+    const sourceGroups = await tx.select().from(activityGroupsTable)
+      .where(eq(activityGroupsTable.projectId, sourceProjectId));
     if (await wouldCreateSourceCycle(targetGroup.projectId, sourceProjectId)) {
       return { group: targetGroup, created: 0, updated: 0, unavailable: 0, conflict: "cycle" };
     }

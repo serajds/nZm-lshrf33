@@ -241,6 +241,23 @@ export declare const projectsTable: import("drizzle-orm/pg-core").PgTableWithCol
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
+        linkCode: import("drizzle-orm/pg-core").PgColumn<{
+            name: "link_code";
+            tableName: "projects";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
         ownerCompanyId: import("drizzle-orm/pg-core").PgColumn<{
             name: "owner_company_id";
             tableName: "projects";
@@ -495,11 +512,11 @@ export declare const projectsTable: import("drizzle-orm/pg-core").PgTableWithCol
     dialect: "pg";
 }>;
 export declare const insertProjectSchema: z.ZodObject<{
-    contractor: z.ZodString;
     name: z.ZodString;
     location: z.ZodString;
     ownerEntity: z.ZodString;
     supervisorEntity: z.ZodString;
+    contractor: z.ZodString;
     noSchedule: z.ZodOptional<z.ZodBoolean>;
     startDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     expectedEndDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -513,6 +530,7 @@ export declare const insertProjectSchema: z.ZodObject<{
     overallProgress: z.ZodOptional<z.ZodNumber>;
     ownerAccessToken: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     ownerAccessPassword: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    linkCode: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     ownerCompanyId: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     contractorCompanyId: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     supervisorCompanyId: z.ZodOptional<z.ZodNullable<z.ZodInt>>;

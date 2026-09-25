@@ -1,4 +1,5 @@
-import { pgTable, text, serial, timestamp, real, date, integer, boolean, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, date, integer, boolean, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -17,6 +18,7 @@ export const projectsTable = pgTable("projects", {
   overallProgress: real("overall_progress").notNull().default(0),
   ownerAccessToken: text("owner_access_token"),
   ownerAccessPassword: text("owner_access_password"),
+  linkCode: text("link_code"),
   ownerCompanyId: integer("owner_company_id"),
   contractorCompanyId: integer("contractor_company_id"),
   supervisorCompanyId: integer("supervisor_company_id"),
@@ -37,6 +39,7 @@ export const projectsTable = pgTable("projects", {
   index("projects_supervisor_company_idx").on(t.supervisorCompanyId),
   index("projects_owner_token_idx").on(t.ownerAccessToken),
   index("projects_status_idx").on(t.status),
+  uniqueIndex("projects_link_code_normalized_unique").on(sql`upper(btrim(${t.linkCode}))`),
 ]);
 
 export const insertProjectSchema = createInsertSchema(projectsTable).omit({ id: true, createdAt: true, updatedAt: true });

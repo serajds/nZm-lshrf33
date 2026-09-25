@@ -61,7 +61,7 @@ export declare const projectMembersTable: import("drizzle-orm/pg-core").PgTableW
             tableName: "project_members";
             dataType: "string";
             columnType: "PgText";
-            data: "project_manager" | "engineer" | "contractor" | "viewer";
+            data: "contractor" | "project_manager" | "engineer" | "viewer";
             driverParam: string;
             notNull: true;
             hasDefault: true;
@@ -113,13 +113,13 @@ export declare const projectMembersTable: import("drizzle-orm/pg-core").PgTableW
     dialect: "pg";
 }>;
 export declare const insertProjectMemberSchema: z.ZodObject<{
+    projectId: z.ZodInt;
     role: z.ZodOptional<z.ZodEnum<{
+        contractor: "contractor";
         project_manager: "project_manager";
         engineer: "engineer";
-        contractor: "contractor";
         viewer: "viewer";
     }>>;
-    projectId: z.ZodInt;
     userId: z.ZodInt;
     tabPermissions: z.ZodOptional<z.ZodNullable<z.ZodType<import("drizzle-zod").Json, unknown, z.core.$ZodTypeInternals<import("drizzle-zod").Json, unknown>>>>;
 }, {

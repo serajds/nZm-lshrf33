@@ -130,9 +130,10 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     }
   }
 
-  const { ownerAccessPassword: _, ...safeProject } = project;
+  const { ownerAccessPassword: _, linkCode: _linkCode, ...safeProject } = project;
+  const safeActivities = activities.map(({ externalSourceGroupId: _sourceGroupId, managedSourceProjectId: _sourceProjectId, ...activity }) => activity);
 
-  return { project: safeProject, activities, reports, extensions, suspensions, summary, companyLogos };
+  return { project: safeProject, activities: safeActivities, reports, extensions, suspensions, summary, companyLogos };
 }
 
 router.get("/owner/access/:token", async (req, res): Promise<void> => {
