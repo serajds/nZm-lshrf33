@@ -329,7 +329,15 @@ router.delete("/projects/:id/form-submissions/:submissionId", requireProjectAcce
     return;
   }
 
-  await db.delete(formSubmissionsTable).where(eq(formSubmissionsTable.id, submissionId));
+  if (!isOwner && !isManagerOrAdmin) {
+    res.status(403).json({ error: "لا يمكنك حذف هذه التعبئة" });
+    return;
+  }
+
+  await db.delete(formSubmissionsTable).where(and(
+    eq(formSubmissionsTable.id, submissionId),
+    eq(formSubmissionsTable.projectId, projectId),
+  ));
   res.sendStatus(204);
 });
 
@@ -395,7 +403,7 @@ router.get("/projects/:id/daily-gaps", requireProjectAccess("id"), async (req, r
   res.json(gaps);
 });
 
-router.post("/projects/:id/skip-day", requireProjectAccess("id"), rejectContractor, rejectViewer, async (req, res): Promise<void> => {
+router.post("/projects/:id/skip-day", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
   if (isContractor) {

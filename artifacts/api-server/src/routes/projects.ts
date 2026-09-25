@@ -105,7 +105,6 @@ router.get("/projects", requireAuth, async (req, res): Promise<void> => {
     actualEndDate: projectsTable.actualEndDate,
     status: projectsTable.status,
     overallProgress: projectsTable.overallProgress,
-    ownerAccessToken: projectsTable.ownerAccessToken,
     ownerCompanyId: projectsTable.ownerCompanyId,
     contractorCompanyId: projectsTable.contractorCompanyId,
     supervisorCompanyId: projectsTable.supervisorCompanyId,
@@ -186,10 +185,16 @@ router.get("/projects/:id", requireProjectAccess("id"), async (req, res): Promis
   }
 
   if (req.user?.role === "admin") {
-    res.json(project);
+    const { ownerAccessPassword: _ownerAccessPassword, ...safeProject } = project;
+    res.json(safeProject);
   } else {
-    const { linkCode: _linkCode, ...publicProject } = project;
-    res.json(publicProject);
+    const { linkCode: _linkCode, ownerAccessPassword: _ownerAccessPassword, ...publicProject } = project;
+    if (req.projectRole === "project_manager") {
+      res.json(publicProject);
+    } else {
+      const { ownerAccessToken: _ownerAccessToken, ...safeProject } = publicProject;
+      res.json(safeProject);
+    }
   }
 });
 
@@ -375,10 +380,16 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "update", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name, details: auditDetails });
 
   if (req.user?.role === "admin") {
-    res.json(project);
+    const { ownerAccessPassword: _ownerAccessPassword, ...safeProject } = project;
+    res.json(safeProject);
   } else {
-    const { linkCode: _linkCode, ...publicProject } = project;
-    res.json(publicProject);
+    const { linkCode: _linkCode, ownerAccessPassword: _ownerAccessPassword, ...publicProject } = project;
+    if (req.projectRole === "project_manager") {
+      res.json(publicProject);
+    } else {
+      const { ownerAccessToken: _ownerAccessToken, ...safeProject } = publicProject;
+      res.json(safeProject);
+    }
   }
 });
 

@@ -280,3 +280,38 @@ export function requireProjectManager(paramName: string = "projectId") {
     });
   };
 }
+
+export async function canViewAttendancePhoto(
+  userId: number,
+  userRole: string,
+  recordUserId: number,
+  projectId: number,
+): Promise<boolean> {
+  if (userId === recordUserId || userRole === "admin") return true;
+  if (userRole === "contractor") return false;
+
+  const [[membership], [project]] = await Promise.all([
+    db.select({ role: projectMembersTable.role })
+      .from(projectMembersTable)
+      .where(and(
+        eq(projectMembersTable.projectId, projectId),
+        eq(projectMembersTable.userId, userId),
+      )),
+    db.select({ contractorCompanyId: projectsTable.contractorCompanyId })
+      .from(projectsTable)
+      .where(eq(projectsTable.id, projectId)),
+  ]);
+  if (membership?.role !== "project_manager") return false;
+
+  if (project?.contractorCompanyId != null) {
+    const [companyLink] = await db.select({ companyId: userCompaniesTable.companyId })
+      .from(userCompaniesTable)
+      .where(and(
+        eq(userCompaniesTable.userId, userId),
+        eq(userCompaniesTable.companyId, project.contractorCompanyId),
+      ));
+    if (companyLink) return false;
+  }
+
+  return true;
+}

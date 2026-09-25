@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { db } from "@workspace/db";
 import { attendanceRecordsTable, projectsTable, usersTable, projectMembersTable, userCompaniesTable } from "@workspace/db";
 import { eq, and, desc, gte, lte, inArray, sql } from "drizzle-orm";
-import { requireAuth, requireProjectAccess, verifyAndMaybeRenewToken } from "../middlewares/auth";
+import { canViewAttendancePhoto, requireAuth, requireProjectAccess, verifyAndMaybeRenewToken } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { haversineDistanceMeters } from "../lib/geo";
 import { logAudit } from "../lib/audit";
@@ -1108,17 +1108,12 @@ router.get("/attendance/records/:recordId/photo", async (req: Request, res: Resp
     return;
   }
 
-  // ACL: own record OR admin OR project_manager of this project
-  let allowed = payload.userId === record.userId || payload.role === "admin";
-  if (!allowed) {
-    const [member] = await db.select({ role: projectMembersTable.role })
-      .from(projectMembersTable)
-      .where(and(
-        eq(projectMembersTable.projectId, record.projectId),
-        eq(projectMembersTable.userId, payload.userId),
-      ));
-    if (member?.role === "project_manager") allowed = true;
-  }
+  const allowed = await canViewAttendancePhoto(
+    payload.userId,
+    payload.role,
+    record.userId,
+    record.projectId,
+  );
   if (!allowed) {
     res.status(403).json({ error: "ليس لديك صلاحية لعرض هذه الصورة" });
     return;
