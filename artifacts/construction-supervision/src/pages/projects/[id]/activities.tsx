@@ -75,7 +75,7 @@ import {
   CheckCircle2, Clock, AlertTriangle, PlayCircle, 
   TrendingUp, TrendingDown, Minus, Timer, ListChecks, CalendarCheck, CalendarX, Hourglass,
   Upload, Download, FileSpreadsheet, GripVertical, FolderPlus, Palette, X, Loader2,
-  Search, LayoutList, GanttChart, SlidersHorizontal
+  Search, LayoutList, GanttChart, SlidersHorizontal, Link2
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -1245,7 +1245,7 @@ export default function ProjectActivities() {
                     <span className="text-xs font-semibold text-muted-foreground">فهرس المجموعات</span>
                     <span className="text-[11px] text-muted-foreground">{groups.length} مجموعات</span>
                   </div>
-                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap" role="group" aria-label="فهرس مجموعات بنود الأعمال">
+                  <div className="flex min-w-0 flex-col gap-1.5" role="group" aria-label="فهرس مجموعات بنود الأعمال">
                     <Button
                       type="button"
                       size="sm"
@@ -1259,38 +1259,42 @@ export default function ProjectActivities() {
                     </Button>
                     {!groupsError && groups.slice().sort((a, b) => a.sortOrder - b.sortOrder).map((group) => {
                       const isSelected = groupFilter === group.id;
+                      const itemCount = groupCounts.counts.get(group.id) ?? 0;
+                      const unavailableCount = unavailableByGroup.get(group.id) ?? 0;
                       return (
-                        <div key={group.id} className="flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-muted/20 p-2 sm:flex-row sm:flex-wrap sm:items-center">
+                        <div key={group.id} className={`flex min-h-14 min-w-0 items-center gap-1 rounded-lg border px-1.5 py-1 transition-colors ${isSelected ? "border-primary/50 bg-primary/5" : "border-border bg-background"}`}>
                           <Button
                             type="button"
                             size="sm"
-                            variant={isSelected ? "default" : "outline"}
+                            variant="ghost"
                             aria-pressed={isSelected}
-                            className="min-h-10 min-w-0 max-w-full justify-start gap-1.5 px-2 text-xs"
+                            aria-label={`عرض مجموعة ${group.name}، ${itemCount} بند`}
+                            title={group.name}
+                            className="h-auto min-h-11 min-w-0 flex-1 justify-start gap-2 overflow-hidden px-2 py-1 text-right hover:bg-muted/50"
                             onClick={() => setGroupFilter(group.id)}
                           >
-                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: group.color }} />
-                            <span className="min-w-0 max-w-[12rem] truncate">{group.name}</span>
-                            <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{groupCounts.counts.get(group.id) ?? 0}</span>
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} />
+                            <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 overflow-hidden">
+                              <span className="w-full truncate text-xs font-semibold sm:text-sm">{group.name}</span>
+                              <span className="flex max-w-full items-center gap-1.5 overflow-hidden text-[10px] font-normal text-muted-foreground">
+                                {group.linkedProjectActive ? <><Link2 className="h-3 w-3 shrink-0" /><span className="shrink-0">مشروع مرتبط</span></> : <span className="shrink-0">مجموعة عادية</span>}
+                                {unavailableCount > 0 && <span className="flex min-w-0 items-center gap-1 truncate text-amber-700 dark:text-amber-400" title={`${unavailableCount} مصدر غير متاح؛ القيم المحفوظة ما زالت ظاهرة`}><AlertTriangle className="h-3 w-3 shrink-0" />{unavailableCount} غير متاح</span>}
+                              </span>
+                            </span>
+                            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground" aria-hidden="true">{itemCount}</span>
                           </Button>
                           {!isViewer && !isContractorBase && (
-                            <>
-                              <ActivityGroupSideProjectSync
-                                currentProjectId={projectId}
-                                group={group}
-                                unavailableCount={unavailableByGroup.get(group.id) ?? 0}
-                                onUpdated={() => {
-                                  queryClient.invalidateQueries({ queryKey: groupsQueryKey });
-                                  invalidate();
-                                }}
-                              />
-                              <Button type="button" size="icon" variant="outline" className="h-10 w-10 shrink-0" title={`تعديل مجموعة ${group.name}`} aria-label={`تعديل مجموعة ${group.name}`} onClick={() => openEditGroupDialog(group)}>
-                                <Edit2 className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button type="button" size="icon" variant="outline" className="h-10 w-10 shrink-0" title={`حذف مجموعة ${group.name}`} aria-label={`حذف مجموعة ${group.name}`} onClick={() => setDeletingGroup(group)}>
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </>
+                            <ActivityGroupSideProjectSync
+                              currentProjectId={projectId}
+                              group={group}
+                              itemCount={itemCount}
+                              onEdit={() => openEditGroupDialog(group)}
+                              onDelete={() => setDeletingGroup(group)}
+                              onUpdated={() => {
+                                queryClient.invalidateQueries({ queryKey: groupsQueryKey });
+                                invalidate();
+                              }}
+                            />
                           )}
                         </div>
                       );
@@ -1301,7 +1305,7 @@ export default function ProjectActivities() {
                         size="sm"
                         variant={groupFilter === "ungrouped" ? "default" : "outline"}
                         aria-pressed={groupFilter === "ungrouped"}
-                        className="h-9 min-w-0 justify-center gap-1.5 px-2 text-xs"
+                        className="min-h-10 min-w-0 justify-center gap-1.5 px-2 text-xs"
                         onClick={() => setGroupFilter("ungrouped")}
                       >
                         بدون مجموعة

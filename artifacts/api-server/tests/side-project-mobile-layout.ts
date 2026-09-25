@@ -152,28 +152,84 @@ async function main() {
       await evaluate('document.querySelector(\'[aria-label="فهرس مجموعات بنود الأعمال"]\')?.scrollIntoView({ block: "center" })');
       await pause(100);
       await check("groups");
-      const click = async (needle: string) => {
-        assert.ok(await evaluate<boolean>(`(() => {
+      const openMenu = async (name: string) => {
+        const trigger = await evaluate<{ x: number; y: number } | null>(`(() => {
           const button = [...document.querySelectorAll("button")].find(element =>
-            (element.getAttribute("aria-label") ?? element.textContent ?? "").includes(${JSON.stringify(needle)}));
-          if (!button) return false;
-          button.click();
-          return true;
-        })()`), `Could not open ${needle}`);
-        await pause(200);
+            element.getAttribute("aria-label") === ${JSON.stringify(`إعدادات مجموعة ${name}`)});
+          if (!button) return null;
+          button.scrollIntoView({ block: "center" });
+          const rect = button.getBoundingClientRect();
+          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        })()`);
+        assert.ok(trigger, `Settings trigger missing for ${name}`);
+        await send("Input.dispatchMouseEvent", { type: "mousePressed", x: trigger.x, y: trigger.y, button: "left", clickCount: 1 });
+        await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: trigger.x, y: trigger.y, button: "left", clickCount: 1 });
+        await pause(160);
+        assert.equal(await evaluate<number>('document.querySelectorAll(\'[role="menu"]\').length'), 1, `Settings menu did not open for ${name}`);
       };
-      await click("ربط مجموعة مجموعة عادية");
-      assert.ok(await evaluate<boolean>('!!document.querySelector(\'[role="dialog"] input\')'), "Link code input missing");
-      assert.equal(await evaluate<number>('document.querySelectorAll(\'[role="dialog"] [role="option"]\').length'), 0, "Project suggestions must not appear");
-      await check("link-dialog");
-      assert.ok(await evaluate<boolean>('(() => { const button = [...document.querySelectorAll(\'[role="dialog"] button\')].find(b => b.textContent?.trim() === "إلغاء"); button?.click(); return !!button; })()'), "Link cancel button missing");
-      await pause(400);
-      assert.equal(await evaluate<number>('document.querySelectorAll(\'[role="dialog"]\').length'), 0, "Link dialog did not close");
-      await click("تعديل مجموعة مجموعة عادية");
-      await check("edit-dialog");
-      assert.ok(await evaluate<boolean>('(() => { const button = [...document.querySelectorAll(\'[role="dialog"] button\')].find(b => b.textContent?.trim() === "إلغاء"); button?.click(); return !!button; })()'), "Edit cancel button missing");
-      await pause(400);
-      assert.equal(await evaluate<number>('document.querySelectorAll(\'[role="dialog"]\').length'), 0, "Edit dialog did not close");
+      const choose = async (text: string) => {
+        assert.ok(await evaluate<boolean>(`(() => {
+          const item = [...document.querySelectorAll('[role="menuitem"]')].find(element => element.textContent?.includes(${JSON.stringify(text)}));
+          if (!item) return false;
+          item.click();
+          return true;
+        })()`), `Missing menu action: ${text}`);
+        await pause(350);
+        assert.equal(await evaluate<number>('document.querySelectorAll(\'[role="menu"]\').length'), 0, `Menu stayed open after ${text}`);
+      };
+      const closeDialog = async () => {
+        assert.ok(await evaluate<boolean>('(() => { const button = [...document.querySelectorAll(\'[role="dialog"] button, [role="alertdialog"] button\')].find(b => b.textContent?.trim() === "إلغاء"); button?.click(); return !!button; })()'), "Cancel button missing");
+        await pause(400);
+        assert.equal(await evaluate<number>('document.querySelectorAll(\'[role="dialog"],[role="alertdialog"]\').length'), 0, "Dialog did not close");
+      };
+      const names = [
+        { name: "مجموعة عادية دون أي ارتباط", linked: false, count: 0, key: "ordinary" },
+        { name: "مجموعة الأعمال المعمارية طويلة الاسم على شاشة الهاتف", linked: true, count: 1, key: "first" },
+        { name: "مجموعة أعمال الموقع والخدمات والبنية التحتية", linked: true, count: 1, key: "second" },
+      ];
+      for (const { name, linked, count, key } of names) {
+        await openMenu(name);
+        await check(`menu-${key}`);
+        if (linked) {
+          assert.ok(await evaluate<boolean>('document.querySelector(\'[role="menu"]\')?.textContent?.includes("مزامنة الآن") ?? false'), "Sync missing from linked menu");
+          assert.ok(await evaluate<boolean>('document.querySelector(\'[role="menu"]\')?.textContent?.includes("فصل المشروع الجانبي") ?? false'), "Disconnect missing from linked menu");
+        }
+        await choose(linked ? "تغيير رمز الربط" : "ربط برمز مشروع");
+        assert.ok(await evaluate<boolean>('!!document.querySelector(\'[role="dialog"] input\')'), "Link code input missing");
+        assert.equal(await evaluate<number>('document.querySelectorAll(\'[role="dialog"] [role="option"]\').length'), 0, "Project suggestions must not appear");
+        await check(`link-dialog-${key}`);
+        await closeDialog();
+        if (linked) {
+          await openMenu(name);
+          await choose("مزامنة الآن");
+          for (let attempt = 0; attempt < 30; attempt++) {
+            if (await evaluate<boolean>('document.body?.innerText?.includes("اكتملت المزامنة") ?? false')) break;
+            await pause(100);
+          }
+          assert.ok(await evaluate<boolean>('document.body?.innerText?.includes("اكتملت المزامنة") ?? false'), "Sync action did not complete");
+          await openMenu(name);
+          await choose("فصل المشروع الجانبي");
+          assert.ok(await evaluate<boolean>('document.querySelector(\'[role="alertdialog"]\')?.textContent?.includes("فصل المشروع الجانبي") ?? false'), "Disconnect confirmation missing");
+          await closeDialog();
+        }
+        await openMenu(name);
+        await choose("تعديل المجموعة");
+        assert.ok(await evaluate<boolean>('!!document.querySelector(\'[role="dialog"]\')'), "Edit dialog did not open");
+        await check(`edit-dialog-${key}`);
+        await closeDialog();
+        await openMenu(name);
+        await choose("حذف المجموعة");
+        assert.ok(await evaluate<boolean>('!!document.querySelector(\'[role="alertdialog"]\')'), "Delete dialog did not open");
+        assert.equal(await evaluate<boolean>('!![...document.querySelectorAll(\'[role="alertdialog"] button\')].find(b => b.textContent?.includes("حذف المجموعة الفارغة"))'), count === 0, "Delete rule broken");
+        if (count > 0) assert.ok(await evaluate<boolean>('document.querySelector(\'[role="alertdialog"]\')?.textContent?.includes("لا يمكن حذف") ?? false'), "Occupied-group reason missing");
+        await check(`delete-dialog-${key}`);
+        await closeDialog();
+        await openMenu(name);
+        await send("Input.dispatchMouseEvent", { type: "mousePressed", x: 5, y: 150, button: "left", clickCount: 1 });
+        await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 5, y: 150, button: "left", clickCount: 1 });
+        await pause(200);
+        assert.equal(await evaluate<number>('document.querySelectorAll(\'[role="menu"]\').length'), 0, "Outside click did not close menu");
+      }
       assert.ok(await evaluate<boolean>('(() => { const button = [...document.querySelectorAll("button")].find(b => b.textContent?.trim() === "جانت"); button?.click(); return !!button; })()'), "Gantt switch missing");
       await pause(180);
       assert.ok(await evaluate<boolean>('!!document.querySelector(\'[aria-label="المخطط الزمني قابل للتمرير أفقياً"]\')'), "Gantt region not rendered");
@@ -182,6 +238,34 @@ async function main() {
       await check("gantt");
       assert.ok(await evaluate<boolean>('(() => { const button = document.querySelector(\'button[title="عرض القائمة"]\'); button?.click(); return !!button; })()'), "List switch missing");
     }
+    await send("Emulation.setDeviceMetricsOverride", {
+      width: 1280, height: 800, deviceScaleFactor: 1, mobile: false,
+    });
+    await pause(400);
+    await evaluate('document.querySelector(\'[aria-label="فهرس مجموعات بنود الأعمال"]\')?.scrollIntoView({ block: "center" })');
+    const desktopMetrics = await evaluate<{ viewport: number; document: number }>('({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth })');
+    assert.ok(desktopMetrics.document <= desktopMetrics.viewport + 2, "Desktop group index has page-level overflow");
+    const desktopScreenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+    await writeFile(join(output, "1280-groups.png"), Buffer.from(desktopScreenshot.data, "base64"));
+    const ordinaryTrigger = await evaluate<{ x: number; y: number }>(`(() => {
+      const button = document.querySelector('button[aria-label="إعدادات مجموعة مجموعة عادية دون أي ارتباط"]');
+      if (!button) throw Error("Empty group settings missing before deletion");
+      button.scrollIntoView({ block: "center" });
+      const rect = button.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: ordinaryTrigger.x, y: ordinaryTrigger.y, button: "left", clickCount: 1 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: ordinaryTrigger.x, y: ordinaryTrigger.y, button: "left", clickCount: 1 });
+    await pause(200);
+    await evaluate('[...document.querySelectorAll(\'[role="menuitem"]\')].find(item => item.textContent?.includes("حذف المجموعة"))?.click()');
+    await pause(300);
+    assert.ok(await evaluate<boolean>('!!document.querySelector(\'[role="alertdialog"]\')'), "Empty-group delete confirmation missing");
+    await evaluate('[...document.querySelectorAll(\'[role="alertdialog"] button\')].find(button => button.textContent?.includes("حذف المجموعة الفارغة"))?.click()');
+    for (let attempt = 0; attempt < 30; attempt++) {
+      if (!await evaluate<boolean>('!!document.querySelector(\'button[aria-label="إعدادات مجموعة مجموعة عادية دون أي ارتباط"]\')')) break;
+      await pause(100);
+    }
+    assert.equal(await evaluate<boolean>('!!document.querySelector(\'button[aria-label="إعدادات مجموعة مجموعة عادية دون أي ارتباط"]\')'), false, "Empty group was not deleted");
     console.log(`Mobile screenshots saved in ${output}`);
   } finally {
     socket?.close();
