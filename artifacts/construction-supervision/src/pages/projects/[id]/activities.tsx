@@ -32,6 +32,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
+import { formatDisplayPercent } from "@/lib/format-display-percent";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -261,11 +262,11 @@ function DelayBadge({ info }: { info: DelayInfo }) {
 function ProgressBar({ value, max = 100, color }: { value: number; max?: number; color: string }) {
   const pct = Math.min(100, (value / max) * 100);
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+    <div className="flex min-w-0 items-center gap-2">
+      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-secondary">
         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
-      <span className="text-xs tabular-nums w-8 text-left">{value}%</span>
+      <span dir="ltr" className="w-12 shrink-0 whitespace-nowrap text-right text-xs tabular-nums">{formatDisplayPercent(value)}</span>
     </div>
   );
 }
@@ -1140,8 +1141,8 @@ export default function ProjectActivities() {
               </div>
             </div>
 
-            <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(260px,0.85fr)_minmax(0,2.15fr)]">
-              <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-4">
+              <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                 <div className="relative">
                   <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -1222,13 +1223,13 @@ export default function ProjectActivities() {
                     <span className="text-xs font-semibold text-muted-foreground">فهرس المجموعات</span>
                     <span className="text-[11px] text-muted-foreground">{groups.length} مجموعات</span>
                   </div>
-                  <div className="flex min-w-0 flex-col gap-1.5" role="group" aria-label="فهرس مجموعات بنود الأعمال">
+                  <div className="grid min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" dir="rtl" role="group" aria-label="فهرس مجموعات بنود الأعمال">
                     <Button
                       type="button"
                       size="sm"
                       variant={groupFilter === "all" ? "default" : "outline"}
                       aria-pressed={groupFilter === "all"}
-                      className="min-h-10 min-w-0 justify-center gap-1.5 px-2 text-xs"
+                      className="min-h-10 h-auto min-w-0 justify-center gap-1.5 px-2 text-xs"
                       onClick={() => setGroupFilter("all")}
                     >
                       كل المجموعات
@@ -1282,7 +1283,7 @@ export default function ProjectActivities() {
                         size="sm"
                         variant={groupFilter === "ungrouped" ? "default" : "outline"}
                         aria-pressed={groupFilter === "ungrouped"}
-                        className="min-h-10 min-w-0 justify-center gap-1.5 px-2 text-xs"
+                        className="min-h-10 h-auto min-w-0 justify-center gap-1.5 px-2 text-xs"
                         onClick={() => setGroupFilter("ungrouped")}
                       >
                         بدون مجموعة
@@ -1478,14 +1479,14 @@ export default function ProjectActivities() {
                                   return (
                                     <div
                                       className="relative h-4 flex items-center justify-end pr-2 gap-1.5"
-                                      title={`نسبة إنجاز ${a.actualProgress}% بدون تواريخ مسجلة`}
+                                      title={`نسبة إنجاز ${formatDisplayPercent(a.actualProgress)} بدون تواريخ مسجلة`}
                                     >
                                       <div
                                         className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0"
                                         style={{ borderTop: "1.5px dashed rgba(148,163,184,0.6)" }}
                                       />
                                       <span className="relative z-10 text-[10px] font-bold text-foreground bg-background px-1.5 rounded border border-amber-300">
-                                        {a.actualProgress}%
+                                        {formatDisplayPercent(a.actualProgress)}
                                       </span>
                                       <span className="relative z-10 text-amber-500 bg-background rounded-full p-0.5">
                                         <AlertTriangle className="w-3 h-3" />
@@ -1575,11 +1576,11 @@ export default function ProjectActivities() {
                                                 backgroundColor: barColor,
                                                 ...(ongoing ? { borderLeft: "3px solid white" } : {}),
                                               }}
-                                              title={`فعلي: ${startLabel} → ${endLabel} (${a.actualProgress}%)`}
+                                               title={`فعلي: ${startLabel} → ${endLabel} (${formatDisplayPercent(a.actualProgress)})`}
                                             >
                                               {w > 8 && (
                                                 <span className="text-[9px] font-bold text-white px-1.5 truncate">
-                                                  {a.actualProgress}%
+                                                   {formatDisplayPercent(a.actualProgress)}
                                                 </span>
                                               )}
                                             </div>
@@ -2091,17 +2092,17 @@ export default function ProjectActivities() {
                     <TableCell className="text-center">
                       <DelayBadge info={delayInfo} />
                     </TableCell>
-                    <TableCell className="w-[160px]">
-                      <div className="space-y-1">
+                    <TableCell className="w-[190px] min-w-[190px]">
+                      <div className="min-w-0 space-y-1">
                         <ProgressBar value={planned} color="hsl(var(--muted-foreground)/0.4)" />
                         <ProgressBar value={a.actualProgress} color="hsl(var(--primary))" />
-                        <div className={`text-xs flex items-center gap-0.5 justify-end ${deviation < 0 ? 'text-destructive' : deviation > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
-                          {deviation < 0 ? <TrendingDown className="h-3 w-3" /> : deviation > 0 ? <TrendingUp className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
-                          {deviation > 0 ? '+' : ''}{deviation}%
+                        <div className={`flex min-w-0 items-center justify-end gap-0.5 whitespace-nowrap text-xs ${deviation < 0 ? 'text-destructive' : deviation > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                          {deviation < 0 ? <TrendingDown className="h-3 w-3 shrink-0" /> : deviation > 0 ? <TrendingUp className="h-3 w-3 shrink-0" /> : <Minus className="h-3 w-3 shrink-0" />}
+                          <bdi dir="ltr" className="tabular-nums">{formatDisplayPercent(deviation, true)}</bdi>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-[130px] whitespace-nowrap">
                       {editable && !managed ? (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -2189,7 +2190,7 @@ export default function ProjectActivities() {
                         <TableHead className="text-right w-[220px]">البند</TableHead>
                         <TableHead className="text-right w-[190px]">الفترة المخططة</TableHead>
                         <TableHead className="text-center w-[140px]">التأخر / التقدم</TableHead>
-                        <TableHead className="text-center w-[160px]">الإنجاز (مخطط/فعلي)</TableHead>
+                        <TableHead className="text-center w-[190px]">الإنجاز (مخطط/فعلي)</TableHead>
                         <TableHead className="text-right w-[130px]">الحالة</TableHead>
                         <TableHead className="text-center w-[110px]">إجراءات</TableHead>
                       </TableRow>
@@ -2237,12 +2238,12 @@ export default function ProjectActivities() {
                                       <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                                       <span className="font-semibold text-sm">{g.name}</span>
                                       <span className="text-xs text-muted-foreground">({groupActs.length} بند)</span>
-                                      <span className="text-xs text-muted-foreground mr-2">{groupProgress}%</span>
+                                       <span className="mr-2 text-xs text-muted-foreground"><bdi dir="ltr">{formatDisplayPercent(groupProgress)}</bdi></span>
                                     </div>
                                   </TableCell>
                                   <TableCell colSpan={2}>
                                     <div className="flex items-center justify-end gap-1">
-                                      <div className="flex-1 max-w-[80px]">
+                                       <div className="min-w-0 flex-1 max-w-[140px]">
                                         <ProgressBar value={groupProgress} color={g.color} />
                                       </div>
                                       {!isViewer && !isContractorBase && (
@@ -2360,11 +2361,11 @@ export default function ProjectActivities() {
                       <DelayBadge info={delayInfo} />
                     </div>
                     <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">مخطط {planned}%</span>
-                        <span className="text-muted-foreground">فعلي {a.actualProgress}%</span>
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+                        <span className="whitespace-nowrap text-muted-foreground">مخطط <bdi dir="ltr" className="tabular-nums">{formatDisplayPercent(planned)}</bdi></span>
+                        <span className="whitespace-nowrap text-muted-foreground">فعلي <bdi dir="ltr" className="tabular-nums">{formatDisplayPercent(a.actualProgress)}</bdi></span>
                         <span className={deviation < 0 ? 'text-destructive font-medium' : deviation > 0 ? 'text-emerald-600 font-medium' : 'text-muted-foreground'}>
-                          {deviation > 0 ? '+' : ''}{deviation}%
+                          <bdi dir="ltr" className="tabular-nums">{formatDisplayPercent(deviation, true)}</bdi>
                         </span>
                       </div>
                       <ProgressBar value={a.actualProgress} color="hsl(var(--primary))" />
@@ -2454,7 +2455,7 @@ export default function ProjectActivities() {
                             <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                             <span className="font-semibold text-sm flex-1 text-right truncate">{g.name}</span>
                             <span className="hidden text-xs text-muted-foreground shrink-0 min-[390px]:inline">{groupActs.length} بند</span>
-                            <span className="text-xs font-medium shrink-0">{groupProgress}%</span>
+                            <span dir="ltr" className="shrink-0 text-xs font-medium tabular-nums">{formatDisplayPercent(groupProgress)}</span>
                           </button>
                         </div>
                         {!isCollapsed && (
