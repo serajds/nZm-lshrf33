@@ -2160,11 +2160,11 @@ export default function ProjectActivities() {
                       <div className="flex items-center justify-center gap-1">
                         {editable ? (
                           <>
-                            {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
-                              <span className="text-xs font-bold text-muted-foreground">-1</span>
+                            {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 5%" onClick={() => quickIncrement(a, -5)} disabled={a.actualProgress === 0}>
+                              <span className="text-xs font-bold text-muted-foreground">-5</span>
                             </Button>}
-                            {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
-                              <span className="text-xs font-bold text-primary">+1</span>
+                            {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 5%" onClick={() => quickIncrement(a, 5)} disabled={a.actualProgress === 100}>
+                              <span className="text-xs font-bold text-primary">+5</span>
                             </Button>}
                             {groups.length > 0 && !managed && (
                               <DropdownMenu>
@@ -2395,11 +2395,11 @@ export default function ProjectActivities() {
                     {editable ? (
                       <div className="flex flex-wrap items-center gap-1 pt-1 border-t">
                         <div className="flex flex-wrap items-center gap-1 mr-auto">
-                          {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="تخفيض الإنجاز 1%" aria-label="تخفيض الإنجاز 1%" onClick={() => quickIncrement(a, -1)} disabled={a.actualProgress === 0}>
-                            <span className="text-xs font-bold text-muted-foreground">-1</span>
+                          {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="تخفيض الإنجاز 5%" aria-label="تخفيض الإنجاز 5%" onClick={() => quickIncrement(a, -5)} disabled={a.actualProgress === 0}>
+                            <span className="text-xs font-bold text-muted-foreground">-5</span>
                           </Button>}
-                          {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="رفع الإنجاز 1%" aria-label="رفع الإنجاز 1%" onClick={() => quickIncrement(a, 1)} disabled={a.actualProgress === 100}>
-                            <span className="text-xs font-bold text-primary">+1</span>
+                          {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="رفع الإنجاز 5%" aria-label="رفع الإنجاز 5%" onClick={() => quickIncrement(a, 5)} disabled={a.actualProgress === 100}>
+                            <span className="text-xs font-bold text-primary">+5</span>
                           </Button>}
                           <Button variant="ghost" size="icon" className="h-10 w-10" aria-label={`تعديل ${a.name}`} onClick={() => handleEdit(a)}>
                             <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
