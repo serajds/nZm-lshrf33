@@ -125436,6 +125436,15 @@ var import_express5 = __toESM(require_express2(), 1);
 init_src();
 init_src();
 init_drizzle_orm();
+
+// src/lib/report-snapshot-selection.ts
+function selectReportSnapshotActivities(activities) {
+  return activities.filter(
+    (activity) => activity.status === "in_progress" || activity.status === "completed"
+  );
+}
+
+// src/routes/reports.ts
 var ALLOWED_ACTIVITY_STATUSES = /* @__PURE__ */ new Set([
   "not_started",
   "in_progress",
@@ -125766,7 +125775,7 @@ router5.post("/projects/:projectId/reports", requireProjectAccess("projectId"), 
   const reportAsOf = /* @__PURE__ */ new Date(`${reportDate}T00:00:00.000Z`);
   const resolvedActivities = await resolveLinkedActivityProgress(currentActivities, reportAsOf);
   const actualRecordedAt = (/* @__PURE__ */ new Date()).toISOString();
-  const snapshot = resolvedActivities.map((a) => ({
+  const snapshot = selectReportSnapshotActivities(resolvedActivities).map((a) => ({
     id: a.id,
     name: a.name,
     plannedStartDate: a.plannedStartDate,

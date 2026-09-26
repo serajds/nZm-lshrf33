@@ -6,6 +6,7 @@ import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectMan
 import { requireTabEdit } from "../middlewares/tab-access";
 import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
+import { selectReportSnapshotActivities } from "../lib/report-snapshot-selection";
 
 type ImageGroup = { category: string; urls: string[] };
 
@@ -437,7 +438,7 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
   const reportAsOf = new Date(`${reportDate}T00:00:00.000Z`);
   const resolvedActivities = await resolveLinkedActivityProgress(currentActivities, reportAsOf);
   const actualRecordedAt = new Date().toISOString();
-  const snapshot = resolvedActivities.map(a => ({
+  const snapshot = selectReportSnapshotActivities(resolvedActivities).map(a => ({
     id: a.id,
     name: a.name,
     plannedStartDate: a.plannedStartDate,
