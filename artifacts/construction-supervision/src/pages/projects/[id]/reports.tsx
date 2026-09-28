@@ -471,7 +471,6 @@ export default function ProjectReports() {
   // overall % is auto-recomputed from the snapshot rows using the
   // weighted-average formula.
   const [manualOverrideProgress, setManualOverrideProgress] = useState(false);
-  const [createManualProgress, setCreateManualProgress] = useState(false);
 
   const { data: project, isLoading: isProjectLoading } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: myPermissions } = useMyProjectPermissions(projectId);
@@ -1017,9 +1016,6 @@ export default function ProjectReports() {
           imageUrls: flatImageUrls,
           imageGroups: groupsForApi,
         };
-        if (!createManualProgress) {
-          delete (createBody as { progressPercentage?: number | null }).progressPercentage;
-        }
         if (aiDraftSnapshotFingerprint.current) {
           (createBody as CreateReportBody & { aiDraftSnapshotFingerprint?: string }).aiDraftSnapshotFingerprint =
             aiDraftSnapshotFingerprint.current;
@@ -1176,14 +1172,14 @@ export default function ProjectReports() {
               setEditingId(null);
               setSnapshotRows([]);
               setManualOverrideProgress(false);
-              setCreateManualProgress(false);
               aiDraftSnapshotFingerprint.current = null;
             }
           }}>
             <DialogTrigger asChild>
               <Button className="gap-2" onClick={() => {
               if (!editingId) {
-                setCreateManualProgress(false);
+                const auto = calcAutoProgress();
+                if (auto !== null) form.setValue("progressPercentage", auto);
 
                 const allReports = reports ?? [];
                 let latestDate: Date | null = null;
@@ -1303,8 +1299,9 @@ export default function ProjectReports() {
                       // snapshot, the overall % is derived from the table
                       // below using the weighted-average formula. The user
                       // can still force a manual value via the override
-                      // toggle. New reports default to the server-computed
-                      // weighted average of the snapshot selected at save.
+                      // toggle. When creating a new report (no editingId)
+                      // we fall back to the existing project-activities
+                      // auto-suggest button.
                       const hasSnapshot = !!editingId && snapshotRows.length > 0;
                       const isDerivedReadOnly = hasSnapshot && !manualOverrideProgress;
                       return (
@@ -1320,16 +1317,7 @@ export default function ProjectReports() {
                                 <Calculator className="h-3.5 w-3.5" />
                                 {manualOverrideProgress ? "العودة للحساب التلقائي" : "تجاوز يدوي"}
                               </button>
-                            ) : !editingId ? (
-                              <button
-                                type="button"
-                                onClick={() => setCreateManualProgress(value => !value)}
-                                className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium bg-primary/8 hover:bg-primary/15 rounded-md px-2.5 py-1 transition-colors border border-primary/20"
-                              >
-                                <Calculator className="h-3.5 w-3.5" />
-                                {createManualProgress ? "العودة للحساب التلقائي" : "تحديد نسبة يدوية"}
-                              </button>
-                            ) : editingId && autoVal !== null && (
+                            ) : autoVal !== null && (
                               <button
                                 type="button"
                                 onClick={() => field.onChange(autoVal)}
@@ -1342,28 +1330,16 @@ export default function ProjectReports() {
                           </div>
                           <FormControl>
                             <div className="relative">
-                              {!editingId && !createManualProgress ? (
-                                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                                  تُحتسب من بنود التقرير عند الحفظ
-                                </div>
-                              ) : (
-                                <Input
+                              <Input
                                 type="number"
                                 min={0}
                                 max={100}
                                 step={0.1}
                                 {...field}
-                                onChange={(event) => {
-                                  field.onChange(event);
-                                  if (!editingId) setCreateManualProgress(true);
-                                }}
                                 disabled={isDerivedReadOnly}
                                 className="pl-8"
-                                />
-                              )}
-                              {(editingId || createManualProgress) && (
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium pointer-events-none">%</span>
-                              )}
+                              />
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium pointer-events-none">%</span>
                             </div>
                           </FormControl>
                           {hasSnapshot ? (
@@ -1371,10 +1347,6 @@ export default function ProjectReports() {
                               {isDerivedReadOnly
                                 ? `محتسب تلقائياً من المتوسط الموزون لبنود التقرير (${snapshotRows.length} بند)`
                                 : "وضع يدوي: لن تتم إعادة حساب النسبة من البنود عند الحفظ"}
-                            </p>
-                          ) : !editingId ? (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              تُحتسب تلقائياً من بنود التقرير المختارة عند الحفظ، ويمكن إدخال قيمة يدوية هنا.
                             </p>
                           ) : autoVal !== null && (
                             <p className="text-xs text-muted-foreground mt-1">

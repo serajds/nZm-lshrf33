@@ -42,7 +42,7 @@ export default function NewReportScreen() {
         workDescription,
         technicalNotes: technicalNotes || null,
         recommendations: recommendations || null,
-        progressPercentage: progress.trim() ? Number(progress) : undefined,
+        progressPercentage: progress.trim() ? Number(progress) : null,
       } as never);
     },
     onSuccess: (r) => {

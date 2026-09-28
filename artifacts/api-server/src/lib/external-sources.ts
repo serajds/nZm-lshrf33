@@ -2,7 +2,7 @@ import { db, pool, activitiesTable, activityGroupsTable, projectsTable, projectE
 import { and, eq, isNotNull, isNull, max, sum } from "drizzle-orm";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { recalcExpectedEndDate } from "./recalc-end-date";
-import { calcActivityPlannedProgress, calcActualProgressForProject, roundPercent, utcDay, type PlannedCurve } from "./progress";
+import { calcActivityPlannedProgress, roundPercent, utcDay, type PlannedCurve } from "./progress";
 import {
   type SourceGroupSummary,
   currentRoleCanReadProject,
@@ -75,14 +75,16 @@ function managedStatus(progress: number): "not_started" | "in_progress" | "compl
 }
 
 async function recalculateProjectInTransaction(tx: any, projectId: number) {
-  const acts = await tx.select({
-    actualProgress: activitiesTable.actualProgress,
-    weight: activitiesTable.weight,
-    plannedStartDate: activitiesTable.plannedStartDate,
-    plannedEndDate: activitiesTable.plannedEndDate,
-  })
+  const acts = await tx.select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight })
     .from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
-  const progress = roundPercent(calcActualProgressForProject(acts));
+  let totalWeight = 0;
+  let weightedProgress = 0;
+  for (const activity of acts as { actualProgress: number; weight: number }[]) {
+    const weight = activity.weight > 0 ? activity.weight : 1;
+    totalWeight += weight;
+    weightedProgress += activity.actualProgress * weight;
+  }
+  const progress = totalWeight ? roundPercent(weightedProgress / totalWeight) : 0;
   await tx.update(projectsTable).set({ overallProgress: progress }).where(eq(projectsTable.id, projectId));
 
   const [project] = await tx.select({ noSchedule: projectsTable.noSchedule })
@@ -477,13 +479,9 @@ export async function refreshLinkedSources(sourceGroupIds: number[]) {
         projects.add(activity.projectId);
       }
       for (const projectId of projects) {
-        const acts = await db.select({
-          actualProgress: activitiesTable.actualProgress,
-          weight: activitiesTable.weight,
-          plannedStartDate: activitiesTable.plannedStartDate,
-          plannedEndDate: activitiesTable.plannedEndDate,
-        }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
-        const progress = roundPercent(calcActualProgressForProject(acts));
+        const acts = await db.select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+        const total = acts.reduce((s, a) => s + (a.weight > 0 ? a.weight : 1), 0);
+        const progress = total ? roundPercent(acts.reduce((s, a) => s + a.actualProgress * (a.weight > 0 ? a.weight : 1), 0) / total) : 0;
         await db.update(projectsTable).set({ overallProgress: progress }).where(eq(projectsTable.id, projectId));
         await recalcExpectedEndDate(projectId);
       }
