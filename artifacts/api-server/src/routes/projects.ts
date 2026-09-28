@@ -127,26 +127,7 @@ router.get("/projects", requireAuth, async (req, res): Promise<void> => {
       )
     : await query.orderBy(projectsTable.createdAt);
 
-  const activities = projects.length > 0
-    ? await db.select().from(activitiesTable).where(
-        inArray(activitiesTable.projectId, projects.map(project => project.id))
-      )
-    : [];
-  const resolvedActivities = await resolveLinkedActivityProgress(activities, utcDay(new Date()));
-  const activitiesByProject = new Map<number, typeof resolvedActivities>();
-  for (const activity of resolvedActivities) {
-    const list = activitiesByProject.get(activity.projectId) ?? [];
-    list.push(activity);
-    activitiesByProject.set(activity.projectId, list);
-  }
-
-  res.json(projects.map(project => {
-    const projectActivities = activitiesByProject.get(project.id) ?? [];
-    const actualProgress = projectActivities.length > 0
-      ? calcActualProgressForProject(projectActivities)
-      : (project.overallProgress ?? 0);
-    return { ...project, overallProgress: roundPercent(actualProgress) };
-  }));
+  res.json(projects);
 });
 
 router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
@@ -203,20 +184,12 @@ router.get("/projects/:id", requireProjectAccess("id"), async (req, res): Promis
     res.status(404).json({ error: "المشروع غير موجود" });
     return;
   }
-  const rawActivities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, id));
-  const activities = await resolveLinkedActivityProgress(rawActivities, utcDay(new Date()));
-  const liveProject = {
-    ...project,
-    overallProgress: activities.length > 0
-      ? roundPercent(calcActualProgressForProject(activities))
-      : (project.overallProgress ?? 0),
-  };
 
   if (req.user?.role === "admin") {
-    const { ownerAccessPassword: _ownerAccessPassword, ...safeProject } = liveProject;
+    const { ownerAccessPassword: _ownerAccessPassword, ...safeProject } = project;
     res.json(safeProject);
   } else {
-    const { linkCode: _linkCode, ownerAccessPassword: _ownerAccessPassword, ...publicProject } = liveProject;
+    const { linkCode: _linkCode, ownerAccessPassword: _ownerAccessPassword, ...publicProject } = project;
     if (req.projectRole === "project_manager") {
       res.json(publicProject);
     } else {

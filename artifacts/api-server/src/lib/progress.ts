@@ -1,4 +1,4 @@
-export interface ActivityLike {
+interface ActivityLike {
   plannedStartDate: string | null;
   plannedEndDate: string | null;
   actualProgress: number;
@@ -8,8 +8,6 @@ export interface ActivityLike {
 }
 
 export type PlannedCurve = "linear" | "scurve";
-/** Stored weight is only interpreted in custom mode; duration is the live default. */
-export type ActivityWeightMode = "duration" | "equal" | "custom";
 
 const MS_PER_DAY = 86400000;
 
@@ -141,49 +139,15 @@ export function calcActivityPlannedProgress(
   return curve === "scurve" ? scurveProgress(fraction) : fraction * 100;
 }
 
-export function effectiveActivityWeight(
-  a: Pick<ActivityLike, "plannedStartDate" | "plannedEndDate" | "weight">,
-  mode: ActivityWeightMode = "duration",
-): number {
-  if (mode === "equal") return 1;
-  if (mode === "custom") {
-    const w = a.weight;
-    return w != null && Number.isFinite(w) && w > 0 ? w : 1;
-  }
-  if (!a.plannedStartDate || !a.plannedEndDate) return 1;
-  const validCalendarDate = (value: string) => {
-    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-    if (!parts) return true; // UTC instants are also accepted by utcDay.
-    const parsed = new Date(value);
-    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-  };
-  if (!validCalendarDate(a.plannedStartDate) || !validCalendarDate(a.plannedEndDate)) return 1;
-  const start = utcDay(a.plannedStartDate).getTime();
-  const end = utcDay(a.plannedEndDate).getTime();
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 1;
-  return Math.max(1, Math.floor((end - start) / MS_PER_DAY) + 1);
-}
-
-/** One weighted average for both live planned and actual group/project totals. */
-export function weightedActivityProgress<T extends Pick<ActivityLike, "plannedStartDate" | "plannedEndDate" | "weight">>(
-  activities: readonly T[],
-  value: (activity: T) => number | null | undefined,
-  mode: ActivityWeightMode = "duration",
-): number {
-  let total = 0;
-  let sum = 0;
-  for (const activity of activities) {
-    const weight = effectiveActivityWeight(activity, mode);
-    const progress = value(activity);
-    sum += (progress != null && Number.isFinite(progress) ? progress : 0) * weight;
-    total += weight;
-  }
-  return total > 0 ? Math.min(100, Math.max(0, sum / total)) : 0;
+function activityWeight(a: ActivityLike): number {
+  const w = a.weight;
+  if (w == null || !Number.isFinite(w) || w <= 0) return 1;
+  return w;
 }
 
 /**
  * Weighted planned progress for the project.
- * Uses inclusive scheduled calendar days as each activity's default weight.
+ * Uses each activity's weight (default 1) so that bigger items dominate the percentage.
  * Falls back to a linear time-based estimate when there are no activities.
  */
 export function calcPlannedProgressForProject(
@@ -192,21 +156,38 @@ export function calcPlannedProgressForProject(
   totalDays: number,
   today: Date = new Date(),
   curve: PlannedCurve = "linear",
-  mode: ActivityWeightMode = "duration",
 ): number {
   if (activities.length === 0) {
     if (totalDays <= 0) return 0;
     return Math.max(0, Math.min(100, (daysElapsed / totalDays) * 100));
   }
 
-  return weightedActivityProgress(activities, a => calcActivityPlannedProgress(a, today, curve), mode);
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const a of activities) {
+    const w = activityWeight(a);
+    weightedSum += calcActivityPlannedProgress(a, today, curve) * w;
+    totalWeight += w;
+  }
+  if (totalWeight <= 0) return 0;
+  return Math.min(100, weightedSum / totalWeight);
 }
 
 /**
  * Weighted actual progress for the project (used for SPI / EVM-style metrics).
  */
-export function calcActualProgressForProject(activities: ActivityLike[], mode: ActivityWeightMode = "duration"): number {
-  return weightedActivityProgress(activities, a => a.actualProgress, mode);
+export function calcActualProgressForProject(activities: ActivityLike[]): number {
+  if (activities.length === 0) return 0;
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const a of activities) {
+    const w = activityWeight(a);
+    const actualProgress = Number.isFinite(a.actualProgress) ? a.actualProgress : 0;
+    weightedSum += actualProgress * w;
+    totalWeight += w;
+  }
+  if (totalWeight <= 0) return 0;
+  return Math.min(100, Math.max(0, weightedSum / totalWeight));
 }
 
 export function calcDelayDays(

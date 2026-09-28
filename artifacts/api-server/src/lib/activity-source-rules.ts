@@ -1,5 +1,3 @@
-import { weightedActivityProgress } from "./progress.ts";
-
 export interface SourceChild {
   actualProgress: number | null;
   weight: number | null;
@@ -104,9 +102,15 @@ export function summarizeSourceChildren(
   children: SourceChild[],
   group: Omit<SourceGroupSummary, "actualProgress" | "plannedProgress" | "plannedStartDate" | "plannedEndDate">,
 ): SourceGroupSummary {
-  const weightedChildren = children.map(child => ({ ...child, weight: child.weight ?? undefined }));
-  const actualProgress = weightedActivityProgress(weightedChildren, child => child.actualProgress);
-  const plannedProgress = weightedActivityProgress(weightedChildren, child => child.plannedProgress);
+  const weight = (child: SourceChild) =>
+    child.weight != null && Number.isFinite(child.weight) && child.weight > 0 ? child.weight : 1;
+  const totalWeight = children.reduce((sum, child) => sum + weight(child), 0);
+  const actualProgress = totalWeight
+    ? children.reduce((sum, child) => sum + (child.actualProgress ?? 0) * weight(child), 0) / totalWeight
+    : 0;
+  const plannedProgress = totalWeight
+    ? children.reduce((sum, child) => sum + (child.plannedProgress ?? 0) * weight(child), 0) / totalWeight
+    : 0;
   const starts = children.map(child => child.plannedStartDate).filter((date): date is string => Boolean(date)).sort();
   const ends = children.map(child => child.plannedEndDate).filter((date): date is string => Boolean(date)).sort();
   return {

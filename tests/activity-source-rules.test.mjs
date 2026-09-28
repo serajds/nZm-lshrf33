@@ -49,7 +49,7 @@ test("source summary uses weighted progress and earliest/latest child dates", ()
     groupName: "Concrete",
     linkCode: "concrete",
   });
-  assert.equal(summary.actualProgress, (20 * 8 + 80 * 18) / 26);
+  assert.equal(summary.actualProgress, 65);
   assert.equal(summary.plannedStartDate, "2026-04-01");
   assert.equal(summary.plannedEndDate, "2026-04-18");
 });
@@ -73,8 +73,8 @@ test("planned and actual project progress use the same weighted raw activities",
   assert.equal(calcActivityPlannedProgress(activities[0], asOf), 100);
   const planned = calcPlannedProgressForProject(activities, 0, 0, asOf);
   const actual = calcActualProgressForProject(activities);
-  assert.equal(planned, 100 * 3 / 9);
-  assert.equal(actual, 60 * 3 / 9);
+  assert.equal(planned, 75);
+  assert.equal(actual, 45);
   assert.equal(calcSPI(planned, actual), 0.6);
   assert.equal(calcSPI(0, actual), null);
 });
@@ -121,14 +121,14 @@ test("source group planned progress uses weighted child curves, not its date env
     linkCode: "concrete",
   });
 
-  assert.equal(summary.actualProgress, 50 * 7 / 15);
-  assert.equal(summary.plannedProgress, 50 * 7 / 15);
+  assert.equal(summary.actualProgress, 25);
+  assert.equal(summary.plannedProgress, 25);
   assert.equal(calcActivityPlannedProgress(summary, asOf), 30);
   assert.deepEqual(linkedActivityValues(summary, summary.plannedProgress), {
-    actualProgress: 50 * 7 / 15,
+    actualProgress: 25,
     plannedStartDate: "2026-05-01",
     plannedEndDate: "2026-05-11",
-    plannedProgress: 50 * 7 / 15,
+    plannedProgress: 25,
   });
 });
 
@@ -161,7 +161,7 @@ test("source-group child weighting preserves the selected S-curve", () => {
 
   const linear = summarizeAtCurve("linear");
   const scurve = summarizeAtCurve("scurve");
-  assert.equal(linear.plannedProgress, (25 * 13) / 19);
+  assert.equal(linear.plannedProgress, 12.5);
   assert.ok(scurve.plannedProgress > 0);
   assert.ok(scurve.plannedProgress < linear.plannedProgress);
 });
