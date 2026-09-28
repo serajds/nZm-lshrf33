@@ -5,7 +5,7 @@ import { eq, and, avg, max } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
-import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
+import { calcActivityPlannedProgress, calcActualProgressForProject, hasValidProjectSchedule, roundPercent } from "../lib/progress";
 import { canReadProject, getGroupSummary, hasLinkedGroupSourceDuplicate, reconcileTargetsLinkedToProject, refreshLinkedSources, withSourceGraphLock, wouldCreateSourceCycle } from "../lib/external-sources";
 import { linkedSourceIdAfterPatch, sourceIsAvailable } from "../lib/activity-source-rules";
 import multer from "multer";
@@ -60,20 +60,16 @@ function isValidActualProgress(value: unknown): value is number {
 
 async function syncProjectProgress(projectId: number) {
   const acts = await db
-    .select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight })
+    .select({
+      actualProgress: activitiesTable.actualProgress,
+      weight: activitiesTable.weight,
+      plannedStartDate: activitiesTable.plannedStartDate,
+      plannedEndDate: activitiesTable.plannedEndDate,
+    })
     .from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId));
 
-  let totalWeight = 0;
-  let weightedSum = 0;
-  for (const a of acts) {
-    const w = a.weight && a.weight > 0 ? a.weight : 1;
-    totalWeight += w;
-    weightedSum += (a.actualProgress ?? 0) * w;
-  }
-  const computed = totalWeight > 0
-    ? roundPercent(weightedSum / totalWeight)
-    : 0;
+  const computed = roundPercent(calcActualProgressForProject(acts));
 
   await db
     .update(projectsTable)
