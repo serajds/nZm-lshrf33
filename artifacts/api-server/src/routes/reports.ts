@@ -8,6 +8,7 @@ import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } fr
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
 import { selectReportSnapshotActivities } from "../lib/report-snapshot-selection";
 import { buildReportAiContext, reportAiSnapshotFingerprint } from "../lib/report-ai-context";
+import { buildReportAiPrompt, reportEditorInstruction } from "../lib/report-ai-prompt";
 
 type ImageGroup = { category: string; urls: string[] };
 
@@ -257,22 +258,10 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
           .join("\n")
       : null;
 
-    const prompt = `صغ نصاً هندسياً موجزاً لهذا التقرير تحديداً عن الفترة من ${periodStart} إلى ${periodEnd}، وتاريخ التقرير ${reportDate}.
-مصدر البنود الوحيد هو لقطة التقرير ${reportId != null ? "المحفوظة" : "المحسوبة قبل إنشاء التقرير بنفس قواعد الحفظ"}؛ لا تستخدم بنود المشروع الحالية خارجها.
-جميع بنود اللقطة (${snapshotContext.length})، حللها كلها قبل الكتابة:
-${JSON.stringify(snapshotContext)}
-اسم المجموعة إن توفر مستمد من تعريفها الحالي وليس دليلاً على اسمها التاريخي. القيمة المخططة غير المتحقق منها تاريخياً لا تصلح لإثبات انحراف أو تأخير. الإنجاز المسجل بعد تاريخ التقرير ليس دليلاً على إنجاز في ذلك التاريخ؛ اعرضه كقيمة محفوظة مع بيان حدود التاريخية، ولا تنسبه إلى الفترة دون سند.
-${imageGroupsSummary ? `\nأقسام الصور المرفقة في التقرير:\n${imageGroupsSummary}` : ""}
-${technicalNotes ? `\nملاحظات فنية أولية من المشرف:\n${technicalNotes}` : ""}
-${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendations}` : ""}
-
-المطلوب نص هندسي عربي احترافي وموجز، لا سرد آلي بنداً بنداً. أبرز الإنجازات والتأخيرات والمخاطر والانحرافات المثبتة فقط. ممنوع اختراع أعمال أو نسب أو تواريخ أو أسباب تأخير؛ إذا لم يسجل السبب فقل إنه غير مسجل. ميّز صراحة بين الحقيقة الرقمية والاستنتاج.
-1. workDescription: سرد تحليلي للأعمال التي تدعمها لقطة التقرير، مع ذكر الفترة دون الادعاء بوقوع تقدم خلالها إن لم يكن مؤرخاً.
-2. technicalNotes: الملاحظات الفنية والمعوقات الموثقة، أو عدم توفر بيانات كافية.
-3. recommendations: خطوات مقترحة مستندة إلى البنود أو الأرقام، مع تمييز المقترح عن الوقائع.
-
-أجب بتنسيق JSON فقط:
-{"workDescription":"...","technicalNotes":"...","recommendations":"..."}`;
+    const prompt = buildReportAiPrompt({
+      periodStart, periodEnd, reportDate, snapshotContext,
+      imageGroupsSummary, technicalNotes, recommendations,
+    });
 
     let result: any;
     let contentText: string | undefined;
@@ -288,7 +277,7 @@ ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendat
           body: JSON.stringify({
             systemInstruction: {
               parts: [{
-                 text: "أنت مهندس إشراف تصوغ تحليلاً عربياً مهنياً موجزاً. اعتمد حصراً على لقطة هذا التقرير. لا تخترع نسباً أو تواريخ أو أعمالاً أو أسباب تأخير. اذكر أن السبب غير مسجل إن غاب، وميّز الحقيقة الرقمية من الاستنتاج.",
+                  text: reportEditorInstruction,
               }],
             },
             contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -325,7 +314,7 @@ ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendat
           messages: [
             {
               role: "system",
-               content: "أنت مهندس إشراف تصوغ تحليلاً عربياً مهنياً موجزاً. اعتمد حصراً على لقطة هذا التقرير. لا تخترع نسباً أو تواريخ أو أعمالاً أو أسباب تأخير. اذكر أن السبب غير مسجل إن غاب، وميّز الحقيقة الرقمية من الاستنتاج.",
+                content: reportEditorInstruction,
             },
             { role: "user", content: prompt },
           ],
