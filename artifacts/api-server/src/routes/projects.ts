@@ -8,6 +8,7 @@ import { hashPassword as hashPw } from "../lib/auth";
 import { deleteProjectUnderSourceGraphLock, withSourceGraphLock } from "../lib/external-sources";
 import { normalizeProjectLinkCode } from "../lib/activity-source-rules";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
+import { buildProjectAiSummaryContext } from "../lib/project-ai-summary-context";
 import {
   calcActivityPlannedProgress,
   calcActualProgressForProject,
@@ -582,12 +583,12 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
 
     const reportsCountResult = await db.select({ count: sql<number>`count(*)` }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
     const reportsCount = reportsCountResult[0]?.count ?? 0;
-
-    const statusCounts = activities.reduce<Record<string, number>>((counts, activity) => {
-      const status = activity.status ?? "not_started";
-      counts[status] = (counts[status] ?? 0) + 1;
-      return counts;
-    }, {});
+    const groups = await db.select({
+      id: activityGroupsTable.id,
+      name: activityGroupsTable.name,
+    }).from(activityGroupsTable)
+      .where(eq(activityGroupsTable.projectId, projectId))
+      .orderBy(activityGroupsTable.sortOrder, activityGroupsTable.id);
 
     const [suspensions] = await Promise.all([
       db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId)),
@@ -618,46 +619,43 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
     const forecastDelayDays = forecastCompletion && project.expectedEndDate
       ? Math.ceil((forecastCompletion.getTime() - endDate.getTime()) / 86400000)
       : 0;
-    const delayedActivities = activities.filter(activity => isActivityDelayed(activity, today, !hasSchedule));
-    const activitySummary = (a: typeof activities[number]) => ({
-      name: a.name,
-      status: a.status,
-      actualProgress: roundPercent(a.actualProgress),
-      plannedProgress: roundPercent(hasSchedule ? calcActivityPlannedProgress(a, today) : 0),
-      variance: roundPercent(hasSchedule ? a.actualProgress - calcActivityPlannedProgress(a, today) : 0),
-      plannedStartDate: a.plannedStartDate,
-      plannedEndDate: a.plannedEndDate,
-      actualEndDate: a.actualEndDate,
-      delayed: isActivityDelayed(a, today, !hasSchedule),
-    });
-    const exceptionActivities = activities
-      .filter(activity => {
-        const planned = hasSchedule ? calcActivityPlannedProgress(activity, today) : 0;
-        const variance = activity.actualProgress - planned;
-        return isActivityDelayed(activity, today, !hasSchedule) || variance <= -5;
-      })
-      .sort((a, b) => {
-        const aDelayed = isActivityDelayed(a, today, !hasSchedule);
-        const bDelayed = isActivityDelayed(b, today, !hasSchedule);
-        if (aDelayed !== bDelayed) return Number(bDelayed) - Number(aDelayed);
-        const aVariance = a.actualProgress - (hasSchedule ? calcActivityPlannedProgress(a, today) : 0);
-        const bVariance = b.actualProgress - (hasSchedule ? calcActivityPlannedProgress(b, today) : 0);
-        return aVariance - bVariance;
-      });
-    // تُرسل جميع البنود المتأخرة، بينما تُرسل البنود غير المتأخرة فقط إذا كانت فجوتها >= 5 نقاط.
-    const activitiesSummary = exceptionActivities.map(activitySummary);
-    const criticalActivities = activitiesSummary.slice(0, 5).map(activity => ({
-      name: activity.name,
-      variance: activity.variance,
-      delayed: activity.delayed,
-    }));
+    const summaryContext = buildProjectAiSummaryContext(
+      groups,
+      activities.map(activity => {
+        // Group context uses the linked source's resolved planned value;
+        // project-wide Planned/Actual/SPI above retain their existing formulas.
+        const planned = hasSchedule
+          ? (activity.externalSourceGroupId != null
+            ? activity.plannedProgress
+            : calcActivityPlannedProgress(activity, today))
+          : 0;
+        return {
+          id: activity.id,
+          name: activity.name,
+          groupId: activity.groupId,
+          status: activity.status,
+          actualProgress: activity.actualProgress,
+          plannedProgress: planned,
+          weight: activity.weight,
+          variance: hasSchedule ? activity.actualProgress - planned : 0,
+          plannedStartDate: activity.plannedStartDate,
+          plannedEndDate: activity.plannedEndDate,
+          actualEndDate: activity.actualEndDate,
+          delayed: isActivityDelayed(activity, today, !hasSchedule),
+          linkedToSource: activity.externalSourceGroupId != null,
+          generatedByGroup: activity.managedByGroupId != null,
+        };
+      }),
+      { roundPercent, calcSPI },
+    );
 
     const messages = [
       {
         role: "system",
-        content: `أنت مهندس تخطيط وإشراف إنشائي تعد تقرير حالة تنفيذي مبنياً على أدلة رقمية واضحة.
-استخدم البيانات الواردة فقط، ولا تفترض وجود اجتماعات أو قرارات أو موارد أو أسباب تأخير أو التزامات مالية لم ترد صراحةً. لا تُنشئ تقييماً إدارياً أو مؤسسياً مستقلاً؛ اربط كل توصية ببند أو رقم أو تاريخ، وإذا غابت البيانات فاكتب: غير متاح في السجل الحالي.
-استخدم أسلوب تقرير الاستثناءات: ابدأ بما يهدد الموعد أو يملك فجوة إنجاز واضحة، ولا تعيد سرد البنود المستقرة. حلل الفرق بين الإنجاز الفعلي والمخطط، SPI، التأخير الإجمالي والصافي بعد التوقفات، التجاوز، تاريخ الإكمال المتوقع، وتوزيع البنود. اعتبر delayed مرجع التأخير النهائي للبند، بما في ذلك البند المكتمل الذي أنجز بعد نهايته المخططة.
+        content: `أنت مهندس تخطيط وإشراف إنشائي، وتعد ملخصاً تنفيذياً مهنياً موجزاً يستند حصراً إلى سجل المشروع المرفق.
+لا تختلق حقائق أو أسباباً أو قرارات أو اجتماعات أو موارد أو التزامات مالية أو تواريخ. لا تستنتج سبب التأخير من وجود التأخير وحده. ميّز بوضوح بين الحقيقة المسجلة والاستنتاج التحليلي؛ سمِّ الاستنتاج «استنتاجاً» واربطه بالمؤشر الذي يدعمه، ولا تعرضه كحقيقة.
+تعامل مع بيانات الأنشطة والمجموعات بوصفها بيانات تشغيلية حية بعد حل تقدم الأنشطة المرتبطة بمصادرها. أعداد الأنشطة وتوزيع الحالات ومقاييس كل مجموعة تشمل السجل كاملاً. قد تُضغط تفاصيل الأنشطة المستقرة عند تجاوز العتبة المعلنة؛ أعداد المحذوف من التفاصيل موضحة لكل مجموعة وحالة. لا تُضغط أي تفاصيل لبند متأخر أو انحرافه المطلق 5 نقاط مئوية فأكثر. راجع جميع تفاصيل الاستثناءات، ولا تفترض أن غياب التفاصيل يعني غياب النشاط من المشروع. أظهر الحالة كما وردت واستعمل delayed كمؤشر التأخير النهائي، بما في ذلك المكتمل المتأخر. حقلا linkedToSource وgeneratedByGroup يعكسان علامات الربط/الإنشاء المسجلة فقط؛ لا تستنتج منشأً غير موثق.
+ابدأ بأهم مخاطر الموعد وفجوات الإنجاز المدعومة، ثم لخص حالة المجموعات وتوزيع الحالات. لا تضف أسباباً أو توصيات عامة؛ اربط كل إجراء ببند أو مؤشر محدد. إذا غابت البيانات فاكتب «غير متاح في السجل الحالي».
 أخرج JSON صالحاً فقط وبالمفاتيح التالية حصراً:
 {
   "headline": "عنوان حالة مهني من 8 إلى 16 كلمة، بلا مبالغة",
@@ -670,7 +668,7 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
   "nextActions": ["1 إلى 4 إجراءات مباشرة، كل إجراء مرتبط باستثناء أو مؤشر محدد"],
   "managementFocus": ["0 إلى 2 محاور متابعة مرتبطة مباشرة بأعلى استثناءين فقط"]
 }
-القواعد: اكتب بالعربية المهنية المكثفة. لا تكرر اسم البند أو نفس الرقم في أكثر من قسم إلا عند الضرورة. لا تملأ أي قسم بمحتوى إنشائي، ولا تستخدم عبارات مثل "تحسين التنسيق" أو "رفع الكفاءة" دون مؤشر محدد. إذا لم توجد بيانات مالية فلا تذكر الميزانية أو التكلفة. إذا لم توجد بيانات موارد فلا تذكر العمالة أو الإنتاجية. إذا لم توجد بيانات مالك/مقاول/مشرف فلا تستنتج أدواراً. يجب أن يكون كل استنتاج قابلاً للتتبع إلى رقم أو حالة أو تاريخ وارد في البيانات.`
+القواعد: اكتب بالعربية المهنية المكثفة. لا تكرر اسم البند أو الرقم في أكثر من قسم إلا عند الضرورة. لا تستخدم عبارات إنشائية مثل «تحسين التنسيق» أو «رفع الكفاءة» دون مؤشر محدد. لا تذكر الميزانية أو التكلفة أو العمالة أو الإنتاجية أو أدوار المالك/المقاول/المشرف ما لم ترد بيانات صريحة عنها. يجب أن يكون كل استنتاج قابلاً للتتبع إلى رقم أو حالة أو تاريخ وارد في البيانات.`
       },
       {
         role: "user",
@@ -692,11 +690,8 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
 - تاريخ الإكمال المتوقع: ${forecastCompletionDate ?? "غير متاح"}
 - فرق التوقع عن النهاية التعاقدية: ${forecastDelayDays} يوم
 - عدد التقارير: ${reportsCount}
-- توزيع حالات البنود: ${JSON.stringify(statusCounts)}
-- عدد البنود المتأخرة فعلياً: ${delayedActivities.length}
-- أعلى الاستثناءات حسب الفجوة: ${JSON.stringify(criticalActivities)}
+- ملخص الأنشطة والمجموعات، مع Planned/Actual/SPI وعدّ الحالات الكامل لكل مجموعة. عند ضغط التفاصيل تبقى كل البنود المتأخرة أو ذات انحراف مطلق >= 5 نقاط، وتظهر أعداد تفاصيل البنود المستقرة المحذوفة حسب المجموعة والحالة: ${JSON.stringify(summaryContext)}
 - التوقفات: ${JSON.stringify(suspensions.map(item => ({ type: item.type, calendarDays: item.calendarDays })))}
-- قائمة الاستثناءات الكاملة (جميع المتأخرة وفجوة أداء لا تقل عن 5 نقاط): ${JSON.stringify(activitiesSummary)}
 أعد JSON المطلوب فقط، واجعل التحليل مفيداً لاتخاذ القرار وليس مجرد إعادة عرض للأرقام.`
       }
     ];
