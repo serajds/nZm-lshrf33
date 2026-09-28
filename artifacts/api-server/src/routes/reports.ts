@@ -1,12 +1,13 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { reportsTable, activitiesTable, projectsTable } from "@workspace/db";
-import { eq, and, or, desc, sql, gte, lte, isNull, isNotNull } from "drizzle-orm";
+import { reportsTable, activitiesTable, projectsTable, activityGroupsTable } from "@workspace/db";
+import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectManager } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
 import { selectReportSnapshotActivities } from "../lib/report-snapshot-selection";
+import { buildReportAiContext, reportAiSnapshotFingerprint } from "../lib/report-ai-context";
 
 type ImageGroup = { category: string; urls: string[] };
 
@@ -113,22 +114,67 @@ const flattenImageGroups = (groups: ImageGroup[]): string[] => {
 
 const router: IRouter = Router();
 
+// Use exactly the same selection and values for a new report's AI draft and
+// the snapshot saved on report creation. Existing reports always use their
+// persisted snapshot instead, never a reconstruction from today's activities.
+async function buildNewReportSnapshot(projectId: number, reportDate: string) {
+  const currentActivities = await db.select().from(activitiesTable)
+    .where(eq(activitiesTable.projectId, projectId))
+    .orderBy(activitiesTable.sortOrder);
+  const [schedule] = await db.select({
+    noSchedule: projectsTable.noSchedule,
+    startDate: projectsTable.startDate,
+    expectedEndDate: projectsTable.expectedEndDate,
+  }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  const hasSchedule = schedule?.noSchedule !== true
+    && hasValidProjectSchedule(schedule?.startDate, schedule?.expectedEndDate);
+  const reportAsOf = new Date(`${reportDate}T00:00:00.000Z`);
+  const resolvedActivities = await resolveLinkedActivityProgress(currentActivities, reportAsOf);
+  const actualRecordedAt = new Date().toISOString();
+  return selectReportSnapshotActivities(resolvedActivities).map(a => ({
+    id: a.id,
+    name: a.name,
+    plannedStartDate: a.plannedStartDate,
+    plannedEndDate: a.plannedEndDate,
+    actualStartDate: a.actualStartDate,
+    actualEndDate: a.actualEndDate,
+    externalSourceGroupId: a.externalSourceGroupId,
+    plannedProgress: hasSchedule ? clampPercent(a.externalSourceGroupId != null
+      ? a.plannedProgress
+      : calcActivityPlannedProgress({
+          plannedStartDate: a.plannedStartDate,
+          plannedEndDate: a.plannedEndDate,
+        }, reportAsOf)) : 0,
+    plannedAsOfDate: reportDate,
+    plannedHistoricalUnverified: false,
+    actualProgress: clampPercent(a.actualProgress),
+    actualRecordedAt,
+    weight: a.weight ?? 1,
+    status: a.status,
+    sortOrder: a.sortOrder,
+  }));
+}
+
 router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
-  const { imageGroups, technicalNotes, recommendations, periodStart, periodEnd } = req.body;
+  const { imageGroups, technicalNotes, recommendations, periodStart, periodEnd, reportDate, reportId, snapshotOverrides } = req.body;
 
   const isValidCalendarDate = (s: unknown): s is string => {
     if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
     const d = new Date(`${s}T00:00:00Z`);
     return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
   };
-  if (!isValidCalendarDate(periodStart) || !isValidCalendarDate(periodEnd)) {
+  if (!isValidCalendarDate(periodStart) || !isValidCalendarDate(periodEnd) || !isValidCalendarDate(reportDate)) {
     res.status(400).json({ error: "يجب تحديد تاريخ بداية ونهاية فترة التقرير قبل الصياغة بالذكاء الاصطناعي" });
     return;
   }
   if (periodStart > periodEnd) {
     res.status(400).json({ error: "تاريخ بداية الفترة يجب أن يسبق تاريخ نهايتها" });
+    return;
+  }
+  if (reportId != null && (!Number.isSafeInteger(reportId) || reportId <= 0)) {
+    res.status(400).json({ error: "رقم التقرير غير صالح" });
     return;
   }
 
@@ -161,52 +207,46 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
   }
 
   try {
-    // Period bounds for timestamp comparison (dates are Libya-local calendar days;
-    // a small margin on the timestamp side keeps edge check-ins inside the day).
-    const periodStartTs = new Date(`${periodStart}T00:00:00+02:00`);
-    const periodEndTs = new Date(`${periodEnd}T23:59:59.999+02:00`);
+    let snapshot: SnapshotRow[];
+    if (reportId != null) {
+      const [report] = await db.select({
+        reportDate: reportsTable.reportDate,
+        snapshot: reportsTable.activitiesSnapshot,
+      }).from(reportsTable).where(and(eq(reportsTable.projectId, projectId), eq(reportsTable.id, reportId)));
+      if (!report) { res.status(404).json({ error: "التقرير غير موجود" }); return; }
+      if (report.reportDate !== reportDate) {
+        res.status(409).json({ error: "احفظ تغيير تاريخ التقرير قبل الصياغة لكي تطابق البيانات التاريخية" });
+        return;
+      }
+      if (!Array.isArray(report.snapshot)) {
+        res.status(409).json({ error: "هذا التقرير القديم لا يملك لقطة بنود محفوظة؛ لا يمكن صياغته من أنشطة اليوم" });
+        return;
+      }
+      snapshot = (report.snapshot as SnapshotRow[]);
+      if (snapshotOverrides !== undefined) {
+        if (!Array.isArray(snapshotOverrides)) {
+          res.status(400).json({ error: "تعديلات بنود التقرير غير صالحة" });
+          return;
+        }
+        snapshot = mergeSnapshot(snapshot, snapshotOverrides) ?? snapshot;
+      }
+    } else {
+      snapshot = await buildNewReportSnapshot(projectId, reportDate);
+    }
 
-    // Activities relevant to the report period:
-    //  - actively running during it (actual start <= period end, and not finished before it), OR
-    //  - had their progress/status updated during it.
-    const periodCondition = or(
-      and(
-        isNotNull(activitiesTable.actualStartDate),
-        lte(activitiesTable.actualStartDate, periodEnd),
-        or(isNull(activitiesTable.actualEndDate), gte(activitiesTable.actualEndDate, periodStart)),
-      ),
-      and(
-        gte(activitiesTable.progressUpdatedAt, periodStartTs),
-        lte(activitiesTable.progressUpdatedAt, periodEndTs),
-      ),
-    );
-
-    const [periodActivities, allActivities] = await Promise.all([
-      db.select().from(activitiesTable)
-        .where(and(eq(activitiesTable.projectId, projectId), periodCondition))
-        .orderBy(activitiesTable.sortOrder),
-      db.select().from(activitiesTable)
-        .where(eq(activitiesTable.projectId, projectId))
-        .orderBy(activitiesTable.sortOrder),
+    // Group names are not stored in historical snapshots. They are only
+    // optional current labels; never use today's activity progress/status.
+    const [activitiesForGroups, groups] = await Promise.all([
+      db.select({ id: activitiesTable.id, groupId: activitiesTable.groupId })
+        .from(activitiesTable).where(eq(activitiesTable.projectId, projectId)),
+      db.select({ id: activityGroupsTable.id, name: activityGroupsTable.name })
+        .from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId)),
     ]);
-
-    const statusLabel: Record<string, string> = {
-      not_started: "لم يبدأ",
-      in_progress: "قيد التنفيذ",
-      completed: "مكتمل",
-      delayed: "متأخر",
-    };
-
-    const periodActivitiesText = periodActivities.length > 0
-      ? periodActivities.map(a => {
-          const updatedInPeriod = a.progressUpdatedAt && a.progressUpdatedAt >= periodStartTs && a.progressUpdatedAt <= periodEndTs;
-          return `- ${a.name}: الحالة: ${statusLabel[a.status] ?? a.status}، الإنجاز الفعلي: ${a.actualProgress ?? 0}%${updatedInPeriod ? " (تم تحديث تقدمه خلال هذه الفترة)" : ""}`;
-        }).join("\n")
-      : "لا توجد بنود جرى العمل عليها أو تحديثها خلال هذه الفترة.";
-
-    const completedCount = allActivities.filter(a => a.status === "completed").length;
-    const delayedCount  = allActivities.filter(a => a.status === "delayed").length;
-    const totalCount    = allActivities.length;
+    const groupNames = new Map(groups.map(group => [group.id, group.name]));
+    const groupByActivity = new Map(activitiesForGroups
+      .filter(activity => activity.groupId != null && groupNames.has(activity.groupId))
+      .map(activity => [activity.id, groupNames.get(activity.groupId!)!]));
+    const snapshotContext = buildReportAiContext(snapshot, reportDate, groupByActivity);
 
     // Image group category names give the AI topical context without needing
     // to transfer image bytes (images live in cloud storage).
@@ -217,23 +257,19 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
           .join("\n")
       : null;
 
-    const prompt = `يرجى صياغة تقرير فني مهني للمشروع عن الفترة من ${periodStart} إلى ${periodEnd} بناءً على البيانات التالية:
-
-الصورة العامة للمشروع (للسياق فقط):
-إجمالي بنود الأعمال: ${totalCount}
-البنود المكتملة: ${completedCount}
-البنود المتأخرة: ${delayedCount}
-
-البنود التي جرى العمل عليها أو تحديثها خلال فترة التقرير (${periodStart} إلى ${periodEnd}):
-${periodActivitiesText}
+    const prompt = `صغ نصاً هندسياً موجزاً لهذا التقرير تحديداً عن الفترة من ${periodStart} إلى ${periodEnd}، وتاريخ التقرير ${reportDate}.
+مصدر البنود الوحيد هو لقطة التقرير ${reportId != null ? "المحفوظة" : "المحسوبة قبل إنشاء التقرير بنفس قواعد الحفظ"}؛ لا تستخدم بنود المشروع الحالية خارجها.
+جميع بنود اللقطة (${snapshotContext.length})، حللها كلها قبل الكتابة:
+${JSON.stringify(snapshotContext)}
+اسم المجموعة إن توفر مستمد من تعريفها الحالي وليس دليلاً على اسمها التاريخي. القيمة المخططة غير المتحقق منها تاريخياً لا تصلح لإثبات انحراف أو تأخير. الإنجاز المسجل بعد تاريخ التقرير ليس دليلاً على إنجاز في ذلك التاريخ؛ اعرضه كقيمة محفوظة مع بيان حدود التاريخية، ولا تنسبه إلى الفترة دون سند.
 ${imageGroupsSummary ? `\nأقسام الصور المرفقة في التقرير:\n${imageGroupsSummary}` : ""}
 ${technicalNotes ? `\nملاحظات فنية أولية من المشرف:\n${technicalNotes}` : ""}
 ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendations}` : ""}
 
-المطلوب صياغة ثلاثة أقسام بأسلوب مهني رسمي:
-1. workDescription: وصف شامل للأعمال المنجزة خلال الفترة من ${periodStart} إلى ${periodEnd} بناءً على بنود الفترة أعلاه فقط، مع الإشارة الصريحة إلى الفترة. لا تذكر أعمالاً خارج هذه الفترة.
-2. technicalNotes: الملاحظات الفنية والمعوقات الميدانية إن وُجدت، أو "لا توجد ملاحظات فنية" إن لم تكن هناك بيانات كافية.
-3. recommendations: التوصيات والخطوات المقترحة للفترة القادمة.
+المطلوب نص هندسي عربي احترافي وموجز، لا سرد آلي بنداً بنداً. أبرز الإنجازات والتأخيرات والمخاطر والانحرافات المثبتة فقط. ممنوع اختراع أعمال أو نسب أو تواريخ أو أسباب تأخير؛ إذا لم يسجل السبب فقل إنه غير مسجل. ميّز صراحة بين الحقيقة الرقمية والاستنتاج.
+1. workDescription: سرد تحليلي للأعمال التي تدعمها لقطة التقرير، مع ذكر الفترة دون الادعاء بوقوع تقدم خلالها إن لم يكن مؤرخاً.
+2. technicalNotes: الملاحظات الفنية والمعوقات الموثقة، أو عدم توفر بيانات كافية.
+3. recommendations: خطوات مقترحة مستندة إلى البنود أو الأرقام، مع تمييز المقترح عن الوقائع.
 
 أجب بتنسيق JSON فقط:
 {"workDescription":"...","technicalNotes":"...","recommendations":"..."}`;
@@ -252,7 +288,7 @@ ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendat
           body: JSON.stringify({
             systemInstruction: {
               parts: [{
-                text: "أنت وكيل ذكاء اصطناعي متخصص في الإشراف الهندسي وإدارة المشاريع الإنشائية. تُصدر تقارير مهنية باللغة العربية الفصحى فقط. لا تخترع بيانات غير موجودة في المدخلات.",
+                 text: "أنت مهندس إشراف تصوغ تحليلاً عربياً مهنياً موجزاً. اعتمد حصراً على لقطة هذا التقرير. لا تخترع نسباً أو تواريخ أو أعمالاً أو أسباب تأخير. اذكر أن السبب غير مسجل إن غاب، وميّز الحقيقة الرقمية من الاستنتاج.",
               }],
             },
             contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -289,7 +325,7 @@ ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendat
           messages: [
             {
               role: "system",
-              content: "أنت وكيل ذكاء اصطناعي متخصص في الإشراف الهندسي وإدارة المشاريع الإنشائية. تُصدر تقارير مهنية باللغة العربية الفصحى فقط. لا تخترع بيانات غير موجودة في المدخلات.",
+               content: "أنت مهندس إشراف تصوغ تحليلاً عربياً مهنياً موجزاً. اعتمد حصراً على لقطة هذا التقرير. لا تخترع نسباً أو تواريخ أو أعمالاً أو أسباب تأخير. اذكر أن السبب غير مسجل إن غاب، وميّز الحقيقة الرقمية من الاستنتاج.",
             },
             { role: "user", content: prompt },
           ],
@@ -330,7 +366,10 @@ ${recommendations ? `\nتوصيات أولية من المشرف:\n${recommendat
       technicalNotes?: string;
       recommendations?: string;
     };
-    res.json(content);
+    res.json({
+      ...content,
+      ...(reportId == null ? { snapshotFingerprint: reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) } : {}),
+    });
   } catch (error) {
     req.log.error({ error }, "AI draft generation failed");
     res.status(500).json({ error: "فشل الذكاء الاصطناعي في صياغة التقرير" });
@@ -422,44 +461,14 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
     .where(eq(reportsTable.projectId, projectId));
   const nextNumber = (maxResult?.maxNum ?? 0) + 1;
 
-  const currentActivities = await db.select().from(activitiesTable)
-    .where(eq(activitiesTable.projectId, projectId))
-    .orderBy(activitiesTable.sortOrder);
-  const [schedule] = await db.select({
-    noSchedule: projectsTable.noSchedule,
-    startDate: projectsTable.startDate,
-    expectedEndDate: projectsTable.expectedEndDate,
-  }).from(projectsTable).where(eq(projectsTable.id, projectId));
-  const hasSchedule = schedule?.noSchedule !== true
-    && hasValidProjectSchedule(schedule?.startDate, schedule?.expectedEndDate);
-
-  // Planned progress is a historical value: calculate it at the report's
-  // date, not at the date on which the report happens to be entered.
-  const reportAsOf = new Date(`${reportDate}T00:00:00.000Z`);
-  const resolvedActivities = await resolveLinkedActivityProgress(currentActivities, reportAsOf);
-  const actualRecordedAt = new Date().toISOString();
-  const snapshot = selectReportSnapshotActivities(resolvedActivities).map(a => ({
-    id: a.id,
-    name: a.name,
-    plannedStartDate: a.plannedStartDate,
-    plannedEndDate: a.plannedEndDate,
-    actualStartDate: a.actualStartDate,
-    actualEndDate: a.actualEndDate,
-    externalSourceGroupId: a.externalSourceGroupId,
-    plannedProgress: hasSchedule ? clampPercent(a.externalSourceGroupId != null
-      ? a.plannedProgress
-      : calcActivityPlannedProgress({
-          plannedStartDate: a.plannedStartDate,
-          plannedEndDate: a.plannedEndDate,
-        }, reportAsOf)) : 0,
-    plannedAsOfDate: reportDate,
-    plannedHistoricalUnverified: false,
-    actualProgress: clampPercent(a.actualProgress),
-    actualRecordedAt,
-    weight: a.weight ?? 1,
-    status: a.status,
-    sortOrder: a.sortOrder,
-  }));
+  const snapshot = await buildNewReportSnapshot(projectId, reportDate);
+  if (req.body.aiDraftSnapshotFingerprint !== undefined) {
+    if (typeof req.body.aiDraftSnapshotFingerprint !== "string"
+      || reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) !== req.body.aiDraftSnapshotFingerprint) {
+      res.status(409).json({ error: "تغيرت بنود التقرير منذ صياغة الذكاء الاصطناعي؛ أعد الصياغة قبل الحفظ" });
+      return;
+    }
+  }
 
   const [report] = await db.insert(reportsTable).values({
     projectId,

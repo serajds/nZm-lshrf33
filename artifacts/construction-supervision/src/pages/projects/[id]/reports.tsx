@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { 
@@ -464,6 +464,8 @@ export default function ProjectReports() {
   // here only touch the report's snapshot — never the master activities
   // table. See task #45.
   const [snapshotRows, setSnapshotRows] = useState<ReportActivitiesSnapshotItem[]>([]);
+  const originalSnapshotRows = useRef<ReportActivitiesSnapshotItem[]>([]);
+  const aiDraftSnapshotFingerprint = useRef<string | null>(null);
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
   // When true, the user wants to type a manual overall %. Otherwise the
   // overall % is auto-recomputed from the snapshot rows using the
@@ -611,6 +613,7 @@ export default function ProjectReports() {
 
   const handleEdit = async (r: Report) => {
     setEditingId(r.id);
+    aiDraftSnapshotFingerprint.current = null;
     const existingGroups = (r.imageGroups as ImageGroup[] | null | undefined) ?? null;
     const initialGroups: ImageGroup[] = existingGroups && existingGroups.length > 0
       ? existingGroups.map(g => ({ category: g.category, urls: g.urls ?? [] }))
@@ -628,6 +631,7 @@ export default function ProjectReports() {
     });
     setOpenGroupIdx(0);
     setSnapshotRows([]);
+    originalSnapshotRows.current = [];
     setManualOverrideProgress(false);
     setIsDialogOpen(true);
 
@@ -643,6 +647,7 @@ export default function ProjectReports() {
       const snap = (full.activitiesSnapshot ?? []) as ReportActivitiesSnapshotItem[];
       const sorted = [...snap].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
       setSnapshotRows(sorted);
+      originalSnapshotRows.current = sorted;
     } catch {
       toast({ title: "تعذّر تحميل بنود التقرير", variant: "destructive" });
     } finally {
@@ -1011,6 +1016,10 @@ export default function ProjectReports() {
           imageUrls: flatImageUrls,
           imageGroups: groupsForApi,
         };
+        if (aiDraftSnapshotFingerprint.current) {
+          (createBody as CreateReportBody & { aiDraftSnapshotFingerprint?: string }).aiDraftSnapshotFingerprint =
+            aiDraftSnapshotFingerprint.current;
+        }
         await createReport.mutateAsync({ projectId, data: createBody });
         toast({ title: "تمت الإضافة" });
       }
@@ -1018,8 +1027,8 @@ export default function ProjectReports() {
       setIsDialogOpen(false);
       form.reset();
       setEditingId(null);
-    } catch {
-      toast({ variant: "destructive", title: "فشل الحفظ" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "فشل الحفظ", description: error instanceof Error ? error.message : undefined });
     }
   };
 
@@ -1057,11 +1066,25 @@ export default function ProjectReports() {
         toast({ variant: "destructive", title: "حدد فترة التقرير أولاً", description: "يرجى تحديد تاريخ بداية ونهاية الفترة قبل الصياغة بالذكاء الاصطناعي" });
         return;
       }
+      if (editingId && isLoadingSnapshot) {
+        toast({ variant: "destructive", title: "انتظر تحميل بنود التقرير قبل الصياغة" });
+        return;
+      }
+      const originalById = new Map(originalSnapshotRows.current.map(row => [row.id, row]));
+      const snapshotOverrides = snapshotRows.flatMap(row => {
+        const original = originalById.get(row.id);
+        if (!original || typeof row.id !== "number") return [];
+        const changed: { id: number; actualProgress?: number; status?: string } = { id: row.id };
+        if (row.actualProgress !== original.actualProgress) changed.actualProgress = row.actualProgress ?? 0;
+        if (row.status !== original.status) changed.status = row.status ?? "not_started";
+        return Object.keys(changed).length > 1 ? [changed] : [];
+      });
       setIsAiDrafting(true);
       const data = await customFetch<{
         workDescription?: string;
         technicalNotes?: string;
         recommendations?: string;
+        snapshotFingerprint?: string;
       }>(`${API_BASE}/projects/${projectId}/reports/ai-draft`, {
         method: "POST",
         body: JSON.stringify({
@@ -1070,9 +1093,15 @@ export default function ProjectReports() {
           recommendations: values.recommendations,
           periodStart: values.periodStart,
           periodEnd: values.periodEnd,
+          reportDate: values.reportDate,
+          ...(editingId ? {
+            reportId: editingId,
+            snapshotOverrides,
+          } : {}),
         }),
         responseType: "json",
       });
+      if (!editingId) aiDraftSnapshotFingerprint.current = data.snapshotFingerprint ?? null;
       
       if (data.workDescription) form.setValue("workDescription", data.workDescription, { shouldDirty: true });
       if (data.technicalNotes) form.setValue("technicalNotes", data.technicalNotes, { shouldDirty: true });
@@ -1143,6 +1172,7 @@ export default function ProjectReports() {
               setEditingId(null);
               setSnapshotRows([]);
               setManualOverrideProgress(false);
+              aiDraftSnapshotFingerprint.current = null;
             }
           }}>
             <DialogTrigger asChild>

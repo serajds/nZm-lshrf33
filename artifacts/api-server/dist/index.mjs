@@ -123642,13 +123642,13 @@ function managedStatus(progress) {
 async function recalculateProjectInTransaction(tx, projectId) {
   const acts = await tx.select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
   let totalWeight = 0;
-  let weightedProgress = 0;
+  let weightedProgress2 = 0;
   for (const activity of acts) {
     const weight = activity.weight > 0 ? activity.weight : 1;
     totalWeight += weight;
-    weightedProgress += activity.actualProgress * weight;
+    weightedProgress2 += activity.actualProgress * weight;
   }
-  const progress = totalWeight ? roundPercent(weightedProgress / totalWeight) : 0;
+  const progress = totalWeight ? roundPercent(weightedProgress2 / totalWeight) : 0;
   await tx.update(projectsTable).set({ overallProgress: progress }).where(eq(projectsTable.id, projectId));
   const [project] = await tx.select({ noSchedule: projectsTable.noSchedule }).from(projectsTable).where(eq(projectsTable.id, projectId));
   if (project?.noSchedule) return;
@@ -123960,6 +123960,119 @@ async function refreshLinkedSources(sourceGroupIds) {
       }
     }
   });
+}
+
+// src/lib/project-ai-summary-context.ts
+var PROJECT_AI_SUMMARY_DETAIL_THRESHOLD = 40;
+var STABLE_REPRESENTATIVES_PER_STATUS = 2;
+function weightedProgress(activities, field) {
+  if (activities.length === 0) return 0;
+  let weightedTotal = 0;
+  let totalWeight = 0;
+  for (const activity of activities) {
+    const weight = Number.isFinite(activity.weight) && activity.weight > 0 ? activity.weight : 1;
+    weightedTotal += (Number.isFinite(activity[field]) ? activity[field] : 0) * weight;
+    totalWeight += weight;
+  }
+  return totalWeight > 0 ? Math.min(100, Math.max(0, weightedTotal / totalWeight)) : 0;
+}
+function countStatuses(activities) {
+  const counts = {
+    not_started: 0,
+    in_progress: 0,
+    delayed: 0,
+    completed: 0
+  };
+  for (const activity of activities) {
+    const status = activity.status || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F\u0629";
+    counts[status] = (counts[status] ?? 0) + 1;
+  }
+  return counts;
+}
+function buildProjectAiSummaryContext(groups, activities, metrics) {
+  const groupsById = new Map(groups.map((group) => [group.id, group]));
+  const groupedActivities = /* @__PURE__ */ new Map();
+  const ungrouped = [];
+  for (const activity of activities) {
+    if (activity.groupId == null || !groupsById.has(activity.groupId)) {
+      ungrouped.push(activity);
+      continue;
+    }
+    const groupActivities = groupedActivities.get(activity.groupId) ?? [];
+    groupActivities.push(activity);
+    groupedActivities.set(activity.groupId, groupActivities);
+  }
+  const isImportant = (activity) => activity.delayed || Math.abs(activity.variance) >= 5;
+  const compressStableDetails = activities.filter((activity) => !isImportant(activity)).length > PROJECT_AI_SUMMARY_DETAIL_THRESHOLD;
+  const summarizeGroup = (name, groupActivities) => {
+    const planned = weightedProgress(groupActivities, "plannedProgress");
+    const actual = weightedProgress(groupActivities, "actualProgress");
+    const stableRepresentatives = /* @__PURE__ */ new Map();
+    const omittedStableActivityCounts = {};
+    if (compressStableDetails) {
+      for (const activity of groupActivities) {
+        if (isImportant(activity)) continue;
+        const status = activity.status || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F\u0629";
+        const representatives = stableRepresentatives.get(status) ?? /* @__PURE__ */ new Set();
+        if (representatives.size < STABLE_REPRESENTATIVES_PER_STATUS) {
+          representatives.add(activity);
+          stableRepresentatives.set(status, representatives);
+        } else {
+          omittedStableActivityCounts[status] = (omittedStableActivityCounts[status] ?? 0) + 1;
+        }
+      }
+    }
+    const detailedActivities = groupActivities.filter(
+      (activity) => !compressStableDetails || isImportant(activity) || stableRepresentatives.get(activity.status || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F\u0629")?.has(activity)
+    );
+    return {
+      name,
+      activityCount: groupActivities.length,
+      planned: metrics.roundPercent(planned),
+      actual: metrics.roundPercent(actual),
+      spi: metrics.calcSPI(planned, actual),
+      statusCounts: countStatuses(groupActivities),
+      delayedCount: groupActivities.filter((activity) => activity.delayed).length,
+      omittedStableActivityCount: Object.values(omittedStableActivityCounts).reduce((sum2, count2) => sum2 + count2, 0),
+      omittedStableActivityCounts,
+      // All delayed/high-variance rows remain detailed; stable rows are sampled
+      // only above the threshold, with omitted counts reported by status.
+      activities: detailedActivities.map((activity) => ({
+        id: activity.id,
+        name: activity.name,
+        status: activity.status || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F\u0629",
+        linkedToSource: activity.linkedToSource,
+        generatedByGroup: activity.generatedByGroup,
+        actualProgress: metrics.roundPercent(activity.actualProgress),
+        plannedProgress: metrics.roundPercent(activity.plannedProgress),
+        variance: metrics.roundPercent(activity.variance),
+        weight: activity.weight,
+        plannedStartDate: activity.plannedStartDate,
+        plannedEndDate: activity.plannedEndDate,
+        actualEndDate: activity.actualEndDate,
+        delayed: activity.delayed
+      }))
+    };
+  };
+  const groupSummaries = groups.map((group) => summarizeGroup(
+    group.name,
+    groupedActivities.get(group.id) ?? []
+  ));
+  const ungroupedSummary = ungrouped.length > 0 ? summarizeGroup("\u0628\u0646\u0648\u062F \u0628\u0644\u0627 \u0645\u062C\u0645\u0648\u0639\u0629 \u0623\u0648 \u0628\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D\u0629", ungrouped) : null;
+  const omittedStableActivityCount = groupSummaries.reduce(
+    (sum2, group) => sum2 + group.omittedStableActivityCount,
+    ungroupedSummary ? ungroupedSummary.omittedStableActivityCount : 0
+  );
+  return {
+    activityCount: activities.length,
+    statusCounts: countStatuses([...activities]),
+    delayedActivityCount: activities.filter((activity) => activity.delayed).length,
+    detailsCompressed: compressStableDetails,
+    stableDetailThreshold: PROJECT_AI_SUMMARY_DETAIL_THRESHOLD,
+    omittedStableActivityCount,
+    groups: groupSummaries,
+    ungrouped: ungroupedSummary
+  };
 }
 
 // src/routes/projects.ts
@@ -124417,11 +124530,10 @@ router3.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("p
     const activities = await resolveLinkedActivityProgress(rawActivities, today);
     const reportsCountResult = await db.select({ count: sql`count(*)` }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
     const reportsCount = reportsCountResult[0]?.count ?? 0;
-    const statusCounts = activities.reduce((counts, activity) => {
-      const status = activity.status ?? "not_started";
-      counts[status] = (counts[status] ?? 0) + 1;
-      return counts;
-    }, {});
+    const groups = await db.select({
+      id: activityGroupsTable.id,
+      name: activityGroupsTable.name
+    }).from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId)).orderBy(activityGroupsTable.sortOrder, activityGroupsTable.id);
     const [suspensions] = await Promise.all([
       db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId))
     ]);
@@ -124443,42 +124555,36 @@ router3.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("p
     const forecastCompletion = hasSchedule ? calcForecastCompletionDate(startDate, endDate, today, plannedRaw, actualRaw) : null;
     const forecastCompletionDate = forecastCompletion ? forecastCompletion.toISOString().slice(0, 10) : null;
     const forecastDelayDays = forecastCompletion && project.expectedEndDate ? Math.ceil((forecastCompletion.getTime() - endDate.getTime()) / 864e5) : 0;
-    const delayedActivities = activities.filter((activity) => isActivityDelayed(activity, today, !hasSchedule));
-    const activitySummary = (a) => ({
-      name: a.name,
-      status: a.status,
-      actualProgress: roundPercent(a.actualProgress),
-      plannedProgress: roundPercent(hasSchedule ? calcActivityPlannedProgress(a, today) : 0),
-      variance: roundPercent(hasSchedule ? a.actualProgress - calcActivityPlannedProgress(a, today) : 0),
-      plannedStartDate: a.plannedStartDate,
-      plannedEndDate: a.plannedEndDate,
-      actualEndDate: a.actualEndDate,
-      delayed: isActivityDelayed(a, today, !hasSchedule)
-    });
-    const exceptionActivities = activities.filter((activity) => {
-      const planned = hasSchedule ? calcActivityPlannedProgress(activity, today) : 0;
-      const variance = activity.actualProgress - planned;
-      return isActivityDelayed(activity, today, !hasSchedule) || variance <= -5;
-    }).sort((a, b) => {
-      const aDelayed = isActivityDelayed(a, today, !hasSchedule);
-      const bDelayed = isActivityDelayed(b, today, !hasSchedule);
-      if (aDelayed !== bDelayed) return Number(bDelayed) - Number(aDelayed);
-      const aVariance = a.actualProgress - (hasSchedule ? calcActivityPlannedProgress(a, today) : 0);
-      const bVariance = b.actualProgress - (hasSchedule ? calcActivityPlannedProgress(b, today) : 0);
-      return aVariance - bVariance;
-    });
-    const activitiesSummary = exceptionActivities.map(activitySummary);
-    const criticalActivities = activitiesSummary.slice(0, 5).map((activity) => ({
-      name: activity.name,
-      variance: activity.variance,
-      delayed: activity.delayed
-    }));
+    const summaryContext = buildProjectAiSummaryContext(
+      groups,
+      activities.map((activity) => {
+        const planned = hasSchedule ? activity.externalSourceGroupId != null ? activity.plannedProgress : calcActivityPlannedProgress(activity, today) : 0;
+        return {
+          id: activity.id,
+          name: activity.name,
+          groupId: activity.groupId,
+          status: activity.status,
+          actualProgress: activity.actualProgress,
+          plannedProgress: planned,
+          weight: activity.weight,
+          variance: hasSchedule ? activity.actualProgress - planned : 0,
+          plannedStartDate: activity.plannedStartDate,
+          plannedEndDate: activity.plannedEndDate,
+          actualEndDate: activity.actualEndDate,
+          delayed: isActivityDelayed(activity, today, !hasSchedule),
+          linkedToSource: activity.externalSourceGroupId != null,
+          generatedByGroup: activity.managedByGroupId != null
+        };
+      }),
+      { roundPercent, calcSPI }
+    );
     const messages = [
       {
         role: "system",
-        content: `\u0623\u0646\u062A \u0645\u0647\u0646\u062F\u0633 \u062A\u062E\u0637\u064A\u0637 \u0648\u0625\u0634\u0631\u0627\u0641 \u0625\u0646\u0634\u0627\u0626\u064A \u062A\u0639\u062F \u062A\u0642\u0631\u064A\u0631 \u062D\u0627\u0644\u0629 \u062A\u0646\u0641\u064A\u0630\u064A \u0645\u0628\u0646\u064A\u0627\u064B \u0639\u0644\u0649 \u0623\u062F\u0644\u0629 \u0631\u0642\u0645\u064A\u0629 \u0648\u0627\u0636\u062D\u0629.
-\u0627\u0633\u062A\u062E\u062F\u0645 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0648\u0627\u0631\u062F\u0629 \u0641\u0642\u0637\u060C \u0648\u0644\u0627 \u062A\u0641\u062A\u0631\u0636 \u0648\u062C\u0648\u062F \u0627\u062C\u062A\u0645\u0627\u0639\u0627\u062A \u0623\u0648 \u0642\u0631\u0627\u0631\u0627\u062A \u0623\u0648 \u0645\u0648\u0627\u0631\u062F \u0623\u0648 \u0623\u0633\u0628\u0627\u0628 \u062A\u0623\u062E\u064A\u0631 \u0623\u0648 \u0627\u0644\u062A\u0632\u0627\u0645\u0627\u062A \u0645\u0627\u0644\u064A\u0629 \u0644\u0645 \u062A\u0631\u062F \u0635\u0631\u0627\u062D\u0629\u064B. \u0644\u0627 \u062A\u064F\u0646\u0634\u0626 \u062A\u0642\u064A\u064A\u0645\u0627\u064B \u0625\u062F\u0627\u0631\u064A\u0627\u064B \u0623\u0648 \u0645\u0624\u0633\u0633\u064A\u0627\u064B \u0645\u0633\u062A\u0642\u0644\u0627\u064B\u061B \u0627\u0631\u0628\u0637 \u0643\u0644 \u062A\u0648\u0635\u064A\u0629 \u0628\u0628\u0646\u062F \u0623\u0648 \u0631\u0642\u0645 \u0623\u0648 \u062A\u0627\u0631\u064A\u062E\u060C \u0648\u0625\u0630\u0627 \u063A\u0627\u0628\u062A \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0641\u0627\u0643\u062A\u0628: \u063A\u064A\u0631 \u0645\u062A\u0627\u062D \u0641\u064A \u0627\u0644\u0633\u062C\u0644 \u0627\u0644\u062D\u0627\u0644\u064A.
-\u0627\u0633\u062A\u062E\u062F\u0645 \u0623\u0633\u0644\u0648\u0628 \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0627\u0633\u062A\u062B\u0646\u0627\u0621\u0627\u062A: \u0627\u0628\u062F\u0623 \u0628\u0645\u0627 \u064A\u0647\u062F\u062F \u0627\u0644\u0645\u0648\u0639\u062F \u0623\u0648 \u064A\u0645\u0644\u0643 \u0641\u062C\u0648\u0629 \u0625\u0646\u062C\u0627\u0632 \u0648\u0627\u0636\u062D\u0629\u060C \u0648\u0644\u0627 \u062A\u0639\u064A\u062F \u0633\u0631\u062F \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u0633\u062A\u0642\u0631\u0629. \u062D\u0644\u0644 \u0627\u0644\u0641\u0631\u0642 \u0628\u064A\u0646 \u0627\u0644\u0625\u0646\u062C\u0627\u0632 \u0627\u0644\u0641\u0639\u0644\u064A \u0648\u0627\u0644\u0645\u062E\u0637\u0637\u060C SPI\u060C \u0627\u0644\u062A\u0623\u062E\u064A\u0631 \u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A \u0648\u0627\u0644\u0635\u0627\u0641\u064A \u0628\u0639\u062F \u0627\u0644\u062A\u0648\u0642\u0641\u0627\u062A\u060C \u0627\u0644\u062A\u062C\u0627\u0648\u0632\u060C \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0645\u062A\u0648\u0642\u0639\u060C \u0648\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0628\u0646\u0648\u062F. \u0627\u0639\u062A\u0628\u0631 delayed \u0645\u0631\u062C\u0639 \u0627\u0644\u062A\u0623\u062E\u064A\u0631 \u0627\u0644\u0646\u0647\u0627\u0626\u064A \u0644\u0644\u0628\u0646\u062F\u060C \u0628\u0645\u0627 \u0641\u064A \u0630\u0644\u0643 \u0627\u0644\u0628\u0646\u062F \u0627\u0644\u0645\u0643\u062A\u0645\u0644 \u0627\u0644\u0630\u064A \u0623\u0646\u062C\u0632 \u0628\u0639\u062F \u0646\u0647\u0627\u064A\u062A\u0647 \u0627\u0644\u0645\u062E\u0637\u0637\u0629.
+        content: `\u0623\u0646\u062A \u0645\u0647\u0646\u062F\u0633 \u062A\u062E\u0637\u064A\u0637 \u0648\u0625\u0634\u0631\u0627\u0641 \u0625\u0646\u0634\u0627\u0626\u064A\u060C \u0648\u062A\u0639\u062F \u0645\u0644\u062E\u0635\u0627\u064B \u062A\u0646\u0641\u064A\u0630\u064A\u0627\u064B \u0645\u0647\u0646\u064A\u0627\u064B \u0645\u0648\u062C\u0632\u0627\u064B \u064A\u0633\u062A\u0646\u062F \u062D\u0635\u0631\u0627\u064B \u0625\u0644\u0649 \u0633\u062C\u0644 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0631\u0641\u0642.
+\u0644\u0627 \u062A\u062E\u062A\u0644\u0642 \u062D\u0642\u0627\u0626\u0642 \u0623\u0648 \u0623\u0633\u0628\u0627\u0628\u0627\u064B \u0623\u0648 \u0642\u0631\u0627\u0631\u0627\u062A \u0623\u0648 \u0627\u062C\u062A\u0645\u0627\u0639\u0627\u062A \u0623\u0648 \u0645\u0648\u0627\u0631\u062F \u0623\u0648 \u0627\u0644\u062A\u0632\u0627\u0645\u0627\u062A \u0645\u0627\u0644\u064A\u0629 \u0623\u0648 \u062A\u0648\u0627\u0631\u064A\u062E. \u0644\u0627 \u062A\u0633\u062A\u0646\u062A\u062C \u0633\u0628\u0628 \u0627\u0644\u062A\u0623\u062E\u064A\u0631 \u0645\u0646 \u0648\u062C\u0648\u062F \u0627\u0644\u062A\u0623\u062E\u064A\u0631 \u0648\u062D\u062F\u0647. \u0645\u064A\u0651\u0632 \u0628\u0648\u0636\u0648\u062D \u0628\u064A\u0646 \u0627\u0644\u062D\u0642\u064A\u0642\u0629 \u0627\u0644\u0645\u0633\u062C\u0644\u0629 \u0648\u0627\u0644\u0627\u0633\u062A\u0646\u062A\u0627\u062C \u0627\u0644\u062A\u062D\u0644\u064A\u0644\u064A\u061B \u0633\u0645\u0651\u0650 \u0627\u0644\u0627\u0633\u062A\u0646\u062A\u0627\u062C \xAB\u0627\u0633\u062A\u0646\u062A\u0627\u062C\u0627\u064B\xBB \u0648\u0627\u0631\u0628\u0637\u0647 \u0628\u0627\u0644\u0645\u0624\u0634\u0631 \u0627\u0644\u0630\u064A \u064A\u062F\u0639\u0645\u0647\u060C \u0648\u0644\u0627 \u062A\u0639\u0631\u0636\u0647 \u0643\u062D\u0642\u064A\u0642\u0629.
+\u062A\u0639\u0627\u0645\u0644 \u0645\u0639 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0646\u0634\u0637\u0629 \u0648\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A \u0628\u0648\u0635\u0641\u0647\u0627 \u0628\u064A\u0627\u0646\u0627\u062A \u062A\u0634\u063A\u064A\u0644\u064A\u0629 \u062D\u064A\u0629 \u0628\u0639\u062F \u062D\u0644 \u062A\u0642\u062F\u0645 \u0627\u0644\u0623\u0646\u0634\u0637\u0629 \u0627\u0644\u0645\u0631\u062A\u0628\u0637\u0629 \u0628\u0645\u0635\u0627\u062F\u0631\u0647\u0627. \u0623\u0639\u062F\u0627\u062F \u0627\u0644\u0623\u0646\u0634\u0637\u0629 \u0648\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u062D\u0627\u0644\u0627\u062A \u0648\u0645\u0642\u0627\u064A\u064A\u0633 \u0643\u0644 \u0645\u062C\u0645\u0648\u0639\u0629 \u062A\u0634\u0645\u0644 \u0627\u0644\u0633\u062C\u0644 \u0643\u0627\u0645\u0644\u0627\u064B. \u0642\u062F \u062A\u064F\u0636\u063A\u0637 \u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u0623\u0646\u0634\u0637\u0629 \u0627\u0644\u0645\u0633\u062A\u0642\u0631\u0629 \u0639\u0646\u062F \u062A\u062C\u0627\u0648\u0632 \u0627\u0644\u0639\u062A\u0628\u0629 \u0627\u0644\u0645\u0639\u0644\u0646\u0629\u061B \u0623\u0639\u062F\u0627\u062F \u0627\u0644\u0645\u062D\u0630\u0648\u0641 \u0645\u0646 \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644 \u0645\u0648\u0636\u062D\u0629 \u0644\u0643\u0644 \u0645\u062C\u0645\u0648\u0639\u0629 \u0648\u062D\u0627\u0644\u0629. \u0644\u0627 \u062A\u064F\u0636\u063A\u0637 \u0623\u064A \u062A\u0641\u0627\u0635\u064A\u0644 \u0644\u0628\u0646\u062F \u0645\u062A\u0623\u062E\u0631 \u0623\u0648 \u0627\u0646\u062D\u0631\u0627\u0641\u0647 \u0627\u0644\u0645\u0637\u0644\u0642 5 \u0646\u0642\u0627\u0637 \u0645\u0626\u0648\u064A\u0629 \u0641\u0623\u0643\u062B\u0631. \u0631\u0627\u062C\u0639 \u062C\u0645\u064A\u0639 \u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u0627\u0633\u062A\u062B\u0646\u0627\u0621\u0627\u062A\u060C \u0648\u0644\u0627 \u062A\u0641\u062A\u0631\u0636 \u0623\u0646 \u063A\u064A\u0627\u0628 \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644 \u064A\u0639\u0646\u064A \u063A\u064A\u0627\u0628 \u0627\u0644\u0646\u0634\u0627\u0637 \u0645\u0646 \u0627\u0644\u0645\u0634\u0631\u0648\u0639. \u0623\u0638\u0647\u0631 \u0627\u0644\u062D\u0627\u0644\u0629 \u0643\u0645\u0627 \u0648\u0631\u062F\u062A \u0648\u0627\u0633\u062A\u0639\u0645\u0644 delayed \u0643\u0645\u0624\u0634\u0631 \u0627\u0644\u062A\u0623\u062E\u064A\u0631 \u0627\u0644\u0646\u0647\u0627\u0626\u064A\u060C \u0628\u0645\u0627 \u0641\u064A \u0630\u0644\u0643 \u0627\u0644\u0645\u0643\u062A\u0645\u0644 \u0627\u0644\u0645\u062A\u0623\u062E\u0631. \u062D\u0642\u0644\u0627 linkedToSource \u0648generatedByGroup \u064A\u0639\u0643\u0633\u0627\u0646 \u0639\u0644\u0627\u0645\u0627\u062A \u0627\u0644\u0631\u0628\u0637/\u0627\u0644\u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0645\u0633\u062C\u0644\u0629 \u0641\u0642\u0637\u061B \u0644\u0627 \u062A\u0633\u062A\u0646\u062A\u062C \u0645\u0646\u0634\u0623\u064B \u063A\u064A\u0631 \u0645\u0648\u062B\u0642.
+\u0627\u0628\u062F\u0623 \u0628\u0623\u0647\u0645 \u0645\u062E\u0627\u0637\u0631 \u0627\u0644\u0645\u0648\u0639\u062F \u0648\u0641\u062C\u0648\u0627\u062A \u0627\u0644\u0625\u0646\u062C\u0627\u0632 \u0627\u0644\u0645\u062F\u0639\u0648\u0645\u0629\u060C \u062B\u0645 \u0644\u062E\u0635 \u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A \u0648\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u062D\u0627\u0644\u0627\u062A. \u0644\u0627 \u062A\u0636\u0641 \u0623\u0633\u0628\u0627\u0628\u0627\u064B \u0623\u0648 \u062A\u0648\u0635\u064A\u0627\u062A \u0639\u0627\u0645\u0629\u061B \u0627\u0631\u0628\u0637 \u0643\u0644 \u0625\u062C\u0631\u0627\u0621 \u0628\u0628\u0646\u062F \u0623\u0648 \u0645\u0624\u0634\u0631 \u0645\u062D\u062F\u062F. \u0625\u0630\u0627 \u063A\u0627\u0628\u062A \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0641\u0627\u0643\u062A\u0628 \xAB\u063A\u064A\u0631 \u0645\u062A\u0627\u062D \u0641\u064A \u0627\u0644\u0633\u062C\u0644 \u0627\u0644\u062D\u0627\u0644\u064A\xBB.
 \u0623\u062E\u0631\u062C JSON \u0635\u0627\u0644\u062D\u0627\u064B \u0641\u0642\u0637 \u0648\u0628\u0627\u0644\u0645\u0641\u0627\u062A\u064A\u062D \u0627\u0644\u062A\u0627\u0644\u064A\u0629 \u062D\u0635\u0631\u0627\u064B:
 {
   "headline": "\u0639\u0646\u0648\u0627\u0646 \u062D\u0627\u0644\u0629 \u0645\u0647\u0646\u064A \u0645\u0646 8 \u0625\u0644\u0649 16 \u0643\u0644\u0645\u0629\u060C \u0628\u0644\u0627 \u0645\u0628\u0627\u0644\u063A\u0629",
@@ -124491,7 +124597,7 @@ router3.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("p
   "nextActions": ["1 \u0625\u0644\u0649 4 \u0625\u062C\u0631\u0627\u0621\u0627\u062A \u0645\u0628\u0627\u0634\u0631\u0629\u060C \u0643\u0644 \u0625\u062C\u0631\u0627\u0621 \u0645\u0631\u062A\u0628\u0637 \u0628\u0627\u0633\u062A\u062B\u0646\u0627\u0621 \u0623\u0648 \u0645\u0624\u0634\u0631 \u0645\u062D\u062F\u062F"],
   "managementFocus": ["0 \u0625\u0644\u0649 2 \u0645\u062D\u0627\u0648\u0631 \u0645\u062A\u0627\u0628\u0639\u0629 \u0645\u0631\u062A\u0628\u0637\u0629 \u0645\u0628\u0627\u0634\u0631\u0629 \u0628\u0623\u0639\u0644\u0649 \u0627\u0633\u062A\u062B\u0646\u0627\u0621\u064A\u0646 \u0641\u0642\u0637"]
 }
-\u0627\u0644\u0642\u0648\u0627\u0639\u062F: \u0627\u0643\u062A\u0628 \u0628\u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0645\u0647\u0646\u064A\u0629 \u0627\u0644\u0645\u0643\u062B\u0641\u0629. \u0644\u0627 \u062A\u0643\u0631\u0631 \u0627\u0633\u0645 \u0627\u0644\u0628\u0646\u062F \u0623\u0648 \u0646\u0641\u0633 \u0627\u0644\u0631\u0642\u0645 \u0641\u064A \u0623\u0643\u062B\u0631 \u0645\u0646 \u0642\u0633\u0645 \u0625\u0644\u0627 \u0639\u0646\u062F \u0627\u0644\u0636\u0631\u0648\u0631\u0629. \u0644\u0627 \u062A\u0645\u0644\u0623 \u0623\u064A \u0642\u0633\u0645 \u0628\u0645\u062D\u062A\u0648\u0649 \u0625\u0646\u0634\u0627\u0626\u064A\u060C \u0648\u0644\u0627 \u062A\u0633\u062A\u062E\u062F\u0645 \u0639\u0628\u0627\u0631\u0627\u062A \u0645\u062B\u0644 "\u062A\u062D\u0633\u064A\u0646 \u0627\u0644\u062A\u0646\u0633\u064A\u0642" \u0623\u0648 "\u0631\u0641\u0639 \u0627\u0644\u0643\u0641\u0627\u0621\u0629" \u062F\u0648\u0646 \u0645\u0624\u0634\u0631 \u0645\u062D\u062F\u062F. \u0625\u0630\u0627 \u0644\u0645 \u062A\u0648\u062C\u062F \u0628\u064A\u0627\u0646\u0627\u062A \u0645\u0627\u0644\u064A\u0629 \u0641\u0644\u0627 \u062A\u0630\u0643\u0631 \u0627\u0644\u0645\u064A\u0632\u0627\u0646\u064A\u0629 \u0623\u0648 \u0627\u0644\u062A\u0643\u0644\u0641\u0629. \u0625\u0630\u0627 \u0644\u0645 \u062A\u0648\u062C\u062F \u0628\u064A\u0627\u0646\u0627\u062A \u0645\u0648\u0627\u0631\u062F \u0641\u0644\u0627 \u062A\u0630\u0643\u0631 \u0627\u0644\u0639\u0645\u0627\u0644\u0629 \u0623\u0648 \u0627\u0644\u0625\u0646\u062A\u0627\u062C\u064A\u0629. \u0625\u0630\u0627 \u0644\u0645 \u062A\u0648\u062C\u062F \u0628\u064A\u0627\u0646\u0627\u062A \u0645\u0627\u0644\u0643/\u0645\u0642\u0627\u0648\u0644/\u0645\u0634\u0631\u0641 \u0641\u0644\u0627 \u062A\u0633\u062A\u0646\u062A\u062C \u0623\u062F\u0648\u0627\u0631\u0627\u064B. \u064A\u062C\u0628 \u0623\u0646 \u064A\u0643\u0648\u0646 \u0643\u0644 \u0627\u0633\u062A\u0646\u062A\u0627\u062C \u0642\u0627\u0628\u0644\u0627\u064B \u0644\u0644\u062A\u062A\u0628\u0639 \u0625\u0644\u0649 \u0631\u0642\u0645 \u0623\u0648 \u062D\u0627\u0644\u0629 \u0623\u0648 \u062A\u0627\u0631\u064A\u062E \u0648\u0627\u0631\u062F \u0641\u064A \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A.`
+\u0627\u0644\u0642\u0648\u0627\u0639\u062F: \u0627\u0643\u062A\u0628 \u0628\u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0645\u0647\u0646\u064A\u0629 \u0627\u0644\u0645\u0643\u062B\u0641\u0629. \u0644\u0627 \u062A\u0643\u0631\u0631 \u0627\u0633\u0645 \u0627\u0644\u0628\u0646\u062F \u0623\u0648 \u0627\u0644\u0631\u0642\u0645 \u0641\u064A \u0623\u0643\u062B\u0631 \u0645\u0646 \u0642\u0633\u0645 \u0625\u0644\u0627 \u0639\u0646\u062F \u0627\u0644\u0636\u0631\u0648\u0631\u0629. \u0644\u0627 \u062A\u0633\u062A\u062E\u062F\u0645 \u0639\u0628\u0627\u0631\u0627\u062A \u0625\u0646\u0634\u0627\u0626\u064A\u0629 \u0645\u062B\u0644 \xAB\u062A\u062D\u0633\u064A\u0646 \u0627\u0644\u062A\u0646\u0633\u064A\u0642\xBB \u0623\u0648 \xAB\u0631\u0641\u0639 \u0627\u0644\u0643\u0641\u0627\u0621\u0629\xBB \u062F\u0648\u0646 \u0645\u0624\u0634\u0631 \u0645\u062D\u062F\u062F. \u0644\u0627 \u062A\u0630\u0643\u0631 \u0627\u0644\u0645\u064A\u0632\u0627\u0646\u064A\u0629 \u0623\u0648 \u0627\u0644\u062A\u0643\u0644\u0641\u0629 \u0623\u0648 \u0627\u0644\u0639\u0645\u0627\u0644\u0629 \u0623\u0648 \u0627\u0644\u0625\u0646\u062A\u0627\u062C\u064A\u0629 \u0623\u0648 \u0623\u062F\u0648\u0627\u0631 \u0627\u0644\u0645\u0627\u0644\u0643/\u0627\u0644\u0645\u0642\u0627\u0648\u0644/\u0627\u0644\u0645\u0634\u0631\u0641 \u0645\u0627 \u0644\u0645 \u062A\u0631\u062F \u0628\u064A\u0627\u0646\u0627\u062A \u0635\u0631\u064A\u062D\u0629 \u0639\u0646\u0647\u0627. \u064A\u062C\u0628 \u0623\u0646 \u064A\u0643\u0648\u0646 \u0643\u0644 \u0627\u0633\u062A\u0646\u062A\u0627\u062C \u0642\u0627\u0628\u0644\u0627\u064B \u0644\u0644\u062A\u062A\u0628\u0639 \u0625\u0644\u0649 \u0631\u0642\u0645 \u0623\u0648 \u062D\u0627\u0644\u0629 \u0623\u0648 \u062A\u0627\u0631\u064A\u062E \u0648\u0627\u0631\u062F \u0641\u064A \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A.`
       },
       {
         role: "user",
@@ -124513,11 +124619,8 @@ router3.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("p
 - \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0645\u062A\u0648\u0642\u0639: ${forecastCompletionDate ?? "\u063A\u064A\u0631 \u0645\u062A\u0627\u062D"}
 - \u0641\u0631\u0642 \u0627\u0644\u062A\u0648\u0642\u0639 \u0639\u0646 \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062A\u0639\u0627\u0642\u062F\u064A\u0629: ${forecastDelayDays} \u064A\u0648\u0645
 - \u0639\u062F\u062F \u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631: ${reportsCount}
-- \u062A\u0648\u0632\u064A\u0639 \u062D\u0627\u0644\u0627\u062A \u0627\u0644\u0628\u0646\u0648\u062F: ${JSON.stringify(statusCounts)}
-- \u0639\u062F\u062F \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0629 \u0641\u0639\u0644\u064A\u0627\u064B: ${delayedActivities.length}
-- \u0623\u0639\u0644\u0649 \u0627\u0644\u0627\u0633\u062A\u062B\u0646\u0627\u0621\u0627\u062A \u062D\u0633\u0628 \u0627\u0644\u0641\u062C\u0648\u0629: ${JSON.stringify(criticalActivities)}
+- \u0645\u0644\u062E\u0635 \u0627\u0644\u0623\u0646\u0634\u0637\u0629 \u0648\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A\u060C \u0645\u0639 Planned/Actual/SPI \u0648\u0639\u062F\u0651 \u0627\u0644\u062D\u0627\u0644\u0627\u062A \u0627\u0644\u0643\u0627\u0645\u0644 \u0644\u0643\u0644 \u0645\u062C\u0645\u0648\u0639\u0629. \u0639\u0646\u062F \u0636\u063A\u0637 \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644 \u062A\u0628\u0642\u0649 \u0643\u0644 \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0629 \u0623\u0648 \u0630\u0627\u062A \u0627\u0646\u062D\u0631\u0627\u0641 \u0645\u0637\u0644\u0642 >= 5 \u0646\u0642\u0627\u0637\u060C \u0648\u062A\u0638\u0647\u0631 \u0623\u0639\u062F\u0627\u062F \u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u0633\u062A\u0642\u0631\u0629 \u0627\u0644\u0645\u062D\u0630\u0648\u0641\u0629 \u062D\u0633\u0628 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u0648\u0627\u0644\u062D\u0627\u0644\u0629: ${JSON.stringify(summaryContext)}
 - \u0627\u0644\u062A\u0648\u0642\u0641\u0627\u062A: ${JSON.stringify(suspensions.map((item) => ({ type: item.type, calendarDays: item.calendarDays })))}
-- \u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0627\u0633\u062A\u062B\u0646\u0627\u0621\u0627\u062A \u0627\u0644\u0643\u0627\u0645\u0644\u0629 (\u062C\u0645\u064A\u0639 \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0629 \u0648\u0641\u062C\u0648\u0629 \u0623\u062F\u0627\u0621 \u0644\u0627 \u062A\u0642\u0644 \u0639\u0646 5 \u0646\u0642\u0627\u0637): ${JSON.stringify(activitiesSummary)}
 \u0623\u0639\u062F JSON \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u0641\u0642\u0637\u060C \u0648\u0627\u062C\u0639\u0644 \u0627\u0644\u062A\u062D\u0644\u064A\u0644 \u0645\u0641\u064A\u062F\u0627\u064B \u0644\u0627\u062A\u062E\u0627\u0630 \u0627\u0644\u0642\u0631\u0627\u0631 \u0648\u0644\u064A\u0633 \u0645\u062C\u0631\u062F \u0625\u0639\u0627\u062F\u0629 \u0639\u0631\u0636 \u0644\u0644\u0623\u0631\u0642\u0627\u0645.`
       }
     ];
@@ -125764,6 +125867,60 @@ function selectReportSnapshotActivities(activities) {
   );
 }
 
+// src/lib/report-ai-context.ts
+import { createHash as createHash2 } from "node:crypto";
+function reportAiSnapshotFingerprint(reportDate, rows, periodStart, periodEnd) {
+  return createHash2("sha256").update(JSON.stringify({
+    reportDate,
+    periodStart,
+    periodEnd,
+    rows: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      status: row.status,
+      plannedProgress: row.plannedProgress,
+      actualProgress: row.actualProgress,
+      plannedStartDate: row.plannedStartDate,
+      plannedEndDate: row.plannedEndDate,
+      actualStartDate: row.actualStartDate,
+      actualEndDate: row.actualEndDate,
+      externalSourceGroupId: row.externalSourceGroupId
+    }))
+  })).digest("hex");
+}
+function buildReportAiContext(rows, reportDate, currentGroupsByActivityId) {
+  return rows.map((row) => {
+    const plannedVerified = row.plannedHistoricalUnverified !== true && row.plannedAsOfDate === reportDate;
+    const planned = plannedVerified && Number.isFinite(row.plannedProgress) ? row.plannedProgress : null;
+    const actual = Number.isFinite(row.actualProgress) ? row.actualProgress : null;
+    const actualRecordedAfterReportDate = Boolean(row.actualRecordedAt && row.actualRecordedAt.slice(0, 10) > reportDate);
+    const actualVerifiedAtReportDate = Boolean(row.actualRecordedAt && row.actualRecordedAt.slice(0, 10) <= reportDate);
+    const deviation = actual !== null && planned !== null && actualVerifiedAtReportDate ? Math.round((actual - planned) * 10) / 10 : null;
+    return {
+      name: row.name ?? "\u0628\u0646\u062F \u0628\u0644\u0627 \u0627\u0633\u0645",
+      group: typeof row.id === "number" ? currentGroupsByActivityId.get(row.id) ?? "\u063A\u064A\u0631 \u0645\u0648\u062B\u0642\u0629 \u0641\u064A \u0644\u0642\u0637\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631" : "\u063A\u064A\u0631 \u0645\u0648\u062B\u0642\u0629 \u0641\u064A \u0644\u0642\u0637\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631",
+      groupIsCurrentReferenceOnly: true,
+      status: row.status ?? "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F\u0629",
+      actualProgress: actual,
+      actualRecordedAt: row.actualRecordedAt ?? null,
+      actualRecordedAfterReportDate,
+      actualHistoricalUnverified: !actualVerifiedAtReportDate,
+      plannedProgressAtReportDate: planned,
+      plannedAsOfDate: row.plannedAsOfDate ?? null,
+      plannedHistoricalUnverified: !plannedVerified,
+      deviationPoints: deviation,
+      positionAgainstPlan: deviation === null ? "\u063A\u064A\u0631 \u0642\u0627\u0628\u0644 \u0644\u0644\u062A\u062D\u0642\u0642 \u062A\u0627\u0631\u064A\u062E\u064A\u0627\u064B" : deviation < 0 ? "\u062E\u0644\u0641 \u0627\u0644\u0645\u062E\u0637\u0637" : deviation > 0 ? "\u0645\u062A\u0642\u062F\u0645 \u0639\u0646 \u0627\u0644\u0645\u062E\u0637\u0637" : "\u0645\u0637\u0627\u0628\u0642 \u0644\u0644\u0645\u062E\u0637\u0637",
+      plannedStartDate: row.plannedStartDate ?? null,
+      plannedEndDate: row.plannedEndDate ?? null,
+      actualStartDate: row.actualStartDate ?? null,
+      actualEndDate: row.actualEndDate ?? null,
+      // A late completion is verifiable from recorded dates; an unfinished
+      // activity needs a historical as-of date and cannot use today's clock.
+      scheduleDelay: row.actualEndDate && row.actualEndDate <= reportDate && row.plannedEndDate ? row.actualEndDate > row.plannedEndDate ? "\u0627\u0643\u062A\u0645\u0644 \u0628\u0639\u062F \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u062E\u0637\u0637\u0629" : "\u0644\u0645 \u064A\u0643\u062A\u0645\u0644 \u0628\u0639\u062F \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u062E\u0637\u0637\u0629" : row.plannedEndDate && actualVerifiedAtReportDate && row.status !== "completed" && reportDate > row.plannedEndDate ? "\u0643\u0627\u0646 \u063A\u064A\u0631 \u0645\u0643\u062A\u0645\u0644 \u0628\u0639\u062F \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u062E\u0637\u0637\u0629 \u0641\u064A \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0642\u0631\u064A\u0631" : "\u063A\u064A\u0631 \u0645\u062B\u0628\u062A"
+    };
+  });
+}
+
 // src/routes/reports.ts
 var ALLOWED_ACTIVITY_STATUSES = /* @__PURE__ */ new Set([
   "not_started",
@@ -125836,21 +125993,57 @@ var flattenImageGroups = (groups) => {
   return out;
 };
 var router5 = (0, import_express5.Router)();
+async function buildNewReportSnapshot(projectId, reportDate) {
+  const currentActivities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder);
+  const [schedule] = await db.select({
+    noSchedule: projectsTable.noSchedule,
+    startDate: projectsTable.startDate,
+    expectedEndDate: projectsTable.expectedEndDate
+  }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  const hasSchedule = schedule?.noSchedule !== true && hasValidProjectSchedule(schedule?.startDate, schedule?.expectedEndDate);
+  const reportAsOf = /* @__PURE__ */ new Date(`${reportDate}T00:00:00.000Z`);
+  const resolvedActivities = await resolveLinkedActivityProgress(currentActivities, reportAsOf);
+  const actualRecordedAt = (/* @__PURE__ */ new Date()).toISOString();
+  return selectReportSnapshotActivities(resolvedActivities).map((a) => ({
+    id: a.id,
+    name: a.name,
+    plannedStartDate: a.plannedStartDate,
+    plannedEndDate: a.plannedEndDate,
+    actualStartDate: a.actualStartDate,
+    actualEndDate: a.actualEndDate,
+    externalSourceGroupId: a.externalSourceGroupId,
+    plannedProgress: hasSchedule ? clampPercent(a.externalSourceGroupId != null ? a.plannedProgress : calcActivityPlannedProgress({
+      plannedStartDate: a.plannedStartDate,
+      plannedEndDate: a.plannedEndDate
+    }, reportAsOf)) : 0,
+    plannedAsOfDate: reportDate,
+    plannedHistoricalUnverified: false,
+    actualProgress: clampPercent(a.actualProgress),
+    actualRecordedAt,
+    weight: a.weight ?? 1,
+    status: a.status,
+    sortOrder: a.sortOrder
+  }));
+}
 router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
-  const { imageGroups, technicalNotes, recommendations, periodStart, periodEnd } = req.body;
+  const { imageGroups, technicalNotes, recommendations, periodStart, periodEnd, reportDate, reportId, snapshotOverrides } = req.body;
   const isValidCalendarDate3 = (s) => {
     if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
     const d = /* @__PURE__ */ new Date(`${s}T00:00:00Z`);
     return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
   };
-  if (!isValidCalendarDate3(periodStart) || !isValidCalendarDate3(periodEnd)) {
+  if (!isValidCalendarDate3(periodStart) || !isValidCalendarDate3(periodEnd) || !isValidCalendarDate3(reportDate)) {
     res.status(400).json({ error: "\u064A\u062C\u0628 \u062A\u062D\u062F\u064A\u062F \u062A\u0627\u0631\u064A\u062E \u0628\u062F\u0627\u064A\u0629 \u0648\u0646\u0647\u0627\u064A\u0629 \u0641\u062A\u0631\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0642\u0628\u0644 \u0627\u0644\u0635\u064A\u0627\u063A\u0629 \u0628\u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A" });
     return;
   }
   if (periodStart > periodEnd) {
     res.status(400).json({ error: "\u062A\u0627\u0631\u064A\u062E \u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629 \u064A\u062C\u0628 \u0623\u0646 \u064A\u0633\u0628\u0642 \u062A\u0627\u0631\u064A\u062E \u0646\u0647\u0627\u064A\u062A\u0647\u0627" });
+    return;
+  }
+  if (reportId != null && (!Number.isSafeInteger(reportId) || reportId <= 0)) {
+    res.status(400).json({ error: "\u0631\u0642\u0645 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
     return;
   }
   const aiProviders = [
@@ -125880,46 +126073,48 @@ router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proj
     }
   }
   try {
-    const periodStartTs = /* @__PURE__ */ new Date(`${periodStart}T00:00:00+02:00`);
-    const periodEndTs = /* @__PURE__ */ new Date(`${periodEnd}T23:59:59.999+02:00`);
-    const periodCondition = or(
-      and(
-        isNotNull(activitiesTable.actualStartDate),
-        lte(activitiesTable.actualStartDate, periodEnd),
-        or(isNull(activitiesTable.actualEndDate), gte(activitiesTable.actualEndDate, periodStart))
-      ),
-      and(
-        gte(activitiesTable.progressUpdatedAt, periodStartTs),
-        lte(activitiesTable.progressUpdatedAt, periodEndTs)
-      )
-    );
-    const [periodActivities, allActivities] = await Promise.all([
-      db.select().from(activitiesTable).where(and(eq(activitiesTable.projectId, projectId), periodCondition)).orderBy(activitiesTable.sortOrder),
-      db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder)
+    let snapshot;
+    if (reportId != null) {
+      const [report] = await db.select({
+        reportDate: reportsTable.reportDate,
+        snapshot: reportsTable.activitiesSnapshot
+      }).from(reportsTable).where(and(eq(reportsTable.projectId, projectId), eq(reportsTable.id, reportId)));
+      if (!report) {
+        res.status(404).json({ error: "\u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+        return;
+      }
+      if (report.reportDate !== reportDate) {
+        res.status(409).json({ error: "\u0627\u062D\u0641\u0638 \u062A\u063A\u064A\u064A\u0631 \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0642\u0628\u0644 \u0627\u0644\u0635\u064A\u0627\u063A\u0629 \u0644\u0643\u064A \u062A\u0637\u0627\u0628\u0642 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062A\u0627\u0631\u064A\u062E\u064A\u0629" });
+        return;
+      }
+      if (!Array.isArray(report.snapshot)) {
+        res.status(409).json({ error: "\u0647\u0630\u0627 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0642\u062F\u064A\u0645 \u0644\u0627 \u064A\u0645\u0644\u0643 \u0644\u0642\u0637\u0629 \u0628\u0646\u0648\u062F \u0645\u062D\u0641\u0648\u0638\u0629\u061B \u0644\u0627 \u064A\u0645\u0643\u0646 \u0635\u064A\u0627\u063A\u062A\u0647 \u0645\u0646 \u0623\u0646\u0634\u0637\u0629 \u0627\u0644\u064A\u0648\u0645" });
+        return;
+      }
+      snapshot = report.snapshot;
+      if (snapshotOverrides !== void 0) {
+        if (!Array.isArray(snapshotOverrides)) {
+          res.status(400).json({ error: "\u062A\u0639\u062F\u064A\u0644\u0627\u062A \u0628\u0646\u0648\u062F \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629" });
+          return;
+        }
+        snapshot = mergeSnapshot(snapshot, snapshotOverrides) ?? snapshot;
+      }
+    } else {
+      snapshot = await buildNewReportSnapshot(projectId, reportDate);
+    }
+    const [activitiesForGroups, groups] = await Promise.all([
+      db.select({ id: activitiesTable.id, groupId: activitiesTable.groupId }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId)),
+      db.select({ id: activityGroupsTable.id, name: activityGroupsTable.name }).from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId))
     ]);
-    const statusLabel2 = {
-      not_started: "\u0644\u0645 \u064A\u0628\u062F\u0623",
-      in_progress: "\u0642\u064A\u062F \u0627\u0644\u062A\u0646\u0641\u064A\u0630",
-      completed: "\u0645\u0643\u062A\u0645\u0644",
-      delayed: "\u0645\u062A\u0623\u062E\u0631"
-    };
-    const periodActivitiesText = periodActivities.length > 0 ? periodActivities.map((a) => {
-      const updatedInPeriod = a.progressUpdatedAt && a.progressUpdatedAt >= periodStartTs && a.progressUpdatedAt <= periodEndTs;
-      return `- ${a.name}: \u0627\u0644\u062D\u0627\u0644\u0629: ${statusLabel2[a.status] ?? a.status}\u060C \u0627\u0644\u0625\u0646\u062C\u0627\u0632 \u0627\u0644\u0641\u0639\u0644\u064A: ${a.actualProgress ?? 0}%${updatedInPeriod ? " (\u062A\u0645 \u062A\u062D\u062F\u064A\u062B \u062A\u0642\u062F\u0645\u0647 \u062E\u0644\u0627\u0644 \u0647\u0630\u0647 \u0627\u0644\u0641\u062A\u0631\u0629)" : ""}`;
-    }).join("\n") : "\u0644\u0627 \u062A\u0648\u062C\u062F \u0628\u0646\u0648\u062F \u062C\u0631\u0649 \u0627\u0644\u0639\u0645\u0644 \u0639\u0644\u064A\u0647\u0627 \u0623\u0648 \u062A\u062D\u062F\u064A\u062B\u0647\u0627 \u062E\u0644\u0627\u0644 \u0647\u0630\u0647 \u0627\u0644\u0641\u062A\u0631\u0629.";
-    const completedCount = allActivities.filter((a) => a.status === "completed").length;
-    const delayedCount = allActivities.filter((a) => a.status === "delayed").length;
-    const totalCount = allActivities.length;
+    const groupNames = new Map(groups.map((group) => [group.id, group.name]));
+    const groupByActivity = new Map(activitiesForGroups.filter((activity) => activity.groupId != null && groupNames.has(activity.groupId)).map((activity) => [activity.id, groupNames.get(activity.groupId)]));
+    const snapshotContext = buildReportAiContext(snapshot, reportDate, groupByActivity);
     const imageGroupsSummary = Array.isArray(imageGroups) && imageGroups.length > 0 ? imageGroups.filter((g) => g.category && Array.isArray(g.urls) && g.urls.length > 0).map((g) => `- ${g.category} (${g.urls.length} \u0635\u0648\u0631\u0629)`).join("\n") : null;
-    const prompt = `\u064A\u0631\u062C\u0649 \u0635\u064A\u0627\u063A\u0629 \u062A\u0642\u0631\u064A\u0631 \u0641\u0646\u064A \u0645\u0647\u0646\u064A \u0644\u0644\u0645\u0634\u0631\u0648\u0639 \u0639\u0646 \u0627\u0644\u0641\u062A\u0631\u0629 \u0645\u0646 ${periodStart} \u0625\u0644\u0649 ${periodEnd} \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062A\u0627\u0644\u064A\u0629:
-
-\u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u0639\u0627\u0645\u0629 \u0644\u0644\u0645\u0634\u0631\u0648\u0639 (\u0644\u0644\u0633\u064A\u0627\u0642 \u0641\u0642\u0637):
-\u0625\u062C\u0645\u0627\u0644\u064A \u0628\u0646\u0648\u062F \u0627\u0644\u0623\u0639\u0645\u0627\u0644: ${totalCount}
-\u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u0643\u062A\u0645\u0644\u0629: ${completedCount}
-\u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0629: ${delayedCount}
-
-\u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u062A\u064A \u062C\u0631\u0649 \u0627\u0644\u0639\u0645\u0644 \u0639\u0644\u064A\u0647\u0627 \u0623\u0648 \u062A\u062D\u062F\u064A\u062B\u0647\u0627 \u062E\u0644\u0627\u0644 \u0641\u062A\u0631\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 (${periodStart} \u0625\u0644\u0649 ${periodEnd}):
-${periodActivitiesText}
+    const prompt = `\u0635\u063A \u0646\u0635\u0627\u064B \u0647\u0646\u062F\u0633\u064A\u0627\u064B \u0645\u0648\u062C\u0632\u0627\u064B \u0644\u0647\u0630\u0627 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u062A\u062D\u062F\u064A\u062F\u0627\u064B \u0639\u0646 \u0627\u0644\u0641\u062A\u0631\u0629 \u0645\u0646 ${periodStart} \u0625\u0644\u0649 ${periodEnd}\u060C \u0648\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0642\u0631\u064A\u0631 ${reportDate}.
+\u0645\u0635\u062F\u0631 \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0648\u062D\u064A\u062F \u0647\u0648 \u0644\u0642\u0637\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 ${reportId != null ? "\u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0629" : "\u0627\u0644\u0645\u062D\u0633\u0648\u0628\u0629 \u0642\u0628\u0644 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0628\u0646\u0641\u0633 \u0642\u0648\u0627\u0639\u062F \u0627\u0644\u062D\u0641\u0638"}\u061B \u0644\u0627 \u062A\u0633\u062A\u062E\u062F\u0645 \u0628\u0646\u0648\u062F \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u062D\u0627\u0644\u064A\u0629 \u062E\u0627\u0631\u062C\u0647\u0627.
+\u062C\u0645\u064A\u0639 \u0628\u0646\u0648\u062F \u0627\u0644\u0644\u0642\u0637\u0629 (${snapshotContext.length})\u060C \u062D\u0644\u0644\u0647\u0627 \u0643\u0644\u0647\u0627 \u0642\u0628\u0644 \u0627\u0644\u0643\u062A\u0627\u0628\u0629:
+${JSON.stringify(snapshotContext)}
+\u0627\u0633\u0645 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u0625\u0646 \u062A\u0648\u0641\u0631 \u0645\u0633\u062A\u0645\u062F \u0645\u0646 \u062A\u0639\u0631\u064A\u0641\u0647\u0627 \u0627\u0644\u062D\u0627\u0644\u064A \u0648\u0644\u064A\u0633 \u062F\u0644\u064A\u0644\u0627\u064B \u0639\u0644\u0649 \u0627\u0633\u0645\u0647\u0627 \u0627\u0644\u062A\u0627\u0631\u064A\u062E\u064A. \u0627\u0644\u0642\u064A\u0645\u0629 \u0627\u0644\u0645\u062E\u0637\u0637\u0629 \u063A\u064A\u0631 \u0627\u0644\u0645\u062A\u062D\u0642\u0642 \u0645\u0646\u0647\u0627 \u062A\u0627\u0631\u064A\u062E\u064A\u0627\u064B \u0644\u0627 \u062A\u0635\u0644\u062D \u0644\u0625\u062B\u0628\u0627\u062A \u0627\u0646\u062D\u0631\u0627\u0641 \u0623\u0648 \u062A\u0623\u062E\u064A\u0631. \u0627\u0644\u0625\u0646\u062C\u0627\u0632 \u0627\u0644\u0645\u0633\u062C\u0644 \u0628\u0639\u062F \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0644\u064A\u0633 \u062F\u0644\u064A\u0644\u0627\u064B \u0639\u0644\u0649 \u0625\u0646\u062C\u0627\u0632 \u0641\u064A \u0630\u0644\u0643 \u0627\u0644\u062A\u0627\u0631\u064A\u062E\u061B \u0627\u0639\u0631\u0636\u0647 \u0643\u0642\u064A\u0645\u0629 \u0645\u062D\u0641\u0648\u0638\u0629 \u0645\u0639 \u0628\u064A\u0627\u0646 \u062D\u062F\u0648\u062F \u0627\u0644\u062A\u0627\u0631\u064A\u062E\u064A\u0629\u060C \u0648\u0644\u0627 \u062A\u0646\u0633\u0628\u0647 \u0625\u0644\u0649 \u0627\u0644\u0641\u062A\u0631\u0629 \u062F\u0648\u0646 \u0633\u0646\u062F.
 ${imageGroupsSummary ? `
 \u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0635\u0648\u0631 \u0627\u0644\u0645\u0631\u0641\u0642\u0629 \u0641\u064A \u0627\u0644\u062A\u0642\u0631\u064A\u0631:
 ${imageGroupsSummary}` : ""}
@@ -125930,10 +126125,10 @@ ${recommendations ? `
 \u062A\u0648\u0635\u064A\u0627\u062A \u0623\u0648\u0644\u064A\u0629 \u0645\u0646 \u0627\u0644\u0645\u0634\u0631\u0641:
 ${recommendations}` : ""}
 
-\u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u0635\u064A\u0627\u063A\u0629 \u062B\u0644\u0627\u062B\u0629 \u0623\u0642\u0633\u0627\u0645 \u0628\u0623\u0633\u0644\u0648\u0628 \u0645\u0647\u0646\u064A \u0631\u0633\u0645\u064A:
-1. workDescription: \u0648\u0635\u0641 \u0634\u0627\u0645\u0644 \u0644\u0644\u0623\u0639\u0645\u0627\u0644 \u0627\u0644\u0645\u0646\u062C\u0632\u0629 \u062E\u0644\u0627\u0644 \u0627\u0644\u0641\u062A\u0631\u0629 \u0645\u0646 ${periodStart} \u0625\u0644\u0649 ${periodEnd} \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0628\u0646\u0648\u062F \u0627\u0644\u0641\u062A\u0631\u0629 \u0623\u0639\u0644\u0627\u0647 \u0641\u0642\u0637\u060C \u0645\u0639 \u0627\u0644\u0625\u0634\u0627\u0631\u0629 \u0627\u0644\u0635\u0631\u064A\u062D\u0629 \u0625\u0644\u0649 \u0627\u0644\u0641\u062A\u0631\u0629. \u0644\u0627 \u062A\u0630\u0643\u0631 \u0623\u0639\u0645\u0627\u0644\u0627\u064B \u062E\u0627\u0631\u062C \u0647\u0630\u0647 \u0627\u0644\u0641\u062A\u0631\u0629.
-2. technicalNotes: \u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0627\u0644\u0641\u0646\u064A\u0629 \u0648\u0627\u0644\u0645\u0639\u0648\u0642\u0627\u062A \u0627\u0644\u0645\u064A\u062F\u0627\u0646\u064A\u0629 \u0625\u0646 \u0648\u064F\u062C\u062F\u062A\u060C \u0623\u0648 "\u0644\u0627 \u062A\u0648\u062C\u062F \u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0641\u0646\u064A\u0629" \u0625\u0646 \u0644\u0645 \u062A\u0643\u0646 \u0647\u0646\u0627\u0643 \u0628\u064A\u0627\u0646\u0627\u062A \u0643\u0627\u0641\u064A\u0629.
-3. recommendations: \u0627\u0644\u062A\u0648\u0635\u064A\u0627\u062A \u0648\u0627\u0644\u062E\u0637\u0648\u0627\u062A \u0627\u0644\u0645\u0642\u062A\u0631\u062D\u0629 \u0644\u0644\u0641\u062A\u0631\u0629 \u0627\u0644\u0642\u0627\u062F\u0645\u0629.
+\u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u0646\u0635 \u0647\u0646\u062F\u0633\u064A \u0639\u0631\u0628\u064A \u0627\u062D\u062A\u0631\u0627\u0641\u064A \u0648\u0645\u0648\u062C\u0632\u060C \u0644\u0627 \u0633\u0631\u062F \u0622\u0644\u064A \u0628\u0646\u062F\u0627\u064B \u0628\u0646\u062F\u0627\u064B. \u0623\u0628\u0631\u0632 \u0627\u0644\u0625\u0646\u062C\u0627\u0632\u0627\u062A \u0648\u0627\u0644\u062A\u0623\u062E\u064A\u0631\u0627\u062A \u0648\u0627\u0644\u0645\u062E\u0627\u0637\u0631 \u0648\u0627\u0644\u0627\u0646\u062D\u0631\u0627\u0641\u0627\u062A \u0627\u0644\u0645\u062B\u0628\u062A\u0629 \u0641\u0642\u0637. \u0645\u0645\u0646\u0648\u0639 \u0627\u062E\u062A\u0631\u0627\u0639 \u0623\u0639\u0645\u0627\u0644 \u0623\u0648 \u0646\u0633\u0628 \u0623\u0648 \u062A\u0648\u0627\u0631\u064A\u062E \u0623\u0648 \u0623\u0633\u0628\u0627\u0628 \u062A\u0623\u062E\u064A\u0631\u061B \u0625\u0630\u0627 \u0644\u0645 \u064A\u0633\u062C\u0644 \u0627\u0644\u0633\u0628\u0628 \u0641\u0642\u0644 \u0625\u0646\u0647 \u063A\u064A\u0631 \u0645\u0633\u062C\u0644. \u0645\u064A\u0651\u0632 \u0635\u0631\u0627\u062D\u0629 \u0628\u064A\u0646 \u0627\u0644\u062D\u0642\u064A\u0642\u0629 \u0627\u0644\u0631\u0642\u0645\u064A\u0629 \u0648\u0627\u0644\u0627\u0633\u062A\u0646\u062A\u0627\u062C.
+1. workDescription: \u0633\u0631\u062F \u062A\u062D\u0644\u064A\u0644\u064A \u0644\u0644\u0623\u0639\u0645\u0627\u0644 \u0627\u0644\u062A\u064A \u062A\u062F\u0639\u0645\u0647\u0627 \u0644\u0642\u0637\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631\u060C \u0645\u0639 \u0630\u0643\u0631 \u0627\u0644\u0641\u062A\u0631\u0629 \u062F\u0648\u0646 \u0627\u0644\u0627\u062F\u0639\u0627\u0621 \u0628\u0648\u0642\u0648\u0639 \u062A\u0642\u062F\u0645 \u062E\u0644\u0627\u0644\u0647\u0627 \u0625\u0646 \u0644\u0645 \u064A\u0643\u0646 \u0645\u0624\u0631\u062E\u0627\u064B.
+2. technicalNotes: \u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0627\u0644\u0641\u0646\u064A\u0629 \u0648\u0627\u0644\u0645\u0639\u0648\u0642\u0627\u062A \u0627\u0644\u0645\u0648\u062B\u0642\u0629\u060C \u0623\u0648 \u0639\u062F\u0645 \u062A\u0648\u0641\u0631 \u0628\u064A\u0627\u0646\u0627\u062A \u0643\u0627\u0641\u064A\u0629.
+3. recommendations: \u062E\u0637\u0648\u0627\u062A \u0645\u0642\u062A\u0631\u062D\u0629 \u0645\u0633\u062A\u0646\u062F\u0629 \u0625\u0644\u0649 \u0627\u0644\u0628\u0646\u0648\u062F \u0623\u0648 \u0627\u0644\u0623\u0631\u0642\u0627\u0645\u060C \u0645\u0639 \u062A\u0645\u064A\u064A\u0632 \u0627\u0644\u0645\u0642\u062A\u0631\u062D \u0639\u0646 \u0627\u0644\u0648\u0642\u0627\u0626\u0639.
 
 \u0623\u062C\u0628 \u0628\u062A\u0646\u0633\u064A\u0642 JSON \u0641\u0642\u0637:
 {"workDescription":"...","technicalNotes":"...","recommendations":"..."}`;
@@ -125948,7 +126143,7 @@ ${recommendations}` : ""}
           body: JSON.stringify({
             systemInstruction: {
               parts: [{
-                text: "\u0623\u0646\u062A \u0648\u0643\u064A\u0644 \u0630\u0643\u0627\u0621 \u0627\u0635\u0637\u0646\u0627\u0639\u064A \u0645\u062A\u062E\u0635\u0635 \u0641\u064A \u0627\u0644\u0625\u0634\u0631\u0627\u0641 \u0627\u0644\u0647\u0646\u062F\u0633\u064A \u0648\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639 \u0627\u0644\u0625\u0646\u0634\u0627\u0626\u064A\u0629. \u062A\u064F\u0635\u062F\u0631 \u062A\u0642\u0627\u0631\u064A\u0631 \u0645\u0647\u0646\u064A\u0629 \u0628\u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0641\u0635\u062D\u0649 \u0641\u0642\u0637. \u0644\u0627 \u062A\u062E\u062A\u0631\u0639 \u0628\u064A\u0627\u0646\u0627\u062A \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0627\u0644\u0645\u062F\u062E\u0644\u0627\u062A."
+                text: "\u0623\u0646\u062A \u0645\u0647\u0646\u062F\u0633 \u0625\u0634\u0631\u0627\u0641 \u062A\u0635\u0648\u063A \u062A\u062D\u0644\u064A\u0644\u0627\u064B \u0639\u0631\u0628\u064A\u0627\u064B \u0645\u0647\u0646\u064A\u0627\u064B \u0645\u0648\u062C\u0632\u0627\u064B. \u0627\u0639\u062A\u0645\u062F \u062D\u0635\u0631\u0627\u064B \u0639\u0644\u0649 \u0644\u0642\u0637\u0629 \u0647\u0630\u0627 \u0627\u0644\u062A\u0642\u0631\u064A\u0631. \u0644\u0627 \u062A\u062E\u062A\u0631\u0639 \u0646\u0633\u0628\u0627\u064B \u0623\u0648 \u062A\u0648\u0627\u0631\u064A\u062E \u0623\u0648 \u0623\u0639\u0645\u0627\u0644\u0627\u064B \u0623\u0648 \u0623\u0633\u0628\u0627\u0628 \u062A\u0623\u062E\u064A\u0631. \u0627\u0630\u0643\u0631 \u0623\u0646 \u0627\u0644\u0633\u0628\u0628 \u063A\u064A\u0631 \u0645\u0633\u062C\u0644 \u0625\u0646 \u063A\u0627\u0628\u060C \u0648\u0645\u064A\u0651\u0632 \u0627\u0644\u062D\u0642\u064A\u0642\u0629 \u0627\u0644\u0631\u0642\u0645\u064A\u0629 \u0645\u0646 \u0627\u0644\u0627\u0633\u062A\u0646\u062A\u0627\u062C."
               }]
             },
             contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -125981,7 +126176,7 @@ ${recommendations}` : ""}
           messages: [
             {
               role: "system",
-              content: "\u0623\u0646\u062A \u0648\u0643\u064A\u0644 \u0630\u0643\u0627\u0621 \u0627\u0635\u0637\u0646\u0627\u0639\u064A \u0645\u062A\u062E\u0635\u0635 \u0641\u064A \u0627\u0644\u0625\u0634\u0631\u0627\u0641 \u0627\u0644\u0647\u0646\u062F\u0633\u064A \u0648\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639 \u0627\u0644\u0625\u0646\u0634\u0627\u0626\u064A\u0629. \u062A\u064F\u0635\u062F\u0631 \u062A\u0642\u0627\u0631\u064A\u0631 \u0645\u0647\u0646\u064A\u0629 \u0628\u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0627\u0644\u0641\u0635\u062D\u0649 \u0641\u0642\u0637. \u0644\u0627 \u062A\u062E\u062A\u0631\u0639 \u0628\u064A\u0627\u0646\u0627\u062A \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0627\u0644\u0645\u062F\u062E\u0644\u0627\u062A."
+              content: "\u0623\u0646\u062A \u0645\u0647\u0646\u062F\u0633 \u0625\u0634\u0631\u0627\u0641 \u062A\u0635\u0648\u063A \u062A\u062D\u0644\u064A\u0644\u0627\u064B \u0639\u0631\u0628\u064A\u0627\u064B \u0645\u0647\u0646\u064A\u0627\u064B \u0645\u0648\u062C\u0632\u0627\u064B. \u0627\u0639\u062A\u0645\u062F \u062D\u0635\u0631\u0627\u064B \u0639\u0644\u0649 \u0644\u0642\u0637\u0629 \u0647\u0630\u0627 \u0627\u0644\u062A\u0642\u0631\u064A\u0631. \u0644\u0627 \u062A\u062E\u062A\u0631\u0639 \u0646\u0633\u0628\u0627\u064B \u0623\u0648 \u062A\u0648\u0627\u0631\u064A\u062E \u0623\u0648 \u0623\u0639\u0645\u0627\u0644\u0627\u064B \u0623\u0648 \u0623\u0633\u0628\u0627\u0628 \u062A\u0623\u062E\u064A\u0631. \u0627\u0630\u0643\u0631 \u0623\u0646 \u0627\u0644\u0633\u0628\u0628 \u063A\u064A\u0631 \u0645\u0633\u062C\u0644 \u0625\u0646 \u063A\u0627\u0628\u060C \u0648\u0645\u064A\u0651\u0632 \u0627\u0644\u062D\u0642\u064A\u0642\u0629 \u0627\u0644\u0631\u0642\u0645\u064A\u0629 \u0645\u0646 \u0627\u0644\u0627\u0633\u062A\u0646\u062A\u0627\u062C."
             },
             { role: "user", content: prompt }
           ],
@@ -126009,7 +126204,10 @@ ${recommendations}` : ""}
       return;
     }
     const content = JSON.parse(contentText);
-    res.json(content);
+    res.json({
+      ...content,
+      ...reportId == null ? { snapshotFingerprint: reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) } : {}
+    });
   } catch (error40) {
     req.log.error({ error: error40 }, "AI draft generation failed");
     res.status(500).json({ error: "\u0641\u0634\u0644 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A \u0641\u064A \u0635\u064A\u0627\u063A\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631" });
@@ -126085,36 +126283,13 @@ router5.post("/projects/:projectId/reports", requireProjectAccess("projectId"), 
   }
   const [maxResult] = await db.select({ maxNum: sql`COALESCE(MAX(${reportsTable.reportNumber}), 0)` }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
   const nextNumber = (maxResult?.maxNum ?? 0) + 1;
-  const currentActivities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder);
-  const [schedule] = await db.select({
-    noSchedule: projectsTable.noSchedule,
-    startDate: projectsTable.startDate,
-    expectedEndDate: projectsTable.expectedEndDate
-  }).from(projectsTable).where(eq(projectsTable.id, projectId));
-  const hasSchedule = schedule?.noSchedule !== true && hasValidProjectSchedule(schedule?.startDate, schedule?.expectedEndDate);
-  const reportAsOf = /* @__PURE__ */ new Date(`${reportDate}T00:00:00.000Z`);
-  const resolvedActivities = await resolveLinkedActivityProgress(currentActivities, reportAsOf);
-  const actualRecordedAt = (/* @__PURE__ */ new Date()).toISOString();
-  const snapshot = selectReportSnapshotActivities(resolvedActivities).map((a) => ({
-    id: a.id,
-    name: a.name,
-    plannedStartDate: a.plannedStartDate,
-    plannedEndDate: a.plannedEndDate,
-    actualStartDate: a.actualStartDate,
-    actualEndDate: a.actualEndDate,
-    externalSourceGroupId: a.externalSourceGroupId,
-    plannedProgress: hasSchedule ? clampPercent(a.externalSourceGroupId != null ? a.plannedProgress : calcActivityPlannedProgress({
-      plannedStartDate: a.plannedStartDate,
-      plannedEndDate: a.plannedEndDate
-    }, reportAsOf)) : 0,
-    plannedAsOfDate: reportDate,
-    plannedHistoricalUnverified: false,
-    actualProgress: clampPercent(a.actualProgress),
-    actualRecordedAt,
-    weight: a.weight ?? 1,
-    status: a.status,
-    sortOrder: a.sortOrder
-  }));
+  const snapshot = await buildNewReportSnapshot(projectId, reportDate);
+  if (req.body.aiDraftSnapshotFingerprint !== void 0) {
+    if (typeof req.body.aiDraftSnapshotFingerprint !== "string" || reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) !== req.body.aiDraftSnapshotFingerprint) {
+      res.status(409).json({ error: "\u062A\u063A\u064A\u0631\u062A \u0628\u0646\u0648\u062F \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0645\u0646\u0630 \u0635\u064A\u0627\u063A\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A\u061B \u0623\u0639\u062F \u0627\u0644\u0635\u064A\u0627\u063A\u0629 \u0642\u0628\u0644 \u0627\u0644\u062D\u0641\u0638" });
+      return;
+    }
+  }
   const [report] = await db.insert(reportsTable).values({
     projectId,
     reportNumber: nextNumber,
@@ -127950,14 +128125,14 @@ function ensurePage(doc, neededHeight) {
 }
 function snapshotProgress(rows, field) {
   let totalWeight = 0;
-  let weightedProgress = 0;
+  let weightedProgress2 = 0;
   for (const row of rows) {
     const weight = typeof row.weight === "number" && row.weight > 0 ? row.weight : 1;
     const value = typeof row[field] === "number" && Number.isFinite(row[field]) ? row[field] : 0;
     totalWeight += weight;
-    weightedProgress += value * weight;
+    weightedProgress2 += value * weight;
   }
-  return totalWeight > 0 ? weightedProgress / totalWeight : 0;
+  return totalWeight > 0 ? weightedProgress2 / totalWeight : 0;
 }
 function snapshotActualIsHistoricallyUnverified(reportDate, createdAt, rows) {
   const reportDay = utcDay(reportDate).getTime();
