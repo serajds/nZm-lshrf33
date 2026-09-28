@@ -33,6 +33,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { formatDisplayPercent } from "@/lib/format-display-percent";
+import { getActivityDurationWeight } from "@/lib/activity-weight";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -1140,8 +1141,8 @@ export default function ProjectActivities() {
     }
     return counts;
   }, [allActivityRows]);
-  const totalWeight = allActivityRows.reduce((sum, a) => sum + (a.weight && a.weight > 0 ? a.weight : 1), 0);
-  const weightOf = (a: Activity) => a.weight && a.weight > 0 ? a.weight : 1;
+  const weightOf = (a: Activity) => getActivityDurationWeight(a.plannedStartDate, a.plannedEndDate);
+  const totalWeight = allActivityRows.reduce((sum, a) => sum + weightOf(a), 0);
   const actualProgress = totalWeight > 0
     ? Math.round((allActivityRows.reduce((sum, a) => sum + (a.actualProgress ?? 0) * weightOf(a), 0) / totalWeight) * 10) / 10
     : 0;
@@ -1955,7 +1956,7 @@ export default function ProjectActivities() {
                           <div className="grid gap-5 sm:grid-cols-2">
                             <FormField control={form.control} name="weight" render={({ field }) => (
                               <FormItem>
-                                <FormLabel>الوزن النسبي</FormLabel>
+                                <FormLabel>الوزن المخصص (محفوظ؛ الحساب الحالي حسب المدة)</FormLabel>
                                 <FormControl><Input type="number" className="h-11 bg-background font-mono" min={0} step="0.1" {...field} /></FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -2166,7 +2167,7 @@ export default function ProjectActivities() {
                         )} />
                         <FormField control={form.control} name="weight" render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-foreground/90 flex items-center justify-between">الوزن النسبي <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">الافتراضي 1</span></FormLabel>
+                            <FormLabel className="text-foreground/90">الوزن المخصص (محفوظ؛ الحساب الحالي حسب المدة)</FormLabel>
                             <FormControl><Input type="number" className="h-11 bg-background font-mono" min={0} step="0.1" {...field} /></FormControl>
                             <FormMessage />
                           </FormItem>
@@ -2414,7 +2415,7 @@ export default function ProjectActivities() {
                               if (groupActs.length === 0) return 0;
                               let s = 0, w = 0;
                               for (const a of groupActs) {
-                                const ww = (a as any).weight && (a as any).weight > 0 ? (a as any).weight : 1;
+                                const ww = getActivityDurationWeight(a.plannedStartDate, a.plannedEndDate);
                                 s += (a.actualProgress ?? 0) * ww;
                                 w += ww;
                               }
@@ -2600,7 +2601,7 @@ export default function ProjectActivities() {
                       if (groupActs.length === 0) return 0;
                       let s = 0, w = 0;
                       for (const a of groupActs) {
-                        const ww = (a as any).weight && (a as any).weight > 0 ? (a as any).weight : 1;
+                        const ww = getActivityDurationWeight(a.plannedStartDate, a.plannedEndDate);
                         s += (a.actualProgress ?? 0) * ww;
                         w += ww;
                       }

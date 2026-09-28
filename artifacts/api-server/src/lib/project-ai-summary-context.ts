@@ -1,3 +1,5 @@
+import { weightedActivityProgress } from "./progress.ts";
+
 export interface ProjectSummaryActivity {
   id: number;
   name: string;
@@ -31,18 +33,10 @@ export const PROJECT_AI_SUMMARY_DETAIL_THRESHOLD = 40;
 const STABLE_REPRESENTATIVES_PER_STATUS = 2;
 
 function weightedProgress(
-  activities: ProjectSummaryActivity[],
+  activities: readonly ProjectSummaryActivity[],
   field: "actualProgress" | "plannedProgress",
 ): number {
-  if (activities.length === 0) return 0;
-  let weightedTotal = 0;
-  let totalWeight = 0;
-  for (const activity of activities) {
-    const weight = Number.isFinite(activity.weight) && activity.weight > 0 ? activity.weight : 1;
-    weightedTotal += (Number.isFinite(activity[field]) ? activity[field] : 0) * weight;
-    totalWeight += weight;
-  }
-  return totalWeight > 0 ? Math.min(100, Math.max(0, weightedTotal / totalWeight)) : 0;
+  return weightedActivityProgress(activities, activity => activity[field]);
 }
 
 function countStatuses(activities: ProjectSummaryActivity[]): Record<string, number> {

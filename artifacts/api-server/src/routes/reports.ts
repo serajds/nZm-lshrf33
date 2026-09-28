@@ -4,7 +4,7 @@ import { reportsTable, activitiesTable, projectsTable, activityGroupsTable } fro
 import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectManager } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
-import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
+import { calcActivityPlannedProgress, effectiveActivityWeight, hasValidProjectSchedule, roundPercent } from "../lib/progress";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
 import { selectReportSnapshotActivities } from "../lib/report-snapshot-selection";
 import { buildReportAiContext, reportAiSnapshotFingerprint } from "../lib/report-ai-context";
@@ -150,7 +150,9 @@ async function buildNewReportSnapshot(projectId: number, reportDate: string) {
     plannedHistoricalUnverified: false,
     actualProgress: clampPercent(a.actualProgress),
     actualRecordedAt,
-    weight: a.weight ?? 1,
+    // Freeze the effective live weight at creation. Historical snapshots keep
+    // their previously stored weights and are never recalculated from dates.
+    weight: effectiveActivityWeight(a),
     status: a.status,
     sortOrder: a.sortOrder,
   }));
@@ -467,7 +469,10 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
     periodStart,
     periodEnd,
     workDescription,
-    progressPercentage: progressPercentage ?? 0,
+    // A missing/empty client value means use the same selected snapshot rows
+    // (and their frozen effective weights) that are persisted below. A numeric
+    // value, including 0, remains an explicit manual override.
+    progressPercentage: progressPercentage ?? calcWeightedProgress(snapshot),
     technicalNotes: technicalNotes ?? null,
     recommendations: recommendations ?? null,
     imageUrls: finalImageUrls,

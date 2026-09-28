@@ -53,9 +53,9 @@ test("AI summary context retains every group, status, and linked resolved activi
   assert.equal(context.activityCount, activities.length);
   assert.equal(context.groups.length, 3);
   assert.equal(context.groups[0].name, "الأعمال المدنية");
-  assert.equal(context.groups[0].planned, 53.3);
-  assert.equal(context.groups[0].actual, 53.3);
-  assert.equal(context.groups[0].spi, 1);
+  assert.equal(context.groups[0].planned, 55);
+  assert.equal(context.groups[0].actual, 60);
+  assert.equal(context.groups[0].spi, 1.09);
   assert.equal(context.groups[0].activities.find(item => item.id === 12).actualProgress, 80);
   assert.equal(context.groups[0].activities.find(item => item.id === 12).linkedToSource, true);
   assert.equal(context.groups[1].activities.length, 8);

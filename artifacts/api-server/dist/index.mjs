@@ -42800,9 +42800,6 @@ var init_relations = __esm({
 function count(expression) {
   return sql`count(${expression || sql.raw("*")})`.mapWith(Number);
 }
-function avg(expression) {
-  return sql`avg(${expression})`.mapWith(String);
-}
 function sum(expression) {
   return sql`sum(${expression})`.mapWith(String);
 }
@@ -123383,38 +123380,45 @@ function calcActivityPlannedProgress(activity, today = /* @__PURE__ */ new Date(
   const fraction = elapsed / duration3;
   return curve === "scurve" ? scurveProgress(fraction) : fraction * 100;
 }
-function activityWeight(a) {
-  const w = a.weight;
-  if (w == null || !Number.isFinite(w) || w <= 0) return 1;
-  return w;
+function effectiveActivityWeight(a, mode = "duration") {
+  if (mode === "equal") return 1;
+  if (mode === "custom") {
+    const w = a.weight;
+    return w != null && Number.isFinite(w) && w > 0 ? w : 1;
+  }
+  if (!a.plannedStartDate || !a.plannedEndDate) return 1;
+  const validCalendarDate = (value) => {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!parts) return true;
+    const parsed = new Date(value);
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  };
+  if (!validCalendarDate(a.plannedStartDate) || !validCalendarDate(a.plannedEndDate)) return 1;
+  const start = utcDay(a.plannedStartDate).getTime();
+  const end = utcDay(a.plannedEndDate).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 1;
+  return Math.max(1, Math.floor((end - start) / MS_PER_DAY) + 1);
 }
-function calcPlannedProgressForProject(activities, daysElapsed, totalDays, today = /* @__PURE__ */ new Date(), curve = "linear") {
+function weightedActivityProgress(activities, value, mode = "duration") {
+  let total = 0;
+  let sum2 = 0;
+  for (const activity of activities) {
+    const weight = effectiveActivityWeight(activity, mode);
+    const progress = value(activity);
+    sum2 += (progress != null && Number.isFinite(progress) ? progress : 0) * weight;
+    total += weight;
+  }
+  return total > 0 ? Math.min(100, Math.max(0, sum2 / total)) : 0;
+}
+function calcPlannedProgressForProject(activities, daysElapsed, totalDays, today = /* @__PURE__ */ new Date(), curve = "linear", mode = "duration") {
   if (activities.length === 0) {
     if (totalDays <= 0) return 0;
     return Math.max(0, Math.min(100, daysElapsed / totalDays * 100));
   }
-  let weightedSum = 0;
-  let totalWeight = 0;
-  for (const a of activities) {
-    const w = activityWeight(a);
-    weightedSum += calcActivityPlannedProgress(a, today, curve) * w;
-    totalWeight += w;
-  }
-  if (totalWeight <= 0) return 0;
-  return Math.min(100, weightedSum / totalWeight);
+  return weightedActivityProgress(activities, (a) => calcActivityPlannedProgress(a, today, curve), mode);
 }
-function calcActualProgressForProject(activities) {
-  if (activities.length === 0) return 0;
-  let weightedSum = 0;
-  let totalWeight = 0;
-  for (const a of activities) {
-    const w = activityWeight(a);
-    const actualProgress = Number.isFinite(a.actualProgress) ? a.actualProgress : 0;
-    weightedSum += actualProgress * w;
-    totalWeight += w;
-  }
-  if (totalWeight <= 0) return 0;
-  return Math.min(100, Math.max(0, weightedSum / totalWeight));
+function calcActualProgressForProject(activities, mode = "duration") {
+  return weightedActivityProgress(activities, (a) => a.actualProgress, mode);
 }
 function calcDelayDays(plannedProgress, actualProgress, totalDays) {
   if (actualProgress >= plannedProgress) return 0;
@@ -123516,10 +123520,9 @@ function suspensionActivityDateShift(activity, suspensionStart, calendarDays, di
   return null;
 }
 function summarizeSourceChildren(children, group) {
-  const weight = (child) => child.weight != null && Number.isFinite(child.weight) && child.weight > 0 ? child.weight : 1;
-  const totalWeight = children.reduce((sum2, child) => sum2 + weight(child), 0);
-  const actualProgress = totalWeight ? children.reduce((sum2, child) => sum2 + (child.actualProgress ?? 0) * weight(child), 0) / totalWeight : 0;
-  const plannedProgress = totalWeight ? children.reduce((sum2, child) => sum2 + (child.plannedProgress ?? 0) * weight(child), 0) / totalWeight : 0;
+  const weightedChildren = children.map((child) => ({ ...child, weight: child.weight ?? void 0 }));
+  const actualProgress = weightedActivityProgress(weightedChildren, (child) => child.actualProgress);
+  const plannedProgress = weightedActivityProgress(weightedChildren, (child) => child.plannedProgress);
   const starts = children.map((child) => child.plannedStartDate).filter((date6) => Boolean(date6)).sort();
   const ends = children.map((child) => child.plannedEndDate).filter((date6) => Boolean(date6)).sort();
   return {
@@ -123640,15 +123643,13 @@ function managedStatus(progress) {
   return progress >= 100 ? "completed" : progress > 0 ? "in_progress" : "not_started";
 }
 async function recalculateProjectInTransaction(tx, projectId) {
-  const acts = await tx.select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
-  let totalWeight = 0;
-  let weightedProgress2 = 0;
-  for (const activity of acts) {
-    const weight = activity.weight > 0 ? activity.weight : 1;
-    totalWeight += weight;
-    weightedProgress2 += activity.actualProgress * weight;
-  }
-  const progress = totalWeight ? roundPercent(weightedProgress2 / totalWeight) : 0;
+  const acts = await tx.select({
+    actualProgress: activitiesTable.actualProgress,
+    weight: activitiesTable.weight,
+    plannedStartDate: activitiesTable.plannedStartDate,
+    plannedEndDate: activitiesTable.plannedEndDate
+  }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+  const progress = roundPercent(calcActualProgressForProject(acts));
   await tx.update(projectsTable).set({ overallProgress: progress }).where(eq(projectsTable.id, projectId));
   const [project] = await tx.select({ noSchedule: projectsTable.noSchedule }).from(projectsTable).where(eq(projectsTable.id, projectId));
   if (project?.noSchedule) return;
@@ -123952,9 +123953,13 @@ async function refreshLinkedSources(sourceGroupIds) {
         projects.add(activity.projectId);
       }
       for (const projectId of projects) {
-        const acts = await db.select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
-        const total = acts.reduce((s, a) => s + (a.weight > 0 ? a.weight : 1), 0);
-        const progress = total ? roundPercent(acts.reduce((s, a) => s + a.actualProgress * (a.weight > 0 ? a.weight : 1), 0) / total) : 0;
+        const acts = await db.select({
+          actualProgress: activitiesTable.actualProgress,
+          weight: activitiesTable.weight,
+          plannedStartDate: activitiesTable.plannedStartDate,
+          plannedEndDate: activitiesTable.plannedEndDate
+        }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+        const progress = roundPercent(calcActualProgressForProject(acts));
         await db.update(projectsTable).set({ overallProgress: progress }).where(eq(projectsTable.id, projectId));
         await recalcExpectedEndDate(projectId);
       }
@@ -123966,15 +123971,7 @@ async function refreshLinkedSources(sourceGroupIds) {
 var PROJECT_AI_SUMMARY_DETAIL_THRESHOLD = 40;
 var STABLE_REPRESENTATIVES_PER_STATUS = 2;
 function weightedProgress(activities, field) {
-  if (activities.length === 0) return 0;
-  let weightedTotal = 0;
-  let totalWeight = 0;
-  for (const activity of activities) {
-    const weight = Number.isFinite(activity.weight) && activity.weight > 0 ? activity.weight : 1;
-    weightedTotal += (Number.isFinite(activity[field]) ? activity[field] : 0) * weight;
-    totalWeight += weight;
-  }
-  return totalWeight > 0 ? Math.min(100, Math.max(0, weightedTotal / totalWeight)) : 0;
+  return weightedActivityProgress(activities, (activity) => activity[field]);
 }
 function countStatuses(activities) {
   const counts = {
@@ -124148,7 +124145,21 @@ router3.get("/projects", requireAuth, async (req, res) => {
   const projects = conditions.length > 0 ? await query.where(
     conditions.length === 1 ? conditions[0] : sql`${conditions.map((c, i) => i === 0 ? c : sql` AND ${c}`).reduce((acc, curr) => sql`${acc}${curr}`)}`
   ) : await query.orderBy(projectsTable.createdAt);
-  res.json(projects);
+  const activities = projects.length > 0 ? await db.select().from(activitiesTable).where(
+    inArray(activitiesTable.projectId, projects.map((project) => project.id))
+  ) : [];
+  const resolvedActivities = await resolveLinkedActivityProgress(activities, utcDay(/* @__PURE__ */ new Date()));
+  const activitiesByProject = /* @__PURE__ */ new Map();
+  for (const activity of resolvedActivities) {
+    const list = activitiesByProject.get(activity.projectId) ?? [];
+    list.push(activity);
+    activitiesByProject.set(activity.projectId, list);
+  }
+  res.json(projects.map((project) => {
+    const projectActivities = activitiesByProject.get(project.id) ?? [];
+    const actualProgress = projectActivities.length > 0 ? calcActualProgressForProject(projectActivities) : project.overallProgress ?? 0;
+    return { ...project, overallProgress: roundPercent(actualProgress) };
+  }));
 });
 router3.post("/projects", requireAdmin, async (req, res) => {
   const {
@@ -124209,11 +124220,17 @@ router3.get("/projects/:id", requireProjectAccess("id"), async (req, res) => {
     res.status(404).json({ error: "\u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
+  const rawActivities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, id));
+  const activities = await resolveLinkedActivityProgress(rawActivities, utcDay(/* @__PURE__ */ new Date()));
+  const liveProject = {
+    ...project,
+    overallProgress: activities.length > 0 ? roundPercent(calcActualProgressForProject(activities)) : project.overallProgress ?? 0
+  };
   if (req.user?.role === "admin") {
-    const { ownerAccessPassword: _ownerAccessPassword, ...safeProject } = project;
+    const { ownerAccessPassword: _ownerAccessPassword, ...safeProject } = liveProject;
     res.json(safeProject);
   } else {
-    const { linkCode: _linkCode, ownerAccessPassword: _ownerAccessPassword, ...publicProject } = project;
+    const { linkCode: _linkCode, ownerAccessPassword: _ownerAccessPassword, ...publicProject } = liveProject;
     if (req.projectRole === "project_manager") {
       res.json(publicProject);
     } else {
@@ -124992,15 +125009,13 @@ function isValidActualProgress(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
 }
 async function syncProjectProgress(projectId) {
-  const acts = await db.select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
-  let totalWeight = 0;
-  let weightedSum = 0;
-  for (const a of acts) {
-    const w = a.weight && a.weight > 0 ? a.weight : 1;
-    totalWeight += w;
-    weightedSum += (a.actualProgress ?? 0) * w;
-  }
-  const computed = totalWeight > 0 ? roundPercent(weightedSum / totalWeight) : 0;
+  const acts = await db.select({
+    actualProgress: activitiesTable.actualProgress,
+    weight: activitiesTable.weight,
+    plannedStartDate: activitiesTable.plannedStartDate,
+    plannedEndDate: activitiesTable.plannedEndDate
+  }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+  const computed = roundPercent(calcActualProgressForProject(acts));
   await db.update(projectsTable).set({ overallProgress: computed }).where(eq(projectsTable.id, projectId));
 }
 async function serializeActivityForUser(activity, userId, asOf = /* @__PURE__ */ new Date(), hasSchedule = true) {
@@ -126053,7 +126068,9 @@ async function buildNewReportSnapshot(projectId, reportDate) {
     plannedHistoricalUnverified: false,
     actualProgress: clampPercent(a.actualProgress),
     actualRecordedAt,
-    weight: a.weight ?? 1,
+    // Freeze the effective live weight at creation. Historical snapshots keep
+    // their previously stored weights and are never recalculated from dates.
+    weight: effectiveActivityWeight(a),
     status: a.status,
     sortOrder: a.sortOrder
   }));
@@ -126318,7 +126335,10 @@ router5.post("/projects/:projectId/reports", requireProjectAccess("projectId"), 
     periodStart,
     periodEnd,
     workDescription,
-    progressPercentage: progressPercentage ?? 0,
+    // A missing/empty client value means use the same selected snapshot rows
+    // (and their frozen effective weights) that are persisted below. A numeric
+    // value, including 0, remains an explicit manual override.
+    progressPercentage: progressPercentage ?? calcWeightedProgress(snapshot),
     technicalNotes: technicalNotes ?? null,
     recommendations: recommendations ?? null,
     imageUrls: finalImageUrls,
@@ -127553,11 +127573,9 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
     recentReports
   ] = await Promise.all([
     projectFilter ? db.select({
-      total: count(),
-      avgProgress: avg(projectsTable.overallProgress)
+      total: count()
     }).from(projectsTable).where(inArray(projectsTable.id, projectFilter)) : db.select({
-      total: count(),
-      avgProgress: avg(projectsTable.overallProgress)
+      total: count()
     }).from(projectsTable),
     projectFilter ? db.select({ status: projectsTable.status, cnt: count() }).from(projectsTable).where(inArray(projectsTable.id, projectFilter)).groupBy(projectsTable.status) : db.select({ status: projectsTable.status, cnt: count() }).from(projectsTable).groupBy(projectsTable.status),
     projectFilter ? db.select({ count: count() }).from(reportsTable).where(inArray(reportsTable.projectId, projectFilter)) : db.select({ count: count() }).from(reportsTable),
@@ -127572,7 +127590,7 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
       expectedEndDate: projectsTable.expectedEndDate,
       ownerEntity: projectsTable.ownerEntity,
       noSchedule: projectsTable.noSchedule
-    }).from(projectsTable).where(inArray(projectsTable.id, projectFilter)).orderBy(desc(projectsTable.overallProgress)) : db.select({
+    }).from(projectsTable).where(inArray(projectsTable.id, projectFilter)) : db.select({
       id: projectsTable.id,
       name: projectsTable.name,
       overallProgress: projectsTable.overallProgress,
@@ -127581,7 +127599,7 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
       expectedEndDate: projectsTable.expectedEndDate,
       ownerEntity: projectsTable.ownerEntity,
       noSchedule: projectsTable.noSchedule
-    }).from(projectsTable).orderBy(desc(projectsTable.overallProgress)),
+    }).from(projectsTable),
     projectFilter ? db.select({
       id: reportsTable.id,
       projectId: reportsTable.projectId,
@@ -127616,14 +127634,20 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
     list.push(a);
     activitiesByProject.set(a.projectId, list);
   }
+  const effectiveProgressByProject = new Map(allProjects.map((project) => {
+    const projectActivities = activitiesByProject.get(project.id) ?? [];
+    return [
+      project.id,
+      projectActivities.length > 0 ? calcActualProgressForProject(projectActivities) : project.overallProgress ?? 0
+    ];
+  }));
   const safeRecentProjects = recentProjects.map(({
     linkCode: _linkCode,
     ownerAccessToken: _ownerAccessToken,
     ownerAccessPassword: _ownerAccessPassword,
     ...project
   }) => {
-    const projectActivities = activitiesByProject.get(project.id) ?? [];
-    const actualRaw = projectActivities.length > 0 ? calcActualProgressForProject(projectActivities) : project.overallProgress ?? 0;
+    const actualRaw = effectiveProgressByProject.get(project.id) ?? (project.overallProgress ?? 0);
     return { ...project, overallProgress: roundPercent(actualRaw) };
   });
   const projectNameMap = new Map(allProjects.map((p) => [p.id, p.name]));
@@ -127650,7 +127674,7 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
     const isNoSchedule = p.noSchedule === true;
     const hasSchedule = !isNoSchedule && hasValidProjectSchedule(p.startDate, p.expectedEndDate);
     const projActivities = activitiesByProject.get(p.id) ?? [];
-    const actualRaw = projActivities.length > 0 ? calcActualProgressForProject(projActivities) : p.overallProgress ?? 0;
+    const actualRaw = effectiveProgressByProject.get(p.id) ?? (p.overallProgress ?? 0);
     const computedActual = roundPercent(actualRaw);
     if (!hasSchedule) {
       return {
@@ -127689,17 +127713,16 @@ router10.get("/dashboard/summary", requireStaffOrContractor, async (_req, res) =
       noSchedule: false,
       overrunDays
     };
-  });
+  }).sort(
+    (a, b) => (effectiveProgressByProject.get(b.id) ?? 0) - (effectiveProgressByProject.get(a.id) ?? 0)
+  );
   res.json({
     totalProjects: Number(totals?.total ?? 0),
     activeProjects: countByStatus("active"),
     completedProjects: countByStatus("completed"),
     delayedProjects: countByStatus("delayed"),
     suspendedProjects: countByStatus("suspended"),
-    averageProgress: roundPercent(allProjects.length ? allProjects.reduce((sum2, project) => {
-      const projectActivities = activitiesByProject.get(project.id) ?? [];
-      return sum2 + (projectActivities.length > 0 ? calcActualProgressForProject(projectActivities) : project.overallProgress ?? 0);
-    }, 0) / allProjects.length : 0),
+    averageProgress: roundPercent(allProjects.length ? allProjects.reduce((sum2, project) => sum2 + (effectiveProgressByProject.get(project.id) ?? (project.overallProgress ?? 0)), 0) / allProjects.length : 0),
     totalReports: Number(reportCount?.count ?? 0),
     totalActivities: activityCounts.reduce((s, a) => s + Number(a.cnt), 0),
     completedActivities: activityCountByStatus("completed"),
@@ -127789,7 +127812,7 @@ router10.get("/projects/:projectId/deviation", requireProjectAccess("projectId")
       plannedProgress: 0,
       actualProgress: a.actualProgress,
       deviation: 0,
-      weight: a.weight ?? 1,
+      weight: effectiveActivityWeight(a),
       weightedImpact: 0,
       delayDays: null,
       overrunDays: null
@@ -127862,12 +127885,12 @@ router10.get("/projects/:projectId/deviation", requireProjectAccess("projectId")
   } else {
     overallStatus = "significantly_delayed";
   }
-  const totalWeight = resolvedActivities.reduce((s, a) => s + (a.weight && a.weight > 0 ? a.weight : 1), 0) || 1;
+  const totalWeight = resolvedActivities.reduce((s, a) => s + effectiveActivityWeight(a), 0) || 1;
   const activitiesAnalysis = resolvedActivities.map((a) => {
     const actPlannedRaw = hasSchedule ? calcActivityPlannedProgress(a, today, curve) : 0;
     const actPlanned = roundPercent(actPlannedRaw);
     const deviation = roundPercent(hasSchedule ? a.actualProgress - actPlannedRaw : 0);
-    const w = a.weight && a.weight > 0 ? a.weight : 1;
+    const w = effectiveActivityWeight(a);
     const weightedImpact = roundPercent(deviation * w / totalWeight);
     const overrun = a.plannedEndDate ? calcOverrunDays(today, a.plannedEndDate, a.actualProgress) : null;
     return {
@@ -128030,8 +128053,8 @@ router10.get("/projects/:projectId/deviation/timeline", requireProjectAccess("pr
       const recordedDay = utcDay(recordedAt);
       return Number.isFinite(recordedDay.getTime()) && recordedDay.getTime() <= reportDate.getTime();
     });
-    const plannedRaw = calcPlannedProgressForProject(snapshot, daysElapsed, totalDays, reportDate, curve);
-    const actualRaw = calcActualProgressForProject(snapshot);
+    const plannedRaw = calcPlannedProgressForProject(snapshot, daysElapsed, totalDays, reportDate, curve, "custom");
+    const actualRaw = calcActualProgressForProject(snapshot, "custom");
     const planned = plannedHistoricalUnverified ? null : roundPercent(plannedRaw);
     const actual = actualVerifiable ? roundPercent(actualRaw) : null;
     return {

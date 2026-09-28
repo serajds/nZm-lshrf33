@@ -15,3 +15,4 @@
 - [Partial JSON backups](partial-json-backups.md) — before project replacement, compare exported data against cascade dependencies; a valid JSON import can silently omit dependent records.
 - [Excel import preview lifetime](excel-import-preview-lifetime.md) — import previews deliberately fail closed if the API process loses them; use shared atomic storage before multi-instance reliability.
 - [Report AI prompt limits](report-ai-prompt-limits.md) — few-shot and strict instructions improve owner-ready prose but do not reliably prevent repeated facts or unsupported implications.
+- [Duration weighting and frozen reports](duration-weighting.md) — live progress uses inclusive scheduled days; keep stored custom weight separate and historical snapshot weights frozen.
