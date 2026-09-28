@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -90,6 +90,35 @@ interface ActivityGroup {
   sortOrder: number;
   linkCode?: string | null;
   linkedProjectActive?: boolean;
+}
+
+type ImportMode = "detect" | "existing" | "none";
+type ImportChoice = { action: "new" | "existing"; groupId?: number };
+interface ImportPreview {
+  previewId: string;
+  rows: Array<{
+    rowNumber: number;
+    kind: "group" | "activity" | "error";
+    name: string;
+    groupRow?: number | null;
+    plannedStartDate?: string;
+    plannedEndDate?: string;
+    error?: string;
+  }>;
+  groups: Array<{
+    rowNumber: number;
+    name: string;
+    matches: Array<{ id: number; name: string }>;
+  }>;
+  counts: { activities: number; rejected: number };
+}
+interface ImportResult {
+  imported: number;
+  groupsCreated: number;
+  groupsUsed: number;
+  rejected: number;
+  errors?: string[];
+  warnings?: string[];
 }
 
 interface ExternalSource {
@@ -359,6 +388,13 @@ export default function ProjectActivities() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [importMode, setImportMode] = useState<ImportMode>("detect");
+  const [importGroupId, setImportGroupId] = useState<number | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [importChoices, setImportChoices] = useState<Record<string, ImportChoice>>({});
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importError, setImportError] = useState("");
+  const importRequestId = useRef(0);
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupColor, setNewGroupColor] = useState("#3b82f6");
@@ -743,47 +779,110 @@ export default function ProjectActivities() {
   const downloadTemplate = async () => {
     const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
-    const data = [
+    const data = importMode === "detect" ? [
+      ["اسم البند", "تاريخ البداية", "تاريخ النهاية", "النوع"],
+      ["أعمال الموقع", "", "", "مجموعة"],
+      ["أعمال الحفر والترابية", "2025-01-15", "2025-03-15", "نشاط"],
+      ["أعمال الأساسات", "2025-03-01", "2025-05-30", "نشاط"],
+      ["الأعمال الإنشائية", "", "", "مجموعة"],
+      ["أعمال الهيكل الخرساني", "2025-05-15", "2025-09-30", "نشاط"],
+    ] : [
       ["اسم البند", "تاريخ البداية", "تاريخ النهاية"],
       ["أعمال الحفر والترابية", "2025-01-15", "2025-03-15"],
       ["أعمال الأساسات", "2025-03-01", "2025-05-30"],
-      ["أعمال الهيكل الخرساني", "2025-05-15", "2025-09-30"],
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
-    ws["!cols"] = [{ wch: 30 }, { wch: 16 }, { wch: 16 }];
+    ws["!cols"] = [{ wch: 30 }, { wch: 16 }, { wch: 16 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, ws, "بنود الأعمال");
     XLSX.writeFile(wb, "قالب_بنود_الأعمال.xlsx");
   };
 
-  const handleImport = async () => {
-    if (!importFile) return;
+  const clearImportPreview = () => {
+    importRequestId.current += 1;
+    setImportPreview(null);
+    setImportChoices({});
+    setImportResult(null);
+    setImportError("");
+    setIsImporting(false);
+  };
+
+  const resetImport = () => {
+    clearImportPreview();
+    setImportFile(null);
+    setImportMode("detect");
+    setImportGroupId(null);
+  };
+
+  const readImportError = async (response: Response, fallback: string) => {
+    const body = await response.json().catch(() => null);
+    return body?.errors?.length ? body.errors.join("، ") : body?.error || fallback;
+  };
+
+  const handleImportPreview = async () => {
+    if (!importFile || (importMode === "existing" && importGroupId == null)) return;
+    clearImportPreview();
+    const requestId = importRequestId.current;
+    if (importFile.size > 5 * 1024 * 1024) {
+      setImportError("حجم الملف يتجاوز 5 ميغابايت. اختر ملفاً أصغر.");
+      return;
+    }
     setIsImporting(true);
     try {
-      const formData = new FormData();
-      formData.append("file", importFile);
-      const res = await fetchWithSession(`/api/projects/${projectId}/activities/import`, {
-        method: "POST",
-        body: formData,
-      });
-      const result = await res.json();
-      if (!res.ok) {
-        const errorMsg = result.errors?.length
-          ? result.errors.join("\n")
-          : result.error || "فشل الاستيراد";
-        toast({ variant: "destructive", title: "خطأ في الاستيراد", description: errorMsg });
-        return;
+      const bytes = new Uint8Array(await importFile.arrayBuffer());
+      // Convert in chunks; spreading the entire file into String.fromCharCode overflows the stack.
+      const chunks: string[] = [];
+      for (let offset = 0; offset < bytes.length; offset += 8192) {
+        chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 8192)));
       }
-      invalidate();
-      setIsImportOpen(false);
-      setImportFile(null);
-      const msg = result.errors?.length
-        ? `تم استيراد ${result.imported} بند مع ${result.errors.length} تحذير`
-        : `تم استيراد ${result.imported} بند بنجاح`;
-      toast({ title: msg });
-    } catch {
-      toast({ variant: "destructive", title: "فشل الاستيراد" });
+      if (requestId !== importRequestId.current) return;
+      const res = await fetchWithSession(`/api/projects/${projectId}/activities/import/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          fileBase64: btoa(chunks.join("")),
+          mode: importMode,
+          ...(importMode === "existing" ? { groupId: importGroupId } : {}),
+        }),
+      });
+      if (!res.ok) throw new Error(await readImportError(res, "تعذر معاينة الملف"));
+      const preview = await res.json() as ImportPreview;
+      if (requestId !== importRequestId.current) return;
+      setImportPreview(preview);
+      const defaults: Record<string, ImportChoice> = {};
+      preview.groups.forEach(group => {
+        if (group.matches.length === 1) defaults[String(group.rowNumber)] = { action: "existing", groupId: group.matches[0].id };
+        if (group.matches.length === 0) defaults[String(group.rowNumber)] = { action: "new" };
+      });
+      setImportChoices(defaults);
+    } catch (error) {
+      if (requestId === importRequestId.current) setImportError(error instanceof Error ? error.message : "تعذر معاينة الملف");
     } finally {
-      setIsImporting(false);
+      if (requestId === importRequestId.current) setIsImporting(false);
+    }
+  };
+
+  const handleImportConfirm = async () => {
+    if (!importPreview || isImporting || importResult || importPreview.counts.activities < 1 ||
+      importPreview.groups.some(group => importPreview.rows.some(row => row.kind === "activity" && row.groupRow === group.rowNumber) && !importChoices[String(group.rowNumber)])) return;
+    const requestId = importRequestId.current;
+    setIsImporting(true);
+    setImportError("");
+    try {
+      const response = await fetchWithSession(`/api/projects/${projectId}/activities/import/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ previewId: importPreview.previewId, choices: importChoices }),
+      });
+      if (!response.ok) throw new Error(await readImportError(response, "تعذر حفظ البنود"));
+      const result = await response.json() as ImportResult;
+      if (requestId !== importRequestId.current) return;
+      setImportResult(result);
+      queryClient.invalidateQueries({ queryKey: groupsQueryKey });
+      invalidate();
+    } catch (error) {
+      if (requestId === importRequestId.current) setImportError(error instanceof Error ? error.message : "تعذر حفظ البنود");
+    } finally {
+      if (requestId === importRequestId.current) setIsImporting(false);
     }
   };
 
@@ -1649,65 +1748,158 @@ export default function ProjectActivities() {
             </Button>
             {!isViewer && (
             <Dialog open={isImportOpen} onOpenChange={(open) => {
+              if (!open && isImporting && importPreview) return;
               setIsImportOpen(open);
-              if (!open) setImportFile(null);
+              if (!open) resetImport();
             }}>
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline" className="min-h-10 gap-1.5 text-xs sm:text-sm">
                   <Upload className="h-4 w-4" /> استيراد <span className="hidden sm:inline">Excel</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="w-[calc(100vw-1.5rem)] min-w-0 sm:max-w-[550px] p-0 overflow-y-auto" dir="rtl">
-                <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
+              <DialogContent className="w-[calc(100vw-1rem)] min-w-0 sm:max-w-[860px] p-0 max-h-[94dvh] overflow-hidden flex flex-col" dir="rtl">
+                <div className="bg-muted/40 p-4 sm:px-6 sm:py-5 border-b border-border shrink-0">
                   <DialogHeader>
-                    <DialogTitle className="text-xl">استيراد بنود من ملف Excel</DialogTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      قم برفع ملف Excel لإضافة عدة بنود أعمال دفعة واحدة.
-                    </p>
+                    <DialogTitle className="text-lg sm:text-xl flex items-center gap-2"><FileSpreadsheet className="h-5 w-5 text-primary" /> استيراد بنود من Excel</DialogTitle>
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-1">عاين وجهة كل صف قبل إضافة البنود إلى المشروع.</p>
                   </DialogHeader>
                 </div>
-                <div className="min-w-0 p-4 pt-4 space-y-6 sm:p-6">
-                  <div className="min-w-0 rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors p-4 text-center sm:p-8">
-                    <FileSpreadsheet className="h-12 w-12 mx-auto text-primary/60 mb-4" />
-                    <p className="text-sm font-medium text-foreground/90 mb-2">
-                      اسحب وأفلت ملف Excel هنا، أو انقر للاختيار
-                    </p>
-                    <input
-                      type="file"
-                      accept=".xlsx,.xls"
-                      onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                      className="block min-w-0 w-full max-w-xs mx-auto text-sm text-muted-foreground file:me-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer transition-all"
-                    />
-                    {importFile && (
-                      <div className="mt-4 p-3 bg-background rounded-xl border border-emerald-500/30 inline-block shadow-sm">
-                        <p className="text-sm text-emerald-600 font-semibold flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4" />
-                          {importFile.name}
-                        </p>
+                <div className="min-w-0 overflow-y-auto flex-1 p-4 sm:p-6 space-y-5">
+                  {!importResult && <>
+                    <fieldset disabled={isImporting} className="space-y-2">
+                      <legend className="text-sm font-bold mb-2">وجهة البنود</legend>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {([
+                          ["detect", "اكتشاف المجموعات", "قراءة صفوف المجموعات من الملف"],
+                          ["existing", "مجموعة موجودة", "وضع البنود في مجموعة واحدة"],
+                          ["none", "بدون مجموعة", "إضافة البنود مباشرة للمشروع"],
+                        ] as const).map(([mode, title, description]) => (
+                          <label key={mode} className={`flex gap-2 rounded-xl border p-3 cursor-pointer ${importMode === mode ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-muted/40"}`}>
+                            <input type="radio" name="import-mode" className="mt-1 accent-primary shrink-0" checked={importMode === mode} onChange={() => { setImportMode(mode); clearImportPreview(); }} />
+                            <span className="min-w-0"><span className="block text-sm font-semibold">{title}</span><span className="block text-xs text-muted-foreground leading-relaxed mt-0.5">{description}</span></span>
+                          </label>
+                        ))}
                       </div>
-                    )}
-                  </div>
-                  <div className="bg-muted/20 rounded-2xl border p-5 shadow-sm">
-                    <p className="text-sm text-foreground/80 mb-3 leading-relaxed">
-                      يجب أن يحتوي الملف على 3 أعمدة رئيسية للعمل بشكل صحيح: <strong className="text-primary">اسم البند</strong>، <strong className="text-primary">تاريخ البداية</strong>، <strong className="text-primary">تاريخ النهاية</strong>.
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="gap-2 bg-background w-full sm:w-auto"
-                      onClick={downloadTemplate}
-                    >
-                      <Download className="h-4 w-4" /> تحميل ملف عينة للتأكد من التنسيق
-                    </Button>
-                  </div>
-                  <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
-                    <Button variant="outline" className="w-full sm:w-auto" onClick={() => { setIsImportOpen(false); setImportFile(null); }}>
-                      إلغاء
-                    </Button>
-                    <Button onClick={handleImport} disabled={!importFile || isImporting} className="w-full sm:w-auto shadow-md gap-2">
-                      {isImporting ? <><Loader2 className="h-4 w-4 animate-spin" /> جاري الاستيراد...</> : <><Upload className="h-4 w-4" /> بدء الاستيراد</>}
-                    </Button>
-                  </div>
+                    </fieldset>
+                    {importMode === "existing" && <div className="space-y-1.5">
+                      <label className="text-sm font-semibold" htmlFor="import-destination-group">المجموعة المستهدفة</label>
+                      <select id="import-destination-group" value={importGroupId ?? ""} disabled={isImporting || groupsLoading}
+                        onChange={e => { setImportGroupId(e.target.value ? Number(e.target.value) : null); clearImportPreview(); }}
+                        className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                        <option value="">{groupsLoading ? "جاري تحميل المجموعات..." : "اختر مجموعة من المشروع"}</option>
+                        {groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+                      </select>
+                      {groupsError && <p className="text-xs text-destructive">تعذر تحميل المجموعات. أعد المحاولة من الصفحة.</p>}
+                      {!groupsLoading && !groupsError && groups.length === 0 && <p className="text-xs text-muted-foreground">لا توجد مجموعات بعد. اختر نمطاً آخر أو أنشئ مجموعة أولاً.</p>}
+                    </div>}
+                    <div className="space-y-2">
+                      <label htmlFor="import-excel-file" className="text-sm font-bold">ملف Excel</label>
+                      <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 sm:p-4">
+                        <input id="import-excel-file" type="file" accept=".xlsx,.xls" disabled={isImporting}
+                          onChange={e => { setImportFile(e.target.files?.[0] || null); clearImportPreview(); }}
+                          className="block w-full min-w-0 text-xs sm:text-sm text-muted-foreground file:me-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:font-semibold file:text-primary-foreground" />
+                        <p className="mt-2 text-xs text-muted-foreground break-all">{importFile ? `${importFile.name} · ${(importFile.size / 1024 / 1024).toFixed(2)} MB` : "ملف .xlsx أو .xls بحد أقصى 5 MB"}</p>
+                      </div>
+                      {importFile && importFile.size > 5 * 1024 * 1024 && <p className="text-xs text-destructive">الملف أكبر من 5 MB. اختر ملفاً أصغر للمعاينة.</p>}
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-5">
+                      <div className="text-xs text-muted-foreground leading-relaxed">
+                        الأعمدة المطلوبة: اسم البند، تاريخ البداية، تاريخ النهاية. عمود <strong className="text-foreground">النوع</strong> اختياري لتحديد «مجموعة» أو «نشاط».
+                        <button type="button" onClick={downloadTemplate} className="inline-flex items-center gap-1 text-primary font-semibold underline underline-offset-4 me-1"><Download className="h-3.5 w-3.5" /> تحميل نموذج</button>
+                      </div>
+                      <Button type="button" variant="outline" onClick={handleImportPreview}
+                        disabled={!importFile || importFile.size > 5 * 1024 * 1024 || (importMode === "existing" && importGroupId == null) || isImporting} className="shrink-0 gap-2">
+                        {isImporting && !importPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                        {isImporting && !importPreview ? "تجهيز المعاينة..." : "معاينة الصفوف"}
+                      </Button>
+                    </div>
+                  </>}
+                  {importError && <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive flex gap-2"><AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /><span>{importError}</span></div>}
+                  {importPreview && !importResult && (
+                    <section aria-label="معاينة الاستيراد" className="space-y-3">
+                      <div className="flex flex-wrap items-end justify-between gap-2">
+                        <div><h3 className="text-base font-bold">معاينة الصفوف</h3><p className="text-xs text-muted-foreground">بالترتيب الأصلي في الملف؛ الصفوف المرفوضة لن تُحفظ.</p></div>
+                        <div className="flex gap-2 text-xs tabular-nums"><span className="rounded-md bg-primary/10 text-primary px-2.5 py-1.5 font-bold">{importPreview.counts.activities} بند صالح</span><span className="rounded-md bg-destructive/10 text-destructive px-2.5 py-1.5 font-bold">{importPreview.counts.rejected} مرفوض</span></div>
+                      </div>
+                      {importPreview.counts.rejected > 0 && <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">توجد صفوف مرفوضة. راجع أسباب الرفض أدناه؛ يمكنك حفظ البنود الصالحة فقط.</div>}
+                      {importPreview.groups.some(group => importPreview.rows.some(row => row.kind === "activity" && row.groupRow === group.rowNumber) && group.matches.length > 1 && !importChoices[String(group.rowNumber)]) &&
+                        <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">هناك أسماء مجموعات متكررة. اختر وجهة كل مجموعة قبل الحفظ.</div>}
+                      <div className="rounded-xl border border-border overflow-hidden">
+                        <div className="hidden sm:grid grid-cols-[4rem_minmax(0,1fr)_8rem_8rem] gap-3 bg-muted/60 px-3 py-2 text-xs font-semibold text-muted-foreground">
+                          <span>الصف</span><span>النوع / الاسم / الوجهة</span><span>البداية</span><span>النهاية</span>
+                        </div>
+                        <div className="divide-y divide-border">
+                          {importPreview.rows.map((row, index) => {
+                            const group = row.kind === "group" ? importPreview.groups.find(item => item.rowNumber === row.rowNumber) : null;
+                            const hasGroupActivities = group != null && importPreview.rows.some(item => item.kind === "activity" && item.groupRow === group.rowNumber);
+                            const choice = group ? importChoices[String(group.rowNumber)] : undefined;
+                            const parent = row.groupRow == null ? null : importPreview.groups.find(item => item.rowNumber === row.groupRow);
+                            const destination = importMode === "existing"
+                              ? groups.find(item => item.id === importGroupId)?.name ?? "المجموعة المحددة"
+                              : importMode === "none" || row.groupRow == null ? "بدون مجموعة"
+                              : parent ? `${parent.name}${importChoices[String(parent.rowNumber)]?.action === "existing" ? " · موجودة" : ""}` : `مجموعة الصف ${row.groupRow}`;
+                            return <div key={`${row.rowNumber}-${index}`} className={`grid grid-cols-[3rem_minmax(0,1fr)] sm:grid-cols-[4rem_minmax(0,1fr)_8rem_8rem] gap-x-3 gap-y-1 px-3 py-3 text-sm ${row.kind === "error" ? "bg-destructive/5" : row.kind === "group" ? "bg-primary/5" : "bg-card"}`}>
+                              <span dir="ltr" className="text-xs text-muted-foreground tabular-nums text-right sm:text-center pt-0.5">{row.rowNumber}</span>
+                              <div className={`min-w-0 ${row.kind === "activity" && row.groupRow != null && importMode === "detect" ? "border-r-2 border-primary/40 pr-3" : ""}`}>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className={`rounded px-1.5 py-0.5 text-[11px] font-bold shrink-0 ${row.kind === "error" ? "bg-destructive/10 text-destructive" : row.kind === "group" ? "bg-primary/10 text-primary" : "bg-muted text-foreground"}`}>{row.kind === "error" ? "مرفوض" : row.kind === "group" ? "مجموعة" : "بند"}</span>
+                                  <span className="font-semibold break-words">{row.name || "بدون اسم"}</span>
+                                </div>
+                                {row.kind === "error" ? <p className="text-xs text-destructive mt-1">{row.error || "تعذر قراءة هذا الصف"}</p> :
+                                  row.kind === "activity" ? <p className="text-xs text-muted-foreground mt-1">الوجهة: {destination}</p> : null}
+                                {group && <div className="mt-2 space-y-1.5">
+                                  <p className="text-xs text-muted-foreground">{!hasGroupActivities ? "لا توجد أنشطة صالحة تحت هذا العنوان؛ لن تُنشأ أو تُستخدم هذه المجموعة." :
+                                    group.matches.length === 0 ? "لا توجد مجموعة مطابقة؛ ستُنشأ مجموعة جديدة." :
+                                    group.matches.length === 1 ? `مطابقة موجودة: ${group.matches[0].name} — ستُستخدم افتراضياً.` :
+                                      `${group.matches.length} مجموعات مطابقة؛ يلزم اختيار واحدة أو إنشاء جديدة.`}</p>
+                                  {hasGroupActivities && <label className="text-xs font-semibold flex flex-wrap items-center gap-2">
+                                    <span>إجراء المجموعة:</span>
+                                    <select aria-label={`إجراء مجموعة الصف ${row.rowNumber}`} disabled={isImporting} value={choice?.action === "new" ? "new" : choice?.groupId != null ? String(choice.groupId) : ""}
+                                      onChange={e => setImportChoices(current => {
+                                        const next = { ...current };
+                                        if (!e.target.value) delete next[String(group.rowNumber)];
+                                        else next[String(group.rowNumber)] = e.target.value === "new" ? { action: "new" } : { action: "existing", groupId: Number(e.target.value) };
+                                        return next;
+                                      })}
+                                      className="max-w-full min-w-0 rounded-md border border-input bg-card px-2 py-1.5 text-xs text-foreground">
+                                      {group.matches.length > 1 && <option value="">اختر الوجهة</option>}
+                                      <option value="new">إنشاء مجموعة جديدة</option>
+                                      {group.matches.map(match => <option key={match.id} value={match.id}>استخدام الموجودة: {match.name} (#{match.id})</option>)}
+                                    </select>
+                                  </label>}
+                                </div>}
+                              </div>
+                              <div className="col-start-2 flex gap-3 text-xs text-muted-foreground sm:col-start-3 sm:block"><span className="sm:hidden">البداية:</span><span dir="ltr">{row.plannedStartDate?.split("T")[0] || "—"}</span></div>
+                              <div className="col-start-2 flex gap-3 text-xs text-muted-foreground sm:col-start-4 sm:block"><span className="sm:hidden">النهاية:</span><span dir="ltr">{row.plannedEndDate?.split("T")[0] || "—"}</span></div>
+                            </div>;
+                          })}
+                          {importPreview.rows.length === 0 && <p className="p-5 text-center text-sm text-muted-foreground">لم يعثر الملف على صفوف قابلة للعرض. راجع النموذج وحاول مجدداً.</p>}
+                        </div>
+                      </div>
+                    </section>
+                  )}
+                  {importResult && <section role="status" className="rounded-xl border border-primary/30 bg-primary/5 p-4 sm:p-5 space-y-4">
+                    <div className="flex items-center gap-2 font-bold text-primary"><CheckCircle2 className="h-5 w-5" /> انتهى الاستيراد</div>
+                    {importPreview && <p className="text-xs text-muted-foreground">قبل الحفظ: {importPreview.counts.activities} بند صالح، {importPreview.counts.rejected} صف مرفوض. بعد الحفظ:</p>}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {([
+                        ["بنود مستوردة", importResult.imported],
+                        ["مجموعات جديدة", importResult.groupsCreated],
+                        ["مجموعات مستخدمة", importResult.groupsUsed],
+                        ["صفوف مرفوضة", importResult.rejected],
+                      ] as const).map(([label, value]) => <div key={label} className="rounded-lg border border-border bg-card p-3"><span className="block text-xl font-bold tabular-nums">{value}</span><span className="text-xs text-muted-foreground">{label}</span></div>)}
+                    </div>
+                    {!!importResult.errors?.length && <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs"><strong>ملاحظات الحفظ:</strong><ul className="list-disc list-inside mt-1 space-y-1">{importResult.errors.map((message, index) => <li key={index}>{message}</li>)}</ul></div>}
+                    {!!importResult.warnings?.length && <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"><strong>تحتاج متابعة:</strong><ul className="list-disc list-inside mt-1 space-y-1">{importResult.warnings.map((message, index) => <li key={index}>{message}</li>)}</ul></div>}
+                  </section>}
+                </div>
+                <div className="shrink-0 border-t border-border bg-card px-4 py-3 sm:px-6 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                  <Button variant="outline" disabled={isImporting && !!importPreview} onClick={() => { setIsImportOpen(false); resetImport(); }}>{importResult ? "إغلاق" : "إلغاء"}</Button>
+                  {importPreview && !importResult && <Button onClick={handleImportConfirm}
+                    disabled={isImporting || importPreview.counts.activities < 1 || importPreview.groups.some(group => importPreview.rows.some(row => row.kind === "activity" && row.groupRow === group.rowNumber) && !importChoices[String(group.rowNumber)])} className="gap-2">
+                    {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    {isImporting ? "جاري الحفظ..." : `حفظ ${importPreview.counts.activities} بند صالح`}
+                  </Button>}
                 </div>
               </DialogContent>
             </Dialog>

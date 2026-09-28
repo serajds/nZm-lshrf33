@@ -124754,6 +124754,121 @@ function requireTabEdit(tabKey, paramName = "projectId") {
 // src/routes/activities.ts
 var import_multer = __toESM(require_multer(), 1);
 var XLSX = __toESM(require_xlsx(), 1);
+import { randomUUID as randomUUID2 } from "node:crypto";
+
+// src/lib/excel-activity-import.ts
+function normalizeImportGroupName(name) {
+  return name.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+function isValidCalendarDate(y, m, d) {
+  const date6 = new Date(y, m - 1, d);
+  return date6.getFullYear() === y && date6.getMonth() === m - 1 && date6.getDate() === d;
+}
+function parseExcelImportDate(val) {
+  const isoMatch = val.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    const y = Number(isoMatch[1]);
+    const m = Number(isoMatch[2]);
+    const d = Number(isoMatch[3]);
+    if (isValidCalendarDate(y, m, d)) return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  const slashMatch = val.match(/^(\d{1,2})[\/](\d{1,2})[\/](\d{4})$/);
+  if (slashMatch) {
+    const d = Number(slashMatch[1]);
+    const m = Number(slashMatch[2]);
+    const y = Number(slashMatch[3]);
+    if (isValidCalendarDate(y, m, d)) return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  const num = Number(val);
+  if (!isNaN(num) && num > 1 && num < 2e5) {
+    const excelEpoch = new Date(1899, 11, 30);
+    const date6 = new Date(excelEpoch.getTime() + num * 864e5);
+    if (!isNaN(date6.getTime())) return date6.toISOString().split("T")[0];
+  }
+  return null;
+}
+function planExcelActivityImport(rows, mode, existingGroups) {
+  const result = [];
+  const groups = [];
+  const header = rows[0] ?? [];
+  const typeColumn = header.findIndex((cell) => String(cell ?? "").trim() === "\u0627\u0644\u0646\u0648\u0639");
+  let currentGroup = null;
+  for (let index2 = 1; index2 < rows.length; index2++) {
+    const row = rows[index2] ?? [];
+    if (row.every((cell) => cell === null || cell === void 0 || String(cell).trim() === "")) continue;
+    const rowNumber = index2 + 1;
+    const name = String(row[0] ?? "").trim();
+    const startRaw = String(row[1] ?? "").trim();
+    const endRaw = String(row[2] ?? "").trim();
+    const explicitType = mode === "detect" && typeColumn >= 0 ? String(row[typeColumn] ?? "").trim() : "";
+    const otherFields = row.some((cell, column) => column > 2 && column !== typeColumn && cell !== null && cell !== void 0 && String(cell).trim() !== "");
+    const reject = (error40, resetGroup = false) => {
+      result.push({ rowNumber, kind: "error", name, groupRow: mode === "detect" ? currentGroup : null, error: error40 });
+      if (resetGroup) currentGroup = null;
+    };
+    if (explicitType && explicitType !== "\u0645\u062C\u0645\u0648\u0639\u0629" && explicitType !== "\u0646\u0634\u0627\u0637") {
+      reject(`\u0635\u0641 ${rowNumber}: \u0627\u0644\u0646\u0648\u0639 \u064A\u062C\u0628 \u0623\u0646 \u064A\u0643\u0648\u0646 \u0645\u062C\u0645\u0648\u0639\u0629 \u0623\u0648 \u0646\u0634\u0627\u0637`, true);
+      continue;
+    }
+    if (!name) {
+      reject(`\u0635\u0641 ${rowNumber}: \u0627\u0633\u0645 \u0627\u0644\u0628\u0646\u062F \u0645\u0637\u0644\u0648\u0628`);
+      continue;
+    }
+    if (mode === "detect" && (explicitType === "\u0645\u062C\u0645\u0648\u0639\u0629" || !explicitType && !startRaw && !endRaw && !otherFields)) {
+      if (startRaw || endRaw || otherFields) {
+        reject(`\u0635\u0641 ${rowNumber}: \u0635\u0641 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u064A\u062C\u0628 \u0623\u0646 \u064A\u062D\u062A\u0648\u064A \u0627\u0633\u0645\u0627\u064B \u0641\u0642\u0637 \u062F\u0648\u0646 \u062A\u0648\u0627\u0631\u064A\u062E \u0623\u0648 \u0628\u064A\u0627\u0646\u0627\u062A \u0646\u0634\u0627\u0637`, true);
+        continue;
+      }
+      currentGroup = rowNumber;
+      groups.push({
+        rowNumber,
+        name,
+        matches: existingGroups.filter((group) => normalizeImportGroupName(group.name) === normalizeImportGroupName(name))
+      });
+      result.push({ rowNumber, kind: "group", name });
+      continue;
+    }
+    if (!startRaw || !endRaw) {
+      reject(
+        !startRaw ? `\u0635\u0641 ${rowNumber}: \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0628\u062F\u0627\u064A\u0629 \u0645\u0637\u0644\u0648\u0628${mode === "detect" ? "\u061B \u0635\u0641 \u0645\u0644\u062A\u0628\u0633\u060C \u0644\u0645 \u064A\u064F\u0646\u0634\u0623 \u0643\u0645\u062C\u0645\u0648\u0639\u0629" : ""}` : `\u0635\u0641 ${rowNumber}: \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0645\u0637\u0644\u0648\u0628${mode === "detect" ? "\u061B \u0635\u0641 \u0645\u0644\u062A\u0628\u0633\u060C \u0644\u0645 \u064A\u064F\u0646\u0634\u0623 \u0643\u0645\u062C\u0645\u0648\u0639\u0629" : ""}`,
+        mode === "detect"
+      );
+      continue;
+    }
+    const plannedStartDate = parseExcelImportDate(startRaw);
+    const plannedEndDate = parseExcelImportDate(endRaw);
+    if (!plannedStartDate) {
+      reject(`\u0635\u0641 ${rowNumber}: \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0628\u062F\u0627\u064A\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D (${startRaw})`);
+      continue;
+    }
+    if (!plannedEndDate) {
+      reject(`\u0635\u0641 ${rowNumber}: \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D (${endRaw})`);
+      continue;
+    }
+    if (plannedEndDate < plannedStartDate) {
+      reject(`\u0635\u0641 ${rowNumber}: \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u064A\u062C\u0628 \u0623\u0646 \u064A\u0643\u0648\u0646 \u0628\u0639\u062F \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0628\u062F\u0627\u064A\u0629`);
+      continue;
+    }
+    result.push({
+      rowNumber,
+      kind: "activity",
+      name,
+      plannedStartDate,
+      plannedEndDate,
+      groupRow: mode === "detect" ? currentGroup : null
+    });
+  }
+  return {
+    rows: result,
+    groups,
+    counts: {
+      activities: result.filter((row) => row.kind === "activity").length,
+      rejected: result.filter((row) => row.kind === "error").length
+    }
+  };
+}
+
+// src/routes/activities.ts
 async function checkGroupPermission(userId, projectId, activityId) {
   const [membership] = await db.select().from(projectMembersTable).where(and(eq(projectMembersTable.projectId, projectId), eq(projectMembersTable.userId, userId)));
   if (!membership || membership.role !== "engineer") return true;
@@ -124765,6 +124880,11 @@ async function checkGroupPermission(userId, projectId, activityId) {
 }
 var upload = (0, import_multer.default)({ storage: import_multer.default.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 var router4 = (0, import_express4.Router)();
+var importPreviews = /* @__PURE__ */ new Map();
+function pruneImportPreviews() {
+  const now = Date.now();
+  for (const [key, value] of importPreviews) if (value.expires < now) importPreviews.delete(key);
+}
 function isValidActualProgress(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
 }
@@ -125184,6 +125304,206 @@ router4.patch("/projects/:projectId/activities/:id", requireProjectAccess("proje
   await logAudit2({ userId: req.user?.userId, action: "update", entityType: "activity", entityId: activity.id, entityName: `\u0628\u0646\u062F #${activity.id}`, projectId, details: { ...updateData, actualProgressBefore: existing.actualProgress, actualProgressAfter: activity.actualProgress, externalSourceGroupIdBefore: existing.externalSourceGroupId, externalSourceGroupIdAfter: activity.externalSourceGroupId, changedFields: Object.keys(updateData) } });
   res.json(await serializeActivityForUser(activity, req.user?.userId));
 });
+router4.post("/projects/:projectId/activities/import/preview", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
+  const projectId = Number(req.params.projectId);
+  const { mode, groupId, fileBase64 } = req.body ?? {};
+  if (!["detect", "existing", "none"].includes(mode) || mode === "existing" && (!Number.isInteger(groupId) || groupId <= 0) || typeof fileBase64 !== "string" || fileBase64.length > 7e6 || !/^[A-Za-z0-9+/]+={0,2}$/.test(fileBase64)) {
+    res.status(400).json({ error: "\u0627\u062E\u062A\u0631 \u0637\u0631\u064A\u0642\u0629 \u0627\u0644\u0627\u0633\u062A\u064A\u0631\u0627\u062F \u0648\u0623\u0631\u0641\u0642 \u0645\u0644\u0641 Excel \u0635\u0627\u0644\u062D\u0627\u064B \u0644\u0627 \u064A\u062A\u062C\u0627\u0648\u0632 5 \u0645\u064A\u063A\u0627\u0628\u0627\u064A\u062A" });
+    return;
+  }
+  const buffer = Buffer.from(fileBase64, "base64");
+  if (!buffer.length || buffer.length > 5 * 1024 * 1024) {
+    res.status(400).json({ error: "\u062D\u062C\u0645 \u0627\u0644\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D (\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 5 \u0645\u064A\u063A\u0627\u0628\u0627\u064A\u062A)" });
+    return;
+  }
+  const groups = await db.select({ id: activityGroupsTable.id, name: activityGroupsTable.name }).from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId)).orderBy(activityGroupsTable.id);
+  if (mode === "existing" && !groups.some((group) => group.id === groupId)) {
+    res.status(400).json({ error: "\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u0627\u0644\u0645\u062E\u062A\u0627\u0631\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0627\u0644\u0645\u0634\u0631\u0648\u0639" });
+    return;
+  }
+  try {
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    if (!sheet) {
+      res.status(400).json({ error: "\u0627\u0644\u0645\u0644\u0641 \u0644\u0627 \u064A\u062D\u062A\u0648\u064A \u0639\u0644\u0649 \u0628\u064A\u0627\u0646\u0627\u062A" });
+      return;
+    }
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, dateNF: "yyyy-mm-dd" });
+    if (rows.length < 2) {
+      res.status(400).json({ error: "\u064A\u062C\u0628 \u0623\u0646 \u064A\u062D\u062A\u0648\u064A \u0627\u0644\u0645\u0644\u0641 \u0639\u0644\u0649 \u0635\u0641 \u0639\u0646\u0627\u0648\u064A\u0646 \u0648\u0635\u0641 \u0628\u064A\u0627\u0646\u0627\u062A \u0648\u0627\u062D\u062F \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644" });
+      return;
+    }
+    const plan = planExcelActivityImport(rows, mode, groups);
+    pruneImportPreviews();
+    const previewId = randomUUID2();
+    importPreviews.set(previewId, {
+      projectId,
+      userId: req.user.userId,
+      mode,
+      targetGroupId: mode === "existing" ? groupId : null,
+      targetGroupName: mode === "existing" ? groups.find((group) => group.id === groupId).name : null,
+      plan,
+      expires: Date.now() + 15 * 6e4,
+      busy: false
+    });
+    res.json({ previewId, ...plan });
+  } catch {
+    res.status(400).json({ error: "\u0641\u0634\u0644 \u0642\u0631\u0627\u0621\u0629 \u0627\u0644\u0645\u0644\u0641. \u062A\u0623\u0643\u062F \u0645\u0646 \u0623\u0646\u0647 \u0645\u0644\u0641 Excel \u0635\u0627\u0644\u062D (.xlsx)" });
+  }
+});
+router4.post("/projects/:projectId/activities/import/confirm", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
+  const projectId = Number(req.params.projectId);
+  pruneImportPreviews();
+  const preview = importPreviews.get(req.body?.previewId);
+  if (!preview || preview.projectId !== projectId || preview.userId !== req.user.userId) {
+    res.status(409).json({ error: "\u0627\u0646\u062A\u0647\u062A \u0627\u0644\u0645\u0639\u0627\u064A\u0646\u0629 \u0623\u0648 \u0627\u0633\u062A\u064F\u062E\u062F\u0645\u062A \u0628\u0627\u0644\u0641\u0639\u0644. \u0639\u0627\u064A\u0646 \u0627\u0644\u0645\u0644\u0641 \u0645\u0646 \u062C\u062F\u064A\u062F" });
+    return;
+  }
+  if (preview.completed) {
+    res.status(201).json(preview.completed);
+    return;
+  }
+  if (preview.busy) {
+    res.status(409).json({ error: "\u0627\u0644\u0627\u0633\u062A\u064A\u0631\u0627\u062F \u0642\u064A\u062F \u0627\u0644\u062A\u0646\u0641\u064A\u0630. \u0627\u0646\u062A\u0638\u0631 \u0627\u0643\u062A\u0645\u0627\u0644\u0647 \u0642\u0628\u0644 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u062C\u062F\u062F\u0627\u064B" });
+    return;
+  }
+  if (!preview.plan.counts.activities) {
+    res.status(400).json({ error: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0628\u0646\u0648\u062F \u0635\u0627\u0644\u062D\u0629 \u0644\u0644\u0627\u0633\u062A\u064A\u0631\u0627\u062F" });
+    return;
+  }
+  const choices = req.body?.choices ?? {};
+  if (!choices || typeof choices !== "object" || Array.isArray(choices)) {
+    res.status(400).json({ error: "\u062E\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629" });
+    return;
+  }
+  const activeGroupRows = new Set(preview.plan.rows.filter((row) => row.kind === "activity" && row.groupRow != null).map((row) => row.groupRow));
+  for (const group of preview.plan.groups.filter((group2) => activeGroupRows.has(group2.rowNumber))) {
+    const choice = choices[String(group.rowNumber)];
+    if (choice !== void 0 && (!choice || typeof choice !== "object" || !["new", "existing"].includes(choice.action) || choice.action === "existing" && !group.matches.some((match) => match.id === choice.groupId))) {
+      res.status(400).json({ error: `\u0627\u062E\u062A\u064A\u0627\u0631 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u0641\u064A \u0627\u0644\u0635\u0641 ${group.rowNumber} \u063A\u064A\u0631 \u0635\u0627\u0644\u062D` });
+      return;
+    }
+    if (!choice && group.matches.length > 1) {
+      res.status(400).json({ error: `\u062A\u0648\u062C\u062F \u0639\u062F\u0629 \u0645\u062C\u0645\u0648\u0639\u0627\u062A \u0628\u0627\u0633\u0645 ${group.name}\u061B \u0627\u062E\u062A\u0631 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u0627\u0644\u0645\u0637\u0644\u0648\u0628\u0629 \u0642\u0628\u0644 \u0627\u0644\u062D\u0641\u0638` });
+      return;
+    }
+  }
+  preview.busy = true;
+  try {
+    const result = await withSourceGraphLock(() => db.transaction(async (tx) => {
+      const currentGroups = await tx.select({
+        id: activityGroupsTable.id,
+        name: activityGroupsTable.name,
+        sortOrder: activityGroupsTable.sortOrder
+      }).from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId)).orderBy(activityGroupsTable.id);
+      const activeRows = preview.plan.rows.filter((row) => row.kind === "activity");
+      const [membership] = await tx.select({ id: projectMembersTable.id, role: projectMembersTable.role }).from(projectMembersTable).where(and(eq(projectMembersTable.projectId, projectId), eq(projectMembersTable.userId, req.user.userId)));
+      const assignments = req.user?.role !== "admin" && membership?.role === "engineer" ? await tx.select({ groupId: memberGroupAssignmentsTable.groupId }).from(memberGroupAssignmentsTable).where(eq(memberGroupAssignmentsTable.memberId, membership.id)) : [];
+      const allowedGroupIds = assignments.length ? new Set(assignments.map((item) => item.groupId)) : null;
+      if (allowedGroupIds && (preview.mode === "none" || preview.mode === "existing" && !allowedGroupIds.has(preview.targetGroupId) || preview.mode === "detect" && activeRows.some((row) => row.groupRow == null))) throw new Error("IMPORT_FORBIDDEN");
+      const groupIds = /* @__PURE__ */ new Map();
+      const createdNames = /* @__PURE__ */ new Map();
+      const usedIds = /* @__PURE__ */ new Set();
+      let maxGroupOrder = Math.max(0, ...currentGroups.map((group) => group.sortOrder));
+      let groupsCreated = 0;
+      for (const group of preview.plan.groups.filter((group2) => activeGroupRows.has(group2.rowNumber))) {
+        const nameKey = normalizeImportGroupName(group.name);
+        const matches = currentGroups.filter((item) => normalizeImportGroupName(item.name) === nameKey);
+        const choice = choices[String(group.rowNumber)];
+        if (allowedGroupIds && (choice?.action === "new" || !matches.length || choice?.groupId != null && !allowedGroupIds.has(choice.groupId) || !choice && !allowedGroupIds.has(matches[0].id))) throw new Error("IMPORT_FORBIDDEN");
+        if (choice?.action === "existing" && !matches.some((match) => match.id === choice.groupId)) {
+          throw new Error("IMPORT_PREVIEW_STALE");
+        }
+        if (!choice && matches.map((item) => item.id).join(",") !== group.matches.map((item) => item.id).join(",")) {
+          throw new Error("IMPORT_PREVIEW_STALE");
+        }
+        if (choice?.action !== "new" && matches.length) {
+          const id2 = choice?.groupId ?? matches[0].id;
+          if (!matches.some((match) => match.id === id2)) throw new Error("IMPORT_PREVIEW_STALE");
+          groupIds.set(group.rowNumber, id2);
+          usedIds.add(id2);
+          continue;
+        }
+        if (!group.matches.length && matches.length) throw new Error("IMPORT_PREVIEW_STALE");
+        let id = createdNames.get(nameKey);
+        if (id === void 0) {
+          const [inserted2] = await tx.insert(activityGroupsTable).values({
+            projectId,
+            name: group.name,
+            color: "#3b82f6",
+            sortOrder: ++maxGroupOrder
+          }).returning({ id: activityGroupsTable.id });
+          id = inserted2.id;
+          createdNames.set(nameKey, id);
+          groupsCreated++;
+        }
+        groupIds.set(group.rowNumber, id);
+      }
+      if (preview.mode === "existing" && !currentGroups.some((group) => group.id === preview.targetGroupId && group.name === preview.targetGroupName)) {
+        throw new Error("IMPORT_PREVIEW_STALE");
+      }
+      if (preview.targetGroupId != null) usedIds.add(preview.targetGroupId);
+      const [maxOrder] = await tx.select({ val: max(activitiesTable.sortOrder) }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+      let nextOrder = (maxOrder?.val ?? 0) + 1;
+      const inserted = await tx.insert(activitiesTable).values(activeRows.map((row) => ({
+        projectId,
+        name: row.name,
+        plannedStartDate: row.plannedStartDate,
+        plannedEndDate: row.plannedEndDate,
+        sortOrder: nextOrder++,
+        plannedProgress: 0,
+        actualProgress: 0,
+        status: "not_started",
+        groupId: preview.mode === "existing" ? preview.targetGroupId : row.groupRow != null ? groupIds.get(row.groupRow) ?? null : null
+      }))).returning();
+      return { inserted, groupsCreated, usedIds: [...usedIds], affectedGroupIds: [...new Set(inserted.map((row) => row.groupId).filter((id) => id != null))] };
+    }));
+    const completed = {
+      imported: result.inserted.length,
+      groupsCreated: result.groupsCreated,
+      groupsUsed: result.usedIds.length,
+      rejected: preview.plan.counts.rejected,
+      errors: preview.plan.rows.filter((row) => row.kind === "error").map((row) => row.error),
+      warnings: []
+    };
+    const afterCommit = async (label, work) => {
+      try {
+        await work();
+      } catch (error40) {
+        console.error(`Excel import: ${label} failed after commit`, error40);
+        completed.warnings.push(`\u062D\u064F\u0641\u0638\u062A \u0627\u0644\u0628\u0646\u0648\u062F\u060C \u0644\u0643\u0646 \u062A\u0639\u0630\u0631 ${label}. \u0631\u0627\u062C\u0639 \u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0642\u0628\u0644 \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u0627\u0633\u062A\u064A\u0631\u0627\u062F.`);
+      }
+    };
+    await afterCommit("\u062A\u062D\u062F\u064A\u062B \u062A\u0642\u062F\u0645 \u0627\u0644\u0645\u0634\u0631\u0648\u0639", () => syncProjectProgress(projectId));
+    await afterCommit("\u062A\u062D\u062F\u064A\u062B \u0645\u0648\u0639\u062F \u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0634\u0631\u0648\u0639", () => recalcExpectedEndDate(projectId));
+    if (result.groupsCreated) await afterCommit("\u0645\u0632\u0627\u0645\u0646\u0629 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639 \u0627\u0644\u0645\u0631\u062A\u0628\u0637\u0629", () => reconcileTargetsLinkedToProject(projectId));
+    if (result.affectedGroupIds.length) await afterCommit("\u062A\u062D\u062F\u064A\u062B \u0645\u0635\u0627\u062F\u0631 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A", () => refreshLinkedSources(result.affectedGroupIds));
+    await afterCommit("\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u0639\u0645\u0644\u064A\u0629", async () => {
+      const { logAudit: logAudit2 } = await Promise.resolve().then(() => (init_audit(), audit_exports));
+      await logAudit2({
+        userId: req.user.userId,
+        action: "create",
+        entityType: "activity_import",
+        entityName: "\u0627\u0633\u062A\u064A\u0631\u0627\u062F \u0628\u0646\u0648\u062F",
+        projectId,
+        details: { created: result.inserted.length, groupsCreated: result.groupsCreated, groupsUsed: result.usedIds.length }
+      });
+    });
+    preview.completed = completed;
+    res.status(201).json(completed);
+  } catch (error40) {
+    preview.busy = false;
+    if (error40 instanceof Error && error40.message === "IMPORT_FORBIDDEN") {
+      res.status(403).json({ error: "\u0644\u064A\u0633\u062A \u0644\u062F\u064A\u0643 \u0635\u0644\u0627\u062D\u064A\u0629 \u0627\u0644\u0627\u0633\u062A\u064A\u0631\u0627\u062F \u0625\u0644\u0649 \u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0645\u062E\u0635\u0635\u0629 \u0644\u0643 \u0623\u0648 \u0625\u0646\u0634\u0627\u0621 \u0645\u062C\u0645\u0648\u0639\u0629 \u062C\u062F\u064A\u062F\u0629" });
+      return;
+    }
+    if (error40 instanceof Error && error40.message === "IMPORT_PREVIEW_STALE") {
+      res.status(409).json({ error: "\u062A\u063A\u064A\u0631\u062A \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0627\u062A \u0628\u0639\u062F \u0627\u0644\u0645\u0639\u0627\u064A\u0646\u0629. \u0639\u0627\u064A\u0646 \u0627\u0644\u0645\u0644\u0641 \u0645\u062C\u062F\u062F\u0627\u064B \u0642\u0628\u0644 \u0627\u0644\u062D\u0641\u0638" });
+      return;
+    }
+    throw error40;
+  }
+});
 router4.post("/projects/:projectId/activities/import", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), upload.single("file"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
@@ -125283,7 +125603,7 @@ router4.post("/projects/:projectId/activities/import", requireProjectAccess("pro
     res.status(400).json({ error: "\u0641\u0634\u0644 \u0642\u0631\u0627\u0621\u0629 \u0627\u0644\u0645\u0644\u0641. \u062A\u0623\u0643\u062F \u0645\u0646 \u0623\u0646\u0647 \u0645\u0644\u0641 Excel \u0635\u0627\u0644\u062D (.xlsx)" });
   }
 });
-function isValidCalendarDate(y, m, d) {
+function isValidCalendarDate2(y, m, d) {
   const date6 = new Date(y, m - 1, d);
   return date6.getFullYear() === y && date6.getMonth() === m - 1 && date6.getDate() === d;
 }
@@ -125293,14 +125613,14 @@ function parseExcelDate(val) {
     const y = Number(isoMatch[1]);
     const m = Number(isoMatch[2]);
     const d = Number(isoMatch[3]);
-    if (isValidCalendarDate(y, m, d)) return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    if (isValidCalendarDate2(y, m, d)) return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   }
   const slashMatch = val.match(/^(\d{1,2})[\/](\d{1,2})[\/](\d{4})$/);
   if (slashMatch) {
     const d = Number(slashMatch[1]);
     const m = Number(slashMatch[2]);
     const y = Number(slashMatch[3]);
-    if (isValidCalendarDate(y, m, d)) return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    if (isValidCalendarDate2(y, m, d)) return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   }
   const num = Number(val);
   if (!isNaN(num) && num > 1 && num < 2e5) {
@@ -125520,12 +125840,12 @@ router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proj
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const { imageGroups, technicalNotes, recommendations, periodStart, periodEnd } = req.body;
-  const isValidCalendarDate2 = (s) => {
+  const isValidCalendarDate3 = (s) => {
     if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
     const d = /* @__PURE__ */ new Date(`${s}T00:00:00Z`);
     return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
   };
-  if (!isValidCalendarDate2(periodStart) || !isValidCalendarDate2(periodEnd)) {
+  if (!isValidCalendarDate3(periodStart) || !isValidCalendarDate3(periodEnd)) {
     res.status(400).json({ error: "\u064A\u062C\u0628 \u062A\u062D\u062F\u064A\u062F \u062A\u0627\u0631\u064A\u062E \u0628\u062F\u0627\u064A\u0629 \u0648\u0646\u0647\u0627\u064A\u0629 \u0641\u062A\u0631\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0642\u0628\u0644 \u0627\u0644\u0635\u064A\u0627\u063A\u0629 \u0628\u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A" });
     return;
   }

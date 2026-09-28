@@ -13,3 +13,4 @@
 - [Historical report provenance](historical-report-provenance.md) — backdated actuals copied from today's activities are unverified at the report date; do not infer historical SPI from them.
 - [Remote stability tag safety](remote-stability-tag-safety.md) — pushing an old tag can expose sensitive tracked snapshots in Git history even after removing them from the working tree.
 - [Partial JSON backups](partial-json-backups.md) — before project replacement, compare exported data against cascade dependencies; a valid JSON import can silently omit dependent records.
+- [Excel import preview lifetime](excel-import-preview-lifetime.md) — import previews deliberately fail closed if the API process loses them; use shared atomic storage before multi-instance reliability.
