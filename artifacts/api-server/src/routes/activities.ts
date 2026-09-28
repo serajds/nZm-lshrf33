@@ -6,10 +6,12 @@ import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlew
 import { requireTabEdit } from "../middlewares/tab-access";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
 import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
-import { canReadProject, getGroupSummary, hasLinkedGroupSourceDuplicate, refreshLinkedSources, withSourceGraphLock, wouldCreateSourceCycle } from "../lib/external-sources";
+import { canReadProject, getGroupSummary, hasLinkedGroupSourceDuplicate, reconcileTargetsLinkedToProject, refreshLinkedSources, withSourceGraphLock, wouldCreateSourceCycle } from "../lib/external-sources";
 import { linkedSourceIdAfterPatch, sourceIsAvailable } from "../lib/activity-source-rules";
 import multer from "multer";
 import * as XLSX from "xlsx";
+import { randomUUID } from "node:crypto";
+import { normalizeImportGroupName, planExcelActivityImport, type ImportMode } from "../lib/excel-activity-import";
 
 async function checkGroupPermission(userId: number, projectId: number, activityId: number): Promise<boolean> {
   const [membership] = await db.select()
@@ -36,6 +38,21 @@ async function checkGroupPermission(userId: number, projectId: number, activityI
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const router: IRouter = Router();
+
+type ImportPlan = ReturnType<typeof planExcelActivityImport>;
+const importPreviews = new Map<string, {
+  projectId: number; userId: number; mode: ImportMode; targetGroupId: number | null;
+  targetGroupName: string | null; plan: ImportPlan; expires: number; busy: boolean;
+  completed?: {
+    imported: number; groupsCreated: number; groupsUsed: number; rejected: number;
+    errors: (string | undefined)[]; warnings: string[];
+  };
+}>();
+
+function pruneImportPreviews() {
+  const now = Date.now();
+  for (const [key, value] of importPreviews) if (value.expires < now) importPreviews.delete(key);
+}
 
 function isValidActualProgress(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
@@ -533,6 +550,215 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   await logAudit({ userId: (req as any).user?.userId, action: "update", entityType: "activity", entityId: activity.id, entityName: `بند #${activity.id}`, projectId, details: { ...updateData, actualProgressBefore: existing.actualProgress, actualProgressAfter: activity.actualProgress, externalSourceGroupIdBefore: existing.externalSourceGroupId, externalSourceGroupIdAfter: activity.externalSourceGroupId, changedFields: Object.keys(updateData) } });
 
   res.json(await serializeActivityForUser(activity, req.user?.userId));
+});
+
+router.post("/projects/:projectId/activities/import/preview", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
+  const projectId = Number(req.params.projectId);
+  const { mode, groupId, fileBase64 } = req.body ?? {};
+  if (!["detect", "existing", "none"].includes(mode) ||
+      (mode === "existing" && (!Number.isInteger(groupId) || groupId <= 0)) ||
+      typeof fileBase64 !== "string" || fileBase64.length > 7_000_000 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(fileBase64)) {
+    res.status(400).json({ error: "اختر طريقة الاستيراد وأرفق ملف Excel صالحاً لا يتجاوز 5 ميغابايت" });
+    return;
+  }
+  const buffer = Buffer.from(fileBase64, "base64");
+  if (!buffer.length || buffer.length > 5 * 1024 * 1024) {
+    res.status(400).json({ error: "حجم الملف غير صالح (الحد الأقصى 5 ميغابايت)" });
+    return;
+  }
+  const groups = await db.select({ id: activityGroupsTable.id, name: activityGroupsTable.name })
+    .from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId))
+    .orderBy(activityGroupsTable.id);
+  if (mode === "existing" && !groups.some(group => group.id === groupId)) {
+    res.status(400).json({ error: "المجموعة المختارة غير موجودة في المشروع" });
+    return;
+  }
+  try {
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    if (!sheet) {
+      res.status(400).json({ error: "الملف لا يحتوي على بيانات" });
+      return;
+    }
+    const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, dateNF: "yyyy-mm-dd" });
+    if (rows.length < 2) {
+      res.status(400).json({ error: "يجب أن يحتوي الملف على صف عناوين وصف بيانات واحد على الأقل" });
+      return;
+    }
+    const plan = planExcelActivityImport(rows, mode, groups);
+    pruneImportPreviews();
+    const previewId = randomUUID();
+    importPreviews.set(previewId, {
+      projectId, userId: req.user!.userId, mode, targetGroupId: mode === "existing" ? groupId : null,
+      targetGroupName: mode === "existing" ? groups.find(group => group.id === groupId)!.name : null,
+      plan, expires: Date.now() + 15 * 60_000, busy: false,
+    });
+    res.json({ previewId, ...plan });
+  } catch {
+    res.status(400).json({ error: "فشل قراءة الملف. تأكد من أنه ملف Excel صالح (.xlsx)" });
+  }
+});
+
+router.post("/projects/:projectId/activities/import/confirm", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
+  const projectId = Number(req.params.projectId);
+  pruneImportPreviews();
+  const preview = importPreviews.get(req.body?.previewId);
+  if (!preview || preview.projectId !== projectId || preview.userId !== req.user!.userId) {
+    res.status(409).json({ error: "انتهت المعاينة أو استُخدمت بالفعل. عاين الملف من جديد" });
+    return;
+  }
+  if (preview.completed) {
+    res.status(201).json(preview.completed);
+    return;
+  }
+  if (preview.busy) {
+    res.status(409).json({ error: "الاستيراد قيد التنفيذ. انتظر اكتماله قبل المحاولة مجدداً" });
+    return;
+  }
+  if (!preview.plan.counts.activities) {
+    res.status(400).json({ error: "لا توجد بنود صالحة للاستيراد" });
+    return;
+  }
+  const choices = req.body?.choices ?? {};
+  if (!choices || typeof choices !== "object" || Array.isArray(choices)) {
+    res.status(400).json({ error: "خيارات المجموعات غير صالحة" });
+    return;
+  }
+  const activeGroupRows = new Set(preview.plan.rows.filter(row => row.kind === "activity" && row.groupRow != null).map(row => row.groupRow));
+  for (const group of preview.plan.groups.filter(group => activeGroupRows.has(group.rowNumber))) {
+    const choice = choices[String(group.rowNumber)];
+    if (choice !== undefined && (
+      !choice || typeof choice !== "object" ||
+      !["new", "existing"].includes(choice.action) ||
+      (choice.action === "existing" && !group.matches.some(match => match.id === choice.groupId))
+    )) {
+      res.status(400).json({ error: `اختيار المجموعة في الصف ${group.rowNumber} غير صالح` });
+      return;
+    }
+    if (!choice && group.matches.length > 1) {
+      res.status(400).json({ error: `توجد عدة مجموعات باسم ${group.name}؛ اختر المجموعة المطلوبة قبل الحفظ` });
+      return;
+    }
+  }
+
+  preview.busy = true;
+  try {
+    const result = await withSourceGraphLock(() => db.transaction(async tx => {
+      const currentGroups = await tx.select({
+        id: activityGroupsTable.id, name: activityGroupsTable.name, sortOrder: activityGroupsTable.sortOrder,
+      }).from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId))
+        .orderBy(activityGroupsTable.id);
+      const activeRows = preview.plan.rows.filter((row): row is typeof row & { kind: "activity"; plannedStartDate: string; plannedEndDate: string } =>
+        row.kind === "activity");
+      const [membership] = await tx.select({ id: projectMembersTable.id, role: projectMembersTable.role })
+        .from(projectMembersTable).where(and(eq(projectMembersTable.projectId, projectId), eq(projectMembersTable.userId, req.user!.userId)));
+      const assignments = req.user?.role !== "admin" && membership?.role === "engineer"
+        ? await tx.select({ groupId: memberGroupAssignmentsTable.groupId }).from(memberGroupAssignmentsTable)
+          .where(eq(memberGroupAssignmentsTable.memberId, membership.id))
+        : [];
+      const allowedGroupIds = assignments.length ? new Set(assignments.map(item => item.groupId)) : null;
+      if (allowedGroupIds && (
+        preview.mode === "none" ||
+        (preview.mode === "existing" && !allowedGroupIds.has(preview.targetGroupId!)) ||
+        (preview.mode === "detect" && activeRows.some(row => row.groupRow == null))
+      )) throw new Error("IMPORT_FORBIDDEN");
+      const groupIds = new Map<number, number>();
+      const createdNames = new Map<string, number>();
+      const usedIds = new Set<number>();
+      let maxGroupOrder = Math.max(0, ...currentGroups.map(group => group.sortOrder));
+      let groupsCreated = 0;
+      for (const group of preview.plan.groups.filter(group => activeGroupRows.has(group.rowNumber))) {
+        const nameKey = normalizeImportGroupName(group.name);
+        const matches = currentGroups.filter(item => normalizeImportGroupName(item.name) === nameKey);
+        const choice = choices[String(group.rowNumber)];
+        if (allowedGroupIds && (choice?.action === "new" || !matches.length ||
+            (choice?.groupId != null && !allowedGroupIds.has(choice.groupId)) ||
+            (!choice && !allowedGroupIds.has(matches[0].id)))) throw new Error("IMPORT_FORBIDDEN");
+        if (choice?.action === "existing" && !matches.some(match => match.id === choice.groupId)) {
+          throw new Error("IMPORT_PREVIEW_STALE");
+        }
+        if (!choice && matches.map(item => item.id).join(",") !== group.matches.map(item => item.id).join(",")) {
+          throw new Error("IMPORT_PREVIEW_STALE");
+        }
+        if (choice?.action !== "new" && matches.length) {
+          const id = choice?.groupId ?? matches[0].id;
+          if (!matches.some(match => match.id === id)) throw new Error("IMPORT_PREVIEW_STALE");
+          groupIds.set(group.rowNumber, id);
+          usedIds.add(id);
+          continue;
+        }
+        if (!group.matches.length && matches.length) throw new Error("IMPORT_PREVIEW_STALE");
+        let id = createdNames.get(nameKey);
+        if (id === undefined) {
+          const [inserted] = await tx.insert(activityGroupsTable).values({
+            projectId, name: group.name, color: "#3b82f6", sortOrder: ++maxGroupOrder,
+          }).returning({ id: activityGroupsTable.id });
+          id = inserted.id;
+          createdNames.set(nameKey, id);
+          groupsCreated++;
+        }
+        groupIds.set(group.rowNumber, id);
+      }
+      if (preview.mode === "existing" && !currentGroups.some(group =>
+        group.id === preview.targetGroupId && group.name === preview.targetGroupName)) {
+        throw new Error("IMPORT_PREVIEW_STALE");
+      }
+      if (preview.targetGroupId != null) usedIds.add(preview.targetGroupId);
+      const [maxOrder] = await tx.select({ val: max(activitiesTable.sortOrder) })
+        .from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
+      let nextOrder = (maxOrder?.val ?? 0) + 1;
+      const inserted = await tx.insert(activitiesTable).values(activeRows.map(row => ({
+        projectId, name: row.name, plannedStartDate: row.plannedStartDate, plannedEndDate: row.plannedEndDate,
+        sortOrder: nextOrder++, plannedProgress: 0, actualProgress: 0,
+        status: "not_started" as const,
+        groupId: preview.mode === "existing" ? preview.targetGroupId
+          : row.groupRow != null ? groupIds.get(row.groupRow) ?? null : null,
+      }))).returning();
+      return { inserted, groupsCreated, usedIds: [...usedIds], affectedGroupIds: [...new Set(inserted.map(row => row.groupId).filter((id): id is number => id != null))] };
+    }));
+    const completed = {
+      imported: result.inserted.length, groupsCreated: result.groupsCreated,
+      groupsUsed: result.usedIds.length, rejected: preview.plan.counts.rejected,
+      errors: preview.plan.rows.filter(row => row.kind === "error").map(row => row.error),
+      warnings: [] as string[],
+    };
+    // The transaction has committed. Never return an ambiguous failure that could
+    // cause the operator to import the same file a second time.
+    const afterCommit = async (label: string, work: () => Promise<unknown>) => {
+      try {
+        await work();
+      } catch (error) {
+        console.error(`Excel import: ${label} failed after commit`, error);
+        completed.warnings.push(`حُفظت البنود، لكن تعذر ${label}. راجع حالة المشروع قبل إعادة الاستيراد.`);
+      }
+    };
+    await afterCommit("تحديث تقدم المشروع", () => syncProjectProgress(projectId));
+    await afterCommit("تحديث موعد نهاية المشروع", () => recalcExpectedEndDate(projectId));
+    if (result.groupsCreated) await afterCommit("مزامنة المشاريع المرتبطة", () => reconcileTargetsLinkedToProject(projectId));
+    if (result.affectedGroupIds.length) await afterCommit("تحديث مصادر المجموعات", () => refreshLinkedSources(result.affectedGroupIds));
+    await afterCommit("تسجيل العملية", async () => {
+      const { logAudit } = await import("../lib/audit");
+      await logAudit({
+        userId: req.user!.userId, action: "create", entityType: "activity_import",
+        entityName: "استيراد بنود", projectId,
+        details: { created: result.inserted.length, groupsCreated: result.groupsCreated, groupsUsed: result.usedIds.length },
+      });
+    });
+    preview.completed = completed;
+    res.status(201).json(completed);
+  } catch (error) {
+    preview.busy = false;
+    if (error instanceof Error && error.message === "IMPORT_FORBIDDEN") {
+      res.status(403).json({ error: "ليست لديك صلاحية الاستيراد إلى مجموعة غير مخصصة لك أو إنشاء مجموعة جديدة" });
+      return;
+    }
+    if (error instanceof Error && error.message === "IMPORT_PREVIEW_STALE") {
+      res.status(409).json({ error: "تغيرت المجموعات بعد المعاينة. عاين الملف مجدداً قبل الحفظ" });
+      return;
+    }
+    throw error;
+  }
 });
 
 router.post("/projects/:projectId/activities/import", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), upload.single("file"), async (req, res): Promise<void> => {
