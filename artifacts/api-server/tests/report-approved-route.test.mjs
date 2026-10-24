@@ -4,8 +4,8 @@ import fs from "node:fs";
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 
-// Exercise the real AI handler with a DB that always fails on access and a
-// fake AI transport. Never query development data or send a provider request.
+// Exercise the real AI handler with isolated history fixtures and a DB that
+// rejects unexpected access. No live application data is read or written.
 const schemaDir = new URL("../../../lib/db/src/schema/", import.meta.url);
 const names = new Set(fs.readdirSync(schemaDir).filter(n => n.endsWith(".ts")).flatMap(n =>
   [...fs.readFileSync(new URL(n, schemaDir), "utf8").matchAll(/export const (\w+)/g)].map(m => m[1])));
@@ -15,10 +15,18 @@ const compiled = await build({
   plugins: [{
     name: "no-database",
     setup(b) {
+      b.onResolve({ filter: /\/report-period-progress$/ }, () => ({ path: "history", namespace: "history-fixture" }));
+      b.onLoad({ filter: /.*/, namespace: "history-fixture" }, () => ({
+        contents: `export const getReportPeriodProgress = async (...args) =>
+          globalThis.approvedHistoryFixture?.(...args) ?? {available:false,activities:null};
+          export const validReportDay = value => typeof value === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(value);`,
+      }));
       b.onResolve({ filter: /^@workspace\/db$/ }, () => ({ path: "db", namespace: "fixture" }));
       b.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({
         contents: `const fail = () => { throw new Error("Unexpected DB access"); };
-          export const db = new Proxy({}, {get: () => fail});
+          export const db = new Proxy({}, {get: (_, key) => key === "select"
+            ? (...args) => globalThis.approvedDbSelectFixture ? globalThis.approvedDbSelectFixture(...args) : fail()
+            : fail});
           export const pool = { query: fail };
           ${[...names].map(n => `export const ${n} = {};`).join("\n")}`,
       }));
@@ -53,7 +61,7 @@ test("approved route requires explicit valid percentage and period work", async 
     assert.equal((await invoke({ ...base, ...patch })).code, 400);
   }
 });
-test("old period can be drafted from approved inputs without historical/current DB reads", async t => {
+test("missing history still permits documented work without reading today's activities", async t => {
   const originalFetch = globalThis.fetch;
   let prompt;
   globalThis.fetch = async (_url, options) => {
@@ -68,11 +76,82 @@ test("old period can be drafted from approved inputs without historical/current 
     const res = await invoke(base);
     if (res.code === 503) { t.skip("No AI provider configured; transport never called"); return; }
     assert.equal(res.code, 200, JSON.stringify(res.body));
-    assert.match(res.body.snapshotFingerprint, /^approved:/);
+    assert.match(res.body.snapshotFingerprint, /^approved-activities:/);
     assert.ok(prompt.includes("صب سقف الدور الثاني"));
     assert.ok(prompt.includes("progressPercentage"));
     assert.equal(res.body.workDescription, "تم صب سقف الدور الثاني.");
   } finally { globalThis.fetch = originalFetch; }
+});
+
+const historicalRows = [{
+  id: 1, name: "مباني الطوب بالدور الأول", actualProgress: 40, plannedProgress: 70,
+  actualAsOfDate: base.periodEnd, plannedAsOfDate: base.periodEnd,
+  plannedStartDate: "2026-09-01", plannedEndDate: "2026-10-15",
+  externalSourceGroupId: 7,
+}];
+async function withPromptCapture(run) {
+  const originalFetch = globalThis.fetch;
+  const prompts = [];
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    const prompt = request.messages?.at(-1)?.content ?? request.contents?.[0]?.parts?.[0]?.text;
+    prompts.push(prompt);
+    const content = JSON.stringify({ workDescription: "تظهر البنود حالة تراكمية حتى نهاية الفترة.", technicalNotes: "فجوة عن المخطط المسجل.", recommendations: "يوصى بمتابعة البند." });
+    return new Response(JSON.stringify({
+      choices: [{ message: { content } }], candidates: [{ content: { parts: [{ text: content }] } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try { await run(prompts); }
+  finally {
+    globalThis.fetch = originalFetch;
+    delete globalThis.approvedHistoryFixture;
+    delete globalThis.approvedDbSelectFixture;
+  }
+}
+test("historical activities can generate a narrative without supervisor text and preserve approved aggregate", async t => {
+  await withPromptCapture(async prompts => {
+    globalThis.approvedHistoryFixture = async (id, day) => {
+      assert.equal(id, 1); assert.equal(day, base.periodEnd);
+      return { available: true, activities: historicalRows };
+    };
+    const res = await invoke({ ...base, progressPercentage: 35, workDescription: "" });
+    if (res.code === 503) { t.skip("No provider configured"); return; }
+    assert.equal(res.code, 200, JSON.stringify(res.body));
+    assert.ok(prompts[0].includes('"actualProgressAsOfPeriodEnd":40'));
+    assert.ok(prompts[0].includes('"variancePoints":-30'));
+    assert.ok(prompts[0].includes('"progressPercentage":35'));
+    assert.ok(prompts[0].includes('"linkedSource":true'));
+    const changed = await invoke({ ...base, workDescription: "" });
+    assert.notEqual(res.body.snapshotFingerprint, changed.body.snapshotFingerprint);
+  });
+});
+test("saved report uses its own dated snapshot, not new history or current project activities", async t => {
+  await withPromptCapture(async prompts => {
+    globalThis.approvedHistoryFixture = () => { throw new Error("Saved report must not read newer history"); };
+    globalThis.approvedDbSelectFixture = () => ({
+      from: () => ({ where: async () => [{ id: 3, periodEnd: base.periodEnd, snapshot: historicalRows }] }),
+    });
+    const res = await invoke({ ...base, reportId: 3, workDescription: "" });
+    if (res.code === 503) { t.skip("No provider configured"); return; }
+    assert.equal(res.code, 200, JSON.stringify(res.body));
+    assert.ok(prompts[0].includes('"actualProgressAsOfPeriodEnd":40'));
+    const wrongPeriod = await invoke({ ...base, reportId: 3, periodEnd: "2026-10-01" });
+    assert.equal(wrongPeriod.code, 409);
+  });
+});
+test("unverified or missing historical activity values cannot replace missing work description", async t => {
+  await withPromptCapture(async prompts => {
+    globalThis.approvedHistoryFixture = async () => ({
+      available: true, activities: historicalRows.map(row => ({ ...row, actualHistoricalUnverified: true })),
+    });
+    const res = await invoke({ ...base, workDescription: "" });
+    if (res.code === 503) { t.skip("No provider configured"); return; }
+    assert.equal(res.code, 400);
+    assert.equal(prompts.length, 0);
+    const documented = await invoke(base);
+    assert.equal(documented.code, 200);
+    assert.ok(prompts[0].includes('"actualProgressAsOfPeriodEnd":null'));
+  });
 });
 
 test("incomplete provider response is rejected instead of leaving report sections silently empty", async t => {
@@ -114,4 +193,10 @@ test("live synthetic report produces complete professional sections without data
     }
     console.log("Synthetic live report:", JSON.stringify(res.body));
   }
+  globalThis.approvedHistoryFixture = async () => ({ available: true, activities: historicalRows });
+  try {
+    const res = await invoke({ ...base, progressPercentage: 35, workDescription: "" });
+    assert.equal(res.code, 200, JSON.stringify(res.body));
+    console.log("Synthetic live activity analysis:", JSON.stringify(res.body));
+  } finally { delete globalThis.approvedHistoryFixture; }
 });

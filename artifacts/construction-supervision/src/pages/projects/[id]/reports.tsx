@@ -471,10 +471,12 @@ export default function ProjectReports() {
   const originalSnapshotRows = useRef<ReportActivitiesSnapshotItem[]>([]);
   const aiDraftSnapshotFingerprint = useRef<string | null>(null);
   const aiApprovedContext = useRef<string | null>(null);
+  const aiAnalyzedRows = useRef<string | null>(null);
+  const analysisKey = () => JSON.stringify(snapshotRows.map(row => [row.id, row.actualProgress, row.status]));
   const approvalKey = (values: ReportFormValues) => JSON.stringify([
     values.reportDate, values.periodStart, values.periodEnd, Number(values.progressPercentage),
   ]);
-  useEffect(() => { aiApprovedContext.current = null; }, [isDialogOpen, editingId]);
+  useEffect(() => { aiApprovedContext.current = null; aiAnalyzedRows.current = null; }, [isDialogOpen, editingId]);
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
   // When true, the user wants to type a manual overall %. Otherwise the
   // overall % is auto-recomputed from the snapshot rows using the
@@ -986,6 +988,10 @@ export default function ProjectReports() {
         toast({ variant: "destructive", title: "تغيرت النسبة أو الفترة بعد الصياغة؛ أعد الصياغة قبل الحفظ" });
         return;
       }
+      if (editingId && aiAnalyzedRows.current && aiAnalyzedRows.current !== analysisKey()) {
+        toast({ variant: "destructive", title: "تغيرت بنود التقرير بعد تحليلها؛ أعد الصياغة قبل الحفظ" });
+        return;
+      }
       const cleanedGroups = (values.imageGroups ?? [])
         .map(g => ({ category: g.category.trim(), urls: g.urls ?? [] }))
         .filter(g => g.category.length > 0 && g.urls.length > 0);
@@ -1096,10 +1102,6 @@ export default function ProjectReports() {
         toast({ variant: "destructive", title: "اعتمد نسبة الإنجاز حتى نهاية الفترة أولاً", description: "يمكنك إدخال نسبة التقرير يدوياً إذا لم يكفِ السجل." });
         return;
       }
-      if (!values.workDescription.trim()) {
-        toast({ variant: "destructive", title: "اكتب الأعمال المنفذة خلال الفترة أولاً", description: "يكفي وصف مختصر؛ سيعيد الذكاء الاصطناعي صياغته دون إضافة أعمال من تحديثات البنود." });
-        return;
-      }
       const originalById = new Map(originalSnapshotRows.current.map(row => [row.id, row]));
       const snapshotOverrides = snapshotRows.flatMap(row => {
         const original = originalById.get(row.id);
@@ -1138,6 +1140,7 @@ export default function ProjectReports() {
         throw new Error("تغيرت مدخلات التقرير أثناء الصياغة؛ أعد المحاولة بالبيانات الحالية");
       }
       aiApprovedContext.current = approvalKey(values);
+      aiAnalyzedRows.current = editingId ? analysisKey() : null;
       if (!editingId) aiDraftSnapshotFingerprint.current = data.snapshotFingerprint ?? null;
       
       if (data.workDescription) form.setValue("workDescription", data.workDescription, { shouldDirty: true });
@@ -1433,8 +1436,8 @@ export default function ProjectReports() {
                               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                               وصف الأعمال المنجزة خلال الفترة
                             </FormLabel>
-                            <FormControl><Textarea className="min-h-28 text-base bg-background shadow-inner" placeholder="اكتب باختصار الأعمال المنفذة فعلاً خلال الفترة، ثم اطلب الصياغة بالذكاء الاصطناعي..." {...field} /></FormControl>
-                            <p className="text-xs text-muted-foreground">الصياغة تعتمد على هذه الأعمال ونسبة التقرير المعتمدة، وليس تاريخ تحديث البنود أو إنجاز المشروع اليوم.</p>
+                            <FormControl><Textarea className="min-h-28 text-base bg-background shadow-inner" placeholder="أضف ما نُفّذ خلال الفترة، أو اطلب تحليل البنود التاريخية وصياغة التقرير..." {...field} /></FormControl>
+                            <p className="text-xs text-muted-foreground">الصياغة تحلل البنود والمخطط الموثّقين حتى نهاية الفترة، مع نصك ونسبة التقرير المعتمدة. الحالة التراكمية للبند لا تعني أنه نُفّذ كله خلال الفترة.</p>
                             <FormMessage />
                           </FormItem>
                         )}

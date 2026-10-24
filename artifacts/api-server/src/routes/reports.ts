@@ -9,6 +9,7 @@ import { getReportPeriodProgress, validReportDay } from "../lib/report-period-pr
 import { buildReportAiContext, reportAiSnapshotFingerprint } from "../lib/report-ai-context";
 import { buildReportAiPrompt, reportEditorInstruction } from "../lib/report-ai-prompt";
 import { approvedReportFingerprint, buildApprovedReportPrompt, parseApprovedReportDraft, validApprovedProgress } from "../lib/report-approved-inputs";
+import { buildReportActivityAnalysis } from "../lib/report-activity-analysis";
 
 type ImageGroup = { category: string; urls: string[] };
 
@@ -141,8 +142,8 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
   const { imageGroups, technicalNotes, recommendations, periodStart, periodEnd, reportDate, reportId, snapshotOverrides } = req.body;
   const approvedInputs = req.body.approvedReportInputs === true;
   if (approvedInputs && (!validApprovedProgress(req.body.progressPercentage)
-    || typeof req.body.workDescription !== "string" || !req.body.workDescription.trim())) {
-    res.status(400).json({ error: "اعتمد نسبة من 0 إلى 100 واكتب الأعمال المنفذة خلال الفترة قبل الصياغة" });
+    || (req.body.workDescription !== undefined && typeof req.body.workDescription !== "string"))) {
+    res.status(400).json({ error: "اعتمد نسبة من 0 إلى 100 وأدخل وصف الأعمال كنص عند الحاجة" });
     return;
   }
 
@@ -195,13 +196,30 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
   try {
     let snapshot: SnapshotRow[];
     if (approvedInputs) {
-      // Report-level approval is valid even when activity history is unavailable.
-      // No current activity values, timestamps or image labels enter this prompt.
+      // Analyse only the report's saved snapshot or verified period-end history.
+      // Missing history still permits a manually documented narrative, never
+      // substitution with today's project activities.
       snapshot = [];
       if (reportId != null) {
-        const [existing] = await db.select({ id: reportsTable.id }).from(reportsTable)
+        const [existing] = await db.select({
+          id: reportsTable.id, periodEnd: reportsTable.periodEnd, snapshot: reportsTable.activitiesSnapshot,
+        }).from(reportsTable)
           .where(and(eq(reportsTable.projectId, projectId), eq(reportsTable.id, reportId)));
         if (!existing) { res.status(404).json({ error: "التقرير غير موجود" }); return; }
+        if (existing.periodEnd !== periodEnd) {
+          res.status(409).json({ error: "فترة التقرير لا تطابق لقطة البنود المحفوظة؛ احفظ الفترة قبل الصياغة" });
+          return;
+        }
+        snapshot = Array.isArray(existing.snapshot) ? existing.snapshot as SnapshotRow[] : [];
+        if (snapshotOverrides !== undefined) {
+          if (!Array.isArray(snapshotOverrides)) {
+            res.status(400).json({ error: "تعديلات بنود التقرير غير صالحة" }); return;
+          }
+          snapshot = mergeSnapshot(snapshot, snapshotOverrides) ?? snapshot;
+        }
+      } else {
+        const historical = await getReportPeriodProgress(projectId, periodEnd);
+        snapshot = historical.available ? historical.activities : [];
       }
     } else if (reportId != null) {
       const [report] = await db.select({
@@ -247,6 +265,11 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
       .filter(activity => activity.groupId != null && groupNames.has(activity.groupId))
       .map(activity => [activity.id, groupNames.get(activity.groupId!)!]));
     const snapshotContext = buildReportAiContext(snapshot, reportDate, groupByActivity);
+    const activityAnalysis = buildReportActivityAnalysis(snapshot, periodEnd);
+    if (approvedInputs && !req.body.workDescription?.trim() && activityAnalysis.verifiedActualCount === 0) {
+      res.status(400).json({ error: "لا تتوفر نسب بنود تاريخية موثقة لهذه الفترة. اكتب الأعمال المنفذة باختصار ليتم صياغتها دون استخدام بيانات اليوم." });
+      return;
+    }
 
     // Image group category names give the AI topical context without needing
     // to transfer image bytes (images live in cloud storage).
@@ -260,8 +283,8 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
     const prompt = approvedInputs ? buildApprovedReportPrompt({
       reportDate, periodStart, periodEnd,
       progressPercentage: req.body.progressPercentage,
-      workDescription: req.body.workDescription.trim(),
-      technicalNotes, recommendations,
+      workDescription: req.body.workDescription?.trim() ?? "",
+      technicalNotes, recommendations, activityAnalysis,
     }) : buildReportAiPrompt({
       periodStart, periodEnd, reportDate, snapshotContext,
       imageGroupsSummary, technicalNotes, recommendations,
@@ -368,7 +391,7 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
     res.json({
       ...content,
       ...(reportId == null ? { snapshotFingerprint: approvedInputs
-        ? approvedReportFingerprint(reportDate, periodStart, periodEnd, req.body.progressPercentage)
+        ? approvedReportFingerprint(reportDate, periodStart, periodEnd, req.body.progressPercentage, activityAnalysis)
         : reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) } : {}),
     });
   } catch (error) {
@@ -490,6 +513,10 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
   const snapshot = progress.activities;
   if (req.body.aiDraftSnapshotFingerprint !== undefined) {
     const expectedFingerprint = typeof req.body.aiDraftSnapshotFingerprint === "string"
+      && req.body.aiDraftSnapshotFingerprint.startsWith("approved-activities:")
+      ? approvedReportFingerprint(reportDate, periodStart, periodEnd, manual ? progressPercentage : progress.overallProgress!,
+        buildReportActivityAnalysis(snapshot ?? [], periodEnd))
+      : typeof req.body.aiDraftSnapshotFingerprint === "string"
       && req.body.aiDraftSnapshotFingerprint.startsWith("approved:")
       ? approvedReportFingerprint(reportDate, periodStart, periodEnd, manual ? progressPercentage : progress.overallProgress!)
       : snapshot ? reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) : null;
