@@ -48,6 +48,8 @@ export interface ReportPdfData {
   actualProgress?: number | null;
   spi?: number | null;
   actualHistoricalUnverified?: boolean;
+  /** The supervisor approved the report aggregate, not individual historical activity values. */
+  approvedProgress?: boolean;
   plannedHistoricalUnverified?: boolean;
   contractValue?: number | null;
   startDate?: string | null;
@@ -130,7 +132,7 @@ export function buildPrintHTML(data: ReportPdfData): string {
   const recordedActual = snapshotAvailable && data.actualProgress != null
     ? Math.min(100, Math.max(0, data.actualProgress))
     : null;
-  const historicalActual = data.actualHistoricalUnverified ? null : recordedActual;
+  const historicalActual = data.approvedProgress ? pct : data.actualHistoricalUnverified ? null : recordedActual;
   const comparisonActual = historicalActual ?? recordedActual ?? pct;
   const displayedComparisonActual = Math.round(comparisonActual * 10) / 10;
   const deviation = plannedPct != null && historicalActual != null && data.plannedProgress != null
@@ -497,12 +499,12 @@ ${(() => {
     <div class="dp-track"><div class="dp-fill-gray" style="width:${plannedPct}%"></div></div>
     <span class="dp-val">${plannedPct}%</span>
   </div>` : ""}
-  ${data.spi != null && snapshotAvailable && scheduleAvailable && !data.actualHistoricalUnverified && !plannedUnverified ? `<div class="dp-row"><span class="dp-lbl">SPI</span><span class="dp-val">${(Math.round(data.spi * 100) / 100).toFixed(2)}</span></div>` : ""}
-  ${data.actualHistoricalUnverified && recordedActual != null ? `<div class="reported-progress-note">الفعلي المسجل عند إنشاء التقرير: ${recordedActual}% — لا يمثل قيمة موثقة لتاريخ التقرير.</div>` : ""}
+  ${data.spi != null && snapshotAvailable && scheduleAvailable && (!data.actualHistoricalUnverified || data.approvedProgress) && !plannedUnverified ? `<div class="dp-row"><span class="dp-lbl">SPI</span><span class="dp-val">${(Math.round(data.spi * 100) / 100).toFixed(2)}</span></div>` : ""}
+  ${data.approvedProgress ? `<div class="reported-progress-note">نسبة التقرير معتمدة يدوياً حتى نهاية الفترة: ${pct}%. لا تثبت هذه النسبة وحدها الإنجاز التاريخي لكل بند.</div>` : data.actualHistoricalUnverified && recordedActual != null ? `<div class="reported-progress-note">الفعلي المسجل عند إنشاء التقرير: ${recordedActual}% — لا يمثل قيمة موثقة لتاريخ التقرير.</div>` : ""}
   ${historicalActual != null && historicalActual !== pct ? `<div class="reported-progress-note">نسبة الإنجاز المُبلَّغ عنها في التقرير: ${pct}%</div>` : ""}
 </div>
 ${!snapshotAvailable ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">بيانات التقدم التاريخية غير متاحة لهذا التقرير القديم (لا توجد لقطة أنشطة محفوظة). لا تمثل بيانات المشروع الحالية حالة التقرير السابقة.</div>` : ""}
-${data.actualHistoricalUnverified ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">التقرير مؤرخ قبل يوم إنشائه؛ الإنجاز الفعلي المعروض مأخوذ من لقطة وقت الإنشاء وغير موثق كتقدم فعلي في تاريخ التقرير. مؤشر SPI التاريخي غير متاح.</div>` : ""}
+${data.actualHistoricalUnverified && !data.approvedProgress ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">التقرير مؤرخ قبل يوم إنشائه؛ الإنجاز الفعلي المعروض مأخوذ من لقطة وقت الإنشاء وغير موثق كتقدم فعلي في تاريخ التقرير. مؤشر SPI التاريخي غير متاح.</div>` : ""}
 ${plannedUnverified ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">تغيّر تاريخ التقرير بعد حفظ خطة بند مرتبط؛ الخطط المحفوظة تخص تواريخها الأصلية، لذا لا يمكن التحقق من المخطط الموزون أو SPI للتاريخ الحالي.</div>` : ""}
 ${!scheduleAvailable ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">${data.noSchedule ? "المشروع بدون جدول زمني معتمد" : "بيانات الجدول الزمني للمشروع غير مكتملة أو غير صالحة"}؛ المخطط ومقارنة SPI غير متاحين، ويظل الإنجاز الفعلي/المُبلَّغ عنه مستقلاً.</div>` : ""}
 

@@ -8,6 +8,7 @@ import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } fr
 import { getReportPeriodProgress, validReportDay } from "../lib/report-period-progress";
 import { buildReportAiContext, reportAiSnapshotFingerprint } from "../lib/report-ai-context";
 import { buildReportAiPrompt, reportEditorInstruction } from "../lib/report-ai-prompt";
+import { approvedReportFingerprint, buildApprovedReportPrompt, validApprovedProgress } from "../lib/report-approved-inputs";
 
 type ImageGroup = { category: string; urls: string[] };
 
@@ -138,6 +139,12 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const { imageGroups, technicalNotes, recommendations, periodStart, periodEnd, reportDate, reportId, snapshotOverrides } = req.body;
+  const approvedInputs = req.body.approvedReportInputs === true;
+  if (approvedInputs && (!validApprovedProgress(req.body.progressPercentage)
+    || typeof req.body.workDescription !== "string" || !req.body.workDescription.trim())) {
+    res.status(400).json({ error: "اعتمد نسبة من 0 إلى 100 واكتب الأعمال المنفذة خلال الفترة قبل الصياغة" });
+    return;
+  }
 
   const isValidCalendarDate = (s: unknown): s is string => {
     if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
@@ -187,7 +194,16 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
 
   try {
     let snapshot: SnapshotRow[];
-    if (reportId != null) {
+    if (approvedInputs) {
+      // Report-level approval is valid even when activity history is unavailable.
+      // No current activity values, timestamps or image labels enter this prompt.
+      snapshot = [];
+      if (reportId != null) {
+        const [existing] = await db.select({ id: reportsTable.id }).from(reportsTable)
+          .where(and(eq(reportsTable.projectId, projectId), eq(reportsTable.id, reportId)));
+        if (!existing) { res.status(404).json({ error: "التقرير غير موجود" }); return; }
+      }
+    } else if (reportId != null) {
       const [report] = await db.select({
         reportDate: reportsTable.reportDate,
         snapshot: reportsTable.activitiesSnapshot,
@@ -220,7 +236,7 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
 
     // Group names are not stored in historical snapshots. They are only
     // optional current labels; never use today's activity progress/status.
-    const [activitiesForGroups, groups] = await Promise.all([
+    const [activitiesForGroups, groups] = approvedInputs ? [[], []] : await Promise.all([
       db.select({ id: activitiesTable.id, groupId: activitiesTable.groupId })
         .from(activitiesTable).where(eq(activitiesTable.projectId, projectId)),
       db.select({ id: activityGroupsTable.id, name: activityGroupsTable.name })
@@ -241,7 +257,12 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
           .join("\n")
       : null;
 
-    const prompt = buildReportAiPrompt({
+    const prompt = approvedInputs ? buildApprovedReportPrompt({
+      reportDate, periodStart, periodEnd,
+      progressPercentage: req.body.progressPercentage,
+      workDescription: req.body.workDescription.trim(),
+      technicalNotes, recommendations,
+    }) : buildReportAiPrompt({
       periodStart, periodEnd, reportDate, snapshotContext,
       imageGroupsSummary, technicalNotes, recommendations,
     });
@@ -340,7 +361,9 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
     };
     res.json({
       ...content,
-      ...(reportId == null ? { snapshotFingerprint: reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) } : {}),
+      ...(reportId == null ? { snapshotFingerprint: approvedInputs
+        ? approvedReportFingerprint(reportDate, periodStart, periodEnd, req.body.progressPercentage)
+        : reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) } : {}),
     });
   } catch (error) {
     req.log.error({ error }, "AI draft generation failed");
@@ -460,9 +483,13 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
 
   const snapshot = progress.activities;
   if (req.body.aiDraftSnapshotFingerprint !== undefined) {
+    const expectedFingerprint = typeof req.body.aiDraftSnapshotFingerprint === "string"
+      && req.body.aiDraftSnapshotFingerprint.startsWith("approved:")
+      ? approvedReportFingerprint(reportDate, periodStart, periodEnd, manual ? progressPercentage : progress.overallProgress!)
+      : snapshot ? reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) : null;
     if (typeof req.body.aiDraftSnapshotFingerprint !== "string"
-      || !snapshot || reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) !== req.body.aiDraftSnapshotFingerprint) {
-      res.status(409).json({ error: "تغيرت بنود التقرير منذ صياغة الذكاء الاصطناعي؛ أعد الصياغة قبل الحفظ" });
+      || expectedFingerprint !== req.body.aiDraftSnapshotFingerprint) {
+      res.status(409).json({ error: "تغيرت نسبة التقرير أو فترته أو بياناته منذ الصياغة؛ أعد الصياغة قبل الحفظ" });
       return;
     }
   }

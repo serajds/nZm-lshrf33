@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { build } from "esbuild";
+import { fileURLToPath } from "node:url";
+
+const result = await build({
+  entryPoints: [fileURLToPath(new URL("../../construction-supervision/src/lib/report-pdf.ts", import.meta.url))],
+  bundle: true, write: false, platform: "node", format: "esm",
+});
+const { buildPrintHTML } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
+const report = {
+  projectName: "اختبار", reportType: "period", reportDate: "2026-10-25",
+  periodStart: "2026-09-01", periodEnd: "2026-09-30",
+  progressPercentage: 40, workDescription: "أعمال الفترة", reportId: 1,
+  actualProgress: 60, plannedProgress: 50, spi: 0.8,
+  startDate: "2026-01-01", expectedEndDate: "2026-12-31",
+  snapshotAvailable: true, actualHistoricalUnverified: true, activities: [],
+};
+test("manual report print uses approved 40% rather than snapshot 60% for variance and SPI", () => {
+  const html = buildPrintHTML({ ...report, approvedProgress: true });
+  assert.match(html, /-10%/);
+  assert.match(html, />SPI<\/span>/);
+  assert.match(html, /0\.8/);
+  assert.match(html, /معتمدة يدوياً حتى نهاية الفترة: 40%/);
+  assert.doesNotMatch(html, /مؤشر SPI التاريخي غير متاح/);
+});
+test("legacy unverified report behavior remains unchanged without manual approval", () => {
+  const html = buildPrintHTML(report);
+  assert.match(html, /مؤشر SPI التاريخي غير متاح/);
+  assert.doesNotMatch(html, />SPI<\/span>/);
+});
+test("manual aggregate remains printable without inventing an activity snapshot or plan", () => {
+  const html = buildPrintHTML({ ...report, approvedProgress: true, snapshotAvailable: false, actualProgress: null, plannedProgress: null, spi: null });
+  assert.match(html, /معتمدة يدوياً حتى نهاية الفترة: 40%/);
+  assert.doesNotMatch(html, />SPI<\/span>/);
+});
