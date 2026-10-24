@@ -16,3 +16,4 @@
 - [Excel import preview lifetime](excel-import-preview-lifetime.md) — import previews deliberately fail closed if the API process loses them; use shared atomic storage before multi-instance reliability.
 - [Report AI prompt limits](report-ai-prompt-limits.md) — few-shot and strict instructions improve owner-ready prose but do not reliably prevent repeated facts or unsupported implications.
 - [Checkpoint restore and API runtime](checkpoint-api-runtime.md) — restoring source and rebuilt dist can leave the build-once API process serving the pre-restore code until restarted.
+- [Activity quick-action approval](activity-quick-actions.md) — preserve the user-approved percentage icon; direct relative-weight editing is a separate action.
