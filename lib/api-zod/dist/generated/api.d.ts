@@ -1508,7 +1508,7 @@ export declare const ListReportsResponseItem: zod.ZodObject<{
     id: zod.ZodNumber;
     projectId: zod.ZodNumber;
     reportNumber: zod.ZodOptional<zod.ZodNumber>;
-    type: zod.ZodEnum<["weekly", "monthly"]>;
+    type: zod.ZodEnum<["weekly", "monthly", "period"]>;
     reportDate: zod.ZodDate;
     periodStart: zod.ZodDate;
     periodEnd: zod.ZodDate;
@@ -1572,7 +1572,7 @@ export declare const ListReportsResponseItem: zod.ZodObject<{
     updatedAt: zod.ZodDate;
 }, "strip", zod.ZodTypeAny, {
     status: "draft" | "approved";
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     id: number;
     projectId: number;
     createdAt: Date;
@@ -1608,7 +1608,7 @@ export declare const ListReportsResponseItem: zod.ZodObject<{
     createdById?: number | null | undefined;
 }, {
     status: "draft" | "approved";
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     id: number;
     projectId: number;
     createdAt: Date;
@@ -1647,7 +1647,7 @@ export declare const ListReportsResponse: zod.ZodArray<zod.ZodObject<{
     id: zod.ZodNumber;
     projectId: zod.ZodNumber;
     reportNumber: zod.ZodOptional<zod.ZodNumber>;
-    type: zod.ZodEnum<["weekly", "monthly"]>;
+    type: zod.ZodEnum<["weekly", "monthly", "period"]>;
     reportDate: zod.ZodDate;
     periodStart: zod.ZodDate;
     periodEnd: zod.ZodDate;
@@ -1711,7 +1711,7 @@ export declare const ListReportsResponse: zod.ZodArray<zod.ZodObject<{
     updatedAt: zod.ZodDate;
 }, "strip", zod.ZodTypeAny, {
     status: "draft" | "approved";
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     id: number;
     projectId: number;
     createdAt: Date;
@@ -1747,7 +1747,7 @@ export declare const ListReportsResponse: zod.ZodArray<zod.ZodObject<{
     createdById?: number | null | undefined;
 }, {
     status: "draft" | "approved";
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     id: number;
     projectId: number;
     createdAt: Date;
@@ -1793,7 +1793,7 @@ export declare const CreateReportParams: zod.ZodObject<{
     projectId: number;
 }>;
 export declare const CreateReportBody: zod.ZodObject<{
-    type: zod.ZodEnum<["weekly", "monthly"]>;
+    type: zod.ZodEnum<["weekly", "monthly", "period"]>;
     reportDate: zod.ZodDate;
     periodStart: zod.ZodDate;
     periodEnd: zod.ZodDate;
@@ -1813,7 +1813,7 @@ export declare const CreateReportBody: zod.ZodObject<{
         urls: string[];
     }>, "many">>>;
 }, "strip", zod.ZodTypeAny, {
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     reportDate: Date;
     periodStart: Date;
     periodEnd: Date;
@@ -1827,7 +1827,7 @@ export declare const CreateReportBody: zod.ZodObject<{
         urls: string[];
     }[] | null | undefined;
 }, {
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     reportDate: Date;
     periodStart: Date;
     periodEnd: Date;
@@ -1858,7 +1858,7 @@ export declare const GetReportResponse: zod.ZodObject<{
     id: zod.ZodNumber;
     projectId: zod.ZodNumber;
     reportNumber: zod.ZodOptional<zod.ZodNumber>;
-    type: zod.ZodEnum<["weekly", "monthly"]>;
+    type: zod.ZodEnum<["weekly", "monthly", "period"]>;
     reportDate: zod.ZodDate;
     periodStart: zod.ZodDate;
     periodEnd: zod.ZodDate;
@@ -1922,7 +1922,7 @@ export declare const GetReportResponse: zod.ZodObject<{
     updatedAt: zod.ZodDate;
 }, "strip", zod.ZodTypeAny, {
     status: "draft" | "approved";
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     id: number;
     projectId: number;
     createdAt: Date;
@@ -1958,7 +1958,7 @@ export declare const GetReportResponse: zod.ZodObject<{
     createdById?: number | null | undefined;
 }, {
     status: "draft" | "approved";
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     id: number;
     projectId: number;
     createdAt: Date;
@@ -2007,7 +2007,7 @@ export declare const UpdateReportParams: zod.ZodObject<{
     projectId: number;
 }>;
 export declare const UpdateReportBody: zod.ZodObject<{
-    type: zod.ZodOptional<zod.ZodNullable<zod.ZodUnion<[zod.ZodLiteral<"weekly">, zod.ZodLiteral<"monthly">, zod.ZodLiteral<null>]>>>;
+    type: zod.ZodOptional<zod.ZodNullable<zod.ZodUnion<[zod.ZodLiteral<"weekly">, zod.ZodLiteral<"monthly">, zod.ZodLiteral<"period">, zod.ZodLiteral<null>]>>>;
     reportDate: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
     periodStart: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
     periodEnd: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
@@ -2040,7 +2040,7 @@ export declare const UpdateReportBody: zod.ZodObject<{
         actualProgress?: number | undefined;
     }>, "many">>>;
 }, "strip", zod.ZodTypeAny, {
-    type?: "weekly" | "monthly" | null | undefined;
+    type?: "weekly" | "monthly" | "period" | null | undefined;
     reportDate?: Date | null | undefined;
     periodStart?: Date | null | undefined;
     periodEnd?: Date | null | undefined;
@@ -2059,7 +2059,7 @@ export declare const UpdateReportBody: zod.ZodObject<{
         actualProgress?: number | undefined;
     }[] | null | undefined;
 }, {
-    type?: "weekly" | "monthly" | null | undefined;
+    type?: "weekly" | "monthly" | "period" | null | undefined;
     reportDate?: Date | null | undefined;
     periodStart?: Date | null | undefined;
     periodEnd?: Date | null | undefined;
@@ -2082,7 +2082,7 @@ export declare const UpdateReportResponse: zod.ZodObject<{
     id: zod.ZodNumber;
     projectId: zod.ZodNumber;
     reportNumber: zod.ZodOptional<zod.ZodNumber>;
-    type: zod.ZodEnum<["weekly", "monthly"]>;
+    type: zod.ZodEnum<["weekly", "monthly", "period"]>;
     reportDate: zod.ZodDate;
     periodStart: zod.ZodDate;
     periodEnd: zod.ZodDate;
@@ -2146,7 +2146,7 @@ export declare const UpdateReportResponse: zod.ZodObject<{
     updatedAt: zod.ZodDate;
 }, "strip", zod.ZodTypeAny, {
     status: "draft" | "approved";
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     id: number;
     projectId: number;
     createdAt: Date;
@@ -2182,7 +2182,7 @@ export declare const UpdateReportResponse: zod.ZodObject<{
     createdById?: number | null | undefined;
 }, {
     status: "draft" | "approved";
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     id: number;
     projectId: number;
     createdAt: Date;
@@ -2254,7 +2254,7 @@ export declare const UpdateReportStatusResponse: zod.ZodObject<{
     id: zod.ZodNumber;
     projectId: zod.ZodNumber;
     reportNumber: zod.ZodOptional<zod.ZodNumber>;
-    type: zod.ZodEnum<["weekly", "monthly"]>;
+    type: zod.ZodEnum<["weekly", "monthly", "period"]>;
     reportDate: zod.ZodDate;
     periodStart: zod.ZodDate;
     periodEnd: zod.ZodDate;
@@ -2318,7 +2318,7 @@ export declare const UpdateReportStatusResponse: zod.ZodObject<{
     updatedAt: zod.ZodDate;
 }, "strip", zod.ZodTypeAny, {
     status: "draft" | "approved";
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     id: number;
     projectId: number;
     createdAt: Date;
@@ -2354,7 +2354,7 @@ export declare const UpdateReportStatusResponse: zod.ZodObject<{
     createdById?: number | null | undefined;
 }, {
     status: "draft" | "approved";
-    type: "weekly" | "monthly";
+    type: "weekly" | "monthly" | "period";
     id: number;
     projectId: number;
     createdAt: Date;
@@ -3862,7 +3862,7 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
         id: zod.ZodNumber;
         projectId: zod.ZodNumber;
         reportNumber: zod.ZodOptional<zod.ZodNumber>;
-        type: zod.ZodEnum<["weekly", "monthly"]>;
+        type: zod.ZodEnum<["weekly", "monthly", "period"]>;
         reportDate: zod.ZodDate;
         periodStart: zod.ZodDate;
         periodEnd: zod.ZodDate;
@@ -3926,7 +3926,7 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
         updatedAt: zod.ZodDate;
     }, "strip", zod.ZodTypeAny, {
         status: "draft" | "approved";
-        type: "weekly" | "monthly";
+        type: "weekly" | "monthly" | "period";
         id: number;
         projectId: number;
         createdAt: Date;
@@ -3962,7 +3962,7 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
         createdById?: number | null | undefined;
     }, {
         status: "draft" | "approved";
-        type: "weekly" | "monthly";
+        type: "weekly" | "monthly" | "period";
         id: number;
         projectId: number;
         createdAt: Date;
@@ -4083,7 +4083,7 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
     }[];
     reports: {
         status: "draft" | "approved";
-        type: "weekly" | "monthly";
+        type: "weekly" | "monthly" | "period";
         id: number;
         projectId: number;
         createdAt: Date;
@@ -4199,7 +4199,7 @@ export declare const VerifyOwnerAccessResponse: zod.ZodObject<{
     }[];
     reports: {
         status: "draft" | "approved";
-        type: "weekly" | "monthly";
+        type: "weekly" | "monthly" | "period";
         id: number;
         projectId: number;
         createdAt: Date;

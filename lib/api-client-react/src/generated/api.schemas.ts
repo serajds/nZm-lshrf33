@@ -516,6 +516,7 @@ export type ReportType = (typeof ReportType)[keyof typeof ReportType];
 export const ReportType = {
   weekly: "weekly",
   monthly: "monthly",
+  period: "period",
 } as const;
 
 export type ReportImageGroupsItem = {
@@ -583,6 +584,7 @@ export type CreateReportBodyType =
 export const CreateReportBodyType = {
   weekly: "weekly",
   monthly: "monthly",
+  period: "period",
 } as const;
 
 export type CreateReportBodyImageGroupsItem = {
@@ -651,6 +653,7 @@ export type UpdateReportBodyType =
 export const UpdateReportBodyType = {
   weekly: "weekly",
   monthly: "monthly",
+  period: "period",
 } as const;
 
 export type UpdateReportBodyImageGroupsItem = {

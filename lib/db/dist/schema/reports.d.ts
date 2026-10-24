@@ -63,14 +63,14 @@ export declare const reportsTable: import("drizzle-orm/pg-core").PgTableWithColu
             tableName: "reports";
             dataType: "string";
             columnType: "PgText";
-            data: "weekly" | "monthly";
+            data: "weekly" | "monthly" | "period";
             driverParam: string;
             notNull: true;
             hasDefault: false;
             isPrimaryKey: false;
             isAutoincrement: false;
             hasRuntimeDefault: false;
-            enumValues: ["weekly", "monthly"];
+            enumValues: ["weekly", "monthly", "period"];
             baseColumn: never;
             identity: undefined;
             generated: undefined;
@@ -435,6 +435,7 @@ export declare const insertReportSchema: z.ZodObject<{
     type: z.ZodEnum<{
         weekly: "weekly";
         monthly: "monthly";
+        period: "period";
     }>;
     reportDate: z.ZodString;
     periodStart: z.ZodString;

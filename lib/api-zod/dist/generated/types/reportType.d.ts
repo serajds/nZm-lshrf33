@@ -9,5 +9,6 @@ export type ReportType = (typeof ReportType)[keyof typeof ReportType];
 export declare const ReportType: {
     readonly weekly: "weekly";
     readonly monthly: "monthly";
+    readonly period: "period";
 };
 //# sourceMappingURL=reportType.d.ts.map

@@ -435,6 +435,7 @@ export type ReportType = (typeof ReportType)[keyof typeof ReportType];
 export declare const ReportType: {
     readonly weekly: "weekly";
     readonly monthly: "monthly";
+    readonly period: "period";
 };
 export type ReportImageGroupsItem = {
     category: string;
@@ -494,6 +495,7 @@ export type CreateReportBodyType = (typeof CreateReportBodyType)[keyof typeof Cr
 export declare const CreateReportBodyType: {
     readonly weekly: "weekly";
     readonly monthly: "monthly";
+    readonly period: "period";
 };
 export type CreateReportBodyImageGroupsItem = {
     category: string;
@@ -548,6 +550,7 @@ export type UpdateReportBodyType = (typeof UpdateReportBodyType)[keyof typeof Up
 export declare const UpdateReportBodyType: {
     readonly weekly: "weekly";
     readonly monthly: "monthly";
+    readonly period: "period";
 };
 export type UpdateReportBodyImageGroupsItem = {
     category: string;

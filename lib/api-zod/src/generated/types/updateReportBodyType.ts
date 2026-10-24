@@ -16,4 +16,5 @@ export type UpdateReportBodyType =
 export const UpdateReportBodyType = {
   weekly: "weekly",
   monthly: "monthly",
+  period: "period",
 } as const;

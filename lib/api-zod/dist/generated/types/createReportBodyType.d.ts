@@ -9,5 +9,6 @@ export type CreateReportBodyType = (typeof CreateReportBodyType)[keyof typeof Cr
 export declare const CreateReportBodyType: {
     readonly weekly: "weekly";
     readonly monthly: "monthly";
+    readonly period: "period";
 };
 //# sourceMappingURL=createReportBodyType.d.ts.map

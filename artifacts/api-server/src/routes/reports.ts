@@ -358,7 +358,7 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), re
   const conditions = [eq(reportsTable.projectId, projectId)];
 
   if (type && typeof type === "string" && type !== "all") {
-    conditions.push(eq(reportsTable.type, type as "weekly" | "monthly"));
+    conditions.push(eq(reportsTable.type, type as "weekly" | "monthly" | "period"));
   }
 
   if (dateFrom && typeof dateFrom === "string") {
