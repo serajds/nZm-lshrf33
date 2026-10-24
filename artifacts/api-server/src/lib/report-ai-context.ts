@@ -13,6 +13,9 @@ export type ReportAiSnapshotRow = {
   plannedAsOfDate?: string;
   plannedHistoricalUnverified?: boolean;
   actualRecordedAt?: string;
+  actualAsOfDate?: string;
+  actualHistoricalUnverified?: boolean;
+  weight?: number;
   externalSourceGroupId?: number | null;
   sortOrder?: number;
 };
@@ -28,7 +31,7 @@ export function reportAiSnapshotFingerprint(
     reportDate, periodStart, periodEnd,
     rows: rows.map(row => ({
       id: row.id, name: row.name, status: row.status,
-      plannedProgress: row.plannedProgress, actualProgress: row.actualProgress,
+      plannedProgress: row.plannedProgress, actualProgress: row.actualProgress, weight: row.weight,
       plannedStartDate: row.plannedStartDate, plannedEndDate: row.plannedEndDate,
       actualStartDate: row.actualStartDate, actualEndDate: row.actualEndDate,
       externalSourceGroupId: row.externalSourceGroupId,
@@ -42,15 +45,16 @@ export function buildReportAiContext(
   currentGroupsByActivityId: ReadonlyMap<number, string>,
 ) {
   return rows.map(row => {
+    const asOfDate = row.actualAsOfDate ?? reportDate;
     const plannedVerified = row.plannedHistoricalUnverified !== true
-      && row.plannedAsOfDate === reportDate;
+      && row.plannedAsOfDate === asOfDate;
     const planned = plannedVerified && Number.isFinite(row.plannedProgress)
       ? row.plannedProgress! : null;
     const actual = Number.isFinite(row.actualProgress) ? row.actualProgress! : null;
     const actualRecordedAfterReportDate = Boolean(row.actualRecordedAt
-      && row.actualRecordedAt.slice(0, 10) > reportDate);
-    const actualVerifiedAtReportDate = Boolean(row.actualRecordedAt
-      && row.actualRecordedAt.slice(0, 10) <= reportDate);
+      && row.actualRecordedAt.slice(0, 10) > asOfDate);
+    const actualVerifiedAtReportDate = row.actualHistoricalUnverified !== true
+      && Boolean(row.actualAsOfDate || row.actualRecordedAt && row.actualRecordedAt.slice(0, 10) <= reportDate);
     const deviation = actual !== null && planned !== null && actualVerifiedAtReportDate
       ? Math.round((actual - planned) * 10) / 10 : null;
     return {
@@ -76,9 +80,9 @@ export function buildReportAiContext(
       actualEndDate: row.actualEndDate ?? null,
       // A late completion is verifiable from recorded dates; an unfinished
       // activity needs a historical as-of date and cannot use today's clock.
-      scheduleDelay: row.actualEndDate && row.actualEndDate <= reportDate && row.plannedEndDate
+      scheduleDelay: row.actualEndDate && row.actualEndDate <= asOfDate && row.plannedEndDate
         ? row.actualEndDate > row.plannedEndDate ? "اكتمل بعد النهاية المخططة" : "لم يكتمل بعد النهاية المخططة"
-        : row.plannedEndDate && actualVerifiedAtReportDate && row.status !== "completed" && reportDate > row.plannedEndDate
+        : row.plannedEndDate && actualVerifiedAtReportDate && row.status !== "completed" && asOfDate > row.plannedEndDate
           ? "كان غير مكتمل بعد النهاية المخططة في تاريخ التقرير" : "غير مثبت",
     };
   });

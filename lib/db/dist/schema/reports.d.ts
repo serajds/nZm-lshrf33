@@ -273,6 +273,57 @@ export declare const reportsTable: import("drizzle-orm/pg-core").PgTableWithColu
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
+        progressSource: import("drizzle-orm/pg-core").PgColumn<{
+            name: "progress_source";
+            tableName: "reports";
+            dataType: "string";
+            columnType: "PgText";
+            data: "history" | "manual";
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: ["history", "manual"];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        progressAsOfDate: import("drizzle-orm/pg-core").PgColumn<{
+            name: "progress_as_of_date";
+            tableName: "reports";
+            dataType: "string";
+            columnType: "PgDateString";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        progressHistoryCapturedAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "progress_history_captured_at";
+            tableName: "reports";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
         status: import("drizzle-orm/pg-core").PgColumn<{
             name: "status";
             tableName: "reports";
@@ -379,10 +430,6 @@ export declare const reportsTable: import("drizzle-orm/pg-core").PgTableWithColu
     dialect: "pg";
 }>;
 export declare const insertReportSchema: z.ZodObject<{
-    status: z.ZodOptional<z.ZodEnum<{
-        draft: "draft";
-        approved: "approved";
-    }>>;
     projectId: z.ZodInt;
     reportNumber: z.ZodOptional<z.ZodInt>;
     type: z.ZodEnum<{
@@ -399,6 +446,16 @@ export declare const insertReportSchema: z.ZodObject<{
     imageUrls: z.ZodOptional<z.ZodArray<z.ZodString>>;
     imageGroups: z.ZodOptional<z.ZodNullable<z.ZodType<ReportImageGroup[], ReportImageGroup[], z.core.$ZodTypeInternals<ReportImageGroup[], ReportImageGroup[]>>>>;
     activitiesSnapshot: z.ZodOptional<z.ZodNullable<z.ZodType<import("drizzle-zod").Json, unknown, z.core.$ZodTypeInternals<import("drizzle-zod").Json, unknown>>>>;
+    progressSource: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+        history: "history";
+        manual: "manual";
+    }>>>;
+    progressAsOfDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    progressHistoryCapturedAt: z.ZodOptional<z.ZodNullable<z.ZodDate>>;
+    status: z.ZodOptional<z.ZodEnum<{
+        draft: "draft";
+        approved: "approved";
+    }>>;
     approvedAt: z.ZodOptional<z.ZodNullable<z.ZodDate>>;
     approvedById: z.ZodOptional<z.ZodNullable<z.ZodInt>>;
     createdById: z.ZodOptional<z.ZodNullable<z.ZodInt>>;

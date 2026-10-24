@@ -3,6 +3,23 @@ import test from "node:test";
 import { buildReportAiContext, reportAiSnapshotFingerprint } from "../src/lib/report-ai-context.ts";
 import { selectReportSnapshotActivities } from "../src/lib/report-snapshot-selection.ts";
 
+test("verified period-end history drives AI variance and delay, not issue date", () => {
+  const [result] = buildReportAiContext([{
+    name: "historical", status: "in_progress", actualProgress: 40, plannedProgress: 35,
+    plannedAsOfDate: "2026-10-20", actualAsOfDate: "2026-10-20",
+    actualRecordedAt: "2026-10-20T14:00:00Z", plannedEndDate: "2026-10-22",
+  }], "2026-10-24", new Map());
+  assert.equal(result.deviationPoints, 5);
+  assert.equal(result.actualHistoricalUnverified, false);
+  assert.equal(result.scheduleDelay, "غير مثبت");
+});
+
+test("report draft fingerprint changes when historical weights change", () => {
+  const one = reportAiSnapshotFingerprint("2026-10-24", [{ id: 1, actualProgress: 20, weight: 1 }]);
+  const two = reportAiSnapshotFingerprint("2026-10-24", [{ id: 1, actualProgress: 20, weight: 2 }]);
+  assert.notEqual(one, two);
+});
+
 test("new-report AI gets the same selected manual, Excel and linked rows as its snapshot", () => {
   const activities = [
     { id: 1, name: "يدوي", status: "in_progress", groupId: 1, actualProgress: 30, plannedProgress: 40 },

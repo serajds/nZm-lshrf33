@@ -59043,6 +59043,9 @@ var init_reports = __esm({
       imageUrls: text("image_urls").array().notNull().default([]),
       imageGroups: jsonb("image_groups").$type(),
       activitiesSnapshot: jsonb("activities_snapshot"),
+      progressSource: text("progress_source", { enum: ["history", "manual"] }),
+      progressAsOfDate: date("progress_as_of_date"),
+      progressHistoryCapturedAt: timestamp("progress_history_captured_at", { withTimezone: true }),
       status: text("status", { enum: ["draft", "approved"] }).notNull().default("draft"),
       approvedAt: timestamp("approved_at", { withTimezone: true }),
       approvedById: integer("approved_by_id"),
@@ -59053,6 +59056,22 @@ var init_reports = __esm({
       index("reports_project_date_idx").on(t.projectId, t.reportDate)
     ]);
     insertReportSchema = createInsertSchema(reportsTable).omit({ id: true, createdAt: true, updatedAt: true });
+  }
+});
+
+// ../../lib/db/src/schema/project_progress_history.ts
+var projectProgressHistoryTable;
+var init_project_progress_history = __esm({
+  "../../lib/db/src/schema/project_progress_history.ts"() {
+    "use strict";
+    init_pg_core();
+    init_projects();
+    projectProgressHistoryTable = pgTable("project_progress_history", {
+      id: serial("id").primaryKey(),
+      projectId: integer("project_id").notNull().references(() => projectsTable.id, { onDelete: "cascade" }),
+      capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+      snapshot: jsonb("snapshot").notNull()
+    }, (t) => [index("project_progress_history_asof_idx").on(t.projectId, t.capturedAt, t.id)]);
   }
 });
 
@@ -59469,6 +59488,7 @@ __export(schema_exports, {
   projectExtensionsTable: () => projectExtensionsTable,
   projectFilesTable: () => projectFilesTable,
   projectMembersTable: () => projectMembersTable,
+  projectProgressHistoryTable: () => projectProgressHistoryTable,
   projectSuspensionsTable: () => projectSuspensionsTable,
   projectsTable: () => projectsTable,
   pushSubscriptionsTable: () => pushSubscriptionsTable,
@@ -59486,6 +59506,7 @@ var init_schema2 = __esm({
     init_activities();
     init_activity_groups();
     init_reports();
+    init_project_progress_history();
     init_report_comments();
     init_project_files();
     init_project_extensions();
@@ -125860,17 +125881,108 @@ init_src();
 init_src();
 init_drizzle_orm();
 
-// src/lib/report-snapshot-selection.ts
-function selectReportSnapshotActivities(activities) {
-  return activities.filter(
-    (activity) => activity.status === "in_progress" || activity.status === "completed"
+// src/lib/report-period-progress.ts
+init_src();
+import { createHash as createHash2 } from "node:crypto";
+function validReportDay(day) {
+  return typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day) && !Number.isNaN(Date.parse(day)) && new Date(day).toISOString().slice(0, 10) === day;
+}
+function periodCutoff(day) {
+  return new Date(Date.parse(`${day}T00:00:00+02:00`) + 864e5);
+}
+function weightedHistoryProgress(rows) {
+  let sum2 = 0, total = 0;
+  for (const row of rows) {
+    const weight = Number.isFinite(row.weight) && row.weight > 0 ? row.weight : 1;
+    sum2 += row.actualProgress * weight;
+    total += weight;
+  }
+  return total ? roundPercent(sum2 / total) : 0;
+}
+function resolveHistoricalActivities(project, states, day) {
+  const owners = new Map(states.flatMap((p) => p.groups.map((g) => [g.id, p])));
+  const asOf = /* @__PURE__ */ new Date(`${day}T00:00:00Z`);
+  const resolve = (activity, ancestors) => {
+    const sourceId = activity.externalSourceGroupId;
+    if (sourceId == null) return { ...activity, plannedProgress: calcActivityPlannedProgress(activity, asOf) };
+    const owner = owners.get(sourceId);
+    if (!owner || ancestors.has(sourceId)) return { ...activity, plannedHistoricalUnverified: true };
+    const next = new Set(ancestors).add(sourceId);
+    const children = owner.activities.filter((a) => a.groupId === sourceId).map((a) => resolve(a, next));
+    return {
+      ...activity,
+      actualProgress: weightedHistoryProgress(children),
+      plannedProgress: weightedHistoryProgress(children.map((a) => ({ ...a, actualProgress: a.plannedProgress }))),
+      plannedHistoricalUnverified: children.some((a) => a.plannedHistoricalUnverified)
+    };
+  };
+  const hasSchedule = !project.noSchedule && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
+  return project.activities.map((a) => {
+    const resolved = resolve(a, /* @__PURE__ */ new Set());
+    return {
+      ...resolved,
+      plannedProgress: hasSchedule ? resolved.plannedProgress : 0,
+      plannedAsOfDate: day,
+      plannedHistoricalUnverified: !hasSchedule || resolved.plannedHistoricalUnverified === true,
+      actualAsOfDate: day,
+      actualHistoricalUnverified: false
+    };
+  });
+}
+async function getReportPeriodProgress(projectId, day, now = /* @__PURE__ */ new Date()) {
+  if (!validReportDay(day)) throw new Error("\u062A\u0627\u0631\u064A\u062E \u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D");
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const { rows: starts } = await pool.query(
+    "SELECT min(captured_at) AS started_at FROM project_progress_history WHERE project_id=$1",
+    [projectId]
   );
+  const trackingStartedAt = starts[0]?.started_at?.toISOString() ?? null;
+  const missing = (reason) => ({
+    available: false,
+    asOfDate: day,
+    overallProgress: null,
+    plannedProgress: null,
+    variance: null,
+    spi: null,
+    trackingStartedAt,
+    capturedAt: null,
+    fingerprint: null,
+    reason,
+    activities: null
+  });
+  if (day > today) return missing("\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629 \u0641\u064A \u0627\u0644\u0645\u0633\u062A\u0642\u0628\u0644\u061B \u0644\u0627 \u062A\u062A\u0648\u0641\u0631 \u0646\u0633\u0628\u0629 \u0625\u0646\u062C\u0627\u0632 \u0641\u0639\u0644\u064A\u0629 \u0644\u062A\u0627\u0631\u064A\u062E \u0644\u0645 \u064A\u0623\u062A\u0650 \u0628\u0639\u062F.");
+  const cutoff = new Date(Math.min(periodCutoff(day).getTime(), now.getTime() + 1));
+  const { rows } = await pool.query(
+    `SELECT DISTINCT ON (project_id) project_id, captured_at, snapshot
+     FROM project_progress_history WHERE captured_at < $1
+     ORDER BY project_id, captured_at DESC, id DESC`,
+    [cutoff]
+  );
+  const root = rows.find((row) => row.project_id === projectId);
+  if (!root) return missing("\u0644\u0627 \u064A\u0648\u062C\u062F \u0633\u062C\u0644 \u0645\u0648\u062B\u0648\u0642 \u064A\u063A\u0637\u064A \u0646\u0647\u0627\u064A\u0629 \u0647\u0630\u0647 \u0627\u0644\u0641\u062A\u0631\u0629. \u0623\u062F\u062E\u0644 \u0646\u0633\u0628\u0629 \u0645\u0648\u062B\u0651\u0642\u0629 \u064A\u062F\u0648\u064A\u0627\u064B\u061B \u0644\u0646 \u064A\u064F\u0633\u062A\u062E\u062F\u0645 \u0625\u0646\u062C\u0627\u0632 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u062D\u0627\u0644\u064A.");
+  const activities = resolveHistoricalActivities(root.snapshot, rows.map((r) => r.snapshot), day).map((a) => ({ ...a, actualRecordedAt: root.captured_at.toISOString() }));
+  const overallProgress = weightedHistoryProgress(activities);
+  const hasSchedule = !root.snapshot.noSchedule && hasValidProjectSchedule(root.snapshot.startDate, root.snapshot.expectedEndDate);
+  const plannedProgress = hasSchedule && !activities.some((a) => a.plannedHistoricalUnverified) ? weightedHistoryProgress(activities.map((a) => ({ ...a, actualProgress: a.plannedProgress }))) : null;
+  return {
+    available: true,
+    asOfDate: day,
+    overallProgress,
+    plannedProgress,
+    variance: plannedProgress === null ? null : roundPercent(overallProgress - plannedProgress),
+    spi: plannedProgress === null || plannedProgress === 0 ? null : Math.round(overallProgress / plannedProgress * 100) / 100,
+    trackingStartedAt,
+    capturedAt: root.captured_at.toISOString(),
+    reason: null,
+    activities,
+    fingerprint: createHash2("sha256").update(JSON.stringify({ day, activities })).digest("hex")
+  };
 }
 
 // src/lib/report-ai-context.ts
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 function reportAiSnapshotFingerprint(reportDate, rows, periodStart, periodEnd) {
-  return createHash2("sha256").update(JSON.stringify({
+  return createHash3("sha256").update(JSON.stringify({
     reportDate,
     periodStart,
     periodEnd,
@@ -125880,6 +125992,7 @@ function reportAiSnapshotFingerprint(reportDate, rows, periodStart, periodEnd) {
       status: row.status,
       plannedProgress: row.plannedProgress,
       actualProgress: row.actualProgress,
+      weight: row.weight,
       plannedStartDate: row.plannedStartDate,
       plannedEndDate: row.plannedEndDate,
       actualStartDate: row.actualStartDate,
@@ -125890,11 +126003,12 @@ function reportAiSnapshotFingerprint(reportDate, rows, periodStart, periodEnd) {
 }
 function buildReportAiContext(rows, reportDate, currentGroupsByActivityId) {
   return rows.map((row) => {
-    const plannedVerified = row.plannedHistoricalUnverified !== true && row.plannedAsOfDate === reportDate;
+    const asOfDate = row.actualAsOfDate ?? reportDate;
+    const plannedVerified = row.plannedHistoricalUnverified !== true && row.plannedAsOfDate === asOfDate;
     const planned = plannedVerified && Number.isFinite(row.plannedProgress) ? row.plannedProgress : null;
     const actual = Number.isFinite(row.actualProgress) ? row.actualProgress : null;
-    const actualRecordedAfterReportDate = Boolean(row.actualRecordedAt && row.actualRecordedAt.slice(0, 10) > reportDate);
-    const actualVerifiedAtReportDate = Boolean(row.actualRecordedAt && row.actualRecordedAt.slice(0, 10) <= reportDate);
+    const actualRecordedAfterReportDate = Boolean(row.actualRecordedAt && row.actualRecordedAt.slice(0, 10) > asOfDate);
+    const actualVerifiedAtReportDate = row.actualHistoricalUnverified !== true && Boolean(row.actualAsOfDate || row.actualRecordedAt && row.actualRecordedAt.slice(0, 10) <= reportDate);
     const deviation = actual !== null && planned !== null && actualVerifiedAtReportDate ? Math.round((actual - planned) * 10) / 10 : null;
     return {
       name: row.name ?? "\u0628\u0646\u062F \u0628\u0644\u0627 \u0627\u0633\u0645",
@@ -125916,7 +126030,7 @@ function buildReportAiContext(rows, reportDate, currentGroupsByActivityId) {
       actualEndDate: row.actualEndDate ?? null,
       // A late completion is verifiable from recorded dates; an unfinished
       // activity needs a historical as-of date and cannot use today's clock.
-      scheduleDelay: row.actualEndDate && row.actualEndDate <= reportDate && row.plannedEndDate ? row.actualEndDate > row.plannedEndDate ? "\u0627\u0643\u062A\u0645\u0644 \u0628\u0639\u062F \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u062E\u0637\u0637\u0629" : "\u0644\u0645 \u064A\u0643\u062A\u0645\u0644 \u0628\u0639\u062F \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u062E\u0637\u0637\u0629" : row.plannedEndDate && actualVerifiedAtReportDate && row.status !== "completed" && reportDate > row.plannedEndDate ? "\u0643\u0627\u0646 \u063A\u064A\u0631 \u0645\u0643\u062A\u0645\u0644 \u0628\u0639\u062F \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u062E\u0637\u0637\u0629 \u0641\u064A \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0642\u0631\u064A\u0631" : "\u063A\u064A\u0631 \u0645\u062B\u0628\u062A"
+      scheduleDelay: row.actualEndDate && row.actualEndDate <= asOfDate && row.plannedEndDate ? row.actualEndDate > row.plannedEndDate ? "\u0627\u0643\u062A\u0645\u0644 \u0628\u0639\u062F \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u062E\u0637\u0637\u0629" : "\u0644\u0645 \u064A\u0643\u062A\u0645\u0644 \u0628\u0639\u062F \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u062E\u0637\u0637\u0629" : row.plannedEndDate && actualVerifiedAtReportDate && row.status !== "completed" && asOfDate > row.plannedEndDate ? "\u0643\u0627\u0646 \u063A\u064A\u0631 \u0645\u0643\u062A\u0645\u0644 \u0628\u0639\u062F \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u062E\u0637\u0637\u0629 \u0641\u064A \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0642\u0631\u064A\u0631" : "\u063A\u064A\u0631 \u0645\u062B\u0628\u062A"
     };
   });
 }
@@ -125999,7 +126113,14 @@ function mergeSnapshot(existing, incoming) {
   return existing.map((row) => {
     if (typeof row.id !== "number") return row;
     const patch = byId.get(row.id);
-    return patch ? { ...row, ...patch } : row;
+    if (!patch) return row;
+    if (patch.actualProgress === row.actualProgress) {
+      delete patch.actualRecordedAt;
+    } else if (patch.actualProgress !== void 0) {
+      patch.actualHistoricalUnverified = true;
+      patch.actualAsOfDate = void 0;
+    }
+    return { ...row, ...patch };
   });
 }
 var normalizeImageGroups = (groups) => {
@@ -126026,38 +126147,16 @@ var flattenImageGroups = (groups) => {
   return out;
 };
 var router5 = (0, import_express5.Router)();
-async function buildNewReportSnapshot(projectId, reportDate) {
-  const currentActivities = await db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)).orderBy(activitiesTable.sortOrder);
-  const [schedule] = await db.select({
-    noSchedule: projectsTable.noSchedule,
-    startDate: projectsTable.startDate,
-    expectedEndDate: projectsTable.expectedEndDate
-  }).from(projectsTable).where(eq(projectsTable.id, projectId));
-  const hasSchedule = schedule?.noSchedule !== true && hasValidProjectSchedule(schedule?.startDate, schedule?.expectedEndDate);
-  const reportAsOf = /* @__PURE__ */ new Date(`${reportDate}T00:00:00.000Z`);
-  const resolvedActivities = await resolveLinkedActivityProgress(currentActivities, reportAsOf);
-  const actualRecordedAt = (/* @__PURE__ */ new Date()).toISOString();
-  return selectReportSnapshotActivities(resolvedActivities).map((a) => ({
-    id: a.id,
-    name: a.name,
-    plannedStartDate: a.plannedStartDate,
-    plannedEndDate: a.plannedEndDate,
-    actualStartDate: a.actualStartDate,
-    actualEndDate: a.actualEndDate,
-    externalSourceGroupId: a.externalSourceGroupId,
-    plannedProgress: hasSchedule ? clampPercent(a.externalSourceGroupId != null ? a.plannedProgress : calcActivityPlannedProgress({
-      plannedStartDate: a.plannedStartDate,
-      plannedEndDate: a.plannedEndDate
-    }, reportAsOf)) : 0,
-    plannedAsOfDate: reportDate,
-    plannedHistoricalUnverified: false,
-    actualProgress: clampPercent(a.actualProgress),
-    actualRecordedAt,
-    weight: a.weight ?? 1,
-    status: a.status,
-    sortOrder: a.sortOrder
-  }));
-}
+router5.get("/projects/:projectId/reports/progress-as-of", requireProjectAccess("projectId"), rejectContractor, async (req, res) => {
+  if (!validReportDay(req.query.periodEnd)) {
+    res.status(400).json({ error: "\u062A\u0627\u0631\u064A\u062E \u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
+  const progress = await getReportPeriodProgress(Number(req.params.projectId), req.query.periodEnd);
+  const { activities, ...summary } = progress;
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ ...summary, activitiesCount: activities?.length ?? 0 });
+});
 router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
@@ -126133,7 +126232,12 @@ router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proj
         snapshot = mergeSnapshot(snapshot, snapshotOverrides) ?? snapshot;
       }
     } else {
-      snapshot = await buildNewReportSnapshot(projectId, reportDate);
+      const progress = await getReportPeriodProgress(projectId, periodEnd);
+      if (!progress.available) {
+        res.status(409).json({ error: progress.reason });
+        return;
+      }
+      snapshot = progress.activities;
     }
     const [activitiesForGroups, groups] = await Promise.all([
       db.select({ id: activitiesTable.id, groupId: activitiesTable.groupId }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId)),
@@ -126271,6 +126375,9 @@ router5.get("/projects/:projectId/reports", requireProjectAccess("projectId"), r
     imageUrls: reportsTable.imageUrls,
     imageGroups: reportsTable.imageGroups,
     historicalSnapshotAvailable: sql`${reportsTable.activitiesSnapshot} IS NOT NULL`,
+    progressSource: reportsTable.progressSource,
+    progressAsOfDate: reportsTable.progressAsOfDate,
+    progressHistoryCapturedAt: reportsTable.progressHistoryCapturedAt,
     status: reportsTable.status,
     approvedAt: reportsTable.approvedAt,
     approvedById: reportsTable.approvedById,
@@ -126301,11 +126408,33 @@ router5.post("/projects/:projectId/reports", requireProjectAccess("projectId"), 
     res.status(400).json({ error: "\u062C\u0645\u064A\u0639 \u0627\u0644\u062D\u0642\u0648\u0644 \u0627\u0644\u0623\u0633\u0627\u0633\u064A\u0629 \u0645\u0637\u0644\u0648\u0628\u0629" });
     return;
   }
+  if (!validReportDay(periodStart) || !validReportDay(periodEnd) || !validReportDay(reportDate) || periodStart > periodEnd) {
+    res.status(400).json({ error: "\u062A\u0648\u0627\u0631\u064A\u062E \u0641\u062A\u0631\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629" });
+    return;
+  }
+  const progress = await getReportPeriodProgress(projectId, periodEnd);
+  const manual = req.body.progressSource === "manual";
+  if (req.body.progressSource !== void 0 && req.body.progressSource !== "manual" && req.body.progressSource !== "history") {
+    res.status(400).json({ error: "\u0645\u0635\u062F\u0631 \u0646\u0633\u0628\u0629 \u0627\u0644\u0625\u0646\u062C\u0627\u0632 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
+  if (manual && (typeof progressPercentage !== "number" || !Number.isFinite(progressPercentage) || progressPercentage < 0 || progressPercentage > 100)) {
+    res.status(400).json({ error: "\u0623\u062F\u062E\u0644 \u0646\u0633\u0628\u0629 \u0625\u0646\u062C\u0627\u0632 \u0645\u0648\u062B\u0651\u0642\u0629 \u0645\u0646 0 \u0625\u0644\u0649 100" });
+    return;
+  }
+  if (!manual && !progress.available) {
+    res.status(409).json({ error: progress.reason, code: "HISTORICAL_PROGRESS_UNAVAILABLE" });
+    return;
+  }
+  if (!manual && req.body.historyFingerprint !== void 0 && req.body.historyFingerprint !== progress.fingerprint) {
+    res.status(409).json({ error: "\u062A\u063A\u064A\u0651\u0631 \u0633\u062C\u0644 \u0627\u0644\u0625\u0646\u062C\u0627\u0632\u061B \u062D\u062F\u0651\u062B \u0627\u0644\u0646\u0633\u0628\u0629 \u062D\u0633\u0628 \u0627\u0644\u0641\u062A\u0631\u0629 \u062B\u0645 \u0623\u0639\u062F \u0627\u0644\u062D\u0641\u0638" });
+    return;
+  }
   const [maxResult] = await db.select({ maxNum: sql`COALESCE(MAX(${reportsTable.reportNumber}), 0)` }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
   const nextNumber = (maxResult?.maxNum ?? 0) + 1;
-  const snapshot = await buildNewReportSnapshot(projectId, reportDate);
+  const snapshot = progress.activities;
   if (req.body.aiDraftSnapshotFingerprint !== void 0) {
-    if (typeof req.body.aiDraftSnapshotFingerprint !== "string" || reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) !== req.body.aiDraftSnapshotFingerprint) {
+    if (typeof req.body.aiDraftSnapshotFingerprint !== "string" || !snapshot || reportAiSnapshotFingerprint(reportDate, snapshot, periodStart, periodEnd) !== req.body.aiDraftSnapshotFingerprint) {
       res.status(409).json({ error: "\u062A\u063A\u064A\u0631\u062A \u0628\u0646\u0648\u062F \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0645\u0646\u0630 \u0635\u064A\u0627\u063A\u0629 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A\u061B \u0623\u0639\u062F \u0627\u0644\u0635\u064A\u0627\u063A\u0629 \u0642\u0628\u0644 \u0627\u0644\u062D\u0641\u0638" });
       return;
     }
@@ -126318,7 +126447,10 @@ router5.post("/projects/:projectId/reports", requireProjectAccess("projectId"), 
     periodStart,
     periodEnd,
     workDescription,
-    progressPercentage: progressPercentage ?? 0,
+    progressPercentage: manual ? progressPercentage : progress.overallProgress,
+    progressSource: manual ? "manual" : "history",
+    progressAsOfDate: periodEnd,
+    progressHistoryCapturedAt: progress.capturedAt ? new Date(progress.capturedAt) : null,
     technicalNotes: technicalNotes ?? null,
     recommendations: recommendations ?? null,
     imageUrls: finalImageUrls,
@@ -126356,6 +126488,9 @@ router5.post("/projects/:projectId/reports/:id/duplicate", requireProjectAccess(
       imageUrls: source.imageUrls,
       imageGroups: source.imageGroups,
       activitiesSnapshot: source.activitiesSnapshot,
+      progressSource: source.progressSource,
+      progressAsOfDate: source.progressAsOfDate,
+      progressHistoryCapturedAt: source.progressHistoryCapturedAt,
       status: "draft",
       createdById: req.user?.userId ?? null
     }).returning();
@@ -126388,6 +126523,18 @@ router5.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectI
   const id = parseInt(rawId, 10);
   const updateData = {};
   const body = req.body;
+  const [progressMeta] = await db.select({
+    source: reportsTable.progressSource,
+    periodEnd: reportsTable.periodEnd,
+    percentage: reportsTable.progressPercentage
+  }).from(reportsTable).where(and(eq(reportsTable.id, id), eq(reportsTable.projectId, projectId)));
+  if (progressMeta?.source && body.periodEnd !== void 0 && body.periodEnd !== progressMeta.periodEnd) {
+    res.status(409).json({ error: "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629 \u0645\u0631\u062A\u0628\u0637\u0629 \u0628\u0644\u0642\u0637\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0629\u061B \u0623\u0646\u0634\u0626 \u062A\u0642\u0631\u064A\u0631\u0627\u064B \u062C\u062F\u064A\u062F\u0627\u064B \u0644\u0644\u0641\u062A\u0631\u0629 \u0627\u0644\u0645\u062E\u062A\u0644\u0641\u0629" });
+    return;
+  }
+  if (progressMeta?.source && body.progressPercentage !== void 0 && body.progressPercentage !== progressMeta.percentage) {
+    updateData.progressSource = "manual";
+  }
   if (body.type !== void 0) updateData.type = body.type;
   if (body.reportDate !== void 0) updateData.reportDate = body.reportDate;
   if (body.periodStart !== void 0) updateData.periodStart = body.periodStart;
@@ -126418,7 +126565,7 @@ router5.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectI
     const existing = current.snapshot ?? null;
     const merged = body.activitiesSnapshot !== void 0 ? mergeSnapshot(existing, body.activitiesSnapshot) : existing;
     if (merged) {
-      updateData.activitiesSnapshot = body.reportDate !== void 0 ? merged.map((row) => {
+      updateData.activitiesSnapshot = body.reportDate !== void 0 && !progressMeta?.source ? merged.map((row) => {
         if (row.externalSourceGroupId != null) {
           return {
             ...row,
@@ -126435,6 +126582,7 @@ router5.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectI
           plannedHistoricalUnverified: false
         };
       }) : merged;
+      if (progressMeta?.source && merged.some((row) => row.actualHistoricalUnverified)) updateData.progressSource = "manual";
       if (body.activitiesSnapshot !== void 0 && body.progressPercentage === void 0) {
         updateData.progressPercentage = calcWeightedProgress(merged);
       }

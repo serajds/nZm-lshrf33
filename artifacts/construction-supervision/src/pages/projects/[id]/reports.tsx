@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { NewReportProgressField, useReportPeriodProgress } from "@/components/report-period-progress";
 import { 
   useListReports, 
   useCreateReport, 
@@ -446,6 +447,8 @@ export default function ProjectReports() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [newReportManual, setNewReportManual] = useState(false);
+  const [manualProgressEntered, setManualProgressEntered] = useState(false);
   const [copyingId, setCopyingId] = useState<number | null>(null);
   const [isAiDrafting, setIsAiDrafting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -530,19 +533,6 @@ export default function ProjectReports() {
     );
   };
 
-  const calcAutoProgress = () => {
-    const acts = (activities ?? []) as Activity[];
-    if (acts.length === 0) return null;
-    const weightOf = (a: any) => {
-      const w = Number(a?.weight);
-      return Number.isFinite(w) && w > 0 ? w : 1;
-    };
-    const totalWeight = acts.reduce((s, a) => s + weightOf(a), 0);
-    if (totalWeight === 0) return null;
-    const weighted = acts.reduce((s, a) => s + (a.actualProgress ?? 0) * weightOf(a), 0);
-    return Math.round((weighted / totalWeight) * 10) / 10;
-  };
-
   const form = useForm<ReportFormValues>({
     resolver: zodResolver(reportSchema),
     defaultValues: {
@@ -560,6 +550,18 @@ export default function ProjectReports() {
 
   const watchedType = form.watch("type");
   const watchedPeriodStart = form.watch("periodStart");
+  const watchedPeriodEnd = form.watch("periodEnd");
+  const periodProgress = useReportPeriodProgress(projectId, watchedPeriodEnd, isDialogOpen && !editingId);
+  useEffect(() => {
+    if (editingId) return;
+    setNewReportManual(false);
+    setManualProgressEntered(false);
+  }, [watchedPeriodEnd, editingId, isDialogOpen]);
+  useEffect(() => {
+    if (!editingId && !newReportManual && periodProgress.data?.available) {
+      form.setValue("progressPercentage", periodProgress.data.overallProgress!);
+    }
+  }, [editingId, newReportManual, periodProgress.data, form]);
   const watchedImageGroups = form.watch("imageGroups");
 
   const projectCategoryHistory = useMemo(() => {
@@ -647,6 +649,7 @@ export default function ProjectReports() {
       const snap = (full.activitiesSnapshot ?? []) as ReportActivitiesSnapshotItem[];
       const sorted = [...snap].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
       setSnapshotRows(sorted);
+      setManualOverrideProgress((full as Report & { progressSource?: string }).progressSource === "manual");
       originalSnapshotRows.current = sorted;
     } catch {
       toast({ title: "تعذّر تحميل بنود التقرير", variant: "destructive" });
@@ -807,7 +810,12 @@ export default function ProjectReports() {
     const createdUtcDay = createdAt && Number.isFinite(createdAt.getTime())
       ? createdAt.toISOString().slice(0, 10)
       : null;
-    const actualHistoricalUnverified = hasSnapshot && (
+    const periodSource = (fullReport as Report & { progressSource?: string }).progressSource;
+    const actualHistoricalUnverified = hasSnapshot && (periodSource
+      ? periodSource === "manual" || sourceActivities.some(row =>
+          (row as ReportActivitiesSnapshotItem & { actualAsOfDate?: string; actualHistoricalUnverified?: boolean }).actualHistoricalUnverified === true
+          || (row as ReportActivitiesSnapshotItem & { actualAsOfDate?: string }).actualAsOfDate !== fullReport.periodEnd)
+      : (
       !createdUtcDay
       || fullReport.reportDate < createdUtcDay
       || sourceActivities.some(row => {
@@ -818,7 +826,7 @@ export default function ProjectReports() {
         return !Number.isFinite(recordedDate.getTime())
           || fullReport.reportDate < recordedDate.toISOString().slice(0, 10);
       })
-    );
+    ));
     const apiBase = API_BASE.replace("/api", "");
     previewReport({
       projectName: project.name,
@@ -1011,10 +1019,18 @@ export default function ProjectReports() {
         queryClient.invalidateQueries({ queryKey: getGetReportAuditLogQueryKey(projectId, editingId) });
         toast({ title: "تم التحديث" });
       } else {
-        const createBody: CreateReportBody = {
+        if (newReportManual ? !manualProgressEntered : !periodProgress.data?.available || periodProgress.isFetching) {
+          toast({ variant: "destructive", title: newReportManual
+            ? "أدخل النسبة الموثّقة لهذه الفترة قبل الحفظ"
+            : "لا تتوفر نسبة تاريخية جاهزة؛ انتظر تحميل السجل أو اختر الإدخال اليدوي الموثّق" });
+          return;
+        }
+        const createBody: CreateReportBody & { progressSource: "manual" | "history"; historyFingerprint?: string } = {
           ...rest,
           imageUrls: flatImageUrls,
           imageGroups: groupsForApi,
+          progressSource: newReportManual ? "manual" : "history",
+          ...(!newReportManual && periodProgress.data?.fingerprint ? { historyFingerprint: periodProgress.data.fingerprint } : {}),
         };
         if (aiDraftSnapshotFingerprint.current) {
           (createBody as CreateReportBody & { aiDraftSnapshotFingerprint?: string }).aiDraftSnapshotFingerprint =
@@ -1028,6 +1044,7 @@ export default function ProjectReports() {
       form.reset();
       setEditingId(null);
     } catch (error) {
+      if (!editingId) void periodProgress.refetch();
       toast({ variant: "destructive", title: "فشل الحفظ", description: error instanceof Error ? error.message : undefined });
     }
   };
@@ -1178,8 +1195,8 @@ export default function ProjectReports() {
             <DialogTrigger asChild>
               <Button className="gap-2" onClick={() => {
               if (!editingId) {
-                const auto = calcAutoProgress();
-                if (auto !== null) form.setValue("progressPercentage", auto);
+                setNewReportManual(false);
+                setManualProgressEntered(false);
 
                 const allReports = reports ?? [];
                 let latestDate: Date | null = null;
@@ -1294,7 +1311,18 @@ export default function ProjectReports() {
                     control={form.control}
                     name="progressPercentage"
                     render={({ field }) => {
-                      const autoVal = calcAutoProgress();
+                      if (!editingId) return (
+                        <NewReportProgressField
+                          periodEnd={watchedPeriodEnd}
+                          data={periodProgress.data}
+                          loading={periodProgress.isFetching}
+                          failed={periodProgress.isError}
+                          manual={newReportManual}
+                          value={field.value}
+                          onChange={value => { field.onChange(value); setManualProgressEntered(value.trim() !== ""); }}
+                          onManualChange={() => { setNewReportManual(v => !v); setManualProgressEntered(false); }}
+                        />
+                      );
                       // When editing an existing report with a loaded
                       // snapshot, the overall % is derived from the table
                       // below using the weighted-average formula. The user
@@ -1317,16 +1345,7 @@ export default function ProjectReports() {
                                 <Calculator className="h-3.5 w-3.5" />
                                 {manualOverrideProgress ? "العودة للحساب التلقائي" : "تجاوز يدوي"}
                               </button>
-                            ) : autoVal !== null && (
-                              <button
-                                type="button"
-                                onClick={() => field.onChange(autoVal)}
-                                className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium bg-primary/8 hover:bg-primary/15 rounded-md px-2.5 py-1 transition-colors border border-primary/20"
-                              >
-                                <Calculator className="h-3.5 w-3.5" />
-                                احتساب تلقائي ({autoVal}%)
-                              </button>
-                            )}
+                            ) : null}
                           </div>
                           <FormControl>
                             <div className="relative">
@@ -1348,11 +1367,7 @@ export default function ProjectReports() {
                                 ? `محتسب تلقائياً من المتوسط الموزون لبنود التقرير (${snapshotRows.length} بند)`
                                 : "وضع يدوي: لن تتم إعادة حساب النسبة من البنود عند الحفظ"}
                             </p>
-                          ) : autoVal !== null && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              محتسب من المتوسط الموزون لجميع بنود المشروع ({(activities ?? []).length} بند)
-                            </p>
-                          )}
+                          ) : null}
                           <FormMessage />
                         </FormItem>
                       );
