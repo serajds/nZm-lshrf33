@@ -20,3 +20,9 @@ For this report-calculation work, the user said: “أنا لا اريد تغي�
 **Why:** The user corrected an unsolicited backup-restoration direction; the requested scope is the report calculation.
 
 **How to apply:** Keep existing project data and reports unchanged. Discuss or implement the calculation against available history without initiating audit imports, restoration previews or data reconciliation unless separately requested.
+
+The user approved the simpler report-level approach: choose the reporting period, confirm an editable cumulative percentage through its end (suggest from sufficient history, otherwise require manual input), and specify the work actually performed during that period. AI wording uses these approved report inputs, not today's project percentage or activity update timestamps as evidence of execution.
+
+**Why:** The user requested a less complicated solution than entering an effective progress date for each activity and confirmed this explanation with “رائع”.
+
+**How to apply:** Keep the approved percentage and narrative scoped to the report and frozen after saving; do not change live project progress or existing reports. A manually approved aggregate does not establish historical progress for individual activities. This is an approved design, not evidence that it has been implemented.
