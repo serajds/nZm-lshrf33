@@ -8,3 +8,9 @@ Historical planned progress can be calculated from a dated schedule snapshot, bu
 **Why:** Entering an old report later captures the present state of work unless an independent historical actual snapshot exists. A plausible percentage is not evidence that it was true on the report date.
 
 **How to apply:** When adding historical report views, imports, exports, or edits, preserve the manually reported percentage separately, expose provenance or an unavailable state for unverifiable actuals, and never substitute current activities for a missing historical snapshot.
+
+For new reports, “نسبة الإنجاز حتى تاريخه” means cumulative progress through the end of the report period in Libya's calendar day, not the issue date and not just progress earned within that period. Use the weights and activity membership recorded for that date, including zero-progress activities and historical linked sources.
+
+**Why:** The user explicitly requested period-based reporting and approved implementing it in Development only, with existing saved reports preserved.
+
+**How to apply:** Keep historical reports frozen when live progress or weights change. Recording history now does not establish earlier actuals: periods before coverage need explicit documented manual input or an unavailable state. Record-time history is not permission to infer when earlier work physically occurred.
