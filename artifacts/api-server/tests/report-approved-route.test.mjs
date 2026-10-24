@@ -58,7 +58,7 @@ test("old period can be drafted from approved inputs without historical/current 
   let prompt;
   globalThis.fetch = async (_url, options) => {
     prompt = JSON.stringify(JSON.parse(options.body));
-    const content = JSON.stringify({ workDescription: "تم صب سقف الدور الثاني.", technicalNotes: "", recommendations: "" });
+    const content = JSON.stringify({ workDescription: "تم صب سقف الدور الثاني.", technicalNotes: "لم تُقدَّم عوائق موثقة.", recommendations: "يوصى بالتحقق من توثيق فحوص الأعمال المذكورة." });
     return new Response(JSON.stringify({
       choices: [{ message: { content } }],
       candidates: [{ content: { parts: [{ text: content }] } }],
@@ -73,4 +73,45 @@ test("old period can be drafted from approved inputs without historical/current 
     assert.ok(prompt.includes("progressPercentage"));
     assert.equal(res.body.workDescription, "تم صب سقف الدور الثاني.");
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test("incomplete provider response is rejected instead of leaving report sections silently empty", async t => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const content = JSON.stringify({ workDescription: "تم صب سقف الدور الثاني.", technicalNotes: "", recommendations: "" });
+    return new Response(JSON.stringify({
+      choices: [{ message: { content } }],
+      candidates: [{ content: { parts: [{ text: content }] } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const res = await invoke(base);
+    if (res.code === 503) { t.skip("No AI provider configured"); return; }
+    assert.equal(res.code, 502);
+    assert.match(res.body.error, /الأقسام الثلاثة/);
+    assert.equal(res.body.workDescription, undefined);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("live synthetic report produces complete professional sections without database access", {
+  skip: !process.argv.includes("--live-ai"),
+}, async () => {
+  const cases = [{
+    ...base,
+  }, {
+    ...base,
+    workDescription: "استكمال صب سقف الدور الثاني، ومواصلة مباني الطوب بالدور الأول.",
+    technicalNotes: "تأخر توريد دفعة من الطوب دون تحديد أثرها على سير العمل.",
+  }];
+  for (const input of cases) {
+    const res = await invoke(input);
+    assert.equal(res.code, 200, JSON.stringify(res.body));
+    for (const key of ["workDescription", "technicalNotes", "recommendations"]) {
+      assert.ok(typeof res.body[key] === "string" && res.body[key].trim());
+    }
+    if (!input.technicalNotes) {
+      assert.doesNotMatch(res.body.technicalNotes, /لا توجد (أي )?(عوائق|ملاحظات)/);
+    }
+    console.log("Synthetic live report:", JSON.stringify(res.body));
+  }
 });
