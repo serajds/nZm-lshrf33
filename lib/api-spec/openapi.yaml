@@ -2323,7 +2323,7 @@ components:
           type: integer
         type:
           type: string
-          enum: [weekly, monthly]
+          enum: [weekly, monthly, period]
         reportDate:
           type: string
           format: date
@@ -2422,7 +2422,7 @@ components:
       properties:
         type:
           type: string
-          enum: [weekly, monthly]
+          enum: [weekly, monthly, period]
         reportDate:
           type: string
           format: date
@@ -2504,7 +2504,7 @@ components:
       properties:
         type:
           type: ["string", "null"]
-          enum: [weekly, monthly, null]
+          enum: [weekly, monthly, period, null]
         reportDate:
           type: ["string", "null"]
           format: date

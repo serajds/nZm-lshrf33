@@ -59032,7 +59032,7 @@ var init_reports = __esm({
       id: serial("id").primaryKey(),
       projectId: integer("project_id").notNull(),
       reportNumber: integer("report_number").notNull().default(0),
-      type: text("type", { enum: ["weekly", "monthly"] }).notNull(),
+      type: text("type", { enum: ["weekly", "monthly", "period"] }).notNull(),
       reportDate: date("report_date").notNull(),
       periodStart: date("period_start").notNull(),
       periodEnd: date("period_end").notNull(),
@@ -119898,7 +119898,7 @@ var ListReportsResponseItem = objectType({
   id: numberType(),
   projectId: numberType(),
   reportNumber: numberType().optional(),
-  type: enumType(["weekly", "monthly"]),
+  type: enumType(["weekly", "monthly", "period"]),
   reportDate: coerce.date(),
   periodStart: coerce.date(),
   periodEnd: coerce.date(),
@@ -119942,7 +119942,7 @@ var CreateReportParams = objectType({
   projectId: coerce.number()
 });
 var CreateReportBody = objectType({
-  type: enumType(["weekly", "monthly"]),
+  type: enumType(["weekly", "monthly", "period"]),
   reportDate: coerce.date(),
   periodStart: coerce.date(),
   periodEnd: coerce.date(),
@@ -119966,7 +119966,7 @@ var GetReportResponse = objectType({
   id: numberType(),
   projectId: numberType(),
   reportNumber: numberType().optional(),
-  type: enumType(["weekly", "monthly"]),
+  type: enumType(["weekly", "monthly", "period"]),
   reportDate: coerce.date(),
   periodStart: coerce.date(),
   periodEnd: coerce.date(),
@@ -120010,7 +120010,12 @@ var UpdateReportParams = objectType({
   id: coerce.number()
 });
 var UpdateReportBody = objectType({
-  type: unionType([literalType("weekly"), literalType("monthly"), literalType(null)]).nullish(),
+  type: unionType([
+    literalType("weekly"),
+    literalType("monthly"),
+    literalType("period"),
+    literalType(null)
+  ]).nullish(),
   reportDate: coerce.date().nullish(),
   periodStart: coerce.date().nullish(),
   periodEnd: coerce.date().nullish(),
@@ -120039,7 +120044,7 @@ var UpdateReportResponse = objectType({
   id: numberType(),
   projectId: numberType(),
   reportNumber: numberType().optional(),
-  type: enumType(["weekly", "monthly"]),
+  type: enumType(["weekly", "monthly", "period"]),
   reportDate: coerce.date(),
   periodStart: coerce.date(),
   periodEnd: coerce.date(),
@@ -120093,7 +120098,7 @@ var UpdateReportStatusResponse = objectType({
   id: numberType(),
   projectId: numberType(),
   reportNumber: numberType().optional(),
-  type: enumType(["weekly", "monthly"]),
+  type: enumType(["weekly", "monthly", "period"]),
   reportDate: coerce.date(),
   periodStart: coerce.date(),
   periodEnd: coerce.date(),
@@ -120557,7 +120562,7 @@ var VerifyOwnerAccessResponse = objectType({
       id: numberType(),
       projectId: numberType(),
       reportNumber: numberType().optional(),
-      type: enumType(["weekly", "monthly"]),
+      type: enumType(["weekly", "monthly", "period"]),
       reportDate: coerce.date(),
       periodStart: coerce.date(),
       periodEnd: coerce.date(),

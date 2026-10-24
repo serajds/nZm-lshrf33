@@ -589,7 +589,7 @@ export const ListReportsResponseItem = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   reportNumber: zod.number().optional(),
-  type: zod.enum(["weekly", "monthly"]),
+  type: zod.enum(["weekly", "monthly", "period"]),
   reportDate: zod.coerce.date(),
   periodStart: zod.coerce.date(),
   periodEnd: zod.coerce.date(),
@@ -645,7 +645,7 @@ export const CreateReportParams = zod.object({
 });
 
 export const CreateReportBody = zod.object({
-  type: zod.enum(["weekly", "monthly"]),
+  type: zod.enum(["weekly", "monthly", "period"]),
   reportDate: zod.coerce.date(),
   periodStart: zod.coerce.date(),
   periodEnd: zod.coerce.date(),
@@ -676,7 +676,7 @@ export const GetReportResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   reportNumber: zod.number().optional(),
-  type: zod.enum(["weekly", "monthly"]),
+  type: zod.enum(["weekly", "monthly", "period"]),
   reportDate: zod.coerce.date(),
   periodStart: zod.coerce.date(),
   periodEnd: zod.coerce.date(),
@@ -733,7 +733,12 @@ export const UpdateReportParams = zod.object({
 
 export const UpdateReportBody = zod.object({
   type: zod
-    .union([zod.literal("weekly"), zod.literal("monthly"), zod.literal(null)])
+    .union([
+      zod.literal("weekly"),
+      zod.literal("monthly"),
+      zod.literal("period"),
+      zod.literal(null),
+    ])
     .nullish(),
   reportDate: zod.coerce.date().nullish(),
   periodStart: zod.coerce.date().nullish(),
@@ -769,7 +774,7 @@ export const UpdateReportResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   reportNumber: zod.number().optional(),
-  type: zod.enum(["weekly", "monthly"]),
+  type: zod.enum(["weekly", "monthly", "period"]),
   reportDate: zod.coerce.date(),
   periodStart: zod.coerce.date(),
   periodEnd: zod.coerce.date(),
@@ -840,7 +845,7 @@ export const UpdateReportStatusResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   reportNumber: zod.number().optional(),
-  type: zod.enum(["weekly", "monthly"]),
+  type: zod.enum(["weekly", "monthly", "period"]),
   reportDate: zod.coerce.date(),
   periodStart: zod.coerce.date(),
   periodEnd: zod.coerce.date(),
@@ -1444,7 +1449,7 @@ export const VerifyOwnerAccessResponse = zod.object({
       id: zod.number(),
       projectId: zod.number(),
       reportNumber: zod.number().optional(),
-      type: zod.enum(["weekly", "monthly"]),
+      type: zod.enum(["weekly", "monthly", "period"]),
       reportDate: zod.coerce.date(),
       periodStart: zod.coerce.date(),
       periodEnd: zod.coerce.date(),

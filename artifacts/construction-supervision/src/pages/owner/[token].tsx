@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { reportTypeLabel } from "@/lib/report-types";
 import { useVerifyOwnerAccess } from "@workspace/api-client-react";
 import type { OwnerProjectView, Activity, Report, ProjectExtension, ProjectSuspension, ReportActivitiesSnapshotItem } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -1022,7 +1023,7 @@ export default function OwnerPortal() {
                             <CardTitle className="text-base">
                               {project.reportDisplayMode === "period_only"
                                 ? `${fmtDate(report.periodStart)} — ${fmtDate(report.periodEnd)}`
-                                : `تقرير ${report.type === 'weekly' ? 'أسبوعي' : 'شهري'} #${report.reportNumber}`}
+                                : `تقرير ${reportTypeLabel(report.type)} #${report.reportNumber}`}
                             </CardTitle>
                             <p className="text-xs text-muted-foreground mt-0.5 tabular-nums" dir="ltr">{fmtDate(report.reportDate)}</p>
                           </div>

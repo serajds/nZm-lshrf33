@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { NewReportProgressField, useReportPeriodProgress } from "@/components/report-period-progress";
+import { reportTypeLabel, suggestedReportPeriodEnd } from "@/lib/report-types";
 import { 
   useListReports, 
   useCreateReport, 
@@ -75,7 +76,7 @@ const imageGroupSchema = z.object({
 });
 
 const reportSchema = z.object({
-  type: z.enum(["weekly", "monthly"]),
+  type: z.enum(["weekly", "monthly", "period"]),
   reportDate: z.string().min(1, "تاريخ التقرير مطلوب"),
   periodStart: z.string().min(1, "بداية الفترة مطلوبة"),
   periodEnd: z.string().min(1, "نهاية الفترة مطلوبة"),
@@ -601,16 +602,8 @@ export default function ProjectReports() {
 
   useEffect(() => {
     if (editingId || !watchedPeriodStart) return;
-    const startDate = new Date(watchedPeriodStart);
-    if (isNaN(startDate.getTime())) return;
-    const endDate = new Date(startDate);
-    if (watchedType === "monthly") {
-      endDate.setMonth(endDate.getMonth() + 1);
-      endDate.setDate(endDate.getDate() - 1);
-    } else {
-      endDate.setDate(endDate.getDate() + 6);
-    }
-    form.setValue("periodEnd", endDate.toISOString().split("T")[0]);
+    const endDate = suggestedReportPeriodEnd(watchedType, watchedPeriodStart);
+    if (endDate !== null) form.setValue("periodEnd", endDate);
   }, [watchedType, watchedPeriodStart, editingId]);
 
   const handleEdit = async (r: Report) => {
@@ -1163,6 +1156,7 @@ export default function ProjectReports() {
                   <SelectItem value="all">الكل</SelectItem>
                   <SelectItem value="weekly">أسبوعي</SelectItem>
                   <SelectItem value="monthly">شهري</SelectItem>
+                  <SelectItem value="period">بالفترة</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1213,14 +1207,8 @@ export default function ProjectReports() {
                   form.setValue("periodStart", startStr);
 
                   const currentType = form.getValues("type");
-                  const endDate = new Date(nextStart);
-                  if (currentType === "monthly") {
-                    endDate.setMonth(endDate.getMonth() + 1);
-                    endDate.setDate(endDate.getDate() - 1);
-                  } else {
-                    endDate.setDate(endDate.getDate() + 6);
-                  }
-                  form.setValue("periodEnd", endDate.toISOString().split("T")[0]);
+                  const endDate = suggestedReportPeriodEnd(currentType, startStr);
+                  if (endDate !== null) form.setValue("periodEnd", endDate);
                 }
               }
             }}>
@@ -1268,6 +1256,7 @@ export default function ProjectReports() {
                           <SelectContent dir="rtl">
                             <SelectItem value="weekly">أسبوعي</SelectItem>
                             <SelectItem value="monthly">شهري</SelectItem>
+                            <SelectItem value="period">بالفترة</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -1833,7 +1822,7 @@ export default function ProjectReports() {
                 {!periodOnly && (
                   <div>
                     <div className="text-xs text-muted-foreground mb-0.5">النوع</div>
-                    <div className="font-medium">{report.type === "weekly" ? "أسبوعي" : "شهري"}</div>
+                    <div className="font-medium">{reportTypeLabel(report.type)}</div>
                   </div>
                 )}
                 <div>
@@ -1993,7 +1982,7 @@ export default function ProjectReports() {
                               {!periodOnly && (
                                 <td className="px-3 py-2.5 whitespace-nowrap">
                                   <Badge variant="outline" className="bg-background">
-                                    {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                                    {reportTypeLabel(report.type)}
                                   </Badge>
                                 </td>
                               )}
@@ -2057,7 +2046,7 @@ export default function ProjectReports() {
                                 <>
                                   <span className="font-bold">#{report.reportNumber}</span>
                                   <Badge variant="outline" className="bg-background text-xs">
-                                    {report.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                                    {reportTypeLabel(report.type)}
                                   </Badge>
                                 </>
                               )}
@@ -2107,7 +2096,7 @@ export default function ProjectReports() {
                           <>
                             تقرير #{selectedReport.reportNumber}
                             <Badge variant="outline" className="bg-background font-normal">
-                              {selectedReport.type === 'weekly' ? 'أسبوعي' : 'شهري'}
+                              {reportTypeLabel(selectedReport.type)}
                             </Badge>
                           </>
                         )}

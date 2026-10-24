@@ -11,4 +11,5 @@ export type ReportType = (typeof ReportType)[keyof typeof ReportType];
 export const ReportType = {
   weekly: "weekly",
   monthly: "monthly",
+  period: "period",
 } as const;

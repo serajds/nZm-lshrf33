@@ -1,3 +1,5 @@
+import { reportTypeLabel } from "./report-types";
+
 export interface ActivityForReport {
   name: string;
   plannedProgress: number;
@@ -114,7 +116,7 @@ function hasValidSchedule(startDate: string | null | undefined, endDate: string 
 }
 
 export function buildPrintHTML(data: ReportPdfData): string {
-  const typeLbl = data.reportType === "weekly" ? "أسبوعي" : "شهري";
+  const typeLbl = reportTypeLabel(data.reportType);
   const periodOnly = data.reportDisplayMode === "period_only";
   const periodLabel = `${fmtDate(data.periodStart)} — ${fmtDate(data.periodEnd)}`;
   const pct = Math.round(Math.min(100, Math.max(0, data.progressPercentage)) * 10) / 10;

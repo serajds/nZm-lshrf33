@@ -8,7 +8,7 @@ export const reportsTable = pgTable("reports", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   reportNumber: integer("report_number").notNull().default(0),
-  type: text("type", { enum: ["weekly", "monthly"] }).notNull(),
+  type: text("type", { enum: ["weekly", "monthly", "period"] }).notNull(),
   reportDate: date("report_date").notNull(),
   periodStart: date("period_start").notNull(),
   periodEnd: date("period_end").notNull(),
