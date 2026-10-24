@@ -25,4 +25,4 @@ The user approved the simpler report-level approach: choose the reporting period
 
 **Why:** The user requested a less complicated solution than entering an effective progress date for each activity and confirmed this explanation with “رائع”.
 
-**How to apply:** Keep the approved percentage and narrative scoped to the report and frozen after saving; do not change live project progress or existing reports. A manually approved aggregate does not establish historical progress for individual activities. This is an approved design, not evidence that it has been implemented.
+**How to apply:** Keep the approved percentage and narrative scoped to the report and frozen after saving; do not change live project progress or existing reports. A manually approved aggregate does not establish historical progress for individual activities. Never feed current activity values or update timestamps into the approved-input AI path, even when history is missing.

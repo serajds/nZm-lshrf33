@@ -50,7 +50,7 @@ export function NewReportProgressField({ periodEnd, data, loading, failed, manua
         <FormLabel htmlFor="new-report-period-progress">نسبة الإنجاز حتى نهاية الفترة (%)</FormLabel>
         {periodEnd && (
           <Button type="button" variant="outline" size="sm" onClick={onManualChange}>
-            {manual ? "العودة للحساب حسب الفترة" : data?.available ? "تجاوز يدوي موثّق" : "إدخال نسبة موثّقة يدوياً"}
+            {manual ? "استخدام النسبة المقترحة" : data?.available ? "تعديل نسبة التقرير" : "إدخال نسبة التقرير"}
           </Button>
         )}
       </div>
@@ -71,16 +71,16 @@ export function NewReportProgressField({ periodEnd, data, loading, failed, manua
             <>
               <p>{manual ? "نسبة موثّقة مدخلة يدوياً" : "محتسب من سجل جميع البنود وأوزانها"}
                 {" "}حتى نهاية {periodEnd} بتوقيت ليبيا، وليس تاريخ إصدار التقرير.</p>
-              {!manual && data.plannedProgress !== null && (
-                <p>المخطط: {formatDisplayPercent(data.plannedProgress)} — الفارق: {data.variance === null ? "غير متاح" : formatDisplayPercent(data.variance, true)}
-                  {" "}— SPI: {data.spi ?? "غير متاح"}</p>
+              {data.plannedProgress !== null && Number.isFinite(Number(value)) && (
+                <p>المخطط: {formatDisplayPercent(data.plannedProgress)} — الفارق: {formatDisplayPercent(Number(value) - data.plannedProgress, true)}
+                  {" "}— SPI: {data.plannedProgress > 0 ? (Number(value) / data.plannedProgress).toFixed(2) : "غير متاح"}</p>
               )}
             </>
           ) : <p className="text-amber-700 dark:text-amber-400">{data?.reason}</p>}
         {data?.trackingStartedAt && (
           <p>بداية السجل المتاح: {new Intl.DateTimeFormat("ar-LY", { timeZone: "Africa/Tripoli", dateStyle: "medium" }).format(new Date(data.trackingStartedAt))}.</p>
         )}
-        {manual && <p>أدخل النسبة الموثّقة لهذه الفترة. ستُحفظ كمصدر يدوي، ولن تعدّل أنشطة المشروع.</p>}
+        {manual && <p>أدخل الإنجاز التراكمي حتى نهاية الفترة، لا إنجاز الفترة وحدها. تُحفظ النسبة في هذا التقرير فقط، ولا تغيّر إنجاز المشروع أو نسب بنوده.</p>}
       </div>
       <FormMessage />
     </FormItem>
