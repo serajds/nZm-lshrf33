@@ -7,7 +7,7 @@ const result = await build({
   entryPoints: [fileURLToPath(new URL("../src/lib/report-approved-inputs.ts", import.meta.url))],
   bundle: true, write: false, platform: "node", format: "esm",
 });
-const { approvedReportFingerprint, validApprovedProgress, buildApprovedReportPrompt } =
+const { approvedReportFingerprint, validApprovedProgress, buildApprovedReportPrompt, parseApprovedReportDraft } =
   await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 
 test("approved progress accepts explicit zero, rejects missing, coerced and invalid percentages", () => {
@@ -35,4 +35,20 @@ test("AI input includes approved report facts only, not current activities or im
   assert.ok(prompt.includes("المصدر الوحيد"));
   assert.ok(prompt.includes("لا توزع النسبة الإجمالية"));
   assert.ok(prompt.includes("لا تحسب SPI"));
+  assert.ok(prompt.includes("جميعها إلزامية وغير فارغة"));
+  assert.ok(prompt.includes("غياب المعلومات ليس إثباتاً"));
+  assert.ok(prompt.includes("هذه مقترحات وليست وقائع"));
+  assert.ok(!prompt.includes("اترك الحقل المقابل فارغاً"));
+});
+
+test("all three narrative sections must be nonempty strings; incomplete output is not success", () => {
+  const complete = { workDescription: " وصف مهني ", technicalNotes: "ملاحظات موثقة", recommendations: "توصيات مقترحة" };
+  assert.equal(parseApprovedReportDraft(JSON.stringify(complete)).workDescription, "وصف مهني");
+  assert.equal(parseApprovedReportDraft("```json\n" + JSON.stringify(complete) + "\n```").recommendations, complete.recommendations);
+  for (const key of Object.keys(complete)) {
+    for (const invalid of ["", "  ", null, undefined, [], 7]) {
+      assert.throws(() => parseApprovedReportDraft(JSON.stringify({ ...complete, [key]: invalid })));
+    }
+  }
+  for (const raw of ["null", "[]", "not json"]) assert.throws(() => parseApprovedReportDraft(raw));
 });

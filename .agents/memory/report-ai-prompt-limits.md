@@ -8,3 +8,9 @@ An AI report prompt can guide tone and prohibit labels, repetition, and unsuppor
 **Why:** Repeated live runs with increasingly specific instructions removed overt labels and shortened the text, but the provider still sometimes ignored narrower editorial constraints.
 
 **How to apply:** If strict owner-ready output is required, test multiple representative generations and use an explicit output-review or retry step rather than claiming prompt wording alone guarantees compliance. Keep historical provenance and source-of-truth rules separate from style guidance.
+
+All three report narrative sections should be filled and professionally written, even when the supervisor supplies only the period's work.
+
+**Why:** The user found the short description unprofessional and explicitly reported empty technical notes and recommendations as a problem.
+
+**How to apply:** Missing technical notes mean no documented observations were supplied, not proof that no obstacles exist. Recommendations may propose concrete preventive follow-up tied to the supplied work; label them as proposals and never invent defects, test results or site events. Do not report a generation as successful if any required narrative section is empty.

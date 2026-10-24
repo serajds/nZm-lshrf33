@@ -8,7 +8,7 @@ import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } fr
 import { getReportPeriodProgress, validReportDay } from "../lib/report-period-progress";
 import { buildReportAiContext, reportAiSnapshotFingerprint } from "../lib/report-ai-context";
 import { buildReportAiPrompt, reportEditorInstruction } from "../lib/report-ai-prompt";
-import { approvedReportFingerprint, buildApprovedReportPrompt, validApprovedProgress } from "../lib/report-approved-inputs";
+import { approvedReportFingerprint, buildApprovedReportPrompt, parseApprovedReportDraft, validApprovedProgress } from "../lib/report-approved-inputs";
 
 type ImageGroup = { category: string; urls: string[] };
 
@@ -354,11 +354,17 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
       return;
     }
 
-    const content = JSON.parse(contentText) as {
+    let content: {
       workDescription?: string;
       technicalNotes?: string;
       recommendations?: string;
     };
+    try {
+      content = approvedInputs ? parseApprovedReportDraft(contentText) : JSON.parse(contentText);
+    } catch {
+      res.status(502).json({ error: "لم يُرجع مزود الذكاء الاصطناعي الأقسام الثلاثة مكتملة. أعد الصياغة؛ لم تُغيّر مدخلات التقرير." });
+      return;
+    }
     res.json({
       ...content,
       ...(reportId == null ? { snapshotFingerprint: approvedInputs
