@@ -72,13 +72,14 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { ActivityGroupSideProjectSync } from "@/components/activity-group-side-project-sync";
 import { ActivityProgressDialog } from "@/components/activity-progress-dialog";
+import { ActivityWeightDialog } from "@/components/activity-weight-dialog";
 
 import { 
   Plus, Edit2, Trash2, ArrowRight, ChevronDown, ChevronLeft,
   CheckCircle2, Clock, AlertTriangle, PlayCircle, 
   TrendingUp, TrendingDown, Minus, Timer, ListChecks, CalendarCheck, CalendarX, Hourglass,
   Upload, Download, FileSpreadsheet, GripVertical, FolderPlus, Palette, X, Loader2,
-  Search, LayoutList, GanttChart, SlidersHorizontal, Link2, Percent
+  Search, LayoutList, GanttChart, SlidersHorizontal, Link2, Percent, Scale
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -387,6 +388,7 @@ export default function ProjectActivities() {
   const [editingManagedRow, setEditingManagedRow] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [progressActivity, setProgressActivity] = useState<Activity | null>(null);
+  const [weightActivity, setWeightActivity] = useState<Activity | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -1003,6 +1005,39 @@ export default function ProjectActivities() {
         </Button>
       </span>
     );
+  };
+
+  const renderWeightButton = (a: Activity, mobile = false) => (
+    <span title={canEditActivity(a)
+      ? `تحديد الوزن النوعي (الحالي: ${a.weight ?? 1})`
+      : "لا تملك صلاحية تعديل وزن هذا البند"}>
+      <Button
+        variant="outline"
+        size="icon"
+        className={mobile ? "h-10 w-10" : "h-7 w-7"}
+        aria-label={`تحديد الوزن النوعي ${a.name}`}
+        disabled={!canEditActivity(a) || updatingId !== null}
+        onClick={() => setWeightActivity(a)}
+      >
+        <Scale className="h-3.5 w-3.5 text-primary" />
+      </Button>
+    </span>
+  );
+
+  const setActivityWeight = async (a: Activity, weight: number): Promise<boolean> => {
+    if (!canEditActivity(a) || updatingId !== null || !Number.isFinite(weight) || weight < 0.01 || weight > 100) return false;
+    if (weight === (a.weight ?? 1)) return true;
+    setUpdatingId(a.id);
+    try {
+      await updateActivity.mutateAsync({ projectId, id: a.id, data: { weight } });
+      await invalidate();
+      return true;
+    } catch {
+      toast({ variant: "destructive", title: "فشل تحديث الوزن النوعي" });
+      return false;
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   const onSubmit = async (values: ActivityFormValues) => {
@@ -2363,6 +2398,7 @@ export default function ProjectActivities() {
                     <TableCell>
                       <div className="flex items-center justify-center gap-1">
                         {renderProgressButton(a)}
+                        {renderWeightButton(a)}
                         {editable ? (
                           <>
                             {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 5%" onClick={() => quickIncrement(a, -5)} disabled={updatingId !== null || a.actualProgress === 0}>
@@ -2601,6 +2637,7 @@ export default function ProjectActivities() {
                       <div className="flex flex-wrap items-center gap-1 pt-1 border-t">
                         <div className="flex flex-wrap items-center gap-1 mr-auto">
                           {renderProgressButton(a, true)}
+                          {renderWeightButton(a, true)}
                           {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="تخفيض الإنجاز 5%" aria-label="تخفيض الإنجاز 5%" onClick={() => quickIncrement(a, -5)} disabled={updatingId !== null || a.actualProgress === 0}>
                             <span className="text-xs font-bold text-muted-foreground">-5</span>
                           </Button>}
@@ -2618,6 +2655,7 @@ export default function ProjectActivities() {
                     ) : (
                       <div className="flex items-center gap-2 pt-1 border-t">
                         {renderProgressButton(a, true)}
+                        {renderWeightButton(a, true)}
                         <span className="text-xs text-muted-foreground">عرض فقط</span>
                       </div>
                     )}
@@ -2733,6 +2771,17 @@ export default function ProjectActivities() {
           if (progressActivity && await setActivityProgress(progressActivity, progress)) {
             setProgressActivity(null);
             toast({ title: "تم تحديد نسبة الإنجاز" });
+          }
+        }}
+      />
+      <ActivityWeightDialog
+        activity={weightActivity}
+        saving={updatingId !== null}
+        onClose={() => setWeightActivity(null)}
+        onSave={async weight => {
+          if (weightActivity && await setActivityWeight(weightActivity, weight)) {
+            setWeightActivity(null);
+            toast({ title: "تم تحديث الوزن النوعي" });
           }
         }}
       />
