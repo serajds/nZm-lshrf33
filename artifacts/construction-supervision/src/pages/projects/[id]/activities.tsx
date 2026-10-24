@@ -9,6 +9,7 @@ import {
   useDeleteActivity,
   useGetProject,
   getListActivitiesQueryKey,
+  getGetProjectSummaryQueryKey,
   fetchWithSession,
 } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
@@ -70,13 +71,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { ActivityGroupSideProjectSync } from "@/components/activity-group-side-project-sync";
+import { ActivityProgressDialog } from "@/components/activity-progress-dialog";
 
 import { 
   Plus, Edit2, Trash2, ArrowRight, ChevronDown, ChevronLeft,
   CheckCircle2, Clock, AlertTriangle, PlayCircle, 
   TrendingUp, TrendingDown, Minus, Timer, ListChecks, CalendarCheck, CalendarX, Hourglass,
   Upload, Download, FileSpreadsheet, GripVertical, FolderPlus, Palette, X, Loader2,
-  Search, LayoutList, GanttChart, SlidersHorizontal, Link2
+  Search, LayoutList, GanttChart, SlidersHorizontal, Link2, Percent
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -384,6 +386,7 @@ export default function ProjectActivities() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingManagedRow, setEditingManagedRow] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [progressActivity, setProgressActivity] = useState<Activity | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -745,8 +748,11 @@ export default function ProjectActivities() {
     setIsGroupDialogOpen(true);
   };
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(projectId) });
+  const invalidate = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(projectId) }),
+    queryClient.invalidateQueries({ queryKey: getGetProjectSummaryQueryKey(projectId) }),
+    queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`], exact: true }),
+  ]);
 
   const exportActivities = async () => {
     if (!activities || activities.length === 0) {
@@ -951,11 +957,11 @@ export default function ProjectActivities() {
     }
   };
 
-  /* ── Quick progress increment ── */
-  const quickIncrement = async (a: Activity, delta: number) => {
-    if (isActivelyManagedActivity(a, groups) || getLinkedSource(a)) return;
-    const next = Math.min(100, Math.max(0, a.actualProgress + delta));
-    if (next === a.actualProgress) return;
+  /* ── Shared direct / incremental progress update ── */
+  const setActivityProgress = async (a: Activity, next: number): Promise<boolean> => {
+    if (!canEditActivity(a) || isActivelyManagedActivity(a, groups) || getLinkedSource(a)) return false;
+    if (!Number.isFinite(next) || next < 0 || next > 100 || updatingId !== null) return false;
+    if (next === a.actualProgress) return true;
     setUpdatingId(a.id);
     try {
       const autoStatus = next === 100 ? "completed" : next === 0 ? "not_started" : "in_progress";
@@ -963,12 +969,40 @@ export default function ProjectActivities() {
         projectId, id: a.id,
         data: { actualProgress: next, status: autoStatus }
       });
-      invalidate();
+      await invalidate();
+      return true;
     } catch {
       toast({ variant: "destructive", title: "فشل التحديث" });
+      return false;
     } finally {
       setUpdatingId(null);
     }
+  };
+
+  const quickIncrement = async (a: Activity, delta: number) => {
+    await setActivityProgress(a, Math.min(100, Math.max(0, a.actualProgress + delta)));
+  };
+
+  const renderProgressButton = (a: Activity, mobile = false) => {
+    const linked = Boolean(getLinkedSource(a)) || isActivelyManagedActivity(a, groups);
+    const editable = canEditActivity(a);
+    const hint = linked
+      ? "نسبة هذا البند محسوبة من المصدر المرتبط؛ تُعدّل من المصدر"
+      : !editable ? "لا تملك صلاحية تعديل نسبة إنجاز هذا البند" : "تحديد نسبة الإنجاز";
+    return (
+      <span title={hint}>
+        <Button
+          variant="outline"
+          size="icon"
+          className={mobile ? "h-10 w-10" : "h-7 w-7"}
+          aria-label={`تحديد نسبة إنجاز ${a.name}`}
+          disabled={!editable || linked || updatingId !== null}
+          onClick={() => setProgressActivity(a)}
+        >
+          <Percent className="h-3.5 w-3.5 text-primary" />
+        </Button>
+      </span>
+    );
   };
 
   const onSubmit = async (values: ActivityFormValues) => {
@@ -2328,12 +2362,13 @@ export default function ProjectActivities() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-1">
+                        {renderProgressButton(a)}
                         {editable ? (
                           <>
-                            {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 5%" onClick={() => quickIncrement(a, -5)} disabled={a.actualProgress === 0}>
+                            {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="تخفيض الإنجاز 5%" onClick={() => quickIncrement(a, -5)} disabled={updatingId !== null || a.actualProgress === 0}>
                               <span className="text-xs font-bold text-muted-foreground">-5</span>
                             </Button>}
-                            {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 5%" onClick={() => quickIncrement(a, 5)} disabled={a.actualProgress === 100}>
+                            {!source && !managed && <Button variant="outline" size="icon" className="h-7 w-7" title="رفع الإنجاز 5%" onClick={() => quickIncrement(a, 5)} disabled={updatingId !== null || a.actualProgress === 100}>
                               <span className="text-xs font-bold text-primary">+5</span>
                             </Button>}
                             {groups.length > 0 && !managed && (
@@ -2565,10 +2600,11 @@ export default function ProjectActivities() {
                     {editable ? (
                       <div className="flex flex-wrap items-center gap-1 pt-1 border-t">
                         <div className="flex flex-wrap items-center gap-1 mr-auto">
-                          {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="تخفيض الإنجاز 5%" aria-label="تخفيض الإنجاز 5%" onClick={() => quickIncrement(a, -5)} disabled={a.actualProgress === 0}>
+                          {renderProgressButton(a, true)}
+                          {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="تخفيض الإنجاز 5%" aria-label="تخفيض الإنجاز 5%" onClick={() => quickIncrement(a, -5)} disabled={updatingId !== null || a.actualProgress === 0}>
                             <span className="text-xs font-bold text-muted-foreground">-5</span>
                           </Button>}
-                          {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="رفع الإنجاز 5%" aria-label="رفع الإنجاز 5%" onClick={() => quickIncrement(a, 5)} disabled={a.actualProgress === 100}>
+                          {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="رفع الإنجاز 5%" aria-label="رفع الإنجاز 5%" onClick={() => quickIncrement(a, 5)} disabled={updatingId !== null || a.actualProgress === 100}>
                             <span className="text-xs font-bold text-primary">+5</span>
                           </Button>}
                           <Button variant="ghost" size="icon" className="h-10 w-10" aria-label={`تعديل ${a.name}`} onClick={() => handleEdit(a)}>
@@ -2580,7 +2616,8 @@ export default function ProjectActivities() {
                         </div>
                       </div>
                     ) : (
-                      <div className="pt-1 border-t">
+                      <div className="flex items-center gap-2 pt-1 border-t">
+                        {renderProgressButton(a, true)}
                         <span className="text-xs text-muted-foreground">عرض فقط</span>
                       </div>
                     )}
@@ -2687,6 +2724,18 @@ export default function ProjectActivities() {
         </Card>
         )}
       </div>
+
+      <ActivityProgressDialog
+        activity={progressActivity}
+        saving={updatingId !== null}
+        onClose={() => setProgressActivity(null)}
+        onSave={async progress => {
+          if (progressActivity && await setActivityProgress(progressActivity, progress)) {
+            setProgressActivity(null);
+            toast({ title: "تم تحديد نسبة الإنجاز" });
+          }
+        }}
+      />
 
       {!isViewer && !isContractorBase && (
       <Dialog open={isGroupDialogOpen} onOpenChange={(open) => {
