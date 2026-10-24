@@ -14,3 +14,9 @@ For new reports, “نسبة الإنجاز حتى تاريخه” means cumulat
 **Why:** The user explicitly requested period-based reporting and approved implementing it in Development only, with existing saved reports preserved.
 
 **How to apply:** Keep historical reports frozen when live progress or weights change. Recording history now does not establish earlier actuals: periods before coverage need explicit documented manual input or an unavailable state. Record-time history is not permission to infer when earlier work physically occurred.
+
+For this report-calculation work, the user said: “أنا لا اريد تغيير بيانات وانما طريقة حساب النسبة في التقرير”. Using the previous progress-saving mechanism means reading it as a calculation source, not restoring or merging audit data.
+
+**Why:** The user corrected an unsolicited backup-restoration direction; the requested scope is the report calculation.
+
+**How to apply:** Keep existing project data and reports unchanged. Discuss or implement the calculation against available history without initiating audit imports, restoration previews or data reconciliation unless separately requested.
