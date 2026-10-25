@@ -26,3 +26,9 @@ The user approved the simpler report-level approach: choose the reporting period
 **Why:** The user requested a less complicated solution than entering an effective progress date for each activity and confirmed it with “رائع”, but rejected limiting the AI to their wording alone.
 
 **How to apply:** Keep the approved percentage and narrative scoped to the report and frozen after saving; do not change live project progress or existing reports. A manually approved aggregate does not establish historical progress for individual activities. Analyse dated historical values; use saved snapshots for existing reports. Distinguish cumulative state from work executed during the period. Missing history cannot be replaced with today's values or zeros; supervisor text remains usable when historical analysis is unavailable.
+
+For legacy reports without snapshots, show the available activity catalogue and schedule as explicitly labelled reference material, and use the last dated audit progress before the period cutoff where available. Keep the approved aggregate independent; unknown historical membership and weights prevent reconstructing an aggregate from today's catalogue.
+
+**Why:** The user rejected hiding all work items in an existing project and approved using the previous progress log while preserving AI analysis.
+
+**How to apply:** Reconstruct read-only without importing logs or changing saved reports. Missing values remain “غير موثق للفترة”; current schedule is not evidence for historical variance/SPI. Linked-source audit aggregates alone are insufficient without dated source membership/weights.

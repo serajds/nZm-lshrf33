@@ -211,6 +211,9 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
           return;
         }
         snapshot = Array.isArray(existing.snapshot) ? existing.snapshot as SnapshotRow[] : [];
+        if (!Array.isArray(existing.snapshot)) {
+          snapshot = (await getReportPeriodProgress(projectId, periodEnd)).activities ?? [];
+        }
         if (snapshotOverrides !== undefined) {
           if (!Array.isArray(snapshotOverrides)) {
             res.status(400).json({ error: "تعديلات بنود التقرير غير صالحة" }); return;
@@ -219,7 +222,7 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
         }
       } else {
         const historical = await getReportPeriodProgress(projectId, periodEnd);
-        snapshot = historical.available ? historical.activities : [];
+        snapshot = historical.activities ?? [];
       }
     } else if (reportId != null) {
       const [report] = await db.select({
@@ -613,7 +616,11 @@ router.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId")
     return;
   }
 
-  res.json(report);
+  const referenceActivities = !Array.isArray(report.activitiesSnapshot) && validReportDay(report.periodEnd)
+    ? (await getReportPeriodProgress(projectId, report.periodEnd)).activities ?? []
+    : undefined;
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ ...report, referenceActivities });
 });
 
 router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res): Promise<void> => {

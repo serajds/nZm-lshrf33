@@ -468,6 +468,7 @@ export default function ProjectReports() {
   // here only touch the report's snapshot — never the master activities
   // table. See task #45.
   const [snapshotRows, setSnapshotRows] = useState<ReportActivitiesSnapshotItem[]>([]);
+  const [referenceRows, setReferenceRows] = useState<(ReportActivitiesSnapshotItem & { actualHistoricalUnverified?: boolean })[]>([]);
   const originalSnapshotRows = useRef<ReportActivitiesSnapshotItem[]>([]);
   const aiDraftSnapshotFingerprint = useRef<string | null>(null);
   const aiApprovedContext = useRef<string | null>(null);
@@ -633,6 +634,7 @@ export default function ProjectReports() {
     });
     setOpenGroupIdx(0);
     setSnapshotRows([]);
+    setReferenceRows([]);
     originalSnapshotRows.current = [];
     setManualOverrideProgress(false);
     setIsDialogOpen(true);
@@ -644,9 +646,10 @@ export default function ProjectReports() {
       const full = await queryClient.fetchQuery({
         queryKey: getGetReportQueryKey(projectId, r.id),
         queryFn: ({ signal }) => getReport(projectId, r.id, { signal }),
-        staleTime: 1000 * 60 * 5,
+        staleTime: 0,
       }) as Report;
       const snap = (full.activitiesSnapshot ?? []) as ReportActivitiesSnapshotItem[];
+      setReferenceRows((full as Report & { referenceActivities?: typeof referenceRows }).referenceActivities ?? []);
       const sorted = [...snap].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
       setSnapshotRows(sorted);
       setManualOverrideProgress((full as Report & { progressSource?: string }).progressSource === "manual");
@@ -685,6 +688,7 @@ export default function ProjectReports() {
 
   const snapshotWeightedProgress = useMemo(() => {
     if (snapshotRows.length === 0) return null;
+    if (snapshotRows.some(row => (row as { referenceOnly?: boolean }).referenceOnly)) return null;
     let totalWeight = 0;
     let weighted = 0;
     for (const row of snapshotRows) {
@@ -747,7 +751,7 @@ export default function ProjectReports() {
       fullReport = await queryClient.fetchQuery({
         queryKey: getGetReportQueryKey(projectId, report.id),
         queryFn: ({ signal }) => getReport(projectId, report.id, { signal }),
-        staleTime: 1000 * 60 * 5,
+        staleTime: 0,
       }) as Report;
     } catch {
       toast({ title: "تعذّر تحميل تفاصيل التقرير", variant: "destructive" });
@@ -779,7 +783,8 @@ export default function ProjectReports() {
     // A historical report without a saved snapshot cannot be reconstructed
     // from today's activities; show that limitation instead of implying that
     // current activity values describe the report date.
-    const snapshotActivities = fullReport.activitiesSnapshot ?? null;
+    const snapshotActivities = fullReport.activitiesSnapshot
+      ?? (fullReport as Report & { referenceActivities?: ReportActivitiesSnapshotItem[] }).referenceActivities ?? null;
     const hasSnapshot = Array.isArray(snapshotActivities);
     const sourceActivities: ReportActivitiesSnapshotItem[] = hasSnapshot ? snapshotActivities : [];
     const activityList: ActivityForReport[] = sourceActivities.map((a) => ({
@@ -787,11 +792,17 @@ export default function ProjectReports() {
       plannedProgress: a.plannedProgress ?? 0,
       actualProgress: a.actualProgress ?? 0,
       status: (a.status as ActivityForReport["status"]) ?? "not_started",
+      plannedStartDate: a.plannedStartDate,
+      plannedEndDate: a.plannedEndDate,
+      actualHistoricalUnverified: (a as ReportActivitiesSnapshotItem & { actualHistoricalUnverified?: boolean }).actualHistoricalUnverified,
       plannedAsOfDate: (a as ReportActivitiesSnapshotItem & { plannedAsOfDate?: string }).plannedAsOfDate,
       plannedHistoricalUnverified: (a as ReportActivitiesSnapshotItem & { plannedHistoricalUnverified?: boolean }).plannedHistoricalUnverified,
     }));
     const weightedSnapshotProgress = (field: "plannedProgress" | "actualProgress") => {
       if (!hasSnapshot) return null;
+      if (!Array.isArray(fullReport.activitiesSnapshot)) return null;
+      if (field === "actualProgress" && sourceActivities.some(row =>
+        (row as ReportActivitiesSnapshotItem & { actualHistoricalUnverified?: boolean }).actualHistoricalUnverified)) return null;
       let totalWeight = 0;
       let weighted = 0;
       for (const row of sourceActivities) {
@@ -1499,9 +1510,16 @@ export default function ProjectReports() {
                         {isLoadingSnapshot ? (
                           <div className="p-8"><LoadingSpinner text="جاري تحميل البنود..." /></div>
                         ) : snapshotRows.length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground flex flex-col items-center gap-2">
-                            <AlertCircle className="h-8 w-8 text-muted-foreground/30" />
-                            <p className="text-sm">لا توجد بنود محفوظة في هذا التقرير</p>
+                          <div className="p-4 overflow-x-auto">
+                            <p className="text-sm text-muted-foreground mb-3">بنود مرجعية مع الإنجاز الموثق حتى نهاية الفترة. الجدول المعروض مرجعي، ولا يغيّر نسبة التقرير المعتمدة.</p>
+                            <table className="w-full text-sm">
+                              <thead><tr><th>البند</th><th>البداية المخططة</th><th>النهاية المخططة</th><th>الإنجاز المسجل</th></tr></thead>
+                              <tbody>{referenceRows.map(row => <tr key={row.id} className="border-b">
+                                <td className="p-2">{row.name}</td><td>{row.plannedStartDate ?? "—"}</td><td>{row.plannedEndDate ?? "—"}</td>
+                                <td>{row.actualHistoricalUnverified ? "غير موثق للفترة" : `${row.actualProgress}%`}</td>
+                              </tr>)}</tbody>
+                            </table>
+                            {!referenceRows.length && <p className="text-sm">لا توجد بنود متاحة للعرض.</p>}
                           </div>
                         ) : (
                           <div className="overflow-x-auto bg-card">
@@ -1519,19 +1537,21 @@ export default function ProjectReports() {
                                 {snapshotRows.map(row => {
                                   const rowId = row.id;
                                   if (typeof rowId !== "number") return null;
+                                  const referenceRow = row as ReportActivitiesSnapshotItem & { referenceOnly?: boolean; actualHistoricalUnverified?: boolean };
                                   return (
                                     <tr key={rowId} className="hover:bg-muted/10 transition-colors">
                                       <td className="px-4 py-3 align-middle">
                                         <span className="font-medium text-foreground/90">{row.name ?? "—"}</span>
                                       </td>
                                       <td className="px-4 py-3 text-center font-mono text-xs text-muted-foreground/70">
-                                        {typeof row.weight === "number" ? row.weight : 1}
+                                        {referenceRow.referenceOnly ? "—" : typeof row.weight === "number" ? row.weight : 1}
                                       </td>
                                       <td className="px-4 py-3 text-center font-mono text-xs text-muted-foreground/70">
                                         {typeof row.plannedProgress === "number" ? Math.round(row.plannedProgress * 10) / 10 : 0}%
+                                        {referenceRow.referenceOnly && <span> (مرجعي)</span>}
                                       </td>
                                       <td className="px-4 py-3">
-                                        <Input
+                                        {referenceRow.referenceOnly ? <span className="text-xs">{referenceRow.actualHistoricalUnverified ? "غير موثق للفترة" : `${row.actualProgress}%`}</span> : <Input
                                           type="number"
                                           min={0}
                                           max={100}
@@ -1543,10 +1563,11 @@ export default function ProjectReports() {
                                             updateSnapshotRow(rowId, { actualProgress: clamped });
                                           }}
                                           className="h-9 text-center font-mono text-sm bg-background border-input/60 shadow-inner"
-                                        />
+                                        />}
                                       </td>
                                       <td className="px-4 py-3">
                                         <Select
+                                          disabled={referenceRow.referenceOnly}
                                           value={row.status ?? "not_started"}
                                           onValueChange={(v) => updateSnapshotRow(rowId, { status: v })}
                                         >
@@ -1846,7 +1867,7 @@ export default function ProjectReports() {
             <div className="space-y-5">
               {(report as Report & { historicalSnapshotAvailable?: boolean }).historicalSnapshotAvailable === false && (
                 <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-                  البيانات التاريخية غير متاحة لهذا التقرير القديم؛ لا توجد لقطة أنشطة محفوظة، ولا تمثل الأنشطة الحالية حالة التقرير السابقة.
+                  تعرض المعاينة بنود الأعمال ونسبها الموثقة في السجل، والجدول المتاح كمرجع؛ تبقى نسبة التقرير المعتمدة كما هي.
                 </div>
               )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">

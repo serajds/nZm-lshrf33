@@ -125889,6 +125889,47 @@ init_drizzle_orm();
 // src/lib/report-period-progress.ts
 init_src();
 import { createHash as createHash2 } from "node:crypto";
+async function getLegacyReportActivities(projectId, day) {
+  const { rows } = await pool.query(`
+    SELECT a.id, a.name, a.planned_start_date::text AS "plannedStartDate",
+      a.planned_end_date::text AS "plannedEndDate",
+      a.external_source_group_id AS "externalSourceGroupId", a.sort_order AS "sortOrder",
+      h.details, h.created_at AS "recordedAt"
+    FROM activities a
+    LEFT JOIN LATERAL (
+      SELECT details, created_at FROM audit_log
+      WHERE project_id = a.project_id AND entity_type = 'activity' AND entity_id = a.id
+        AND action IN ('create', 'update') AND created_at < $2
+        AND (details ? 'actualProgressAfter' OR details ? 'actualProgress')
+      ORDER BY created_at DESC, id DESC LIMIT 1
+    ) h ON true
+    WHERE a.project_id = $1 ORDER BY a.sort_order, a.id
+  `, [projectId, periodCutoff(day)]);
+  return rows.map((row) => {
+    const value = row.details?.actualProgressAfter ?? row.details?.actualProgress;
+    const verified = row.externalSourceGroupId == null && typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
+    return {
+      id: row.id,
+      name: row.name,
+      groupId: null,
+      plannedStartDate: row.plannedStartDate,
+      plannedEndDate: row.plannedEndDate,
+      actualStartDate: null,
+      actualEndDate: null,
+      weight: 1,
+      sortOrder: row.sortOrder,
+      externalSourceGroupId: row.externalSourceGroupId,
+      actualProgress: verified ? value : 0,
+      actualHistoricalUnverified: !verified,
+      actualAsOfDate: verified ? day : void 0,
+      actualRecordedAt: verified ? row.recordedAt?.toISOString() : void 0,
+      status: verified ? value === 100 ? "completed" : value > 0 ? "in_progress" : "not_started" : "unknown",
+      plannedProgress: calcActivityPlannedProgress(row, /* @__PURE__ */ new Date(`${day}T00:00:00Z`)),
+      plannedHistoricalUnverified: true,
+      referenceOnly: true
+    };
+  });
+}
 function validReportDay(day) {
   return typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day) && !Number.isNaN(Date.parse(day)) && new Date(day).toISOString().slice(0, 10) === day;
 }
@@ -125964,7 +126005,10 @@ async function getReportPeriodProgress(projectId, day, now = /* @__PURE__ */ new
     [cutoff]
   );
   const root = rows.find((row) => row.project_id === projectId);
-  if (!root) return missing("\u0644\u0627 \u064A\u0648\u062C\u062F \u0633\u062C\u0644 \u0645\u0648\u062B\u0648\u0642 \u064A\u063A\u0637\u064A \u0646\u0647\u0627\u064A\u0629 \u0647\u0630\u0647 \u0627\u0644\u0641\u062A\u0631\u0629. \u0623\u062F\u062E\u0644 \u0646\u0633\u0628\u0629 \u0645\u0648\u062B\u0651\u0642\u0629 \u064A\u062F\u0648\u064A\u0627\u064B\u061B \u0644\u0646 \u064A\u064F\u0633\u062A\u062E\u062F\u0645 \u0625\u0646\u062C\u0627\u0632 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u062D\u0627\u0644\u064A.");
+  if (!root) return {
+    ...missing("\u0627\u0639\u062A\u0645\u062F \u0646\u0633\u0628\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u064A\u062F\u0648\u064A\u0627\u064B\u061B \u062A\u064F\u0639\u0631\u0636 \u0646\u0633\u0628 \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u0648\u062B\u0642\u0629 \u0641\u064A \u0627\u0644\u0633\u062C\u0644 \u0648\u0627\u0644\u062C\u062F\u0648\u0644 \u0627\u0644\u062D\u0627\u0644\u064A \u0643\u0645\u0631\u062C\u0639."),
+    activities: await getLegacyReportActivities(projectId, day)
+  };
   const activities = resolveHistoricalActivities(root.snapshot, rows.map((r) => r.snapshot), day).map((a) => ({ ...a, actualRecordedAt: root.captured_at.toISOString() }));
   const overallProgress = weightedHistoryProgress(activities);
   const hasSchedule = !root.snapshot.noSchedule && hasValidProjectSchedule(root.snapshot.startDate, root.snapshot.expectedEndDate);
@@ -126318,6 +126362,9 @@ router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proj
           return;
         }
         snapshot = Array.isArray(existing.snapshot) ? existing.snapshot : [];
+        if (!Array.isArray(existing.snapshot)) {
+          snapshot = (await getReportPeriodProgress(projectId, periodEnd)).activities ?? [];
+        }
         if (snapshotOverrides !== void 0) {
           if (!Array.isArray(snapshotOverrides)) {
             res.status(400).json({ error: "\u062A\u0639\u062F\u064A\u0644\u0627\u062A \u0628\u0646\u0648\u062F \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629" });
@@ -126327,7 +126374,7 @@ router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proj
         }
       } else {
         const historical = await getReportPeriodProgress(projectId, periodEnd);
-        snapshot = historical.available ? historical.activities : [];
+        snapshot = historical.activities ?? [];
       }
     } else if (reportId != null) {
       const [report] = await db.select({
@@ -126664,7 +126711,9 @@ router5.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId"
     res.status(404).json({ error: "\u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     return;
   }
-  res.json(report);
+  const referenceActivities = !Array.isArray(report.activitiesSnapshot) && validReportDay(report.periodEnd) ? (await getReportPeriodProgress(projectId, report.periodEnd)).activities ?? [] : void 0;
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ ...report, referenceActivities });
 });
 router5.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res) => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;

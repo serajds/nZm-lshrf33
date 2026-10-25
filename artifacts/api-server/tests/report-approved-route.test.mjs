@@ -154,6 +154,23 @@ test("unverified or missing historical activity values cannot replace missing wo
   });
 });
 
+test("legacy report without a snapshot analyses audit reconstruction without requiring a historical aggregate", async t => {
+  await withPromptCapture(async prompts => {
+    globalThis.approvedDbSelectFixture = () => ({
+      from: () => ({ where: async () => [{ id: 3, periodEnd: base.periodEnd, snapshot: null }] }),
+    });
+    globalThis.approvedHistoryFixture = async () => ({
+      available: false, overallProgress: null,
+      activities: historicalRows.map(row => ({ ...row, plannedHistoricalUnverified: true })),
+    });
+    const res = await invoke({ ...base, reportId: 3, workDescription: "" });
+    if (res.code === 503) { t.skip("No provider configured"); return; }
+    assert.equal(res.code, 200);
+    assert.ok(prompts[0].includes('"plannedProgressAsOfPeriodEnd":null'));
+    assert.ok(prompts[0].includes('"actualProgressAsOfPeriodEnd":40'));
+  });
+});
+
 test("incomplete provider response is rejected instead of leaving report sections silently empty", async t => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
