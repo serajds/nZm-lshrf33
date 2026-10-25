@@ -32,3 +32,9 @@ For legacy reports without snapshots, show the available activity catalogue and 
 **Why:** The user rejected hiding all work items in an existing project and approved using the previous progress log while preserving AI analysis.
 
 **How to apply:** Reconstruct read-only without importing logs or changing saved reports. Missing values remain “غير موثق للفترة”; current schedule is not evidence for historical variance/SPI. Linked-source audit aggregates alone are insufficient without dated source membership/weights.
+
+Keep manual-entry provenance internal; do not label owner-facing reports “معتمدة يدويًا للتقرير”.
+
+**Why:** The user clarified that issued reports go to the owner and these internal workflow labels are inappropriate there.
+
+**How to apply:** Retain provenance in the editor/audit data, but present supervisor-approved figures as report figures in the issued document and AI narrative. This does not authorize presenting unknown or current values as verified historical facts.
