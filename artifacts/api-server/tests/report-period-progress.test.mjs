@@ -38,6 +38,7 @@ const row = (snapshot, capturedAt) => ({ project_id: snapshot.projectId, snapsho
 const now = new Date("2026-10-24T15:00:00Z");
 function history(rows) {
   globalThis.historyTestQuery = async (sql, params) => {
+    if (sql.includes("FROM activities a")) return { rows: [] };
     if (sql.includes("min(captured_at)")) {
       const target = rows.filter(r => r.project_id === params[0]).sort((a, b) => a.captured_at - b.captured_at);
       return { rows: [{ started_at: target[0]?.captured_at ?? null }] };
@@ -94,8 +95,30 @@ test("no history and future periods return unavailable, never today's progress o
     const result = await getReportPeriodProgress(1, day, now);
     assert.equal(result.available, false);
     assert.equal(result.overallProgress, null);
-    assert.equal(result.activities, null);
+    assert.deepEqual(result.activities, day === "2026-10-25" ? null : []);
   }
+});
+
+test("legacy audit values are dated evidence, missing and linked values stay unverified", async () => {
+  const { getLegacyReportActivities } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
+  globalThis.historyTestQuery = async (sql, params) => {
+    assert.match(sql, /created_at < \$2/);
+    assert.match(sql, /project_id = a.project_id/);
+    assert.equal(params[1].toISOString(), "2026-10-20T22:00:00.000Z");
+    return { rows: [
+      { id: 1, name: "recorded", externalSourceGroupId: null, details: { actualProgressAfter: 40 }, recordedAt: new Date("2026-10-19") },
+      { id: 2, name: "missing", externalSourceGroupId: null, details: null },
+      { id: 3, name: "linked", externalSourceGroupId: 5, details: { actualProgress: 90 } },
+      { id: 4, name: "zero", externalSourceGroupId: null, details: { actualProgressAfter: 0 }, recordedAt: new Date("2026-10-19") },
+    ] };
+  };
+  const rows = await getLegacyReportActivities(1, "2026-10-20");
+  assert.equal(rows[0].actualProgress, 40);
+  assert.equal(rows[0].actualAsOfDate, "2026-10-20");
+  assert.equal(rows[1].actualHistoricalUnverified, true);
+  assert.equal(rows[2].actualHistoricalUnverified, true);
+  assert.equal(rows[3].actualHistoricalUnverified, false);
+  assert.ok(rows.every(r => r.plannedHistoricalUnverified));
 });
 
 test("an update at Libya midnight belongs to the following period", async () => {

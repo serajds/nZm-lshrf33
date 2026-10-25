@@ -34,3 +34,19 @@ test("manual aggregate remains printable without inventing an activity snapshot 
   assert.match(html, /معتمدة يدوياً حتى نهاية الفترة: 40%/);
   assert.doesNotMatch(html, />SPI<\/span>/);
 });
+
+test("legacy reference shows work and schedule without presenting missing progress as zero or SPI", () => {
+  const html = buildPrintHTML({
+    ...report, actualProgress: null, plannedProgress: null, plannedHistoricalUnverified: true, spi: null,
+    activities: [{
+      name: "بند مرجعي", actualProgress: 0, plannedProgress: 70, status: "unknown",
+      actualHistoricalUnverified: true, plannedHistoricalUnverified: true,
+      plannedStartDate: "2026-09-01", plannedEndDate: "2026-09-30",
+    }],
+  });
+  assert.match(html, /بند مرجعي/);
+  assert.match(html, /جدول مرجعي/);
+  assert.match(html, /غير موثق للفترة/);
+  assert.doesNotMatch(html, /لا توجد لقطة أنشطة محفوظة/);
+  assert.doesNotMatch(html, />SPI<\/span>/);
+});

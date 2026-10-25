@@ -10,6 +10,7 @@ export interface ActivityForReport {
   actualEndDate?: string | null;
   plannedAsOfDate?: string;
   plannedHistoricalUnverified?: boolean;
+  actualHistoricalUnverified?: boolean;
   delayed?: boolean;
 }
 
@@ -176,16 +177,16 @@ export function buildPrintHTML(data: ReportPdfData): string {
           ${acts.map((a, i) => {
             const barW = Math.min(100, Math.max(0, a.actualProgress));
             return `<tr style="background:${i % 2 === 0 ? "#fff" : "#f8fafc"}">
-              <td class="td">${esc(a.name)}</td>
-              <td class="td tc">${!scheduleAvailable ? "—" : a.plannedHistoricalUnverified ? `${(Math.round((a.plannedProgress ?? 0) * 10) / 10).toFixed(1)}% (${fmtDate(a.plannedAsOfDate)})` : `${(Math.round((a.plannedProgress ?? 0) * 10) / 10).toFixed(1)}%`}</td>
-              <td class="td tc" style="font-weight:700">${(Math.round((a.actualProgress ?? 0) * 10) / 10).toFixed(1)}%</td>
+              <td class="td">${esc(a.name)}${a.plannedStartDate || a.plannedEndDate ? `<div style="font-size:10px;color:#64748b">${fmtDate(a.plannedStartDate)} — ${fmtDate(a.plannedEndDate)}${a.plannedHistoricalUnverified ? " (جدول مرجعي)" : ""}</div>` : ""}</td>
+              <td class="td tc">${!scheduleAvailable ? "—" : a.plannedHistoricalUnverified ? `${(Math.round((a.plannedProgress ?? 0) * 10) / 10).toFixed(1)}% (مرجعي)` : `${(Math.round((a.plannedProgress ?? 0) * 10) / 10).toFixed(1)}%`}</td>
+              <td class="td tc" style="font-weight:700">${a.actualHistoricalUnverified ? "غير موثق للفترة" : `${(Math.round((a.actualProgress ?? 0) * 10) / 10).toFixed(1)}%`}</td>
               <td class="td tc">
                 <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;background:${statusBg(a.status)};color:${statusColor(a.status)};border:1px solid ${statusColor(a.status)}">
-                  ${statusLabel(a.status)}
+                  ${a.actualHistoricalUnverified ? "غير موثق" : statusLabel(a.status)}
                 </span>
               </td>
               <td class="td">
-                <div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden"><div style="height:100%;width:${barW}%;background:${statusColor(a.status)};border-radius:4px"></div></div>
+                ${a.actualHistoricalUnverified ? "—" : `<div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden"><div style="height:100%;width:${barW}%;background:${statusColor(a.status)};border-radius:4px"></div></div>`}
               </td>
             </tr>`;
           }).join("")}
@@ -503,7 +504,6 @@ ${(() => {
   ${data.approvedProgress ? `<div class="reported-progress-note">نسبة التقرير معتمدة يدوياً حتى نهاية الفترة: ${pct}%. لا تثبت هذه النسبة وحدها الإنجاز التاريخي لكل بند.</div>` : data.actualHistoricalUnverified && recordedActual != null ? `<div class="reported-progress-note">الفعلي المسجل عند إنشاء التقرير: ${recordedActual}% — لا يمثل قيمة موثقة لتاريخ التقرير.</div>` : ""}
   ${historicalActual != null && historicalActual !== pct ? `<div class="reported-progress-note">نسبة الإنجاز المُبلَّغ عنها في التقرير: ${pct}%</div>` : ""}
 </div>
-${!snapshotAvailable ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">بيانات التقدم التاريخية غير متاحة لهذا التقرير القديم (لا توجد لقطة أنشطة محفوظة). لا تمثل بيانات المشروع الحالية حالة التقرير السابقة.</div>` : ""}
 ${data.actualHistoricalUnverified && !data.approvedProgress ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">التقرير مؤرخ قبل يوم إنشائه؛ الإنجاز الفعلي المعروض مأخوذ من لقطة وقت الإنشاء وغير موثق كتقدم فعلي في تاريخ التقرير. مؤشر SPI التاريخي غير متاح.</div>` : ""}
 ${plannedUnverified ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">تغيّر تاريخ التقرير بعد حفظ خطة بند مرتبط؛ الخطط المحفوظة تخص تواريخها الأصلية، لذا لا يمكن التحقق من المخطط الموزون أو SPI للتاريخ الحالي.</div>` : ""}
 ${!scheduleAvailable ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">${data.noSchedule ? "المشروع بدون جدول زمني معتمد" : "بيانات الجدول الزمني للمشروع غير مكتملة أو غير صالحة"}؛ المخطط ومقارنة SPI غير متاحين، ويظل الإنجاز الفعلي/المُبلَّغ عنه مستقلاً.</div>` : ""}

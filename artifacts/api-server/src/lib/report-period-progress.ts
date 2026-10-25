@@ -15,6 +15,49 @@ export type HistoricalProject = {
 };
 type HistoryRow = { project_id: number; captured_at: Date; snapshot: HistoricalProject };
 
+/** Read-only reconstruction: today's catalogue is reference material, never historical actuals. */
+export async function getLegacyReportActivities(projectId: number, day: string) {
+  const { rows } = await pool.query<{
+    id: number; name: string; plannedStartDate: string | null; plannedEndDate: string | null;
+    externalSourceGroupId: number | null; sortOrder: number;
+    details: Record<string, unknown> | null; recordedAt: Date | null;
+  }>(`
+    SELECT a.id, a.name, a.planned_start_date::text AS "plannedStartDate",
+      a.planned_end_date::text AS "plannedEndDate",
+      a.external_source_group_id AS "externalSourceGroupId", a.sort_order AS "sortOrder",
+      h.details, h.created_at AS "recordedAt"
+    FROM activities a
+    LEFT JOIN LATERAL (
+      SELECT details, created_at FROM audit_log
+      WHERE project_id = a.project_id AND entity_type = 'activity' AND entity_id = a.id
+        AND action IN ('create', 'update') AND created_at < $2
+        AND (details ? 'actualProgressAfter' OR details ? 'actualProgress')
+      ORDER BY created_at DESC, id DESC LIMIT 1
+    ) h ON true
+    WHERE a.project_id = $1 ORDER BY a.sort_order, a.id
+  `, [projectId, periodCutoff(day)]);
+  return rows.map(row => {
+    const value = row.details?.actualProgressAfter ?? row.details?.actualProgress;
+    // Linked aggregates need the historical source membership/weights, not a cached audit value.
+    const verified = row.externalSourceGroupId == null && typeof value === "number"
+      && Number.isFinite(value) && value >= 0 && value <= 100;
+    return {
+      id: row.id, name: row.name, groupId: null,
+      plannedStartDate: row.plannedStartDate, plannedEndDate: row.plannedEndDate,
+      actualStartDate: null, actualEndDate: null, weight: 1,
+      sortOrder: row.sortOrder, externalSourceGroupId: row.externalSourceGroupId,
+      actualProgress: verified ? value : 0,
+      actualHistoricalUnverified: !verified,
+      actualAsOfDate: verified ? day : undefined,
+      actualRecordedAt: verified ? row.recordedAt?.toISOString() : undefined,
+      status: verified ? value === 100 ? "completed" : value > 0 ? "in_progress" : "not_started" : "unknown",
+      plannedProgress: calcActivityPlannedProgress(row, new Date(`${day}T00:00:00Z`)),
+      plannedHistoricalUnverified: true,
+      referenceOnly: true,
+    };
+  });
+}
+
 export function validReportDay(day: unknown): day is string {
   return typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day)
     && !Number.isNaN(Date.parse(day)) && new Date(day).toISOString().slice(0, 10) === day;
@@ -86,7 +129,10 @@ export async function getReportPeriodProgress(projectId: number, day: string, no
      FROM project_progress_history WHERE captured_at < $1
      ORDER BY project_id, captured_at DESC, id DESC`, [cutoff]);
   const root = rows.find(row => row.project_id === projectId);
-  if (!root) return missing("لا يوجد سجل موثوق يغطي نهاية هذه الفترة. أدخل نسبة موثّقة يدوياً؛ لن يُستخدم إنجاز المشروع الحالي.");
+  if (!root) return {
+    ...missing("اعتمد نسبة التقرير يدوياً؛ تُعرض نسب البنود الموثقة في السجل والجدول الحالي كمرجع."),
+    activities: await getLegacyReportActivities(projectId, day),
+  };
   const activities = resolveHistoricalActivities(root.snapshot, rows.map(r => r.snapshot), day)
     .map(a => ({ ...a, actualRecordedAt: root.captured_at.toISOString() }));
   const overallProgress = weightedHistoryProgress(activities);
