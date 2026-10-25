@@ -24,6 +24,7 @@ type SnapshotRow = {
   actualRecordedAt?: string;
   actualAsOfDate?: string;
   actualHistoricalUnverified?: boolean;
+  actualManuallyApproved?: boolean;
   plannedAsOfDate?: string;
   plannedHistoricalUnverified?: boolean;
   plannedProgress?: number;
@@ -67,6 +68,7 @@ function calcWeightedProgress(rows: SnapshotRow[]): number {
 function mergeSnapshot(
   existing: SnapshotRow[] | null | undefined,
   incoming: unknown,
+  approvalDay?: string,
 ): SnapshotRow[] | null {
   if (!Array.isArray(existing) || existing.length === 0) return null;
   if (!Array.isArray(incoming)) return null;
@@ -84,6 +86,12 @@ function mergeSnapshot(
     if (typeof r.status === "string" && ALLOWED_ACTIVITY_STATUSES.has(r.status)) {
       patch.status = r.status;
     }
+    if (r.actualManuallyApproved === true && approvalDay && validReportDay(approvalDay)
+      && validApprovedProgress(r.actualProgress)) {
+      patch.actualManuallyApproved = true;
+      patch.actualAsOfDate = approvalDay;
+      patch.actualHistoricalUnverified = false;
+    }
     if (Object.keys(patch).length > 0) byId.set(idNum, patch);
   }
   if (byId.size === 0) return existing;
@@ -93,9 +101,10 @@ function mergeSnapshot(
     if (!patch) return row;
     if (patch.actualProgress === row.actualProgress) {
       delete patch.actualRecordedAt;
-    } else if (patch.actualProgress !== undefined) {
+    } else if (patch.actualProgress !== undefined && !patch.actualManuallyApproved) {
       patch.actualHistoricalUnverified = true;
       patch.actualAsOfDate = undefined;
+      patch.actualManuallyApproved = false;
     }
     return { ...row, ...patch };
   });
@@ -218,7 +227,7 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
           if (!Array.isArray(snapshotOverrides)) {
             res.status(400).json({ error: "تعديلات بنود التقرير غير صالحة" }); return;
           }
-          snapshot = mergeSnapshot(snapshot, snapshotOverrides) ?? snapshot;
+          snapshot = mergeSnapshot(snapshot, snapshotOverrides, periodEnd) ?? snapshot;
         }
       } else {
         const historical = await getReportPeriodProgress(projectId, periodEnd);
@@ -683,17 +692,19 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
       res.status(404).json({ error: "التقرير غير موجود" });
       return;
     }
-    const existing = (current.snapshot ?? null) as SnapshotRow[] | null;
+    const approvalDay = body.periodEnd ?? progressMeta?.periodEnd;
+    const existing = (current.snapshot ?? (validReportDay(approvalDay)
+      ? (await getReportPeriodProgress(projectId, approvalDay)).activities : null)) as SnapshotRow[] | null;
     const merged = body.activitiesSnapshot !== undefined
-      ? mergeSnapshot(existing, body.activitiesSnapshot)
+      ? mergeSnapshot(existing, body.activitiesSnapshot, approvalDay)
       : existing;
     if (merged) {
       updateData.activitiesSnapshot = body.reportDate !== undefined && !progressMeta?.source
         ? merged.map(row => {
-            if (row.externalSourceGroupId != null) {
+            if (row.externalSourceGroupId != null || (row as SnapshotRow & { referenceOnly?: boolean }).referenceOnly) {
               return {
                 ...row,
-                plannedHistoricalUnverified: row.plannedAsOfDate !== body.reportDate,
+                plannedHistoricalUnverified: true,
               };
             }
             return {
@@ -708,9 +719,8 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
           })
         : merged;
       if (progressMeta?.source && merged.some(row => row.actualHistoricalUnverified)) updateData.progressSource = "manual";
-      if (body.activitiesSnapshot !== undefined && body.progressPercentage === undefined) {
-        updateData.progressPercentage = calcWeightedProgress(merged);
-      }
+      if (merged.some(row => row.actualManuallyApproved)) updateData.progressSource = "manual";
+      // Item edits never implicitly replace the supervisor's report aggregate.
     }
   }
 

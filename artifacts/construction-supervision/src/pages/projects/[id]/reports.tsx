@@ -467,13 +467,13 @@ export default function ProjectReports() {
   // opening an existing report's edit dialog (see `handleEdit`). Edits
   // here only touch the report's snapshot — never the master activities
   // table. See task #45.
-  const [snapshotRows, setSnapshotRows] = useState<ReportActivitiesSnapshotItem[]>([]);
+  const [snapshotRows, setSnapshotRows] = useState<(ReportActivitiesSnapshotItem & { actualManuallyApproved?: boolean; actualHistoricalUnverified?: boolean })[]>([]);
   const [referenceRows, setReferenceRows] = useState<(ReportActivitiesSnapshotItem & { actualHistoricalUnverified?: boolean })[]>([]);
   const originalSnapshotRows = useRef<ReportActivitiesSnapshotItem[]>([]);
   const aiDraftSnapshotFingerprint = useRef<string | null>(null);
   const aiApprovedContext = useRef<string | null>(null);
   const aiAnalyzedRows = useRef<string | null>(null);
-  const analysisKey = () => JSON.stringify(snapshotRows.map(row => [row.id, row.actualProgress, row.status]));
+  const analysisKey = () => JSON.stringify(snapshotRows.map(row => [row.id, row.actualProgress, row.status, row.actualManuallyApproved]));
   const approvalKey = (values: ReportFormValues) => JSON.stringify([
     values.reportDate, values.periodStart, values.periodEnd, Number(values.progressPercentage),
   ]);
@@ -482,7 +482,6 @@ export default function ProjectReports() {
   // When true, the user wants to type a manual overall %. Otherwise the
   // overall % is auto-recomputed from the snapshot rows using the
   // weighted-average formula.
-  const [manualOverrideProgress, setManualOverrideProgress] = useState(false);
 
   const { data: project, isLoading: isProjectLoading } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: myPermissions } = useMyProjectPermissions(projectId);
@@ -636,7 +635,6 @@ export default function ProjectReports() {
     setSnapshotRows([]);
     setReferenceRows([]);
     originalSnapshotRows.current = [];
-    setManualOverrideProgress(false);
     setIsDialogOpen(true);
 
     // The list endpoint strips `activitiesSnapshot` to keep payloads small,
@@ -648,11 +646,10 @@ export default function ProjectReports() {
         queryFn: ({ signal }) => getReport(projectId, r.id, { signal }),
         staleTime: 0,
       }) as Report;
-      const snap = (full.activitiesSnapshot ?? []) as ReportActivitiesSnapshotItem[];
+      const snap = (full.activitiesSnapshot ?? (full as Report & { referenceActivities?: ReportActivitiesSnapshotItem[] }).referenceActivities ?? []) as ReportActivitiesSnapshotItem[];
       setReferenceRows((full as Report & { referenceActivities?: typeof referenceRows }).referenceActivities ?? []);
       const sorted = [...snap].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
       setSnapshotRows(sorted);
-      setManualOverrideProgress((full as Report & { progressSource?: string }).progressSource === "manual");
       originalSnapshotRows.current = sorted;
     } catch {
       toast({ title: "تعذّر تحميل بنود التقرير", variant: "destructive" });
@@ -700,21 +697,13 @@ export default function ProjectReports() {
     return Math.round((weighted / totalWeight) * 10) / 10;
   }, [snapshotRows]);
 
-  // Keep the form's overall % synced with the live weighted average as
-  // long as the user hasn't toggled manual override. This way the field
-  // (and any consumers that read the form value at submit time) reflects
-  // what the user actually sees in the table.
-  useEffect(() => {
-    if (!editingId) return;
-    if (manualOverrideProgress) return;
-    if (snapshotWeightedProgress == null) return;
-    if (form.getValues("progressPercentage") !== snapshotWeightedProgress) {
-      form.setValue("progressPercentage", snapshotWeightedProgress, { shouldDirty: true });
-    }
-  }, [snapshotWeightedProgress, manualOverrideProgress, editingId]);
-
   const updateSnapshotRow = (id: number, patch: Partial<ReportActivitiesSnapshotItem>) => {
-    setSnapshotRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
+    setSnapshotRows(prev => prev.map(r => (r.id === id ? {
+      ...r, ...patch,
+      ...(patch.actualProgress !== undefined || (patch.status !== undefined && !r.actualHistoricalUnverified) ? {
+        actualManuallyApproved: true, actualHistoricalUnverified: false,
+      } : {}),
+    } : r)));
   };
 
   const STATUS_LABELS: Record<string, string> = {
@@ -1014,11 +1003,14 @@ export default function ProjectReports() {
         // generated type marks `id` as required, and rows without one
         // wouldn't match anything server-side anyway).
         const snapshotPayload: UpdateReportBodyActivitiesSnapshotItem[] = snapshotRows
-          .filter((r): r is ReportActivitiesSnapshotItem & { id: number } => typeof r.id === "number")
+          .filter((r): r is typeof r & { id: number } => typeof r.id === "number")
+          .filter(r => r.actualManuallyApproved || originalSnapshotRows.current.some(o =>
+            o.id === r.id && (o.actualProgress !== r.actualProgress || o.status !== r.status)))
           .map(r => ({
             id: r.id,
             actualProgress: r.actualProgress ?? 0,
             status: r.status ?? "not_started",
+            actualManuallyApproved: r.actualManuallyApproved === true,
           }));
         const updateBody: UpdateReportBody = {
           ...rest,
@@ -1027,12 +1019,6 @@ export default function ProjectReports() {
         };
         if (snapshotPayload.length > 0) {
           updateBody.activitiesSnapshot = snapshotPayload;
-          // When the user is letting the system auto-compute, drop the
-          // explicit % so the server's recompute path wins. Otherwise
-          // keep the manual value (rest already includes it).
-          if (!manualOverrideProgress) {
-            delete (updateBody as { progressPercentage?: number | null }).progressPercentage;
-          }
         }
         await updateReport.mutateAsync({ projectId, id: editingId, data: updateBody });
         queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, editingId) });
@@ -1117,7 +1103,12 @@ export default function ProjectReports() {
       const snapshotOverrides = snapshotRows.flatMap(row => {
         const original = originalById.get(row.id);
         if (!original || typeof row.id !== "number") return [];
-        const changed: { id: number; actualProgress?: number; status?: string } = { id: row.id };
+        const changed: { id: number; actualProgress?: number; status?: string; actualManuallyApproved?: boolean } = { id: row.id };
+        if (row.actualManuallyApproved) {
+          changed.actualProgress = row.actualProgress ?? 0;
+          changed.status = row.status;
+          changed.actualManuallyApproved = true;
+        }
         if (row.actualProgress !== original.actualProgress) changed.actualProgress = row.actualProgress ?? 0;
         if (row.status !== original.status) changed.status = row.status ?? "not_started";
         return Object.keys(changed).length > 1 ? [changed] : [];
@@ -1223,7 +1214,6 @@ export default function ProjectReports() {
               form.reset();
               setEditingId(null);
               setSnapshotRows([]);
-              setManualOverrideProgress(false);
               aiDraftSnapshotFingerprint.current = null;
             }
           }}>
@@ -1355,27 +1345,12 @@ export default function ProjectReports() {
                       );
                       // When editing an existing report with a loaded
                       // snapshot, the overall % is derived from the table
-                      // below using the weighted-average formula. The user
-                      // can still force a manual value via the override
-                      // toggle. When creating a new report (no editingId)
-                      // we fall back to the existing project-activities
-                      // auto-suggest button.
                       const hasSnapshot = !!editingId && snapshotRows.length > 0;
-                      const isDerivedReadOnly = hasSnapshot && !manualOverrideProgress;
+                      const isDerivedReadOnly = false;
                       return (
                         <FormItem className="sm:col-span-2">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
                             <FormLabel className="mb-0">نسبة الإنجاز حتى تاريخه (%)</FormLabel>
-                            {hasSnapshot ? (
-                              <button
-                                type="button"
-                                onClick={() => setManualOverrideProgress(v => !v)}
-                                className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium bg-primary/8 hover:bg-primary/15 rounded-md px-2.5 py-1 transition-colors border border-primary/20"
-                              >
-                                <Calculator className="h-3.5 w-3.5" />
-                                {manualOverrideProgress ? "العودة للحساب التلقائي" : "تجاوز يدوي"}
-                              </button>
-                            ) : null}
                           </div>
                           <FormControl>
                             <div className="relative">
@@ -1395,7 +1370,7 @@ export default function ProjectReports() {
                             <p className="text-xs text-muted-foreground mt-1">
                               {isDerivedReadOnly
                                 ? `محتسب تلقائياً من المتوسط الموزون لبنود التقرير (${snapshotRows.length} بند)`
-                                : "وضع يدوي: لن تتم إعادة حساب النسبة من البنود عند الحفظ"}
+                                : "نسبة التقرير مستقلة؛ تعديل البنود لا يغيّرها تلقائياً"}
                             </p>
                           ) : null}
                           <FormMessage />
@@ -1431,7 +1406,7 @@ export default function ProjectReports() {
                         ) : (
                           <>
                             <Star className="h-3.5 w-3.5 fill-current" />
-                            صياغة بالذكاء الاصطناعي
+                            {editingId ? "إعادة الصياغة بناءً على تعديلات البنود" : "صياغة بالذكاء الاصطناعي"}
                           </>
                         )}
                       </Button>
@@ -1507,6 +1482,10 @@ export default function ProjectReports() {
                             </Badge>
                           )}
                         </div>
+                        <p className="px-4 py-3 text-xs text-muted-foreground">
+                          التعديلات تخص هذا التقرير حتى نهاية فترته ولا تغيّر المشروع. أدخل نسبة البند لاعتمادها ثم أعد الصياغة.
+                          معلومات المصدر والمخطط غير الموثق للمراجعة الداخلية فقط؛ لا تظهر في التقرير الصادر، وتُستبعد المقارنات التي لا تتوفر بياناتها.
+                        </p>
                         {isLoadingSnapshot ? (
                           <div className="p-8"><LoadingSpinner text="جاري تحميل البنود..." /></div>
                         ) : snapshotRows.length === 0 ? (
@@ -1551,23 +1530,23 @@ export default function ProjectReports() {
                                         {referenceRow.referenceOnly && <span> (مرجعي)</span>}
                                       </td>
                                       <td className="px-4 py-3">
-                                        {referenceRow.referenceOnly ? <span className="text-xs">{referenceRow.actualHistoricalUnverified ? "غير موثق للفترة" : `${row.actualProgress}%`}</span> : <Input
+                                        <Input
                                           type="number"
                                           min={0}
                                           max={100}
                                           step={0.1}
-                                          value={row.actualProgress ?? 0}
+                                          placeholder="أدخل نسبة الفترة"
+                                          value={row.actualHistoricalUnverified && !row.actualManuallyApproved ? "" : row.actualProgress ?? 0}
                                           onChange={e => {
                                             const v = e.target.value === "" ? 0 : Number(e.target.value);
                                             const clamped = Math.min(100, Math.max(0, Number.isFinite(v) ? v : 0));
                                             updateSnapshotRow(rowId, { actualProgress: clamped });
                                           }}
                                           className="h-9 text-center font-mono text-sm bg-background border-input/60 shadow-inner"
-                                        />}
+                                        />
                                       </td>
                                       <td className="px-4 py-3">
                                         <Select
-                                          disabled={referenceRow.referenceOnly}
                                           value={row.status ?? "not_started"}
                                           onValueChange={(v) => updateSnapshotRow(rowId, { status: v })}
                                         >

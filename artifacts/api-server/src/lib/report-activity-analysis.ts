@@ -23,6 +23,7 @@ export function buildReportActivityAnalysis(rows: readonly ReportAiSnapshotRow[]
       plannedProgressAsOfPeriodEnd: planned,
       variancePoints: actual !== null && planned !== null ? Math.round((actual - planned) * 10) / 10 : null,
       cumulativeState: actual === null ? "unknown" : actual >= 100 ? "completed" : actual > 0 ? "in_progress" : "not_started",
+      approvedStatus: actualVerified && row.actualManuallyApproved ? row.status ?? null : null,
       plannedStartDate: plannedVerified ? row.plannedStartDate ?? null : null,
       plannedEndDate: plannedVerified ? row.plannedEndDate ?? null : null,
     };

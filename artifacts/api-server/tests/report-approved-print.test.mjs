@@ -21,17 +21,19 @@ test("manual report print uses approved 40% rather than snapshot 60% for varianc
   assert.match(html, /-10%/);
   assert.match(html, />SPI<\/span>/);
   assert.match(html, /0\.8/);
-  assert.match(html, /معتمدة يدوياً حتى نهاية الفترة: 40%/);
+  assert.match(html, /الإنجاز حتى نهاية الفترة/);
+  assert.doesNotMatch(html, /معتمدة يدوياً/);
   assert.doesNotMatch(html, /مؤشر SPI التاريخي غير متاح/);
 });
 test("legacy unverified report behavior remains unchanged without manual approval", () => {
   const html = buildPrintHTML(report);
-  assert.match(html, /مؤشر SPI التاريخي غير متاح/);
+  assert.doesNotMatch(html, /مؤشر SPI التاريخي غير متاح/);
   assert.doesNotMatch(html, />SPI<\/span>/);
 });
 test("manual aggregate remains printable without inventing an activity snapshot or plan", () => {
   const html = buildPrintHTML({ ...report, approvedProgress: true, snapshotAvailable: false, actualProgress: null, plannedProgress: null, spi: null });
-  assert.match(html, /معتمدة يدوياً حتى نهاية الفترة: 40%/);
+  assert.match(html, /الإنجاز حتى نهاية الفترة/);
+  assert.doesNotMatch(html, /معتمدة يدوياً/);
   assert.doesNotMatch(html, />SPI<\/span>/);
 });
 
@@ -45,8 +47,8 @@ test("legacy reference shows work and schedule without presenting missing progre
     }],
   });
   assert.match(html, /بند مرجعي/);
-  assert.match(html, /جدول مرجعي/);
-  assert.match(html, /غير موثق للفترة/);
+  assert.match(html, /البرنامج الزمني/);
+  assert.doesNotMatch(html, /جدول مرجعي|غير موثق للفترة|تغيّر تاريخ التقرير|الخطط المحفوظة|لقطة وقت الإنشاء/);
   assert.doesNotMatch(html, /لا توجد لقطة أنشطة محفوظة/);
   assert.doesNotMatch(html, />SPI<\/span>/);
 });

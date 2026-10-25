@@ -26,6 +26,7 @@ const compiled = await build({
         contents: `const fail = () => { throw new Error("Unexpected DB access"); };
           export const db = new Proxy({}, {get: (_, key) => key === "select"
             ? (...args) => globalThis.approvedDbSelectFixture ? globalThis.approvedDbSelectFixture(...args) : fail()
+            : key === "update" ? (...args) => globalThis.approvedDbUpdateFixture?.(...args) ?? fail()
             : fail});
           export const pool = { query: fail };
           ${[...names].map(n => `export const ${n} = {};`).join("\n")}`,
@@ -39,10 +40,12 @@ const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
 const dir = await mkdtemp(new URL("../node_modules/.approved-route-", import.meta.url));
 const path = `${dir}/route.mjs`;
 await writeFile(path, compiled.outputFiles[0].text);
-let handler;
+let handler, patchHandler;
 try {
   const { default: router } = await import(path);
   handler = router.stack.find(layer => layer.route?.path === "/projects/:projectId/reports/ai-draft")
+    .route.stack.at(-1).handle;
+  patchHandler = router.stack.find(layer => layer.route?.path === "/projects/:projectId/reports/:id" && layer.route.methods.patch)
     .route.stack.at(-1).handle;
 } finally { await rm(dir, { recursive: true, force: true }); }
 
@@ -169,6 +172,66 @@ test("legacy report without a snapshot analyses audit reconstruction without req
     assert.ok(prompts[0].includes('"plannedProgressAsOfPeriodEnd":null'));
     assert.ok(prompts[0].includes('"actualProgressAsOfPeriodEnd":40'));
   });
+});
+
+test("manual period approval feeds AI even for a missing historical value and keeps plan unknown", async t => {
+  await withPromptCapture(async prompts => {
+    globalThis.approvedDbSelectFixture = () => ({
+      from: () => ({ where: async () => [{ id: 3, periodEnd: base.periodEnd, snapshot: null }] }),
+    });
+    globalThis.approvedHistoryFixture = async () => ({
+      available: false, activities: [{
+        id: 8, name: "بند قديم", actualProgress: 0, status: "unknown",
+        actualHistoricalUnverified: true, plannedHistoricalUnverified: true,
+      }],
+    });
+    const res = await invoke({ ...base, reportId: 3, workDescription: "",
+      snapshotOverrides: [{ id: 8, actualProgress: 65, status: "in_progress", actualManuallyApproved: true }],
+    });
+    if (res.code === 503) { t.skip("No provider configured"); return; }
+    assert.equal(res.code, 200);
+    assert.ok(prompts[0].includes('"actualProgressAsOfPeriodEnd":65'));
+    assert.ok(prompts[0].includes('"plannedProgressAsOfPeriodEnd":null'));
+    assert.ok(prompts[0].includes('"approvedStatus":"in_progress"'));
+    assert.ok(prompts[0].includes("لا تذكر اللقطات"));
+  });
+});
+
+test("saving legacy item approvals writes only the report snapshot and preserves its aggregate", async () => {
+  let reads = 0, saved;
+  globalThis.approvedDbSelectFixture = () => ({
+    from: () => ({ where: async () => ++reads === 1
+      ? [{ source: null, periodEnd: base.periodEnd, percentage: 40 }]
+      : [{ snapshot: null }] }),
+  });
+  globalThis.approvedHistoryFixture = async () => ({
+    available: false, activities: [{
+      id: 8, name: "بند", actualProgress: 0, actualHistoricalUnverified: true,
+      plannedHistoricalUnverified: true, referenceOnly: true,
+    }],
+  });
+  globalThis.approvedDbUpdateFixture = () => ({
+    set: values => { saved = values; return {
+      where: () => ({ returning: async () => [{ id: 3, reportNumber: 1, ...values }] }),
+    }; },
+  });
+  try {
+    const res = { status(code) { this.code = code; return this; }, json(body) { this.body = body; } };
+    await patchHandler({ params: { projectId: "1", id: "3" }, body: {
+      reportDate: base.reportDate,
+      activitiesSnapshot: [{ id: 8, actualProgress: 65, status: "in_progress", actualManuallyApproved: true }],
+    } }, res, () => {});
+    assert.equal(saved.progressPercentage, undefined);
+    assert.equal(saved.progressSource, "manual");
+    assert.equal(saved.activitiesSnapshot[0].actualProgress, 65);
+    assert.equal(saved.activitiesSnapshot[0].actualAsOfDate, base.periodEnd);
+    assert.equal(saved.activitiesSnapshot[0].actualHistoricalUnverified, false);
+    assert.equal(saved.activitiesSnapshot[0].plannedHistoricalUnverified, true);
+  } finally {
+    delete globalThis.approvedDbSelectFixture;
+    delete globalThis.approvedDbUpdateFixture;
+    delete globalThis.approvedHistoryFixture;
+  }
 });
 
 test("incomplete provider response is rejected instead of leaving report sections silently empty", async t => {

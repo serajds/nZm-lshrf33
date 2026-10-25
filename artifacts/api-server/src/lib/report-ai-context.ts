@@ -15,6 +15,7 @@ export type ReportAiSnapshotRow = {
   actualRecordedAt?: string;
   actualAsOfDate?: string;
   actualHistoricalUnverified?: boolean;
+  actualManuallyApproved?: boolean;
   weight?: number;
   externalSourceGroupId?: number | null;
   sortOrder?: number;

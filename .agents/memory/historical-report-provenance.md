@@ -33,8 +33,14 @@ For legacy reports without snapshots, show the available activity catalogue and 
 
 **How to apply:** Reconstruct read-only without importing logs or changing saved reports. Missing values remain “غير موثق للفترة”; current schedule is not evidence for historical variance/SPI. Linked-source audit aggregates alone are insufficient without dated source membership/weights.
 
-Keep manual-entry provenance internal; do not label owner-facing reports “معتمدة يدويًا للتقرير”.
+Keep manual-entry provenance and system diagnostic messages internal; do not label owner-facing reports “معتمدة يدويًا للتقرير” or explain snapshot/date mismatches and unavailable historical SPI.
 
 **Why:** The user clarified that issued reports go to the owner and these internal workflow labels are inappropriate there.
 
-**How to apply:** Retain provenance in the editor/audit data, but present supervisor-approved figures as report figures in the issued document and AI narrative. This does not authorize presenting unknown or current values as verified historical facts.
+**How to apply:** Retain provenance in the editor/audit data, but present supervisor-approved figures as report figures in the issued document and AI narrative. Omit unsupported comparisons and use a dash for unknown item values rather than exposing diagnostics. Keep genuine technical observations and obstacles. This does not authorize presenting unknown or current values as verified historical facts.
+
+Manual item progress approved for a report's period may feed its AI narrative without changing live activities. The report aggregate stays independent of item edits.
+
+**Why:** The user approved editing old report items and regenerating the narrative, while rejecting internal provenance labels in the issued document.
+
+**How to apply:** Scope the approval to the report period; distinguish manual approval internally from historical observations. Do not silently recompute the report aggregate or modify other reports.
