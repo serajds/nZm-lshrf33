@@ -126135,7 +126135,8 @@ function buildApprovedReportPrompt(input) {
 \u0646\u0635 \u0627\u0644\u0645\u0634\u0631\u0641 \u0648\u062A\u062D\u0644\u064A\u0644 \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u062A\u0627\u0631\u064A\u062E\u064A activityAnalysis \u0647\u0645\u0627 \u0627\u0644\u0645\u0635\u062F\u0631\u0627\u0646 \u0627\u0644\u0645\u0639\u062A\u0645\u062F\u0627\u0646. \u062D\u0644\u0651\u0644 \u0627\u0644\u0628\u0646\u0648\u062F \u0648\u0644\u0627 \u062A\u0643\u062A\u0641\u0650 \u0628\u0625\u0639\u0627\u062F\u0629 \u0635\u064A\u0627\u063A\u0629 \u0646\u0635 \u0627\u0644\u0645\u0634\u0631\u0641.
 \u0627\u0633\u062A\u062E\u062F\u0645 \u062D\u0627\u0644\u0627\u062A \u0627\u0644\u0628\u0646\u0648\u062F \u0648\u0646\u0633\u0628\u0647\u0627 \u0648\u0627\u0644\u0645\u062E\u0637\u0637 \u0648\u0627\u0644\u0641\u0631\u0648\u0642 \u0627\u0644\u0645\u062D\u0633\u0648\u0628\u0629 \u0644\u062A\u0644\u062E\u064A\u0635 \u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0639\u0645\u0627\u0644 \u062D\u062A\u0649 \u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629 \u0648\u062A\u062D\u062F\u064A\u062F \u0623\u0648\u0644\u0648\u064A\u0627\u062A \u0627\u0644\u0645\u062A\u0627\u0628\u0639\u0629.
 \u0646\u0635 \u0627\u0644\u0645\u0634\u0631\u0641 \u0647\u0648 \u0627\u0644\u0645\u0635\u062F\u0631 \u0627\u0644\u0648\u062D\u064A\u062F \u0644\u062A\u0623\u0643\u064A\u062F \u0645\u0627 \u0646\u064F\u0641\u0630 \u0641\u0639\u0644\u0627\u064B \u062E\u0644\u0627\u0644 \u0627\u0644\u0641\u062A\u0631\u0629\u061B \u0623\u0645\u0627 \u062D\u0627\u0644\u0629 \u0627\u0644\u0628\u0646\u0648\u062F \u0641\u0647\u064A \u0625\u0646\u062C\u0627\u0632 \u062A\u0631\u0627\u0643\u0645\u064A \u062D\u062A\u0649 \u0646\u0647\u0627\u064A\u062A\u0647\u0627\u060C \u0648\u0642\u062F \u062A\u0643\u0648\u0646 \u0627\u0644\u0623\u0639\u0645\u0627\u0644 \u0646\u064F\u0641\u0630\u062A \u0633\u0627\u0628\u0642\u0627\u064B \u0648\u0633\u064F\u062C\u0644\u062A \u0644\u0627\u062D\u0642\u0627\u064B.
-\u0642\u0644 \xAB\u062D\u062A\u0649 \u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629\u060C \u0628\u0644\u063A \u0625\u0646\u062C\u0627\u0632 \u0627\u0644\u0628\u0646\u062F...\xBB \u0623\u0648 \xAB\u062A\u064F\u0638\u0647\u0631 \u0644\u0642\u0637\u0629 \u0627\u0644\u0628\u0646\u0648\u062F...\xBB \u0639\u0646\u062F \u0627\u0644\u0627\u0633\u062A\u0646\u062A\u0627\u062C \u0645\u0646 \u0627\u0644\u062A\u062D\u0644\u064A\u0644. \u0644\u0627 \u062A\u0642\u0644 \xAB\u0623\u064F\u0646\u062C\u0632 \u062E\u0644\u0627\u0644 \u0627\u0644\u0641\u062A\u0631\u0629\xBB \u0623\u0648 \xAB\u0627\u0633\u062A\u0643\u0645\u0644 \u0647\u0630\u0627 \u0627\u0644\u0623\u0633\u0628\u0648\u0639\xBB \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0646\u0633\u0628\u0629 \u062A\u0631\u0627\u0643\u0645\u064A\u0629 \u0648\u062D\u062F\u0647\u0627.
+\u0642\u0644 \xAB\u062D\u062A\u0649 \u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629\u060C \u0628\u0644\u063A \u0625\u0646\u062C\u0627\u0632 \u0627\u0644\u0628\u0646\u062F...\xBB \u0639\u0646\u062F \u0627\u0644\u0627\u0633\u062A\u0646\u062A\u0627\u062C \u0645\u0646 \u0627\u0644\u062A\u062D\u0644\u064A\u0644. \u0644\u0627 \u062A\u0642\u0644 \xAB\u0623\u064F\u0646\u062C\u0632 \u062E\u0644\u0627\u0644 \u0627\u0644\u0641\u062A\u0631\u0629\xBB \u0623\u0648 \xAB\u0627\u0633\u062A\u0643\u0645\u0644 \u0647\u0630\u0627 \u0627\u0644\u0623\u0633\u0628\u0648\u0639\xBB \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0646\u0633\u0628\u0629 \u062A\u0631\u0627\u0643\u0645\u064A\u0629 \u0648\u062D\u062F\u0647\u0627.
+\u0647\u0630\u0627 \u062A\u0642\u0631\u064A\u0631 \u0644\u0644\u062C\u0647\u0629 \u0627\u0644\u0645\u0627\u0644\u0643\u0629: \u0644\u0627 \u062A\u0630\u0643\u0631 \u0627\u0644\u0644\u0642\u0637\u0627\u062A \u0623\u0648 \u0627\u0644\u0633\u062C\u0644\u0627\u062A \u0623\u0648 \u0627\u0644\u062D\u0641\u0638 \u0623\u0648 \u0646\u0642\u0635 \u0627\u0644\u062A\u063A\u0637\u064A\u0629 \u0627\u0644\u062A\u0627\u0631\u064A\u062E\u064A\u0629 \u0623\u0648 \u0627\u0644\u0625\u062F\u062E\u0627\u0644 \u0648\u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u064A\u062F\u0648\u064A \u0623\u0648 \u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u0646\u0638\u0627\u0645. \u0627\u0633\u062A\u062E\u062F\u0645 \xAB\u0646\u0633\u0628\u0629 \u0627\u0644\u0625\u0646\u062C\u0627\u0632 \u062D\u062A\u0649 \u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629\xBB \u062F\u0648\u0646 \u0634\u0631\u062D \u0645\u0635\u062F\u0631\u0647\u0627. \u0627\u062D\u062A\u0641\u0638 \u0628\u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0627\u0644\u0641\u0646\u064A\u0629 \u0627\u0644\u062D\u0642\u064A\u0642\u064A\u0629 \u0648\u0644\u0627 \u062A\u062E\u0641\u0650 \u0639\u0648\u0627\u0626\u0642 \u0627\u0644\u0645\u0634\u0631\u0648\u0639. \u0627\u0633\u062A\u0628\u0639\u062F \u0627\u0644\u0645\u0624\u0634\u0631\u0627\u062A \u063A\u064A\u0631 \u0627\u0644\u0645\u062F\u0639\u0648\u0645\u0629 \u0628\u062F\u0644\u0627\u064B \u0645\u0646 \u0634\u0631\u062D \u062A\u0639\u0630\u0631 \u062D\u0633\u0627\u0628\u0647\u0627. approvedStatus \u0647\u0648 \u062D\u0627\u0644\u0629 \u0627\u0644\u0628\u0646\u062F \u0627\u0644\u062A\u064A \u0627\u0639\u062A\u0645\u062F\u0647\u0627 \u0627\u0644\u0645\u0634\u0631\u0641 \u0644\u0644\u062A\u0642\u0631\u064A\u0631\u061B \u064A\u0645\u0643\u0646 \u0648\u0635\u0641\u0647\u0627 \u062F\u0648\u0646 \u0627\u062E\u062A\u0631\u0627\u0639 \u0633\u0628\u0628 \u0623\u0648 \u0645\u062F\u0629 \u062A\u0623\u062E\u064A\u0631.
 \u0625\u0630\u0627 \u0643\u0627\u0646 \u0646\u0635 \u0627\u0644\u0645\u0634\u0631\u0641 \u0641\u0627\u0631\u063A\u0627\u064B\u060C \u0635\u063A \u0648\u0635\u0641\u0627\u064B \u062A\u062D\u0644\u064A\u0644\u064A\u0627\u064B \u0645\u0646 \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u0648\u062B\u0642\u0629 \u062D\u062A\u0649 \u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0641\u062A\u0631\u0629\u060C \u062F\u0648\u0646 \u0627\u062E\u062A\u0631\u0627\u0639 \u0623\u062D\u062F\u0627\u062B \u062A\u0646\u0641\u064A\u0630 \u062F\u0627\u062E\u0644\u0647\u0627.
 \u0642\u064A\u0645 null \u0648\u062D\u0627\u0644\u0629 unknown \u062A\u0639\u0646\u064A \u0623\u0646 \u0627\u0644\u0642\u064A\u0645\u0629 \u0627\u0644\u062A\u0627\u0631\u064A\u062E\u064A\u0629 \u063A\u064A\u0631 \u0645\u0648\u062B\u0642\u0629\u061B \u0644\u064A\u0633\u062A \u0635\u0641\u0631\u0627\u064B \u0648\u0644\u0627 \u062A\u0639\u0646\u064A \u0639\u062F\u0645 \u0628\u062F\u0621 \u0627\u0644\u0639\u0645\u0644. \u0644\u0627 \u062A\u0633\u062A\u062E\u062F\u0645\u0647\u0627 \u0641\u064A \u0645\u0642\u0627\u0631\u0646\u0629 \u0623\u0648 \u0639\u062F\u0651 \u0627\u0644\u0628\u0646\u0648\u062F \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0629.
 \u0627\u0644\u0641\u0627\u0631\u0642 \u0627\u0644\u0633\u0627\u0644\u0628 variancePoints \u064A\u062B\u0628\u062A \u0627\u0646\u062E\u0641\u0627\u0636\u0627\u064B \u0639\u0646 \u0627\u0644\u0645\u062E\u0637\u0637 \u0627\u0644\u0645\u0633\u062C\u0644 \u0628\u0627\u0644\u0646\u0642\u0627\u0637 \u0627\u0644\u0645\u0626\u0648\u064A\u0629\u060C \u0644\u0627 \u064A\u062B\u0628\u062A \u0633\u0628\u0628 \u062A\u0623\u062E\u064A\u0631 \u0623\u0648 \u0639\u0627\u0626\u0642\u0627\u064B \u0623\u0648 \u0645\u062F\u0629 \u062A\u0623\u062E\u064A\u0631 \u0628\u0627\u0644\u0623\u064A\u0627\u0645.
@@ -126184,6 +126185,7 @@ function buildReportActivityAnalysis(rows, periodEnd) {
       plannedProgressAsOfPeriodEnd: planned,
       variancePoints: actual !== null && planned !== null ? Math.round((actual - planned) * 10) / 10 : null,
       cumulativeState: actual === null ? "unknown" : actual >= 100 ? "completed" : actual > 0 ? "in_progress" : "not_started",
+      approvedStatus: actualVerified && row.actualManuallyApproved ? row.status ?? null : null,
       plannedStartDate: plannedVerified ? row.plannedStartDate ?? null : null,
       plannedEndDate: plannedVerified ? row.plannedEndDate ?? null : null
     };
@@ -126214,17 +126216,7 @@ function clampPercent(n) {
   if (!Number.isFinite(v)) return 0;
   return Math.min(100, Math.max(0, v));
 }
-function calcWeightedProgress(rows) {
-  let totalWeight = 0;
-  let weightedSum = 0;
-  for (const r of rows) {
-    const w = typeof r.weight === "number" && r.weight > 0 ? r.weight : 1;
-    totalWeight += w;
-    weightedSum += (r.actualProgress ?? 0) * w;
-  }
-  return totalWeight > 0 ? weightedSum / totalWeight : 0;
-}
-function mergeSnapshot(existing, incoming) {
+function mergeSnapshot(existing, incoming, approvalDay) {
   if (!Array.isArray(existing) || existing.length === 0) return null;
   if (!Array.isArray(incoming)) return null;
   const byId = /* @__PURE__ */ new Map();
@@ -126241,6 +126233,11 @@ function mergeSnapshot(existing, incoming) {
     if (typeof r.status === "string" && ALLOWED_ACTIVITY_STATUSES.has(r.status)) {
       patch.status = r.status;
     }
+    if (r.actualManuallyApproved === true && approvalDay && validReportDay(approvalDay) && validApprovedProgress(r.actualProgress)) {
+      patch.actualManuallyApproved = true;
+      patch.actualAsOfDate = approvalDay;
+      patch.actualHistoricalUnverified = false;
+    }
     if (Object.keys(patch).length > 0) byId.set(idNum, patch);
   }
   if (byId.size === 0) return existing;
@@ -126250,9 +126247,10 @@ function mergeSnapshot(existing, incoming) {
     if (!patch) return row;
     if (patch.actualProgress === row.actualProgress) {
       delete patch.actualRecordedAt;
-    } else if (patch.actualProgress !== void 0) {
+    } else if (patch.actualProgress !== void 0 && !patch.actualManuallyApproved) {
       patch.actualHistoricalUnverified = true;
       patch.actualAsOfDate = void 0;
+      patch.actualManuallyApproved = false;
     }
     return { ...row, ...patch };
   });
@@ -126370,7 +126368,7 @@ router5.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proj
             res.status(400).json({ error: "\u062A\u0639\u062F\u064A\u0644\u0627\u062A \u0628\u0646\u0648\u062F \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629" });
             return;
           }
-          snapshot = mergeSnapshot(snapshot, snapshotOverrides) ?? snapshot;
+          snapshot = mergeSnapshot(snapshot, snapshotOverrides, periodEnd) ?? snapshot;
         }
       } else {
         const historical = await getReportPeriodProgress(projectId, periodEnd);
@@ -126761,14 +126759,15 @@ router5.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectI
       res.status(404).json({ error: "\u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
       return;
     }
-    const existing = current.snapshot ?? null;
-    const merged = body.activitiesSnapshot !== void 0 ? mergeSnapshot(existing, body.activitiesSnapshot) : existing;
+    const approvalDay = body.periodEnd ?? progressMeta?.periodEnd;
+    const existing = current.snapshot ?? (validReportDay(approvalDay) ? (await getReportPeriodProgress(projectId, approvalDay)).activities : null);
+    const merged = body.activitiesSnapshot !== void 0 ? mergeSnapshot(existing, body.activitiesSnapshot, approvalDay) : existing;
     if (merged) {
       updateData.activitiesSnapshot = body.reportDate !== void 0 && !progressMeta?.source ? merged.map((row) => {
-        if (row.externalSourceGroupId != null) {
+        if (row.externalSourceGroupId != null || row.referenceOnly) {
           return {
             ...row,
-            plannedHistoricalUnverified: row.plannedAsOfDate !== body.reportDate
+            plannedHistoricalUnverified: true
           };
         }
         return {
@@ -126782,9 +126781,7 @@ router5.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectI
         };
       }) : merged;
       if (progressMeta?.source && merged.some((row) => row.actualHistoricalUnverified)) updateData.progressSource = "manual";
-      if (body.activitiesSnapshot !== void 0 && body.progressPercentage === void 0) {
-        updateData.progressPercentage = calcWeightedProgress(merged);
-      }
+      if (merged.some((row) => row.actualManuallyApproved)) updateData.progressSource = "manual";
     }
   }
   if (Object.keys(updateData).length === 0) {

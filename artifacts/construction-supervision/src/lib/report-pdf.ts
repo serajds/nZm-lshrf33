@@ -134,7 +134,7 @@ export function buildPrintHTML(data: ReportPdfData): string {
     ? Math.min(100, Math.max(0, data.actualProgress))
     : null;
   const historicalActual = data.approvedProgress ? pct : data.actualHistoricalUnverified ? null : recordedActual;
-  const comparisonActual = historicalActual ?? recordedActual ?? pct;
+  const comparisonActual = historicalActual ?? pct;
   const displayedComparisonActual = Math.round(comparisonActual * 10) / 10;
   const deviation = plannedPct != null && historicalActual != null && data.plannedProgress != null
     ? Math.round((historicalActual - data.plannedProgress) * 10) / 10
@@ -167,8 +167,8 @@ export function buildPrintHTML(data: ReportPdfData): string {
         <thead>
           <tr>
             <th class="th" style="text-align:right;width:40%">البند</th>
-            <th class="th tc" style="width:12%">${!scheduleAvailable ? "مخطط غير متاح" : plannedUnverified ? "مخطط غير موثق" : "مخطط %"}</th>
-            <th class="th tc" style="width:12%">${data.actualHistoricalUnverified ? "فعلي مسجل %" : "فعلي %"}</th>
+            <th class="th tc" style="width:12%">مخطط %</th>
+            <th class="th tc" style="width:12%">فعلي %</th>
             <th class="th tc" style="width:16%">الحالة</th>
             <th class="th" style="width:20%">الإنجاز</th>
           </tr>
@@ -177,12 +177,12 @@ export function buildPrintHTML(data: ReportPdfData): string {
           ${acts.map((a, i) => {
             const barW = Math.min(100, Math.max(0, a.actualProgress));
             return `<tr style="background:${i % 2 === 0 ? "#fff" : "#f8fafc"}">
-              <td class="td">${esc(a.name)}${a.plannedStartDate || a.plannedEndDate ? `<div style="font-size:10px;color:#64748b">${fmtDate(a.plannedStartDate)} — ${fmtDate(a.plannedEndDate)}${a.plannedHistoricalUnverified ? " (جدول مرجعي)" : ""}</div>` : ""}</td>
-              <td class="td tc">${!scheduleAvailable ? "—" : a.plannedHistoricalUnverified ? `${(Math.round((a.plannedProgress ?? 0) * 10) / 10).toFixed(1)}% (مرجعي)` : `${(Math.round((a.plannedProgress ?? 0) * 10) / 10).toFixed(1)}%`}</td>
-              <td class="td tc" style="font-weight:700">${a.actualHistoricalUnverified ? "غير موثق للفترة" : `${(Math.round((a.actualProgress ?? 0) * 10) / 10).toFixed(1)}%`}</td>
+              <td class="td">${esc(a.name)}${a.plannedStartDate || a.plannedEndDate ? `<div style="font-size:10px;color:#64748b">البرنامج الزمني: ${fmtDate(a.plannedStartDate)} — ${fmtDate(a.plannedEndDate)}</div>` : ""}</td>
+              <td class="td tc">${!scheduleAvailable || a.plannedHistoricalUnverified ? "—" : `${(Math.round((a.plannedProgress ?? 0) * 10) / 10).toFixed(1)}%`}</td>
+              <td class="td tc" style="font-weight:700">${a.actualHistoricalUnverified ? "—" : `${(Math.round((a.actualProgress ?? 0) * 10) / 10).toFixed(1)}%`}</td>
               <td class="td tc">
                 <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;background:${statusBg(a.status)};color:${statusColor(a.status)};border:1px solid ${statusColor(a.status)}">
-                  ${a.actualHistoricalUnverified ? "غير موثق" : statusLabel(a.status)}
+                  ${a.actualHistoricalUnverified ? "—" : statusLabel(a.status)}
                 </span>
               </td>
               <td class="td">
@@ -491,7 +491,7 @@ ${(() => {
     ${overrunDays > 0 ? `<span class="dev-badge dev-warn">تجاوز المدة: ${overrunDays} يوم</span>` : ""}
   </div>
   <div class="dp-row">
-    <span class="dp-lbl">${historicalActual != null ? "فعلي اللقطة" : recordedActual != null ? "مسجل عند الإنشاء" : "المُبلَّغ"}</span>
+    <span class="dp-lbl">الإنجاز حتى نهاية الفترة</span>
     <div class="dp-track"><div class="dp-fill-blue" style="width:${comparisonActual}%"></div></div>
     <span class="dp-val" style="color:#2563eb">${displayedComparisonActual}%</span>
   </div>
@@ -501,12 +501,8 @@ ${(() => {
     <span class="dp-val">${plannedPct}%</span>
   </div>` : ""}
   ${data.spi != null && snapshotAvailable && scheduleAvailable && (!data.actualHistoricalUnverified || data.approvedProgress) && !plannedUnverified ? `<div class="dp-row"><span class="dp-lbl">SPI</span><span class="dp-val">${(Math.round(data.spi * 100) / 100).toFixed(2)}</span></div>` : ""}
-  ${data.approvedProgress ? `<div class="reported-progress-note">نسبة التقرير معتمدة يدوياً حتى نهاية الفترة: ${pct}%. لا تثبت هذه النسبة وحدها الإنجاز التاريخي لكل بند.</div>` : data.actualHistoricalUnverified && recordedActual != null ? `<div class="reported-progress-note">الفعلي المسجل عند إنشاء التقرير: ${recordedActual}% — لا يمثل قيمة موثقة لتاريخ التقرير.</div>` : ""}
   ${historicalActual != null && historicalActual !== pct ? `<div class="reported-progress-note">نسبة الإنجاز المُبلَّغ عنها في التقرير: ${pct}%</div>` : ""}
 </div>
-${data.actualHistoricalUnverified && !data.approvedProgress ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">التقرير مؤرخ قبل يوم إنشائه؛ الإنجاز الفعلي المعروض مأخوذ من لقطة وقت الإنشاء وغير موثق كتقدم فعلي في تاريخ التقرير. مؤشر SPI التاريخي غير متاح.</div>` : ""}
-${plannedUnverified ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">تغيّر تاريخ التقرير بعد حفظ خطة بند مرتبط؛ الخطط المحفوظة تخص تواريخها الأصلية، لذا لا يمكن التحقق من المخطط الموزون أو SPI للتاريخ الحالي.</div>` : ""}
-${!scheduleAvailable ? `<div class="section" style="border:1px solid #f59e0b;background:#fff7ed;color:#9a3412;padding:12px;margin:12px 0;font-weight:700">${data.noSchedule ? "المشروع بدون جدول زمني معتمد" : "بيانات الجدول الزمني للمشروع غير مكتملة أو غير صالحة"}؛ المخطط ومقارنة SPI غير متاحين، ويظل الإنجاز الفعلي/المُبلَّغ عنه مستقلاً.</div>` : ""}
 
 <!-- STATS -->
 <div class="stats-row avoid-break">
