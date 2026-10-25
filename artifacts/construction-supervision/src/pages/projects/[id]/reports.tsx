@@ -61,6 +61,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Progress } from "@/components/ui/progress";
 import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
+import { prepareReportLogos } from "@/lib/report-logos";
 import { getAuthToken } from "@/lib/auth-session";
 import {
   ProtectedImage,
@@ -489,7 +490,7 @@ export default function ProjectReports() {
   const isViewer = !canEditReports;
   const canApprove = myPermissions?.projectRole === "admin" || myPermissions?.projectRole === "project_manager";
 
-  const { data: companyLogos } = useQuery<Record<string, CompanyLogo>>({
+  const { refetch: refetchCompanyLogos } = useQuery<Record<string, CompanyLogo>>({
     queryKey: ["project-company-logos", projectId],
     queryFn: async () => {
       const response = await fetchWithSession(
@@ -746,8 +747,20 @@ export default function ProjectReports() {
       toast({ title: "تعذّر تحميل تفاصيل التقرير", variant: "destructive" });
       setPreviewLoadingId(null);
       return;
-    } finally {
+    }
+    let previewLogos: Record<string, CompanyLogo>;
+    try {
+      const result = await refetchCompanyLogos();
+      if (result.error || !result.data) throw result.error ?? new Error("Missing company logos");
+      previewLogos = await prepareReportLogos(result.data, protectedAssetToDataUrl);
+    } catch {
+      toast({
+        title: "تعذّر تحميل شعارات التقرير",
+        description: "لم تُفتح المعاينة لتجنّب إصدار تقرير بشعارات ناقصة. أعد المحاولة.",
+        variant: "destructive",
+      });
       setPreviewLoadingId(null);
+      return;
     }
     const loadPreviewImage = async (url: string) => {
       try {
@@ -867,11 +880,12 @@ export default function ProjectReports() {
       spi: (!actualHistoricalUnverified || periodSource === "manual") && !hasUnverifiedPlan && snapshotPlanned != null && snapshotPlanned > 0 && snapshotActual != null
         ? (periodSource === "manual" ? fullReport.progressPercentage : snapshotActual) / snapshotPlanned
         : null,
-      companyLogos: companyLogos as any,
+      companyLogos: previewLogos,
       apiBase,
       reportSignatures: (project as any).reportSignatures ?? null,
       reportDisplayMode: project.reportDisplayMode,
     });
+    setPreviewLoadingId(null);
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, groupIndex: number) => {

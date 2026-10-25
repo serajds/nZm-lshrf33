@@ -1,4 +1,5 @@
 import { reportTypeLabel } from "./report-types";
+import { reportAssetUrl } from "./report-logos";
 
 export interface ActivityForReport {
   name: string;
@@ -444,13 +445,13 @@ ${(() => {
   if (!logos || (!logos.owner?.logoUrl && !logos.contractor?.logoUrl && !logos.supervisor?.logoUrl)) return "";
   const entries: Array<{role: string; name: string; src: string}> = [];
   if (logos.supervisor) {
-    entries.push({ role: "جهة الإشراف", name: logos.supervisor.name, src: logos.supervisor.logoUrl ? escAttr(base + logos.supervisor.logoUrl) : "" });
+    entries.push({ role: "جهة الإشراف", name: logos.supervisor.name, src: logos.supervisor.logoUrl ? escAttr(reportAssetUrl(logos.supervisor.logoUrl, base)) : "" });
   }
   if (logos.owner) {
-    entries.push({ role: "الجهة المالكة", name: logos.owner.name, src: logos.owner.logoUrl ? escAttr(base + logos.owner.logoUrl) : "" });
+    entries.push({ role: "الجهة المالكة", name: logos.owner.name, src: logos.owner.logoUrl ? escAttr(reportAssetUrl(logos.owner.logoUrl, base)) : "" });
   }
   if (logos.contractor) {
-    entries.push({ role: "المقاول", name: logos.contractor.name, src: logos.contractor.logoUrl ? escAttr(base + logos.contractor.logoUrl) : "" });
+    entries.push({ role: "المقاول", name: logos.contractor.name, src: logos.contractor.logoUrl ? escAttr(reportAssetUrl(logos.contractor.logoUrl, base)) : "" });
   }
   const html = entries.map(e => `<div class="logo-item">
     <div class="logo-role">${e.role}</div>
@@ -1094,9 +1095,9 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
     const base = data.apiBase || "";
     if (!logos || (!logos.owner?.logoUrl && !logos.contractor?.logoUrl && !logos.supervisor?.logoUrl)) return "";
     const entries: Array<{ role: string; name: string; src: string }> = [];
-    if (logos.owner) entries.push({ role: "جهة المالك", name: logos.owner.name, src: logos.owner.logoUrl ? escAttr(base + logos.owner.logoUrl) : "" });
-    if (logos.contractor) entries.push({ role: "المقاول", name: logos.contractor.name, src: logos.contractor.logoUrl ? escAttr(base + logos.contractor.logoUrl) : "" });
-    if (logos.supervisor) entries.push({ role: "جهة الإشراف", name: logos.supervisor.name, src: logos.supervisor.logoUrl ? escAttr(base + logos.supervisor.logoUrl) : "" });
+    if (logos.owner) entries.push({ role: "جهة المالك", name: logos.owner.name, src: logos.owner.logoUrl ? escAttr(reportAssetUrl(logos.owner.logoUrl, base)) : "" });
+    if (logos.contractor) entries.push({ role: "المقاول", name: logos.contractor.name, src: logos.contractor.logoUrl ? escAttr(reportAssetUrl(logos.contractor.logoUrl, base)) : "" });
+    if (logos.supervisor) entries.push({ role: "جهة الإشراف", name: logos.supervisor.name, src: logos.supervisor.logoUrl ? escAttr(reportAssetUrl(logos.supervisor.logoUrl, base)) : "" });
     const html = entries.map(e => `<div class="logo-item">
       <div class="logo-role">${e.role}</div>
       <div class="logo-img-box">${e.src ? `<img src="${e.src}" onerror="this.style.display='none'" />` : ""}</div>
