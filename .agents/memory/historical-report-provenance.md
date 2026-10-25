@@ -39,6 +39,12 @@ Keep manual-entry provenance and system diagnostic messages internal; do not lab
 
 **How to apply:** Retain provenance in the editor/audit data, but present supervisor-approved figures as report figures in the issued document and AI narrative. Omit unsupported comparisons and use a dash for unknown item values rather than exposing diagnostics. Keep genuine technical observations and obstacles. This does not authorize presenting unknown or current values as verified historical facts.
 
+Do not hide existing report percentages merely because their historical provenance is uncertain. Display saved report values and local edits without adding new approval steps; distinguish genuinely missing values from provenance warnings.
+
+**Why:** The user became confused after hiding internal diagnostic messages also hid planned/actual figures, and approved a display-only correction rather than another workflow.
+
+**How to apply:** Preserve saved numbers, including zero. Do not fill gaps from today's project progress or use provenance-uncertain values to invent historical SPI. Keep AI and project data unchanged when correcting display.
+
 Manual item progress approved for a report's period may feed its AI narrative without changing live activities. The report aggregate stays independent of item edits.
 
 **Why:** The user approved editing old report items and regenerating the narrative, while rejecting internal provenance labels in the issued document.

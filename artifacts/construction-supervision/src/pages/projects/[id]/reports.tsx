@@ -775,11 +775,17 @@ export default function ProjectReports() {
     const snapshotActivities = fullReport.activitiesSnapshot
       ?? (fullReport as Report & { referenceActivities?: ReportActivitiesSnapshotItem[] }).referenceActivities ?? null;
     const hasSnapshot = Array.isArray(snapshotActivities);
+    const hasSavedSnapshot = Array.isArray(fullReport.activitiesSnapshot);
     const sourceActivities: ReportActivitiesSnapshotItem[] = hasSnapshot ? snapshotActivities : [];
     const activityList: ActivityForReport[] = sourceActivities.map((a) => ({
       name: a.name ?? "",
       plannedProgress: a.plannedProgress ?? 0,
       actualProgress: a.actualProgress ?? 0,
+      actualValueMissing: typeof a.actualProgress !== "number" || !Number.isFinite(a.actualProgress)
+        || ((a as { referenceOnly?: boolean }).referenceOnly === true
+          && (a as { actualHistoricalUnverified?: boolean }).actualHistoricalUnverified === true),
+      plannedValueMissing: typeof a.plannedProgress !== "number" || !Number.isFinite(a.plannedProgress)
+        || (!hasSavedSnapshot && (a as { plannedHistoricalUnverified?: boolean }).plannedHistoricalUnverified === true),
       status: (a.status as ActivityForReport["status"]) ?? "not_started",
       plannedStartDate: a.plannedStartDate,
       plannedEndDate: a.plannedEndDate,
@@ -790,8 +796,9 @@ export default function ProjectReports() {
     const weightedSnapshotProgress = (field: "plannedProgress" | "actualProgress") => {
       if (!hasSnapshot) return null;
       if (!Array.isArray(fullReport.activitiesSnapshot)) return null;
-      if (field === "actualProgress" && sourceActivities.some(row =>
-        (row as ReportActivitiesSnapshotItem & { actualHistoricalUnverified?: boolean }).actualHistoricalUnverified)) return null;
+      if (!sourceActivities.length || sourceActivities.some(row =>
+        typeof row[field] !== "number" || !Number.isFinite(row[field])
+        || (row as { referenceOnly?: boolean }).referenceOnly === true)) return null;
       let totalWeight = 0;
       let weighted = 0;
       for (const row of sourceActivities) {
@@ -804,7 +811,7 @@ export default function ProjectReports() {
     const hasUnverifiedPlan = sourceActivities.some(row =>
       (row as ReportActivitiesSnapshotItem & { plannedHistoricalUnverified?: boolean }).plannedHistoricalUnverified === true
     );
-    const snapshotPlanned = hasUnverifiedPlan ? null : weightedSnapshotProgress("plannedProgress");
+    const snapshotPlanned = weightedSnapshotProgress("plannedProgress");
     const snapshotActual = weightedSnapshotProgress("actualProgress");
     const createdAt = fullReport.createdAt ? new Date(fullReport.createdAt) : null;
     const createdUtcDay = createdAt && Number.isFinite(createdAt.getTime())
