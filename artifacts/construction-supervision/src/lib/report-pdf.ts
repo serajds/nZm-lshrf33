@@ -11,6 +11,8 @@ export interface ActivityForReport {
   plannedAsOfDate?: string;
   plannedHistoricalUnverified?: boolean;
   actualHistoricalUnverified?: boolean;
+  actualValueMissing?: boolean;
+  plannedValueMissing?: boolean;
   delayed?: boolean;
 }
 
@@ -127,7 +129,7 @@ export function buildPrintHTML(data: ReportPdfData): string {
   const scheduleAvailable = hasValidSchedule(data.startDate, data.expectedEndDate, data.noSchedule);
   const plannedUnverified = data.plannedHistoricalUnverified === true
     || (data.activities ?? []).some(activity => activity.plannedHistoricalUnverified === true);
-  const plannedPct = snapshotAvailable && scheduleAvailable && !plannedUnverified && data.plannedProgress != null
+  const plannedPct = snapshotAvailable && data.plannedProgress != null && Number.isFinite(data.plannedProgress)
     ? Math.round(Math.min(100, Math.max(0, data.plannedProgress)) * 10) / 10
     : null;
   const recordedActual = snapshotAvailable && data.actualProgress != null
@@ -136,7 +138,7 @@ export function buildPrintHTML(data: ReportPdfData): string {
   const historicalActual = data.approvedProgress ? pct : data.actualHistoricalUnverified ? null : recordedActual;
   const comparisonActual = historicalActual ?? pct;
   const displayedComparisonActual = Math.round(comparisonActual * 10) / 10;
-  const deviation = plannedPct != null && historicalActual != null && data.plannedProgress != null
+  const deviation = !plannedUnverified && plannedPct != null && historicalActual != null && data.plannedProgress != null
     ? Math.round((historicalActual - data.plannedProgress) * 10) / 10
     : null;
 
@@ -178,15 +180,15 @@ export function buildPrintHTML(data: ReportPdfData): string {
             const barW = Math.min(100, Math.max(0, a.actualProgress));
             return `<tr style="background:${i % 2 === 0 ? "#fff" : "#f8fafc"}">
               <td class="td">${esc(a.name)}${a.plannedStartDate || a.plannedEndDate ? `<div style="font-size:10px;color:#64748b">البرنامج الزمني: ${fmtDate(a.plannedStartDate)} — ${fmtDate(a.plannedEndDate)}</div>` : ""}</td>
-              <td class="td tc">${!scheduleAvailable || a.plannedHistoricalUnverified ? "—" : `${(Math.round((a.plannedProgress ?? 0) * 10) / 10).toFixed(1)}%`}</td>
-              <td class="td tc" style="font-weight:700">${a.actualHistoricalUnverified ? "—" : `${(Math.round((a.actualProgress ?? 0) * 10) / 10).toFixed(1)}%`}</td>
+              <td class="td tc">${a.plannedValueMissing || !Number.isFinite(a.plannedProgress) ? "—" : `${(Math.round(a.plannedProgress * 10) / 10).toFixed(1)}%`}</td>
+              <td class="td tc" style="font-weight:700">${a.actualValueMissing || !Number.isFinite(a.actualProgress) ? "—" : `${(Math.round(a.actualProgress * 10) / 10).toFixed(1)}%`}</td>
               <td class="td tc">
                 <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;background:${statusBg(a.status)};color:${statusColor(a.status)};border:1px solid ${statusColor(a.status)}">
-                  ${a.actualHistoricalUnverified ? "—" : statusLabel(a.status)}
+                  ${a.actualValueMissing ? "—" : statusLabel(a.status)}
                 </span>
               </td>
               <td class="td">
-                ${a.actualHistoricalUnverified ? "—" : `<div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden"><div style="height:100%;width:${barW}%;background:${statusColor(a.status)};border-radius:4px"></div></div>`}
+                ${a.actualValueMissing || !Number.isFinite(a.actualProgress) ? "—" : `<div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden"><div style="height:100%;width:${barW}%;background:${statusColor(a.status)};border-radius:4px"></div></div>`}
               </td>
             </tr>`;
           }).join("")}

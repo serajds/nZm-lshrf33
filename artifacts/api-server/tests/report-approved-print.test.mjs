@@ -43,6 +43,7 @@ test("legacy reference shows work and schedule without presenting missing progre
     activities: [{
       name: "بند مرجعي", actualProgress: 0, plannedProgress: 70, status: "unknown",
       actualHistoricalUnverified: true, plannedHistoricalUnverified: true,
+      actualValueMissing: true, plannedValueMissing: true,
       plannedStartDate: "2026-09-01", plannedEndDate: "2026-09-30",
     }],
   });
@@ -51,4 +52,30 @@ test("legacy reference shows work and schedule without presenting missing progre
   assert.doesNotMatch(html, /جدول مرجعي|غير موثق للفترة|تغيّر تاريخ التقرير|الخطط المحفوظة|لقطة وقت الإنشاء/);
   assert.doesNotMatch(html, /لا توجد لقطة أنشطة محفوظة/);
   assert.doesNotMatch(html, />SPI<\/span>/);
+  assert.doesNotMatch(html, /70\.0%/);
+});
+
+test("saved planned and actual values remain visible despite internal provenance warnings", () => {
+  const html = buildPrintHTML({
+    ...report, plannedHistoricalUnverified: true,
+    activities: [{
+      name: "بند محفوظ", actualProgress: 36.5, plannedProgress: 72,
+      status: "in_progress", actualHistoricalUnverified: true, plannedHistoricalUnverified: true,
+    }],
+  });
+  assert.match(html, /36\.5%/);
+  assert.match(html, /72\.0%/);
+  assert.match(html, /50%/);
+  assert.doesNotMatch(html, />SPI<\/span>/);
+  assert.doesNotMatch(html, /تغيّر تاريخ التقرير|معتمدة يدوياً|غير موثق/);
+});
+
+test("saved zero is a real value, not a missing percentage", () => {
+  const html = buildPrintHTML({
+    ...report, activities: [{
+      name: "بند لم يبدأ", actualProgress: 0, plannedProgress: 0,
+      status: "not_started", actualHistoricalUnverified: true, plannedHistoricalUnverified: true,
+    }],
+  });
+  assert.match(html, /0\.0%/);
 });
