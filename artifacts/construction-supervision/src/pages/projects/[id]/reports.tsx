@@ -459,6 +459,7 @@ export default function ProjectReports() {
   const [dateTo, setDateTo] = useState<string>("");
   type GroupUploadState = { loaded: number; total: number; doneCount: number; totalCount: number };
   const [uploadProgress, setUploadProgress] = useState<Record<number, GroupUploadState>>({});
+  const [dragOverGroupIdx, setDragOverGroupIdx] = useState<number | null>(null);
   const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
@@ -888,11 +889,13 @@ export default function ProjectReports() {
     setPreviewLoadingId(null);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, groupIndex: number) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    const fileList = Array.from(files);
-    e.target.value = "";
+  const handleImageUpload = async (files: File[], groupIndex: number) => {
+    const fileList = files.filter(file => file.type.startsWith("image/"));
+    if (fileList.length !== files.length) {
+      toast({ variant: "destructive", title: "يمكن إضافة ملفات الصور فقط" });
+    }
+    if (fileList.length === 0) return;
+    setOpenGroupIdx(groupIndex);
     const token = getAuthToken();
     const totalBytes = fileList.reduce((s, f) => s + f.size, 0);
 
@@ -1650,7 +1653,11 @@ export default function ProjectReports() {
                                           accept="image/*"
                                           multiple
                                           className="hidden"
-                                          onChange={(e) => { setOpenGroupIdx(gIdx); handleImageUpload(e, gIdx); }}
+                                          onChange={(e) => {
+                                            const files = Array.from(e.currentTarget.files ?? []);
+                                            e.currentTarget.value = "";
+                                            void handleImageUpload(files, gIdx);
+                                          }}
                                         />
                                         <span className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 hover:border-primary/30 font-medium transition-all shadow-sm">
                                           {isThisUploading ? (
@@ -1699,7 +1706,26 @@ export default function ProjectReports() {
                                     </div>
                                   )}
                                   <CollapsibleContent>
-                                    <div className="px-4 pb-4">
+                                    <div
+                                      className={`px-4 pb-4 rounded-xl transition-colors ${dragOverGroupIdx === gIdx ? "bg-primary/10 ring-2 ring-inset ring-primary" : ""}`}
+                                      onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.dataTransfer.dropEffect = "copy";
+                                        setDragOverGroupIdx(gIdx);
+                                      }}
+                                      onDragLeave={(e) => {
+                                        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                                          setDragOverGroupIdx(null);
+                                        }
+                                      }}
+                                      onDrop={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setDragOverGroupIdx(null);
+                                        void handleImageUpload(Array.from(e.dataTransfer.files), gIdx);
+                                      }}
+                                    >
                                       {isEmpty ? (
                                         <div className="text-center p-6 border-2 border-dashed rounded-xl bg-background/50 text-muted-foreground/60 flex flex-col items-center gap-2">
                                           <ImagePlus className="h-8 w-8 opacity-50" />
