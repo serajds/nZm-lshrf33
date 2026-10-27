@@ -616,6 +616,7 @@ export default function ProjectReports() {
   }, [watchedType, watchedPeriodStart, editingId]);
 
   const handleEdit = async (r: Report) => {
+    setSelectedReportId(null);
     setEditingId(r.id);
     aiDraftSnapshotFingerprint.current = null;
     const existingGroups = (r.imageGroups as ImageGroup[] | null | undefined) ?? null;
@@ -1228,9 +1229,9 @@ export default function ProjectReports() {
           </div>
         </div>
         
-        {canApprove && (
+        {canEditReports && (
         <div className="flex items-center gap-2">
-          <ReportSettingsDialog projectId={projectId} />
+          {canApprove && <ReportSettingsDialog projectId={projectId} />}
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
             setOpenGroupIdx(0);
