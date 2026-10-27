@@ -5,6 +5,7 @@ import { setAuthTokenGetter, setAuthTokenSaver } from "@workspace/api-client-rea
 import { registerSW } from "virtual:pwa-register";
 import { getAuthToken, renewAuthToken } from "@/lib/auth-session";
 import { reloadOnceOnServiceWorkerUpdate } from "@/lib/pwa-update";
+import { installAutoFlush } from "@/lib/offline-attendance";
 
 setAuthTokenGetter(getAuthToken);
 // When the server rolls our session forward via X-Renewed-Token, persist
@@ -20,14 +21,14 @@ setAuthTokenSaver((token, requestToken) => {
 const rootEl = document.getElementById("root")!;
 createRoot(rootEl).render(<App />);
 
-// Drain any offline-queued attendance requests AFTER the first paint. The
-// IndexedDB code + queue logic is ~5 KB but, more importantly, dragging it
-// into the entry bundle blocked the splash from clearing. Defer to idle.
+// Drain offline attendance after the first paint. Import the installer through
+// the normal module graph, not an unhandled dynamic request that can fail
+// independently after a dev-server restart. IndexedDB work still starts idle.
 const scheduleIdle =
   (window as unknown as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback ??
   ((cb: () => void) => setTimeout(cb, 200));
 scheduleIdle(() => {
-  void import("./lib/offline-attendance").then((m) => m.installAutoFlush());
+  installAutoFlush();
 });
 
 // Hide the splash screen ONLY when the auth bootstrap has settled — see
