@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { getDefaultProjectId } from "@/lib/user-prefs";
+import { loadRouteModule } from "@/lib/route-module-recovery";
 
 import Login from "@/pages/login";
 import PendingAssignment from "@/pages/pending-assignment";
@@ -15,20 +16,26 @@ import { AppLayout } from "@/components/layout";
 // names. A single guarded reload refreshes the entry manifest without creating
 // an infinite reload loop, while normal navigation remains fully lazy-loaded.
 function lazyRoute<T extends ComponentType<any>>(loader: () => Promise<{ default: T }>, key: string) {
-  return lazy(async () => {
-    const retryKey = `route-chunk-retry:${key}`;
-    try {
-      const module = await loader();
-      sessionStorage.removeItem(retryKey);
-      return module;
-    } catch (error) {
-      if (!sessionStorage.getItem(retryKey)) {
-        sessionStorage.setItem(retryKey, "1");
-        window.location.reload();
-      }
-      throw error;
-    }
-  });
+  const RetryPage = () => (
+    <section dir="rtl" role="alert" className="m-6 rounded-xl border bg-card p-6 text-center">
+      <h1 className="text-lg font-semibold">تعذّر تحميل الصفحة</h1>
+      <p className="my-3 text-muted-foreground">تحقق من الاتصال ثم أعد تحميل الصفحة. لم تتغير بياناتك.</p>
+      <button className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
+        onClick={() => {
+          try { sessionStorage.removeItem(`route-chunk-retry:${key}`); } catch { /* Storage may be blocked. */ }
+          window.location.reload();
+        }}>إعادة تحميل الصفحة</button>
+    </section>
+  );
+  return lazy(() => loadRouteModule<{ default: ComponentType<any> }>(loader, key, {
+    storage: {
+      getItem: k => sessionStorage.getItem(k),
+      setItem: (k, v) => sessionStorage.setItem(k, v),
+      removeItem: k => sessionStorage.removeItem(k),
+    },
+    reload: () => window.location.reload(),
+    fallback: () => ({ default: RetryPage }),
+  }));
 }
 
 const Dashboard = lazyRoute(() => import("@/pages/dashboard"), "dashboard");
