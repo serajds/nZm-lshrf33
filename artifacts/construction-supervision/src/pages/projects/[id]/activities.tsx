@@ -2311,11 +2311,11 @@ export default function ProjectActivities() {
                 const source = getLinkedSource(a);
                 return (
                   <SortableActivityRow key={a.id} id={a.id}>
-                    <TableCell className="font-medium max-w-[200px]">
-                      <div className="flex items-center gap-1">
+                    <TableCell className="font-medium align-top">
+                      <div className="flex min-w-0 items-start gap-2">
                         {!isViewer && <DragHandle />}
-                        <div className="min-w-0">
-                          <span className="block truncate" title={a.name}>{a.name}</span>
+                        <div className="min-w-0 flex-1">
+                          <span className="block whitespace-normal break-words [overflow-wrap:anywhere] leading-7 text-right" title={a.name}>{a.name}</span>
                           {managed && (
                             <div className="mt-1">
                               <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">مُدار من مصدر مجموعة</Badge>
@@ -2325,7 +2325,7 @@ export default function ProjectActivities() {
                             <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px]">
                               <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">مرتبط</Badge>
                               {source.available ? (
-                                <span className="truncate text-muted-foreground" title={source.groupName ?? "مصدر مرتبط"}>
+                                <span className="min-w-0 whitespace-normal break-words text-muted-foreground" title={source.groupName ?? "مصدر مرتبط"}>
                                   {source.groupName ?? "مصدر مرتبط"}{(a as Activity & { externalSourceGroupId?: number | null }).externalSourceGroupId != null && source.projectName ? ` · ${source.projectName}` : ""}
                                 </span>
                               ) : (
@@ -2338,7 +2338,7 @@ export default function ProjectActivities() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="w-[190px]">
+                    <TableCell className="align-top">
                       <div className="flex flex-col gap-0.5 font-mono text-xs tabular-nums">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] text-muted-foreground w-8 shrink-0">بداية</span>
@@ -2353,7 +2353,7 @@ export default function ProjectActivities() {
                     <TableCell className="text-center">
                       <DelayBadge info={delayInfo} />
                     </TableCell>
-                    <TableCell className="w-[190px] min-w-[190px]">
+                    <TableCell>
                       <div className="min-w-0 space-y-1">
                         <ProgressBar value={planned} color="hsl(var(--muted-foreground)/0.4)" />
                         <ProgressBar value={a.actualProgress} color="hsl(var(--primary))" />
@@ -2447,15 +2447,23 @@ export default function ProjectActivities() {
 
               return (
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <Table className="min-w-[1000px]">
+                  <Table className="table-fixed min-w-[1280px]">
+                    <colgroup>
+                      <col />
+                      <col style={{ width: 150 }} />
+                      <col style={{ width: 140 }} />
+                      <col style={{ width: 190 }} />
+                      <col style={{ width: 150 }} />
+                      <col style={{ width: 230 }} />
+                    </colgroup>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-right w-[220px]">البند</TableHead>
-                        <TableHead className="text-right w-[190px]">الفترة المخططة</TableHead>
-                        <TableHead className="text-center w-[140px]">التأخر / التقدم</TableHead>
-                        <TableHead className="text-center w-[190px]">الإنجاز (مخطط/فعلي)</TableHead>
-                        <TableHead className="text-right w-[130px]">الحالة</TableHead>
-                        <TableHead className="text-center w-[110px]">إجراءات</TableHead>
+                        <TableHead className="text-right">البند</TableHead>
+                        <TableHead className="text-right">الفترة المخططة</TableHead>
+                        <TableHead className="text-center">التأخر / التقدم</TableHead>
+                        <TableHead className="text-center">الإنجاز (مخطط/فعلي)</TableHead>
+                        <TableHead className="text-right">الحالة</TableHead>
+                        <TableHead className="text-center">إجراءات</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
