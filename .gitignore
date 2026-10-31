@@ -10,3 +10,4 @@ docker-compose.yml
 *.hdbkp
 *.dump
 *.sqlite
+/generated-artifacts/

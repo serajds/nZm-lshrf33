@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { readFileSync } from "node:fs";
 import { VitePWA } from "vite-plugin-pwa";
 
 const isBuild = process.argv.includes("build");
@@ -21,6 +22,17 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    {
+      name: "development-runtime-error-context",
+      apply: "serve",
+      transformIndexHtml() {
+        return [{
+          tag: "script",
+          children: readFileSync(new URL("./src/lib/dev-runtime-context.js", import.meta.url), "utf8"),
+          injectTo: "head-prepend" as const,
+        }];
+      },
+    },
     runtimeErrorOverlay(),
     VitePWA({
       registerType: "autoUpdate",
