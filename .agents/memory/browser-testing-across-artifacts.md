@@ -20,3 +20,15 @@ Radix dropdown triggers may not open from a programmatic `HTMLElement.click()` i
 **Why:** The trigger was present and the click method returned, but no menu appeared; a real mouse press/release at its onscreen position opened it.
 
 **How to apply:** Scroll the trigger into view, read its bounding rect, and dispatch mouse press/release events at its center before asserting menu state. Programmatic click still works for menu actions.
+
+Direct browser imports of Vite-optimized CommonJS dependencies may expose their API under `module.default`, even though Vite-transformed application imports work as named imports.
+
+**Why:** Programmatic browser fixtures do not receive Vite's import interop rewrite; this can make a healthy React application appear to have a missing rendering API.
+
+**How to apply:** Reuse the application's exact transformed dependency URLs and normalize imported namespaces with `module.default ?? module`. Do not install a second copy of React to repair a fixture.
+
+Separate Chrome debugging targets share storage when they use the same browser profile, even after a previous target closes.
+
+**Why:** A prior fixture's synthetic token can make a later guest-startup check unexpectedly load an authenticated screen.
+
+**How to apply:** Clear storage before each navigation only in a dedicated, isolated test profile, or use isolated browser contexts. Never clear the user's actual browser profile as test setup.
