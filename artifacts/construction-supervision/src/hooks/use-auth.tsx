@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback, ReactNode } from "react";
-import { createConfirmedUnauthorizedHandler, useGetMe, useLogin, useLogout, useRegister, setUnauthorizedHandler, processFetchResponse } from "@workspace/api-client-react";
+import { createConfirmedUnauthorizedHandler, getMe, useLogin, useLogout, useRegister, setUnauthorizedHandler, processFetchResponse } from "@workspace/api-client-react";
 import type { User, LoginBody, RegisterBody } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -9,8 +9,11 @@ import {
   AUTH_SESSION_STORAGE_KEYS,
   clearAuthSession,
   getAuthToken,
+  getAuthSessionSnapshot,
+  isSameAuthSession,
   replaceAuthToken,
 } from "@/lib/auth-session";
+import { readCachedUser, writeCachedUser, getAuthUserQueryKey, getAuthBootstrapState, withAuthDeadline } from "@/lib/auth-bootstrap";
 
 const SESSION_EXPIRED_FLAG = "auth_session_expired";
 
@@ -21,6 +24,9 @@ type AuthContextType = {
   register: (data: RegisterBody) => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
+  connectionError: boolean;
+  retryAuth: () => void;
+  isRetryingAuth: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -30,14 +36,14 @@ const AuthContext = createContext<AuthContextType | null>(null);
 // screen "جاري التحميل" spinner while /auth/me round-trips. React Query
 // still revalidates in the background and updates the UI silently if
 // anything changed (or kicks the user to /login if the token expired).
-const USER_CACHE_KEY = "auth_user_cache";
 async function confirmCurrentTokenRejected(token: string): Promise<boolean> {
   try {
     const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-    const response = await fetch(`${base}/api/auth/me`, {
+    const response = await withAuthDeadline(signal => fetch(`${base}/api/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
-    });
+      signal,
+    }), undefined, 10_000);
     if (response.status !== 401) {
       await processFetchResponse(response, token);
     }
@@ -48,32 +54,15 @@ async function confirmCurrentTokenRejected(token: string): Promise<boolean> {
   }
 }
 
-type CachedUserEnvelope = { token: string; user: User };
-
-function readCachedUser(token: string): User | undefined {
-  try {
-    const raw = localStorage.getItem(USER_CACHE_KEY);
-    if (!raw) return undefined;
-    const cached = JSON.parse(raw) as CachedUserEnvelope;
-    return cached?.token === token ? cached.user : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function writeCachedUser(user: User | null, token?: string | null) {
-  try {
-    if (user && token) {
-      localStorage.setItem(USER_CACHE_KEY, JSON.stringify({ token, user } satisfies CachedUserEnvelope));
-    }
-    else localStorage.removeItem(USER_CACHE_KEY);
-  } catch {
-    // localStorage may be full or unavailable (private mode) — non-fatal.
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(getAuthToken());
+  const [session, setSession] = useState(getAuthSessionSnapshot);
+  const sessionRef = useRef(session);
+  const token = session.token;
+  const adoptSession = useCallback(() => {
+    const next = getAuthSessionSnapshot();
+    sessionRef.current = next;
+    setSession(next);
+  }, []);
   const authOperationRef = useRef(0);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -81,20 +70,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Read once per token change. We don't depend on `user` here — that would
   // create a write/read loop with the cache-update effect below.
   const cachedUser = useMemo<User | undefined>(
-    () => (token ? readCachedUser(token) : undefined),
-    [token],
+    () => readCachedUser(session),
+    [session],
   );
 
-  const { data: user, isLoading: isUserLoading } = useGetMe({
-    query: {
+  const { data: user, isPending: isUserPending, isError, isFetching, refetch } = useQuery<User>({
+      queryKey: getAuthUserQueryKey(session),
+      // Capture the token for this query's session; a late account-A response
+      // can never populate account B's user query.
+      queryFn: ({ signal }) => withAuthDeadline(
+        requestSignal => getMe({ signal: requestSignal, headers: { Authorization: `Bearer ${token}` } }),
+        signal,
+      ),
       enabled: !!token,
       retry: false,
       initialData: cachedUser,
-      // Trust the cache for 5 minutes before forcing a refetch on mount.
-      // Background revalidation still happens; this just stops every page
-      // navigation from showing a fresh loading state.
       staleTime: 1000 * 60 * 5,
-    },
+      refetchOnMount: "always",
+      refetchOnWindowFocus: false,
   });
 
   const queryClient = useQueryClient();
@@ -104,26 +97,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Persist the freshest /auth/me payload so the next app launch is instant.
   useEffect(() => {
-    if (user) writeCachedUser(user, token);
-  }, [user, token]);
+    if (user) writeCachedUser(user, session);
+  }, [user, session]);
 
   // Keep the in-memory token in sync with the central storage layer. Its
   // same-tab event covers login/logout/renewal here, while the browser's
   // storage event covers changes made by another tab.
   useEffect(() => {
     const sync = () => {
-      const stored = getAuthToken();
-      setToken((current) => {
-        if (current === stored) return current;
-        // A token changed by another tab may belong to a different account.
-        // Discard identity-scoped query data before rendering with it.
+      const next = getAuthSessionSnapshot();
+      const current = sessionRef.current;
+      if (current.token === next.token && current.sessionId === next.sessionId) return;
+      if (!isSameAuthSession(current, next)) {
+        // Logout/replacement clears every identity-scoped query. A server
+        // renewal preserves the session lineage and leaves open pages intact.
         queryClient.clear();
-        return stored;
-      });
+      }
+      sessionRef.current = next;
+      setSession(next);
     };
     const onStorage = (event: StorageEvent) => {
       if (event.key && !AUTH_SESSION_STORAGE_KEYS.includes(event.key as never)) return;
-      authOperationRef.current++;
+      if (!isSameAuthSession(sessionRef.current, getAuthSessionSnapshot())) authOperationRef.current++;
       sync();
     };
     window.addEventListener("storage", onStorage);
@@ -157,19 +152,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // sessionStorage may be unavailable — non-fatal.
         }
         writeCachedUser(null);
-        setToken(null);
+        adoptSession();
         queryClient.clear();
         setLocation("/login");
       },
     }));
     return () => setUnauthorizedHandler(null);
-  }, [queryClient, setLocation]);
+  }, [queryClient, setLocation, adoptSession]);
 
   // Only block the UI with a full-screen spinner on the very FIRST login
   // (no cached user yet). On every subsequent open we have a cached user,
   // so the app shell renders immediately while React Query revalidates in
   // the background.
-  const isAuthLoading = isUserLoading && !!token && !cachedUser;
+  const bootstrap = getAuthBootstrapState(!!token, !!user, isUserPending, isError);
+  const isAuthLoading = bootstrap.isLoading;
+  const retryAuth = useCallback(() => { void refetch(); }, [refetch]);
 
   // Dismiss the index.html splash once the auth bootstrap settles. This
   // replaces the previous unconditional rAF-based dismissal that fired
@@ -194,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const previousToken = getAuthToken();
       if (previousToken) clearAuthSession(previousToken);
       writeCachedUser(null);
-      setToken(null);
+      adoptSession();
       await queryClient.cancelQueries();
       queryClient.clear();
       const result = await loginMutation.mutateAsync({ data });
@@ -205,8 +202,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       replaceAuthToken(result.token);
       // Seed the cache from the login response so the post-login redirect
       // doesn't flash a loading screen.
-      if (result.user) writeCachedUser(result.user, result.token);
-      setToken(result.token);
+      if (result.user) writeCachedUser(result.user, getAuthSessionSnapshot());
+      adoptSession();
       toast({
         title: "تم تسجيل الدخول بنجاح",
       });
@@ -248,7 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: e?.data?.error || "تأكد من رقم الهاتف وكلمة المرور",
       });
     }
-  }, [loginMutation, queryClient, setLocation, toast]);
+  }, [loginMutation, queryClient, setLocation, toast, adoptSession]);
 
   const register = useCallback(async (data: RegisterBody) => {
     try {
@@ -277,7 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const sessionToken = getAuthToken();
     clearAuthSession(sessionToken);
     writeCachedUser(null);
-    setToken(null);
+    adoptSession();
     queryClient.clear();
     setLocation("/login");
     try {
@@ -285,7 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       // ignore
     }
-  }, [queryClient, setLocation, logoutMutation]);
+  }, [queryClient, setLocation, logoutMutation, adoptSession]);
 
   // Memoize the context value so consumers (layout, dashboard, project
   // pages, navigation, …) don't re-render on every AuthProvider tick. The
@@ -299,9 +296,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       register,
       logout,
-      isAuthenticated: !!token && !!user,
+      isAuthenticated: bootstrap.isAuthenticated,
+      connectionError: bootstrap.connectionError,
+      retryAuth,
+      isRetryingAuth: isFetching,
     }),
-    [token, user, isAuthLoading, login, register, logout],
+    [token, user, isAuthLoading, login, register, logout, bootstrap.isAuthenticated, bootstrap.connectionError, retryAuth, isFetching],
   );
 
   return (

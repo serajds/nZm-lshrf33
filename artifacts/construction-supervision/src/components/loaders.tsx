@@ -1,4 +1,29 @@
-import { Building2 } from "lucide-react";
+import { Building2, WifiOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+export function AuthConnectionProblem({ onRetry, onLogout, isRetrying }: {
+  onRetry: () => void;
+  onLogout: () => void;
+  isRetrying: boolean;
+}) {
+  return (
+    <main dir="rtl" className="min-h-screen flex items-center justify-center bg-background p-6">
+      <section role="alert" className="w-full max-w-md rounded-2xl border bg-card p-6 text-center shadow-sm">
+        <WifiOff className="mx-auto mb-4 h-10 w-10 text-primary" />
+        <h1 className="text-lg font-bold">تعذّر التحقق من الاتصال</h1>
+        <p className="my-4 text-sm leading-7 text-muted-foreground">
+          لم نتمكن من التحقق من جلستك الآن. لم يتم تسجيل خروجك. تحقق من الاتصال ثم أعد المحاولة.
+        </p>
+        <div className="flex flex-wrap justify-center gap-3">
+          <Button onClick={onRetry} disabled={isRetrying}>
+            {isRetrying ? "جارٍ التحقق..." : "إعادة المحاولة"}
+          </Button>
+          <Button variant="outline" onClick={onLogout}>تسجيل الخروج</Button>
+        </div>
+      </section>
+    </main>
+  );
+}
 
 export function FullScreenLoader() {
   return (
