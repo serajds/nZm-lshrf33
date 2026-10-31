@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Eye, X, BellOff } from "lucide-react";
+import { useAutomaticNoticeSlot, useAutoCloseCountdown } from "./automatic-notices";
 
 interface SummaryWidget {
   id: string;
@@ -23,7 +24,6 @@ interface Props {
 }
 
 const AUTO_CLOSE_MS = 10_000;
-const TICK_MS = 100;
 
 function stableSerialize(value: unknown): string {
   if (value == null) return "";
@@ -55,9 +55,26 @@ function dismissalKey(projectId: number) {
 
 export function ProjectQuickViewDialog({ projectId, widgets, enabled }: Props) {
   const [open, setOpen] = useState(false);
-  const [remainingMs, setRemainingMs] = useState(AUTO_CLOSE_MS);
-  const [paused, setPaused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [keyboardFocus, setKeyboardFocus] = useState(false);
+  const [hidden, setHidden] = useState(() => document.visibilityState === "hidden");
   const triggeredRef = useRef(false);
+  const visible = useAutomaticNoticeSlot(open && enabled, projectId);
+  const paused = hovered || keyboardFocus || hidden;
+  const remainingMs = useAutoCloseCountdown(visible, paused, () => setOpen(false), AUTO_CLOSE_MS);
+
+  useEffect(() => {
+    const update = () => setHidden(document.visibilityState === "hidden");
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+
+  useEffect(() => {
+    if (!visible) {
+      setHovered(false);
+      setKeyboardFocus(false);
+    }
+  }, [visible]);
 
   const fingerprint = useMemo(() => computeFingerprint(widgets), [widgets]);
   const hasWidgets = widgets.length > 0;
@@ -66,8 +83,8 @@ export function ProjectQuickViewDialog({ projectId, widgets, enabled }: Props) {
   useEffect(() => {
     triggeredRef.current = false;
     setOpen(false);
-    setRemainingMs(AUTO_CLOSE_MS);
-    setPaused(false);
+    setHovered(false);
+    setKeyboardFocus(false);
   }, [projectId]);
 
   // Trigger open exactly once per page entry, after widgets load.
@@ -88,31 +105,7 @@ export function ProjectQuickViewDialog({ projectId, widgets, enabled }: Props) {
     }
     triggeredRef.current = true;
     setOpen(true);
-    setRemainingMs(AUTO_CLOSE_MS);
   }, [enabled, hasWidgets, fingerprint, projectId]);
-
-  // Countdown timer with pause-on-hover/focus.
-  useEffect(() => {
-    if (!open) return;
-    if (paused) return;
-    const id = window.setInterval(() => {
-      setRemainingMs((prev) => {
-        const next = prev - TICK_MS;
-        if (next <= 0) {
-          window.clearInterval(id);
-          setOpen(false);
-          return 0;
-        }
-        return next;
-      });
-    }, TICK_MS);
-    return () => window.clearInterval(id);
-  }, [open, paused]);
-
-  // Reset countdown when reopening (defensive).
-  useEffect(() => {
-    if (open) setRemainingMs(AUTO_CLOSE_MS);
-  }, [open]);
 
   const handleDismissUntilChanged = () => {
     try {
@@ -127,15 +120,20 @@ export function ProjectQuickViewDialog({ projectId, widgets, enabled }: Props) {
   const progressPct = Math.max(0, Math.min(100, (remainingMs / AUTO_CLOSE_MS) * 100));
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
+    <DialogPrimitive.Root open={visible} onOpenChange={setOpen}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
           className="fixed inset-0 z-50 bg-black/70 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
         />
         <DialogPrimitive.Content
           dir="rtl"
-          onMouseEnter={() => setPaused(true)}
-          onMouseLeave={() => setPaused(false)}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          onKeyDownCapture={() => setKeyboardFocus(true)}
+          onPointerDownCapture={() => setKeyboardFocus(false)}
+          onBlurCapture={event => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setKeyboardFocus(false);
+          }}
           className={cn(
             "fixed left-[50%] top-[50%] z-50 w-[calc(100vw-1.5rem)] max-w-xl",
             "translate-x-[-50%] translate-y-[-50%]",
@@ -163,7 +161,7 @@ export function ProjectQuickViewDialog({ projectId, widgets, enabled }: Props) {
                 className="text-[11px] tabular-nums px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
                 aria-live="polite"
               >
-                {remainingSec} ث
+                {remainingSec} ث{paused ? " — متوقف مؤقتًا" : ""}
               </span>
               <DialogPrimitive.Close asChild>
                 <Button
@@ -187,7 +185,7 @@ export function ProjectQuickViewDialog({ projectId, widgets, enabled }: Props) {
               )}
               style={{
                 width: `${progressPct}%`,
-                transitionDuration: paused ? "0ms" : `${TICK_MS}ms`,
+                transitionDuration: paused ? "0ms" : "100ms",
               }}
             />
           </div>
