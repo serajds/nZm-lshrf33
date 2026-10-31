@@ -92,6 +92,40 @@ export declare const projectMembersTable: import("drizzle-orm/pg-core").PgTableW
         }, {}, {
             $type: TabPermissionsMap | null;
         }>;
+        activityReminderEnabled: import("drizzle-orm/pg-core").PgColumn<{
+            name: "activity_reminder_enabled";
+            tableName: "project_members";
+            dataType: "boolean";
+            columnType: "PgBoolean";
+            data: boolean;
+            driverParam: boolean;
+            notNull: true;
+            hasDefault: true;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        activityReminderLastShownOn: import("drizzle-orm/pg-core").PgColumn<{
+            name: "activity_reminder_last_shown_on";
+            tableName: "project_members";
+            dataType: "string";
+            columnType: "PgDateString";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
         createdAt: import("drizzle-orm/pg-core").PgColumn<{
             name: "created_at";
             tableName: "project_members";
@@ -122,6 +156,8 @@ export declare const insertProjectMemberSchema: z.ZodObject<{
     }>>;
     userId: z.ZodInt;
     tabPermissions: z.ZodOptional<z.ZodNullable<z.ZodType<import("drizzle-zod").Json, unknown, z.core.$ZodTypeInternals<import("drizzle-zod").Json, unknown>>>>;
+    activityReminderEnabled: z.ZodOptional<z.ZodBoolean>;
+    activityReminderLastShownOn: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, {
     out: {};
     in: {};

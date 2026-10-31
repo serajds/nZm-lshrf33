@@ -9,7 +9,7 @@ Treat each login token as a session generation. Renewal and 401 responses may on
 
 **How to apply:** Whenever adding a request path, capture the bearer token used and route the response through the shared session pipeline. For offline queues, bind each entry to its owner and exact flush token. Never add public/shared caching to a response that required bearer or scoped-token authorization.
 
-Print-window HTML cannot attach the application's bearer header to image requests. Resolve protected images, including company logos, through the session-aware loader before opening the report.
+Print-window HTML cannot attach the application's bearer header to image requests. Resolve protected images, including company logos, through the session-aware loader before writing the final report content; a loading window may open immediately.
 
 **Why:** Report photos used authenticated loading but company logos used direct URLs, causing logos to disappear in the issued report.
 

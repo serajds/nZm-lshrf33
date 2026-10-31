@@ -638,13 +638,14 @@ ${(() => {
 </html>`;
 }
 
-export function previewReport(data: ReportPdfData): void {
+export function previewReport(data: ReportPdfData, targetWindow?: Window): void {
   const html = buildPrintHTML(data);
-  const win = window.open("", "_blank", "width=900,height=780,scrollbars=yes");
+  const win = targetWindow ?? window.open("", "_blank", "width=900,height=780,scrollbars=yes");
   if (!win) {
     alert("يرجى السماح بالنوافذ المنبثقة لاستخدام خاصية المعاينة");
     return;
   }
+  if (win.closed) return;
   win.document.open();
   win.document.write(html);
   win.document.close();

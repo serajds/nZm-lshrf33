@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, unique, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, unique, jsonb, index, boolean, date } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 import { projectsTable } from "./projects";
 import { createInsertSchema } from "drizzle-zod";
@@ -13,6 +13,8 @@ export const projectMembersTable = pgTable("project_members", {
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   role: text("role", { enum: ["project_manager", "engineer", "contractor", "viewer"] }).notNull().default("engineer"),
   tabPermissions: jsonb("tab_permissions").$type<TabPermissionsMap | null>(),
+  activityReminderEnabled: boolean("activity_reminder_enabled").notNull().default(false),
+  activityReminderLastShownOn: date("activity_reminder_last_shown_on"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique("project_members_project_user_unique").on(table.projectId, table.userId),
