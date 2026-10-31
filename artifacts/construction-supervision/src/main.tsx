@@ -36,8 +36,7 @@ scheduleIdle(() => {
 // resolved (or immediately when there is no token / a cached user is
 // available). Dismissing earlier caused a brief "جاري التحميل..." text
 // flash for tokens with no cached user. The 12-second safety timer in
-// index.html still hides the splash if React or the network never makes
-// it that far.
+// index.html exposes a retry if React never starts, without hiding an empty root.
 function dismissSplash() {
   if (typeof window !== "undefined") {
     const w = window as unknown as { __splashSafetyTimer?: number; __splashSlowTimer?: number };
@@ -47,9 +46,8 @@ function dismissSplash() {
   const splash = document.getElementById("app-splash");
   if (!splash) return;
   splash.classList.add("splash-hide");
-  // Match the CSS transition duration (200ms) so the node is gone right
-  // when the fade ends — no extra dead time on top of the visible fade.
-  setTimeout(() => splash.remove(), 220);
+  // Match the 300ms CSS fade rather than removing the node mid-transition.
+  setTimeout(() => splash.remove(), 320);
 }
 (window as unknown as { __dismissAppSplash?: () => void }).__dismissAppSplash = dismissSplash;
 

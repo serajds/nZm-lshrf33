@@ -78,7 +78,7 @@ const queryClient = new QueryClient({
   },
 });
 
-import { FullScreenLoader, PageFallback } from "@/components/loaders";
+import { FullScreenLoader, PageFallback, AuthConnectionProblem } from "@/components/loaders";
 import { PageTransition } from "@/components/page-transition";
 
 // PageFallback and FullScreenLoader have been moved to @/components/loaders
@@ -131,8 +131,18 @@ function HomeRoute() {
 // the slim top progress bar so navigating between lazy pages doesn't blank
 // out the screen.
 function AuthenticatedShell() {
+  const { connectionError, retryAuth, isRetryingAuth } = useAuth();
   return (
     <AppLayout>
+      {connectionError && (
+        <div role="alert" dir="rtl" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted p-3 text-sm">
+          <span>تعذّر تحديث بيانات الجلسة. لم يتم تسجيل خروجك.</span>
+          <button type="button" className="font-semibold text-primary underline disabled:opacity-50"
+            disabled={isRetryingAuth} onClick={retryAuth}>
+            {isRetryingAuth ? "جارٍ التحقق..." : "إعادة المحاولة"}
+          </button>
+        </div>
+      )}
       <Suspense fallback={<PageFallback />}>
         <PageTransition>
           <Switch>
@@ -210,7 +220,7 @@ function AuthenticatedShell() {
 }
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, connectionError, retryAuth, isRetryingAuth, logout } = useAuth();
 
   return (
     <Suspense fallback={<PageFallback />}>
@@ -221,6 +231,8 @@ function Router() {
         <Route>
           {isLoading ? (
             <FullScreenLoader />
+          ) : connectionError && !isAuthenticated ? (
+            <AuthConnectionProblem onRetry={retryAuth} onLogout={() => { void logout(); }} isRetrying={isRetryingAuth} />
           ) : !isAuthenticated ? (
             <Redirect to="/login" />
           ) : (
