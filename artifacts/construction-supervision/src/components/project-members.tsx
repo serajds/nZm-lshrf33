@@ -17,7 +17,7 @@ import type { ProjectMember as ApiProjectMember } from "@workspace/api-client-re
 // The /projects/:id/members response includes a server-computed flag that
 // is not yet in the generated OpenAPI types. We extend the shape locally
 // until the next codegen run picks it up.
-type ProjectMember = ApiProjectMember & { isContractorLocked?: boolean };
+type ProjectMember = ApiProjectMember & { isContractorLocked?: boolean; activityReminderEnabled?: boolean };
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Check, ChevronsUpDown, UserPlus, Trash2, Shield, Users, FolderOpen, Building2, ShieldCheck, RotateCcw } from "lucide-react";
@@ -99,6 +100,17 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
   const addMember = useAddProjectMember();
   const updateMember = useUpdateProjectMember();
   const removeMember = useRemoveProjectMember();
+  const reminderMutation = useMutation({
+    mutationFn: ({ memberId, enabled }: { memberId: number; enabled: boolean }) =>
+      customFetch(`/api/projects/${projectId}/members/${memberId}/activity-reminder`, {
+        method: "PUT", body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListProjectMembersQueryKey(projectId) });
+      toast({ title: "تم حفظ إعداد تذكير تحديث الجدول الزمني" });
+    },
+    onError: () => toast({ title: "تعذّر حفظ إعداد التذكير", variant: "destructive" }),
+  });
 
   const updateGroupsMutation = useMutation({
     mutationFn: async ({ memberId, groupIds }: { memberId: number; groupIds: number[] }) => {
@@ -361,6 +373,7 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                 <TableHead className="text-right">الشركة</TableHead>
                 {canManageMembers && <TableHead className="text-right">الدور في المشروع</TableHead>}
                 <TableHead className="text-right">المجموعات</TableHead>
+                {canManageMembers && <TableHead className="text-right">تذكير تحديث الجدول</TableHead>}
                 {canManageMembers && <TableHead className="text-left w-[100px]">الإجراءات</TableHead>}
               </TableRow>
             </TableHeader>
@@ -450,6 +463,21 @@ export function ProjectMembers({ projectId }: ProjectMembersProps) {
                         <span className="text-xs text-muted-foreground">صلاحية كاملة</span>
                       )}
                     </TableCell>
+                    {canManageMembers && (
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={member.activityReminderEnabled === true}
+                          disabled={reminderMutation.isPending}
+                          onCheckedChange={enabled => reminderMutation.mutate({ memberId: member.id, enabled })}
+                          aria-label={`تذكير تحديث الجدول الزمني للعضو ${member.fullName}`}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {member.activityReminderEnabled ? "مفعّل يوميًا" : "متوقف"}
+                        </span>
+                      </div>
+                    </TableCell>
+                    )}
                     {canManageMembers && (
                       <TableCell className="text-left">
                         <div className="flex items-center gap-1">

@@ -61,7 +61,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Progress } from "@/components/ui/progress";
 import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
-import { prepareReportLogos } from "@/lib/report-logos";
+import { loadReportPreview, openReportPreviewWindow, updateReportPreviewStatus } from "@/lib/report-preview-loader";
 import { getAuthToken } from "@/lib/auth-session";
 import {
   ProtectedImage,
@@ -732,58 +732,29 @@ export default function ProjectReports() {
 
   const handlePreview = async (report: Report) => {
     if (!project) return;
-    // The list endpoint strips the heavy `activitiesSnapshot` column to keep
-    // payloads small, so the row we got from `useListReports` doesn't carry
-    // the timeline that was captured when this report was created. Fetch the
-    // single report (which includes the snapshot) and cache it so future
-    // previews don't re-hit the network.
+    const previewWindow = openReportPreviewWindow();
+    if (!previewWindow) {
+      toast({ title: "يرجى السماح بالنوافذ المنبثقة لفتح معاينة التقرير", variant: "destructive" });
+      return;
+    }
     setPreviewLoadingId(report.id);
-    let fullReport: Report = report;
     try {
-      fullReport = await queryClient.fetchQuery({
-        queryKey: getGetReportQueryKey(projectId, report.id),
-        queryFn: ({ signal }) => getReport(projectId, report.id, { signal }),
-        staleTime: 0,
-      }) as Report;
-    } catch {
-      toast({ title: "تعذّر تحميل تفاصيل التقرير", variant: "destructive" });
-      setPreviewLoadingId(null);
-      return;
-    }
-    let previewLogos: Record<string, CompanyLogo>;
-    try {
-      const result = await refetchCompanyLogos();
-      if (result.error || !result.data) throw result.error ?? new Error("Missing company logos");
-      previewLogos = await prepareReportLogos(result.data, protectedAssetToDataUrl);
-    } catch {
-      toast({
-        title: "تعذّر تحميل شعارات التقرير",
-        description: "لم تُفتح المعاينة لتجنّب إصدار تقرير بشعارات ناقصة. أعد المحاولة.",
-        variant: "destructive",
+      const { report: fullReport, companyLogos: previewLogos, imageUrls, imageGroups } = await loadReportPreview({
+        loadReport: () => queryClient.fetchQuery({
+          queryKey: getGetReportQueryKey(projectId, report.id),
+          queryFn: ({ signal }) => getReport(projectId, report.id, { signal }),
+          staleTime: 0,
+        }),
+        loadLogos: async () => {
+          const result = await refetchCompanyLogos();
+          if (result.error || !result.data) throw result.error ?? new Error("Missing company logos");
+          return result.data;
+        },
+        loadAsset: protectedAssetToDataUrl,
+        onProgress: (done, total) => updateReportPreviewStatus(
+          previewWindow, `جارٍ تجهيز الصور والشعارات: ${done} من ${total}`,
+        ),
       });
-      setPreviewLoadingId(null);
-      return;
-    }
-    const loadPreviewImage = async (url: string) => {
-      try {
-        return await protectedAssetToDataUrl(url);
-      } catch {
-        return "";
-      }
-    };
-    const rawGroups = (fullReport.imageGroups as ImageGroup[] | null | undefined) ?? null;
-    // Reports with named groups also store a flattened imageUrls list for
-    // compatibility. Convert only one representation to avoid holding every
-    // large data URL twice during preview.
-    const imageUrls = rawGroups && rawGroups.length > 0
-      ? []
-      : (await Promise.all((fullReport.imageUrls ?? []).map(loadPreviewImage))).filter(Boolean);
-    const imageGroups = rawGroups && rawGroups.length > 0
-      ? await Promise.all(rawGroups.map(async (group) => ({
-          category: group.category,
-          urls: (await Promise.all((group.urls ?? []).map(loadPreviewImage))).filter(Boolean),
-        })))
-      : null;
     // A historical report without a saved snapshot cannot be reconstructed
     // from today's activities; show that limitation instead of implying that
     // current activity values describe the report date.
@@ -886,8 +857,17 @@ export default function ProjectReports() {
       apiBase,
       reportSignatures: (project as any).reportSignatures ?? null,
       reportDisplayMode: project.reportDisplayMode,
-    });
-    setPreviewLoadingId(null);
+    }, previewWindow);
+    } catch {
+      updateReportPreviewStatus(previewWindow, "تعذّر تجهيز التقرير كاملًا. ارجع إلى صفحة التقارير وأعد المحاولة.");
+      toast({
+        title: "تعذّر تجهيز معاينة التقرير",
+        description: "لم تُصدر معاينة ناقصة. تحقق من الاتصال وأعد المحاولة.",
+        variant: "destructive",
+      });
+    } finally {
+      setPreviewLoadingId(null);
+    }
   };
 
   const handleImageUpload = async (files: File[], groupIndex: number) => {

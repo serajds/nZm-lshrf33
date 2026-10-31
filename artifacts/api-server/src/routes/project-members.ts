@@ -6,8 +6,10 @@ import { requireProjectManager, requireProjectAccess, requireAdmin, rejectContra
 import { resolveTabPermissions, isValidTabPermissions, TAB_KEYS } from "../lib/tab-permissions";
 import { invalidateProfileCache } from "../app";
 import { logAudit } from "../lib/audit";
+import activityReminderRouter from "./project-activity-reminder";
 
 const router: IRouter = Router();
+router.use(activityReminderRouter);
 
 async function getGroupIdsForMember(memberId: number): Promise<number[]> {
   const rows = await db.select({ groupId: memberGroupAssignmentsTable.groupId })
@@ -78,6 +80,7 @@ async function getMemberWithUser(memberId: number) {
     userId: projectMembersTable.userId,
     role: projectMembersTable.role,
     createdAt: projectMembersTable.createdAt,
+    activityReminderEnabled: projectMembersTable.activityReminderEnabled,
     fullName: usersTable.fullName,
     phone: usersTable.phone,
     userRole: usersTable.role,
@@ -108,6 +111,7 @@ router.get("/projects/:projectId/members", requireProjectAccess("projectId"), re
     userId: projectMembersTable.userId,
     role: projectMembersTable.role,
     createdAt: projectMembersTable.createdAt,
+    activityReminderEnabled: projectMembersTable.activityReminderEnabled,
     fullName: usersTable.fullName,
     phone: usersTable.phone,
     userRole: usersTable.role,

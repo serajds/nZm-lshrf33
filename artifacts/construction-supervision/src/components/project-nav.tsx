@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { CalendarRange, ClipboardList, Clock3, FileText, FolderOpen, LayoutDashboard, PauseCircle, TrendingDown, UserCheck, type LucideIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useMyProjectPermissions } from "@/hooks/use-tab-access";
+import { ProjectActivityReminder } from "./project-activity-reminder";
 
 type TabKey =
   | "overview"
@@ -54,6 +55,8 @@ export function ProjectNav({ projectId }: ProjectNavProps) {
   });
 
   return (
+    <>
+    <ProjectActivityReminder projectId={projectId} canViewActivities={navItems.some(item => item.tab === "activities")} />
     <div
       className="-mx-1 overflow-x-auto rounded-2xl border border-border/70 bg-card/80 p-1.5 shadow-sm md:mx-0"
       style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" } as CSSProperties}
@@ -87,5 +90,6 @@ export function ProjectNav({ projectId }: ProjectNavProps) {
         })}
       </div>
     </div>
+    </>
   );
 }

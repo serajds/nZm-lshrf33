@@ -20603,27 +20603,27 @@ var require_router = __commonJS({
     var slice = Array.prototype.slice;
     var flatten = Array.prototype.flat;
     var methods = METHODS.map((method) => method.toLowerCase());
-    module.exports = Router26;
+    module.exports = Router27;
     module.exports.Route = Route;
-    function Router26(options) {
-      if (!(this instanceof Router26)) {
-        return new Router26(options);
+    function Router27(options) {
+      if (!(this instanceof Router27)) {
+        return new Router27(options);
       }
       const opts = options || {};
-      function router26(req, res, next) {
-        router26.handle(req, res, next);
+      function router27(req, res, next) {
+        router27.handle(req, res, next);
       }
-      Object.setPrototypeOf(router26, this);
-      router26.caseSensitive = opts.caseSensitive;
-      router26.mergeParams = opts.mergeParams;
-      router26.params = {};
-      router26.strict = opts.strict;
-      router26.stack = [];
-      return router26;
+      Object.setPrototypeOf(router27, this);
+      router27.caseSensitive = opts.caseSensitive;
+      router27.mergeParams = opts.mergeParams;
+      router27.params = {};
+      router27.strict = opts.strict;
+      router27.stack = [];
+      return router27;
     }
-    Router26.prototype = function() {
+    Router27.prototype = function() {
     };
-    Router26.prototype.param = function param(name, fn) {
+    Router27.prototype.param = function param(name, fn) {
       if (!name) {
         throw new TypeError("argument name is required");
       }
@@ -20643,7 +20643,7 @@ var require_router = __commonJS({
       params.push(fn);
       return this;
     };
-    Router26.prototype.handle = function handle(req, res, callback) {
+    Router27.prototype.handle = function handle(req, res, callback) {
       if (!callback) {
         throw new TypeError("argument callback is required");
       }
@@ -20770,7 +20770,7 @@ var require_router = __commonJS({
         }
       }
     };
-    Router26.prototype.use = function use(handler) {
+    Router27.prototype.use = function use(handler) {
       let offset = 0;
       let path8 = "/";
       if (typeof handler !== "function") {
@@ -20803,7 +20803,7 @@ var require_router = __commonJS({
       }
       return this;
     };
-    Router26.prototype.route = function route(path8) {
+    Router27.prototype.route = function route(path8) {
       const route2 = new Route(path8);
       const layer = new Layer(path8, {
         sensitive: this.caseSensitive,
@@ -20818,7 +20818,7 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      Router26.prototype[method] = function(path8) {
+      Router27.prototype[method] = function(path8) {
         const route = this.route(path8);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
@@ -21001,13 +21001,13 @@ var require_application = __commonJS({
     var compileTrust = require_utils3().compileTrust;
     var resolve = __require("node:path").resolve;
     var once = require_once();
-    var Router26 = require_router();
+    var Router27 = require_router();
     var slice = Array.prototype.slice;
     var flatten = Array.prototype.flat;
     var app2 = exports = module.exports = {};
     var trustProxyDefaultSymbol = "@@symbol:trust_proxy_default";
     app2.init = function init() {
-      var router26 = null;
+      var router27 = null;
       this.cache = /* @__PURE__ */ Object.create(null);
       this.engines = /* @__PURE__ */ Object.create(null);
       this.settings = /* @__PURE__ */ Object.create(null);
@@ -21016,13 +21016,13 @@ var require_application = __commonJS({
         configurable: true,
         enumerable: true,
         get: function getrouter() {
-          if (router26 === null) {
-            router26 = new Router26({
+          if (router27 === null) {
+            router27 = new Router27({
               caseSensitive: this.enabled("case sensitive routing"),
               strict: this.enabled("strict routing")
             });
           }
-          return router26;
+          return router27;
         }
       });
     };
@@ -21093,15 +21093,15 @@ var require_application = __commonJS({
       if (fns.length === 0) {
         throw new TypeError("app.use() requires a middleware function");
       }
-      var router26 = this.router;
+      var router27 = this.router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router26.use(path8, fn2);
+          return router27.use(path8, fn2);
         }
         debug(".use app under %s", path8);
         fn2.mountpath = path8;
         fn2.parent = this;
-        router26.use(path8, function mounted_app(req, res, next) {
+        router27.use(path8, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             Object.setPrototypeOf(req, orig.request);
@@ -23628,7 +23628,7 @@ var require_express = __commonJS({
     var EventEmitter = __require("node:events").EventEmitter;
     var mixin = require_merge_descriptors();
     var proto = require_application();
-    var Router26 = require_router();
+    var Router27 = require_router();
     var req = require_request();
     var res = require_response();
     exports = module.exports = createApplication;
@@ -23650,8 +23650,8 @@ var require_express = __commonJS({
     exports.application = proto;
     exports.request = req;
     exports.response = res;
-    exports.Route = Router26.Route;
-    exports.Router = Router26;
+    exports.Route = Router27.Route;
+    exports.Router = Router27;
     exports.json = bodyParser.json;
     exports.raw = bodyParser.raw;
     exports.static = require_serve_static();
@@ -59217,6 +59217,8 @@ var init_project_members = __esm({
       userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
       role: text("role", { enum: ["project_manager", "engineer", "contractor", "viewer"] }).notNull().default("engineer"),
       tabPermissions: jsonb("tab_permissions").$type(),
+      activityReminderEnabled: boolean("activity_reminder_enabled").notNull().default(false),
+      activityReminderLastShownOn: date("activity_reminder_last_shown_on"),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
     }, (table) => [
       unique("project_members_project_user_unique").on(table.projectId, table.userId),
@@ -115531,7 +115533,7 @@ var init_push = __esm({
 });
 
 // src/app.ts
-var import_express26 = __toESM(require_express2(), 1);
+var import_express27 = __toESM(require_express2(), 1);
 var import_cors = __toESM(require_lib3(), 1);
 var import_compression = __toESM(require_compression(), 1);
 var import_pino_http = __toESM(require_logger(), 1);
@@ -115540,7 +115542,7 @@ import path6 from "path";
 import fs6 from "fs";
 
 // src/routes/index.ts
-var import_express25 = __toESM(require_express2(), 1);
+var import_express26 = __toESM(require_express2(), 1);
 
 // src/routes/health.ts
 var import_express = __toESM(require_express2(), 1);
@@ -129581,12 +129583,79 @@ router14.delete("/companies/:id", requireAdminOrPM, async (req, res) => {
 var companies_default = router14;
 
 // src/routes/project-members.ts
-var import_express15 = __toESM(require_express2(), 1);
+var import_express16 = __toESM(require_express2(), 1);
 init_src();
 init_src();
 init_drizzle_orm();
 init_audit();
+
+// src/routes/project-activity-reminder.ts
+var import_express15 = __toESM(require_express2(), 1);
+init_src();
+init_drizzle_orm();
+init_audit();
 var router15 = (0, import_express15.Router)();
+function positiveId(raw) {
+  const value = typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : NaN;
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+router15.put("/projects/:projectId/members/:id/activity-reminder", requireProjectManager("projectId"), async (req, res) => {
+  const projectId = positiveId(req.params.projectId);
+  const memberId = positiveId(req.params.id);
+  if (!projectId || !memberId || typeof req.body?.enabled !== "boolean") {
+    res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0627\u0644\u0639\u0636\u0648 \u0648\u062D\u0627\u0644\u0629 \u0627\u0644\u062A\u0630\u0643\u064A\u0631 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u064A\u0646" });
+    return;
+  }
+  const [member] = await db.update(projectMembersTable).set({ activityReminderEnabled: req.body.enabled }).where(and(eq(projectMembersTable.id, memberId), eq(projectMembersTable.projectId, projectId))).returning({ id: projectMembersTable.id, enabled: projectMembersTable.activityReminderEnabled });
+  if (!member) {
+    res.status(404).json({ error: "\u0627\u0644\u0639\u0636\u0648 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F \u0641\u064A \u0647\u0630\u0627 \u0627\u0644\u0645\u0634\u0631\u0648\u0639" });
+    return;
+  }
+  await logAudit({
+    userId: req.user?.userId,
+    action: "update",
+    entityType: "project_member",
+    entityId: memberId,
+    projectId,
+    details: { activityReminderEnabled: member.enabled }
+  });
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(member);
+});
+router15.post("/projects/:projectId/my-activity-reminder/claim", requireProjectAccess("projectId"), async (req, res) => {
+  const projectId = positiveId(req.params.projectId);
+  if (!projectId || !req.user?.userId) {
+    res.status(400).json({ error: "\u0645\u0639\u0631\u0641 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+    return;
+  }
+  const result = await db.execute(sql`
+    WITH claimed AS (
+      UPDATE project_members
+      SET activity_reminder_last_shown_on = (now() AT TIME ZONE 'Africa/Tripoli')::date
+      WHERE project_id = ${projectId} AND user_id = ${req.user.userId}
+        AND activity_reminder_enabled = true
+        AND activity_reminder_last_shown_on IS DISTINCT FROM (now() AT TIME ZONE 'Africa/Tripoli')::date
+      RETURNING user_id
+    )
+    SELECT u.full_name AS "fullName",
+      (SELECT max(a.created_at) AT TIME ZONE 'UTC' FROM audit_log a
+        WHERE a.project_id = ${projectId} AND a.user_id = c.user_id
+          AND (
+            (a.entity_type = 'activity' AND a.action IN ('create', 'update', 'delete'))
+            OR (a.entity_type = 'activity_import' AND a.action = 'create')
+            OR (a.entity_type = 'activity_reorder' AND a.action = 'update')
+          )) AS "lastUpdatedAt"
+    FROM claimed c JOIN users u ON u.id = c.user_id
+  `);
+  const reminder = result.rows[0];
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(reminder ? { show: true, ...reminder } : { show: false });
+});
+var project_activity_reminder_default = router15;
+
+// src/routes/project-members.ts
+var router16 = (0, import_express16.Router)();
+router16.use(project_activity_reminder_default);
 async function getGroupIdsForMember(memberId) {
   const rows = await db.select({ groupId: memberGroupAssignmentsTable.groupId }).from(memberGroupAssignmentsTable).where(eq(memberGroupAssignmentsTable.memberId, memberId));
   return rows.map((r) => r.groupId);
@@ -129635,6 +129704,7 @@ async function getMemberWithUser(memberId) {
     userId: projectMembersTable.userId,
     role: projectMembersTable.role,
     createdAt: projectMembersTable.createdAt,
+    activityReminderEnabled: projectMembersTable.activityReminderEnabled,
     fullName: usersTable.fullName,
     phone: usersTable.phone,
     userRole: usersTable.role
@@ -129646,7 +129716,7 @@ async function getMemberWithUser(memberId) {
   const companyNames = await getCompanyNamesForUser(memberWithUser.userId, projectCompanyIds);
   return { ...memberWithUser, companyNames, assignedGroupIds };
 }
-router15.get("/projects/:projectId/members", requireProjectAccess("projectId"), rejectContractor, async (req, res) => {
+router16.get("/projects/:projectId/members", requireProjectAccess("projectId"), rejectContractor, async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const members = await db.select({
@@ -129655,6 +129725,7 @@ router15.get("/projects/:projectId/members", requireProjectAccess("projectId"), 
     userId: projectMembersTable.userId,
     role: projectMembersTable.role,
     createdAt: projectMembersTable.createdAt,
+    activityReminderEnabled: projectMembersTable.activityReminderEnabled,
     fullName: usersTable.fullName,
     phone: usersTable.phone,
     userRole: usersTable.role
@@ -129705,7 +129776,7 @@ router15.get("/projects/:projectId/members", requireProjectAccess("projectId"), 
   });
   res.json(result);
 });
-router15.get("/projects/:projectId/eligible-users", requireProjectManager("projectId"), async (req, res) => {
+router16.get("/projects/:projectId/eligible-users", requireProjectManager("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   if (isNaN(projectId) || projectId <= 0) {
@@ -129762,7 +129833,7 @@ router15.get("/projects/:projectId/eligible-users", requireProjectManager("proje
   }));
   res.json(result);
 });
-router15.post("/projects/:projectId/members", requireProjectManager("projectId"), async (req, res) => {
+router16.post("/projects/:projectId/members", requireProjectManager("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const { userId, role, assignedGroupIds } = req.body;
@@ -129829,7 +129900,7 @@ router15.post("/projects/:projectId/members", requireProjectManager("projectId")
     res.status(400).json({ error: e.message || "\u0641\u0634\u0644 \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0639\u0636\u0648" });
   }
 });
-router15.patch("/projects/:projectId/members/:id", requireProjectManager("projectId"), async (req, res) => {
+router16.patch("/projects/:projectId/members/:id", requireProjectManager("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const memberId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
@@ -129890,7 +129961,7 @@ router15.patch("/projects/:projectId/members/:id", requireProjectManager("projec
   }
   res.json(memberWithUser);
 });
-router15.put("/projects/:projectId/members/:id/groups", requireProjectManager("projectId"), async (req, res) => {
+router16.put("/projects/:projectId/members/:id/groups", requireProjectManager("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const memberId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
@@ -129922,7 +129993,7 @@ router15.put("/projects/:projectId/members/:id/groups", requireProjectManager("p
   });
   res.json({ groupIds });
 });
-router15.get("/projects/:projectId/my-permissions", requireProjectAccess("projectId"), async (req, res) => {
+router16.get("/projects/:projectId/my-permissions", requireProjectAccess("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const user = req.user;
@@ -129992,7 +130063,7 @@ router15.get("/projects/:projectId/my-permissions", requireProjectAccess("projec
     tabPermissions: resolveTabPermissions(membership.role, membership.tabPermissions ?? null)
   });
 });
-router15.get("/projects/:projectId/members/:id/permissions", requireProjectManager("projectId"), async (req, res) => {
+router16.get("/projects/:projectId/members/:id/permissions", requireProjectManager("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const memberId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
@@ -130024,7 +130095,7 @@ router15.get("/projects/:projectId/members/:id/permissions", requireProjectManag
     isContractorLocked: false
   });
 });
-router15.put("/projects/:projectId/members/:id/permissions", requireProjectManager("projectId"), async (req, res) => {
+router16.put("/projects/:projectId/members/:id/permissions", requireProjectManager("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const memberId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
@@ -130073,7 +130144,7 @@ router15.put("/projects/:projectId/members/:id/permissions", requireProjectManag
     effective: resolveTabPermissions(updated.role, updated.tabPermissions ?? null)
   });
 });
-router15.delete("/projects/:projectId/members/:id", requireProjectManager("projectId"), async (req, res) => {
+router16.delete("/projects/:projectId/members/:id", requireProjectManager("projectId"), async (req, res) => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const memberId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
@@ -130101,15 +130172,15 @@ router15.delete("/projects/:projectId/members/:id", requireProjectManager("proje
   });
   res.sendStatus(204);
 });
-var project_members_default = router15;
+var project_members_default = router16;
 
 // src/routes/audit-log.ts
-var import_express16 = __toESM(require_express2(), 1);
+var import_express17 = __toESM(require_express2(), 1);
 init_src();
 init_drizzle_orm();
 init_audit_sanitize();
-var router16 = (0, import_express16.Router)();
-router16.get(
+var router17 = (0, import_express17.Router)();
+router17.get(
   "/projects/:projectId/reports/:id/audit-log",
   requireProjectAccess("projectId"),
   async (req, res) => {
@@ -130143,7 +130214,7 @@ router16.get(
     res.json(entries);
   }
 );
-router16.get("/audit-log", requireAdmin, async (req, res) => {
+router17.get("/audit-log", requireAdmin, async (req, res) => {
   const { entityType, action, projectId, dateFrom, dateTo, limit: limitStr } = req.query;
   const conditions = [];
   if (entityType && typeof entityType === "string") {
@@ -130194,10 +130265,10 @@ router16.get("/audit-log", requireAdmin, async (req, res) => {
   }).from(auditLogTable).leftJoin(usersTable, eq(usersTable.id, auditLogTable.userId)).where(conditions.length > 0 ? and(...conditions) : void 0).orderBy(desc(auditLogTable.createdAt)).limit(maxRows);
   res.json(logs.map((log) => ({ ...log, details: sanitizeAuditDetails(log.details) })));
 });
-var audit_log_default = router16;
+var audit_log_default = router17;
 
 // src/routes/activity-groups.ts
-var import_express17 = __toESM(require_express2(), 1);
+var import_express18 = __toESM(require_express2(), 1);
 init_src();
 init_src();
 init_drizzle_orm();
@@ -130220,7 +130291,7 @@ async function deleteEmptyActivityGroup(projectId, groupId) {
 
 // src/routes/activity-groups.ts
 init_audit();
-var router17 = (0, import_express17.Router)();
+var router18 = (0, import_express18.Router)();
 var linkAttempts = /* @__PURE__ */ new Map();
 var LINK_ATTEMPT_WINDOW_MS = 15 * 60 * 1e3;
 var LINK_ATTEMPT_LIMIT = 12;
@@ -130260,12 +130331,12 @@ async function reorderActivityGroups(projectId, order) {
     return "reordered";
   }));
 }
-router17.get("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), async (req, res) => {
+router18.get("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
   const groups = await db.select().from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId)).orderBy(asc(activityGroupsTable.sortOrder));
   res.json(groups.map(publicGroup));
 });
-router17.get("/projects/:projectId/activity-groups/search", requireProjectAccess("projectId"), async (req, res) => {
+router18.get("/projects/:projectId/activity-groups/search", requireProjectAccess("projectId"), async (req, res) => {
   const projectId = Number(req.params.projectId);
   const query = String(req.query.query ?? "").trim();
   if (!query) {
@@ -130289,7 +130360,7 @@ router17.get("/projects/:projectId/activity-groups/search", requireProjectAccess
   }
   res.json(resolveSourceSuggestions(results, query).slice(0, 20));
 });
-router17.post("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
+router18.post("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
   const { name, color } = req.body;
   if (req.body.linkCode !== void 0 && req.body.linkCode !== null && typeof req.body.linkCode !== "string") {
@@ -130336,7 +130407,7 @@ router17.post("/projects/:projectId/activity-groups", requireProjectAccess("proj
   });
   res.status(201).json(publicGroup(group));
 });
-router17.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
+router18.put("/projects/:projectId/activity-groups/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
   const { order } = req.body;
   if (!Array.isArray(order)) {
@@ -130362,7 +130433,7 @@ router17.put("/projects/:projectId/activity-groups/reorder", requireProjectAcces
   });
   res.json({ success: true });
 });
-router17.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
+router18.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
   const id = parseInt(req.params.id, 10);
   const { name, color } = req.body;
@@ -130409,7 +130480,7 @@ router17.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("p
   });
   res.json(publicGroup(updated));
 });
-router17.put("/projects/:projectId/activity-groups/:id/linked-project", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
+router18.put("/projects/:projectId/activity-groups/:id/linked-project", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const projectId = Number(req.params.projectId);
   const id = Number(req.params.id);
   if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "sourceProjectId")) {
@@ -130481,7 +130552,7 @@ router17.put("/projects/:projectId/activity-groups/:id/linked-project", requireP
   });
   res.json({ group: publicGroup(result.group), created: result.created, updated: result.updated, unavailable: result.unavailable });
 });
-router17.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
+router18.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const projectId = Number(req.params.projectId);
   const id = Number(req.params.id);
   const [group] = await db.select().from(activityGroupsTable).where(and(eq(activityGroupsTable.id, id), eq(activityGroupsTable.projectId, projectId)));
@@ -130515,7 +130586,7 @@ router17.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAcc
   }
   res.json({ group: result.group ? publicGroup(result.group) : void 0, created: result.created, updated: result.updated, unavailable: result.unavailable });
 });
-router17.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
+router18.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
   const id = parseInt(req.params.id, 10);
   const result = await deleteEmptyActivityGroup(projectId, id);
@@ -130538,16 +130609,16 @@ router17.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess
   });
   res.sendStatus(204);
 });
-var activity_groups_default = router17;
+var activity_groups_default = router18;
 
 // src/routes/setup.ts
-var import_express18 = __toESM(require_express2(), 1);
+var import_express19 = __toESM(require_express2(), 1);
 init_src();
 init_src();
 init_drizzle_orm();
-var router18 = (0, import_express18.Router)();
+var router19 = (0, import_express19.Router)();
 var SETUP_SECRET = process.env.SETUP_SECRET;
-router18.post("/setup/init-admin", async (req, res) => {
+router19.post("/setup/init-admin", async (req, res) => {
   try {
     const [{ value: userCount }] = await db.select({ value: count() }).from(usersTable);
     if (userCount > 0) {
@@ -130610,10 +130681,10 @@ router18.post("/setup/init-admin", async (req, res) => {
     res.status(500).json({ error: "\u062E\u0637\u0623 \u0641\u064A \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062D\u0633\u0627\u0628" });
   }
 });
-var setup_default = router18;
+var setup_default = router19;
 
 // src/routes/test-results.ts
-var import_express19 = __toESM(require_express2(), 1);
+var import_express20 = __toESM(require_express2(), 1);
 init_src();
 init_src();
 init_drizzle_orm();
@@ -130658,9 +130729,9 @@ async function getUncachableOneDriveClient() {
 }
 
 // src/routes/test-results.ts
-var router19 = (0, import_express19.Router)();
+var router20 = (0, import_express20.Router)();
 var JWT_SECRET3 = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
-router19.get(
+router20.get(
   "/owner/:token/test-results",
   async (req, res) => {
     const { token } = req.params;
@@ -130747,7 +130818,7 @@ router19.get(
     }
   }
 );
-router19.get(
+router20.get(
   "/owner/:token/test-results/download/:fileId",
   async (req, res) => {
     const { token, fileId } = req.params;
@@ -130825,7 +130896,7 @@ router19.get(
     }
   }
 );
-router19.get(
+router20.get(
   "/onedrive/browse",
   requireAdmin,
   async (req, res) => {
@@ -130857,15 +130928,15 @@ router19.get(
     }
   }
 );
-var test_results_default = router19;
+var test_results_default = router20;
 
 // src/routes/forms.ts
-var import_express20 = __toESM(require_express2(), 1);
+var import_express21 = __toESM(require_express2(), 1);
 init_src();
 init_src();
 init_drizzle_orm();
-var router20 = (0, import_express20.Router)();
-router20.get("/projects/:id/form-templates", requireProjectAccess("id"), async (req, res) => {
+var router21 = (0, import_express21.Router)();
+router21.get("/projects/:id/form-templates", requireProjectAccess("id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
   const conditions = [eq(formTemplatesTable.projectId, projectId)];
@@ -130875,7 +130946,7 @@ router20.get("/projects/:id/form-templates", requireProjectAccess("id"), async (
   const templates = await db.select().from(formTemplatesTable).where(and(...conditions)).orderBy(desc(formTemplatesTable.createdAt));
   res.json(templates);
 });
-router20.get("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), async (req, res) => {
+router21.get("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = parseInt(Array.isArray(req.params.templateId) ? req.params.templateId[0] : req.params.templateId, 10);
   const [template] = await db.select().from(formTemplatesTable).where(and(eq(formTemplatesTable.id, templateId), eq(formTemplatesTable.projectId, projectId)));
@@ -130890,7 +130961,7 @@ router20.get("/projects/:id/form-templates/:templateId", requireProjectAccess("i
   }
   res.json(template);
 });
-router20.post("/projects/:id/form-templates", requireProjectAccess("id"), async (req, res) => {
+router21.post("/projects/:id/form-templates", requireProjectAccess("id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const userRole = req.user?.role;
   const projectRole = req.projectRole;
@@ -130916,7 +130987,7 @@ router20.post("/projects/:id/form-templates", requireProjectAccess("id"), async 
   }).returning();
   res.status(201).json(template);
 });
-router20.put("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), async (req, res) => {
+router21.put("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = parseInt(Array.isArray(req.params.templateId) ? req.params.templateId[0] : req.params.templateId, 10);
   const userRole = req.user?.role;
@@ -130945,7 +131016,7 @@ router20.put("/projects/:id/form-templates/:templateId", requireProjectAccess("i
   }
   res.json(template);
 });
-router20.delete("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), async (req, res) => {
+router21.delete("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = parseInt(Array.isArray(req.params.templateId) ? req.params.templateId[0] : req.params.templateId, 10);
   const userRole = req.user?.role;
@@ -130963,7 +131034,7 @@ router20.delete("/projects/:id/form-templates/:templateId", requireProjectAccess
   await db.delete(formTemplatesTable).where(eq(formTemplatesTable.id, templateId));
   res.sendStatus(204);
 });
-router20.get("/projects/:id/form-submissions", requireProjectAccess("id"), async (req, res) => {
+router21.get("/projects/:id/form-submissions", requireProjectAccess("id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = req.query.templateId ? parseInt(req.query.templateId, 10) : void 0;
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
@@ -130980,7 +131051,7 @@ router20.get("/projects/:id/form-submissions", requireProjectAccess("id"), async
   const submissions = rows.map((r) => r.submission);
   res.json(submissions);
 });
-router20.get("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), async (req, res) => {
+router21.get("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const submissionId = parseInt(Array.isArray(req.params.submissionId) ? req.params.submissionId[0] : req.params.submissionId, 10);
   const [submission] = await db.select().from(formSubmissionsTable).where(and(eq(formSubmissionsTable.id, submissionId), eq(formSubmissionsTable.projectId, projectId)));
@@ -130998,7 +131069,7 @@ router20.get("/projects/:id/form-submissions/:submissionId", requireProjectAcces
   }
   res.json(submission);
 });
-router20.post("/projects/:id/form-submissions", requireProjectAccess("id"), rejectViewer, async (req, res) => {
+router21.post("/projects/:id/form-submissions", requireProjectAccess("id"), rejectViewer, async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const { templateId, data, reportDate, notes, status } = req.body;
   if (!templateId || !data || !reportDate) {
@@ -131044,7 +131115,7 @@ router20.post("/projects/:id/form-submissions", requireProjectAccess("id"), reje
   }).returning();
   res.status(201).json(submission);
 });
-router20.put("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res) => {
+router21.put("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const submissionId = parseInt(Array.isArray(req.params.submissionId) ? req.params.submissionId[0] : req.params.submissionId, 10);
   const { data, reportDate, notes, status } = req.body;
@@ -131074,7 +131145,7 @@ router20.put("/projects/:id/form-submissions/:submissionId", requireProjectAcces
   const [submission] = await db.update(formSubmissionsTable).set(updateData).where(eq(formSubmissionsTable.id, submissionId)).returning();
   res.json(submission);
 });
-router20.delete("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res) => {
+router21.delete("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const submissionId = parseInt(Array.isArray(req.params.submissionId) ? req.params.submissionId[0] : req.params.submissionId, 10);
   const [existing] = await db.select().from(formSubmissionsTable).where(and(eq(formSubmissionsTable.id, submissionId), eq(formSubmissionsTable.projectId, projectId)));
@@ -131101,7 +131172,7 @@ router20.delete("/projects/:id/form-submissions/:submissionId", requireProjectAc
   ));
   res.sendStatus(204);
 });
-router20.get("/projects/:id/daily-gaps", requireProjectAccess("id"), async (req, res) => {
+router21.get("/projects/:id/daily-gaps", requireProjectAccess("id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
   if (isContractor) {
@@ -131148,7 +131219,7 @@ router20.get("/projects/:id/daily-gaps", requireProjectAccess("id"), async (req,
   gaps.sort((a, b) => b.date.localeCompare(a.date));
   res.json(gaps);
 });
-router20.post("/projects/:id/skip-day", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res) => {
+router21.post("/projects/:id/skip-day", requireProjectAccess("id"), rejectContractor, rejectViewer, requireTabEdit("forms", "id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
   if (isContractor) {
@@ -131187,7 +131258,7 @@ router20.post("/projects/:id/skip-day", requireProjectAccess("id"), rejectContra
   }).returning();
   res.status(201).json(record2);
 });
-router20.get("/projects/:id/submission-stats", requireProjectAccess("id"), async (req, res) => {
+router21.get("/projects/:id/submission-stats", requireProjectAccess("id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
   let subs;
@@ -131239,10 +131310,10 @@ router20.get("/projects/:id/submission-stats", requireProjectAccess("id"), async
   }
   res.json({ total, pending, reviewed, overdue });
 });
-var forms_default = router20;
+var forms_default = router21;
 
 // src/routes/public-forms.ts
-var import_express21 = __toESM(require_express2(), 1);
+var import_express22 = __toESM(require_express2(), 1);
 init_src();
 init_src();
 init_drizzle_orm();
@@ -131256,8 +131327,8 @@ function generateShortToken(length = 5) {
   }
   return result;
 }
-var router21 = (0, import_express21.Router)();
-router21.post("/projects/:id/form-templates/:templateId/public-link", requireProjectAccess("id"), async (req, res) => {
+var router22 = (0, import_express22.Router)();
+router22.post("/projects/:id/form-templates/:templateId/public-link", requireProjectAccess("id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = parseInt(Array.isArray(req.params.templateId) ? req.params.templateId[0] : req.params.templateId, 10);
   const userRole = req.user?.role;
@@ -131286,7 +131357,7 @@ router21.post("/projects/:id/form-templates/:templateId/public-link", requirePro
   const [updated] = await db.update(formTemplatesTable).set({ publicToken: token }).where(eq(formTemplatesTable.id, templateId)).returning();
   res.json({ publicToken: updated.publicToken });
 });
-router21.delete("/projects/:id/form-templates/:templateId/public-link", requireProjectAccess("id"), async (req, res) => {
+router22.delete("/projects/:id/form-templates/:templateId/public-link", requireProjectAccess("id"), async (req, res) => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = parseInt(Array.isArray(req.params.templateId) ? req.params.templateId[0] : req.params.templateId, 10);
   const userRole = req.user?.role;
@@ -131298,7 +131369,7 @@ router21.delete("/projects/:id/form-templates/:templateId/public-link", requireP
   await db.update(formTemplatesTable).set({ publicToken: null }).where(and(eq(formTemplatesTable.id, templateId), eq(formTemplatesTable.projectId, projectId)));
   res.sendStatus(204);
 });
-router21.get("/public/form/:token", async (req, res) => {
+router22.get("/public/form/:token", async (req, res) => {
   const token = Array.isArray(req.params.token) ? req.params.token[0] : req.params.token;
   const [template] = await db.select({
     id: formTemplatesTable.id,
@@ -131326,7 +131397,7 @@ router21.get("/public/form/:token", async (req, res) => {
     supervisorEntity: project?.supervisorEntity || ""
   });
 });
-router21.post("/public/form/:token/submit", async (req, res) => {
+router22.post("/public/form/:token/submit", async (req, res) => {
   const token = Array.isArray(req.params.token) ? req.params.token[0] : req.params.token;
   const [template] = await db.select().from(formTemplatesTable).where(eq(formTemplatesTable.publicToken, token));
   if (!template || !template.isActive) {
@@ -131358,13 +131429,13 @@ router21.post("/public/form/:token/submit", async (req, res) => {
   }).returning();
   res.status(201).json(submission);
 });
-var public_forms_default = router21;
+var public_forms_default = router22;
 
 // src/routes/backup.ts
-var import_express22 = __toESM(require_express2(), 1);
+var import_express23 = __toESM(require_express2(), 1);
 init_src();
 init_src();
-var router22 = (0, import_express22.Router)();
+var router23 = (0, import_express23.Router)();
 var BUCKET_ID2 = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID || "";
 var BACKUP_PREFIX = "backups/";
 function getBucket2() {
@@ -131373,7 +131444,7 @@ function getBucket2() {
   }
   return objectStorageClient.bucket(BUCKET_ID2);
 }
-router22.post("/backup/create", requireAdmin, async (_req, res) => {
+router23.post("/backup/create", requireAdmin, async (_req, res) => {
   try {
     const [
       users,
@@ -131472,7 +131543,7 @@ router22.post("/backup/create", requireAdmin, async (_req, res) => {
     res.status(500).json({ error: "\u0641\u0634\u0644 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629", details: err.message });
   }
 });
-router22.get("/backup/list", requireAdmin, async (_req, res) => {
+router23.get("/backup/list", requireAdmin, async (_req, res) => {
   try {
     const [files] = await getBucket2().getFiles({ prefix: BACKUP_PREFIX });
     const list = await Promise.all(
@@ -131500,7 +131571,7 @@ function validateFilename(filename) {
   if (f.includes("..") || f.includes("/") || f.includes("\\")) return null;
   return f;
 }
-router22.get("/backup/download/:filename", requireAdmin, async (req, res) => {
+router23.get("/backup/download/:filename", requireAdmin, async (req, res) => {
   try {
     const filename = validateFilename(req.params.filename);
     if (!filename) {
@@ -131524,7 +131595,7 @@ router22.get("/backup/download/:filename", requireAdmin, async (req, res) => {
     res.status(500).json({ error: "\u0641\u0634\u0644 \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629", details: err.message });
   }
 });
-router22.delete("/backup/:filename", requireAdmin, async (req, res) => {
+router23.delete("/backup/:filename", requireAdmin, async (req, res) => {
   try {
     const filename = validateFilename(req.params.filename);
     if (!filename) {
@@ -131538,10 +131609,10 @@ router22.delete("/backup/:filename", requireAdmin, async (req, res) => {
     res.status(500).json({ error: "\u0641\u0634\u0644 \u062D\u0630\u0641 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629", details: err.message });
   }
 });
-var backup_default = router22;
+var backup_default = router23;
 
 // src/routes/attendance.ts
-var import_express23 = __toESM(require_express2(), 1);
+var import_express24 = __toESM(require_express2(), 1);
 init_src();
 init_src();
 init_drizzle_orm();
@@ -131733,7 +131804,7 @@ function selfieUpload(req, res, next) {
   }
   void decodeBase64Selfie(req, res, next);
 }
-var router23 = (0, import_express23.Router)();
+var router24 = (0, import_express24.Router)();
 async function userBelongsToProject(userId, projectId) {
   const [direct] = await db.select({ id: projectMembersTable.id }).from(projectMembersTable).where(and(eq(projectMembersTable.userId, userId), eq(projectMembersTable.projectId, projectId))).limit(1);
   if (direct) return true;
@@ -131767,7 +131838,7 @@ async function getProjectIdsForUser(userId, role) {
   }
   return Array.from(ids);
 }
-router23.get("/attendance/my-status", requireAuth, async (req, res) => {
+router24.get("/attendance/my-status", requireAuth, async (req, res) => {
   const userId = req.user.userId;
   const role = req.user.role;
   if (role === "owner") {
@@ -131812,7 +131883,7 @@ router23.get("/attendance/my-status", requireAuth, async (req, res) => {
   });
   res.json(out);
 });
-router23.get("/attendance/my-history", requireAuth, async (req, res) => {
+router24.get("/attendance/my-history", requireAuth, async (req, res) => {
   if (req.user?.role === "owner") {
     res.status(403).json({ error: "\u063A\u064A\u0631 \u0645\u062A\u0627\u062D \u0644\u0635\u0627\u062D\u0628 \u0627\u0644\u0645\u0634\u0631\u0648\u0639" });
     return;
@@ -131841,7 +131912,7 @@ router23.get("/attendance/my-history", requireAuth, async (req, res) => {
   }).from(attendanceRecordsTable).leftJoin(projectsTable, eq(attendanceRecordsTable.projectId, projectsTable.id)).where(and(...conds)).orderBy(desc(attendanceRecordsTable.recordedAt)).limit(limit);
   res.json(records);
 });
-router23.post(
+router24.post(
   "/attendance/projects/:projectId/check-in",
   requireProjectAccess("projectId"),
   requireTabEdit("attendance"),
@@ -131850,7 +131921,7 @@ router23.post(
     await recordAttendance(req, res, "check_in");
   }
 );
-router23.post(
+router24.post(
   "/attendance/projects/:projectId/check-out",
   requireProjectAccess("projectId"),
   requireTabEdit("attendance"),
@@ -132026,7 +132097,7 @@ async function recordAttendance(req, res, type) {
   })();
   res.status(201).json(record2);
 }
-router23.get(
+router24.get(
   "/attendance/projects/:projectId/active",
   requireProjectAccess("projectId"),
   async (req, res) => {
@@ -132095,7 +132166,7 @@ router23.get(
     res.json({ activeCount: members.length, members });
   }
 );
-router23.get(
+router24.get(
   "/attendance/projects/:projectId/records",
   requireProjectAccess("projectId"),
   async (req, res) => {
@@ -132135,7 +132206,7 @@ router23.get(
     res.json(records);
   }
 );
-router23.get(
+router24.get(
   "/attendance/projects/:projectId/users/:userId/report",
   requireProjectAccess("projectId"),
   async (req, res) => {
@@ -132296,7 +132367,7 @@ async function ensureManagerCanEdit(req, res, projectId) {
   }
   return true;
 }
-router23.patch("/attendance/records/:recordId", requireAuth, async (req, res) => {
+router24.patch("/attendance/records/:recordId", requireAuth, async (req, res) => {
   const recordId = parseInt(Array.isArray(req.params.recordId) ? req.params.recordId[0] : req.params.recordId, 10);
   if (Number.isNaN(recordId)) {
     res.status(400).json({ error: "\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u0633\u062C\u0644 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
@@ -132388,7 +132459,7 @@ router23.patch("/attendance/records/:recordId", requireAuth, async (req, res) =>
   });
   res.json(updated);
 });
-router23.delete("/attendance/records/:recordId", requireAuth, async (req, res) => {
+router24.delete("/attendance/records/:recordId", requireAuth, async (req, res) => {
   const recordId = parseInt(Array.isArray(req.params.recordId) ? req.params.recordId[0] : req.params.recordId, 10);
   if (Number.isNaN(recordId)) {
     res.status(400).json({ error: "\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u0633\u062C\u0644 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
@@ -132437,7 +132508,7 @@ router23.delete("/attendance/records/:recordId", requireAuth, async (req, res) =
   });
   res.status(204).end();
 });
-router23.get("/attendance/records/:recordId/photo", async (req, res) => {
+router24.get("/attendance/records/:recordId/photo", async (req, res) => {
   const headerToken = (() => {
     const h = req.headers.authorization;
     return h && h.startsWith("Bearer ") ? h.slice(7) : null;
@@ -132498,16 +132569,16 @@ router23.get("/attendance/records/:recordId/photo", async (req, res) => {
     res.status(500).json({ error: "\u062E\u0637\u0623 \u0641\u064A \u0642\u0631\u0627\u0621\u0629 \u0627\u0644\u0645\u0644\u0641" });
   }
 });
-var attendance_default = router23;
+var attendance_default = router24;
 
 // src/routes/push.ts
-var import_express24 = __toESM(require_express2(), 1);
+var import_express25 = __toESM(require_express2(), 1);
 init_src();
 init_src();
 init_drizzle_orm();
 init_push();
-var router24 = (0, import_express24.Router)();
-router24.get("/push/vapid-public-key", requireAuth, (_req, res) => {
+var router25 = (0, import_express25.Router)();
+router25.get("/push/vapid-public-key", requireAuth, (_req, res) => {
   const key = getVapidPublicKey();
   if (!key) {
     res.status(503).json({ error: "Push notifications are not configured on this server" });
@@ -132515,7 +132586,7 @@ router24.get("/push/vapid-public-key", requireAuth, (_req, res) => {
   }
   res.json({ publicKey: key });
 });
-router24.post("/push/subscribe", requireAuth, async (req, res) => {
+router25.post("/push/subscribe", requireAuth, async (req, res) => {
   const userId = req.user.userId;
   const { endpoint, keys, userAgent } = req.body ?? {};
   if (typeof endpoint !== "string" || !endpoint.startsWith("https://")) {
@@ -132542,7 +132613,7 @@ router24.post("/push/subscribe", requireAuth, async (req, res) => {
   const inserted = Array.isArray(rows) && rows[0]?.inserted === true;
   res.status(inserted ? 201 : 200).json({ ok: true, refreshed: !inserted });
 });
-router24.post("/push/unsubscribe", requireAuth, async (req, res) => {
+router25.post("/push/unsubscribe", requireAuth, async (req, res) => {
   const userId = req.user.userId;
   const { endpoint } = req.body ?? {};
   if (typeof endpoint !== "string") {
@@ -132555,7 +132626,7 @@ router24.post("/push/unsubscribe", requireAuth, async (req, res) => {
   ));
   res.json({ ok: true });
 });
-router24.post("/push/expo/register", requireAuth, async (req, res) => {
+router25.post("/push/expo/register", requireAuth, async (req, res) => {
   const userId = req.user.userId;
   const { token, platform, deviceName } = req.body ?? {};
   if (typeof token !== "string" || !token.startsWith("ExponentPushToken[") && !token.startsWith("ExpoPushToken[")) {
@@ -132575,7 +132646,7 @@ router24.post("/push/expo/register", requireAuth, async (req, res) => {
   `);
   res.json({ ok: true });
 });
-router24.post("/push/expo/unregister", requireAuth, async (req, res) => {
+router25.post("/push/expo/unregister", requireAuth, async (req, res) => {
   const userId = req.user.userId;
   const { token } = req.body ?? {};
   if (typeof token !== "string") {
@@ -132585,41 +132656,41 @@ router24.post("/push/expo/unregister", requireAuth, async (req, res) => {
   await db.delete(expoPushTokensTable).where(and(eq(expoPushTokensTable.token, token), eq(expoPushTokensTable.userId, userId)));
   res.json({ ok: true });
 });
-var push_default = router24;
+var push_default = router25;
 
 // src/routes/index.ts
-var router25 = (0, import_express25.Router)();
-router25.use(health_default);
-router25.use(auth_default);
-router25.use(projects_default);
-router25.use(project_members_default);
-router25.use(activities_default);
-router25.use(extensions_default);
-router25.use(suspensions_default);
-router25.use(pdf_default);
-router25.use(reports_default);
-router25.use(report_comments_default);
-router25.use(files_default);
-router25.use(users_default);
-router25.use(owner_default);
-router25.use(dashboard_default);
-router25.use(companies_default);
-router25.use(audit_log_default);
-router25.use(activity_groups_default);
-router25.use(setup_default);
-router25.use(test_results_default);
-router25.use(forms_default);
-router25.use(public_forms_default);
-router25.use(backup_default);
-router25.use(attendance_default);
-router25.use(push_default);
-var routes_default = router25;
+var router26 = (0, import_express26.Router)();
+router26.use(health_default);
+router26.use(auth_default);
+router26.use(projects_default);
+router26.use(project_members_default);
+router26.use(activities_default);
+router26.use(extensions_default);
+router26.use(suspensions_default);
+router26.use(pdf_default);
+router26.use(reports_default);
+router26.use(report_comments_default);
+router26.use(files_default);
+router26.use(users_default);
+router26.use(owner_default);
+router26.use(dashboard_default);
+router26.use(companies_default);
+router26.use(audit_log_default);
+router26.use(activity_groups_default);
+router26.use(setup_default);
+router26.use(test_results_default);
+router26.use(forms_default);
+router26.use(public_forms_default);
+router26.use(backup_default);
+router26.use(attendance_default);
+router26.use(push_default);
+var routes_default = router26;
 
 // src/app.ts
 init_src();
 init_src();
 init_drizzle_orm();
-var app = (0, import_express26.default)();
+var app = (0, import_express27.default)();
 app.use(
   (0, import_pino_http.default)({
     logger,
@@ -132647,9 +132718,9 @@ app.use("/api", (_req, res, next) => {
 });
 app.use((0, import_cors.default)({ exposedHeaders: ["X-Renewed-Token"] }));
 app.use((0, import_compression.default)({ threshold: 1024 }));
-app.use(import_express26.default.json({ limit: "10mb" }));
-app.use(import_express26.default.urlencoded({ extended: true, limit: "10mb" }));
-app.use(import_express26.default.text({ type: "text/plain", limit: "22mb" }));
+app.use(import_express27.default.json({ limit: "10mb" }));
+app.use(import_express27.default.urlencoded({ extended: true, limit: "10mb" }));
+app.use(import_express27.default.text({ type: "text/plain", limit: "22mb" }));
 app.use((req, _res, next) => {
   if (typeof req.body === "string" && req.body.length > 0 && (req.headers["content-type"] || "").toLowerCase().startsWith("text/plain")) {
     try {
@@ -132750,7 +132821,7 @@ app.use("/api/uploads", async (req, res, next) => {
   const localPath = path6.join(uploadsDir4, filename);
   if (fs6.existsSync(localPath)) {
     const isPublicLogo = filename.startsWith("logo-");
-    return import_express26.default.static(uploadsDir4, {
+    return import_express27.default.static(uploadsDir4, {
       setHeaders: (res2) => {
         res2.setHeader(
           "Cache-Control",
