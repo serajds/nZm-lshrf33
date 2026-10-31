@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { BellRing } from "lucide-react";
+import { useAutomaticNoticeSlot } from "./automatic-notices";
 
 type Reminder = { show: boolean; fullName?: string; lastUpdatedAt?: string | null };
 
@@ -16,12 +17,18 @@ export function ProjectActivityReminder({ projectId, canViewActivities }: {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
-  const [reminder, setReminder] = useState<Reminder | null>(null);
+  const [reminder, setReminder] = useState<(Reminder & { projectId: number; userId: number; day: string }) | null>(null);
   const day = new Intl.DateTimeFormat("sv-SE", { timeZone: "Africa/Tripoli" }).format(new Date());
   const queryKey = ["project-activity-reminder", user?.id, projectId, day];
   const { data, isFetching, isFetchedAfterMount, dataUpdatedAt } = useQuery<Reminder>({
     queryKey,
-    queryFn: () => customFetch(`/api/projects/${projectId}/my-activity-reminder/claim`, { method: "POST" }),
+    queryFn: () => {
+      // A claimed reminder waiting behind another notice has not been dismissed.
+      // Keep it available across project sub-page navigation in this session.
+      const pending = queryClient.getQueryData<Reminder>(queryKey);
+      return pending?.show ? Promise.resolve(pending)
+        : customFetch(`/api/projects/${projectId}/my-activity-reminder/claim`, { method: "POST" });
+    },
     enabled: !!user && projectId > 0,
     retry: false,
     staleTime: 0,
@@ -31,8 +38,14 @@ export function ProjectActivityReminder({ projectId, canViewActivities }: {
   });
 
   useEffect(() => {
-    if (isFetchedAfterMount && !isFetching && data?.show) setReminder(data);
-  }, [data, dataUpdatedAt, isFetchedAfterMount, isFetching]);
+    if (isFetchedAfterMount && !isFetching && data?.show && user) {
+      setReminder({ ...data, projectId, userId: user.id, day });
+    }
+  }, [data, dataUpdatedAt, isFetchedAfterMount, isFetching, projectId, user?.id, day]);
+
+  const requested = reminder?.show === true && reminder.projectId === projectId
+    && reminder.userId === user?.id && reminder.day === day;
+  const visible = useAutomaticNoticeSlot(requested, projectId);
 
   const dismiss = () => {
     setReminder(null);
@@ -44,7 +57,7 @@ export function ProjectActivityReminder({ projectId, canViewActivities }: {
     : null;
 
   return (
-    <Dialog open={!!reminder?.show} onOpenChange={open => { if (!open) dismiss(); }}>
+    <Dialog open={visible} onOpenChange={open => { if (!open) dismiss(); }}>
       <DialogContent dir="rtl" className="sm:max-w-md">
         <DialogHeader className="text-right">
           <DialogTitle className="flex items-center gap-2">

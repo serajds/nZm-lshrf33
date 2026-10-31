@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { getDefaultProjectId } from "@/lib/user-prefs";
 import { loadRouteModule } from "@/lib/route-module-recovery";
+import { AutomaticNoticeProvider } from "@/components/automatic-notices";
 
 import Login from "@/pages/login";
 import PendingAssignment from "@/pages/pending-assignment";
@@ -131,8 +132,9 @@ function HomeRoute() {
 // the slim top progress bar so navigating between lazy pages doesn't blank
 // out the screen.
 function AuthenticatedShell() {
-  const { connectionError, retryAuth, isRetryingAuth } = useAuth();
+  const { user, connectionError, retryAuth, isRetryingAuth } = useAuth();
   return (
+    <AutomaticNoticeProvider key={user?.id}>
     <AppLayout>
       {connectionError && (
         <div role="alert" dir="rtl" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted p-3 text-sm">
@@ -216,6 +218,7 @@ function AuthenticatedShell() {
         </PageTransition>
       </Suspense>
     </AppLayout>
+    </AutomaticNoticeProvider>
   );
 }
 
