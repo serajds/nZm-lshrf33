@@ -1351,6 +1351,16 @@ export default function ProjectActivities() {
                     <span className="text-xs font-semibold text-muted-foreground">فهرس الحالة</span>
                     <span className="text-[11px] text-muted-foreground">اختيار مباشر</span>
                   </div>
+                  {statusFilter !== "all" && (
+                    <div role="status" aria-label="فلتر الحالة المفعّل" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary bg-primary p-3 text-sm text-primary-foreground">
+                      <span className="font-semibold">
+                        فلتر الحالة مفعّل: {STATUS_OPTIONS.find(option => option.value === statusFilter)?.label}
+                      </span>
+                      <Button type="button" size="sm" variant="secondary" onClick={() => setStatusFilter("all")}>
+                        إلغاء فلتر الحالة
+                      </Button>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-6" role="group" aria-label="فهرس حالات بنود الأعمال">
                     <Button
                       type="button"
@@ -1374,7 +1384,8 @@ export default function ProjectActivities() {
                           size="sm"
                           variant={isSelected ? "default" : "outline"}
                           aria-pressed={isSelected}
-                          className={`min-h-10 h-auto min-w-0 justify-center gap-1 px-1.5 py-1 text-[11px] sm:text-xs ${isSelected ? "" : option.cls}`}
+                          aria-label={`تصفية الحالة: ${option.label}`}
+                          className={`min-h-10 h-auto min-w-0 justify-center gap-1 px-1.5 py-1 text-[11px] sm:text-xs ${isSelected ? "bg-primary text-primary-foreground hover:bg-primary" : option.cls}`}
                           onClick={() => setStatusFilter(option.value)}
                         >
                           <Icon className="h-3.5 w-3.5" />
@@ -2309,7 +2320,9 @@ export default function ProjectActivities() {
                 if (!groupMap.has(gid)) groupMap.set("ungrouped", [...(groupMap.get("ungrouped") ?? []), a]);
                 else groupMap.get(gid)!.push(a);
               }
-              const visibleGroups = sortedGroups.filter(group => groupFilter === "all" || groupFilter === group.id);
+              const visibleGroups = sortedGroups.filter(group =>
+                (groupFilter === "all" || groupFilter === group.id)
+                && (statusFilter === "all" || (groupMap.get(group.id) ?? []).length > 0));
 
               const renderActivityRow = (a: Activity) => {
                 const isBusy = updatingId === a.id;
