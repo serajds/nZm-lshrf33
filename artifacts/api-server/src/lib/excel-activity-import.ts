@@ -11,6 +11,21 @@ export type ImportRow = {
 };
 export type ImportGroup = { rowNumber: number; name: string; matches: ExistingImportGroup[] };
 
+/** Imported groups follow first appearance in Excel; unrelated groups keep their slots. */
+export function planImportedGroupOrder(
+  groups: readonly { id: number; sortOrder: number }[], importedIds: readonly number[],
+) {
+  const ordered = [...groups].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  const currentIds = new Set(ordered.map(group => group.id));
+  const imported = [...new Set(importedIds)].filter(id => currentIds.has(id));
+  if (imported.length < 2) return [];
+  const selected = new Set(imported);
+  let index = 0;
+  return ordered.map(group => selected.has(group.id) ? imported[index++] : group.id)
+    .map((id, sortOrder) => ({ id, sortOrder }))
+    .filter(item => groups.find(group => group.id === item.id)?.sortOrder !== item.sortOrder);
+}
+
 export function normalizeImportGroupName(name: string): string {
   return name.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }

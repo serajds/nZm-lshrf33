@@ -124718,6 +124718,15 @@ init_src();
 init_src();
 init_drizzle_orm();
 
+// src/lib/activity-order.ts
+init_drizzle_orm();
+function validActivityOrderItems(value) {
+  return Array.isArray(value) && value.length > 0 && value.length <= 1e4 && value.every((item) => item && Number.isSafeInteger(item.id) && item.id > 0 && item.id <= 2147483647 && Number.isSafeInteger(item.sortOrder) && item.sortOrder >= 0 && item.sortOrder <= 2147483647 && (item.groupId === void 0 || item.groupId === null || Number.isSafeInteger(item.groupId) && item.groupId > 0)) && new Set(value.map((item) => item.id)).size === value.length;
+}
+function activityOrderCase(idColumn, items) {
+  return sql`CASE ${sql.join(items.map((item) => sql`WHEN ${idColumn} = ${item.id} THEN ${item.sortOrder}::integer`), sql` `)} END`;
+}
+
 // src/middlewares/tab-access.ts
 init_src();
 init_src();
@@ -124888,6 +124897,15 @@ var XLSX = __toESM(require_xlsx(), 1);
 import { randomUUID as randomUUID2 } from "node:crypto";
 
 // src/lib/excel-activity-import.ts
+function planImportedGroupOrder(groups, importedIds) {
+  const ordered = [...groups].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  const currentIds = new Set(ordered.map((group) => group.id));
+  const imported = [...new Set(importedIds)].filter((id) => currentIds.has(id));
+  if (imported.length < 2) return [];
+  const selected = new Set(imported);
+  let index2 = 0;
+  return ordered.map((group) => selected.has(group.id) ? imported[index2++] : group.id).map((id, sortOrder) => ({ id, sortOrder })).filter((item) => groups.find((group) => group.id === item.id)?.sortOrder !== item.sortOrder);
+}
 function normalizeImportGroupName(name) {
   return name.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
@@ -125534,6 +125552,7 @@ router4.post("/projects/:projectId/activities/import/confirm", requireProjectAcc
       if (allowedGroupIds && (preview.mode === "none" || preview.mode === "existing" && !allowedGroupIds.has(preview.targetGroupId) || preview.mode === "detect" && activeRows.some((row) => row.groupRow == null))) throw new Error("IMPORT_FORBIDDEN");
       const groupIds = /* @__PURE__ */ new Map();
       const createdNames = /* @__PURE__ */ new Map();
+      const createdGroupRows = [];
       const usedIds = /* @__PURE__ */ new Set();
       let maxGroupOrder = Math.max(0, ...currentGroups.map((group) => group.sortOrder));
       let groupsCreated = 0;
@@ -125565,6 +125584,7 @@ router4.post("/projects/:projectId/activities/import/confirm", requireProjectAcc
             sortOrder: ++maxGroupOrder
           }).returning({ id: activityGroupsTable.id });
           id = inserted2.id;
+          createdGroupRows.push({ id, sortOrder: maxGroupOrder });
           createdNames.set(nameKey, id);
           groupsCreated++;
         }
@@ -125574,6 +125594,9 @@ router4.post("/projects/:projectId/activities/import/confirm", requireProjectAcc
         throw new Error("IMPORT_PREVIEW_STALE");
       }
       if (preview.targetGroupId != null) usedIds.add(preview.targetGroupId);
+      for (const item of planImportedGroupOrder([...currentGroups, ...createdGroupRows], [...groupIds.values()])) {
+        await tx.update(activityGroupsTable).set({ sortOrder: item.sortOrder }).where(and(eq(activityGroupsTable.id, item.id), eq(activityGroupsTable.projectId, projectId)));
+      }
       const [maxOrder] = await tx.select({ val: max(activitiesTable.sortOrder) }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
       let nextOrder = (maxOrder?.val ?? 0) + 1;
       const inserted = await tx.insert(activitiesTable).values(activeRows.map((row) => ({
@@ -125804,8 +125827,8 @@ router4.delete("/projects/:projectId/activities/:id", requireProjectAccess("proj
 router4.put("/projects/:projectId/activities/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
   const { items } = req.body;
-  if (!Array.isArray(items)) {
-    res.status(400).json({ error: "items \u0645\u0637\u0644\u0648\u0628" });
+  if (!validActivityOrderItems(items)) {
+    res.status(400).json({ error: "\u0642\u0627\u0626\u0645\u0629 \u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0628\u0646\u0648\u062F \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629 \u0623\u0648 \u062A\u062D\u062A\u0648\u064A \u0628\u0646\u0648\u062F\u064B\u0627 \u0645\u0643\u0631\u0631\u0629" });
     return;
   }
   if (items.some((item) => item.groupId !== void 0 && item.groupId !== null && (!Number.isInteger(item.groupId) || item.groupId <= 0))) {
@@ -125816,6 +125839,9 @@ router4.put("/projects/:projectId/activities/reorder", requireProjectAccess("pro
   const result = await withSourceGraphLock(async () => db.transaction(async (tx) => {
     const currentItems = await tx.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
     const currentById = new Map(currentItems.map((item) => [item.id, item]));
+    if (items.some((item) => !currentById.has(item.id))) {
+      return { invalidItems: true, sourceGroupIds: [] };
+    }
     if (requestedGroupIds.length) {
       const validGroups = await tx.select({ id: activityGroupsTable.id }).from(activityGroupsTable).where(and(eq(activityGroupsTable.projectId, projectId)));
       const validIds = new Set(validGroups.map((group) => group.id));
@@ -125837,23 +125863,31 @@ router4.put("/projects/:projectId/activities/reorder", requireProjectAccess("pro
       }
     }
     const oldGroups = currentItems.map((activity) => ({ groupId: activity.groupId }));
-    await Promise.all(items.map((item) => {
-      const updateData = { sortOrder: item.sortOrder };
-      if (item.groupId !== void 0) {
-        updateData.groupId = item.groupId === null ? null : item.groupId;
-        const current = currentById.get(item.id);
-        if (current?.managedByGroupId != null && item.groupId !== current.groupId) {
-          updateData.managedByGroupId = null;
-          updateData.managedSourceProjectId = null;
+    if (items.every((item) => item.groupId === void 0)) {
+      await tx.update(activitiesTable).set({ sortOrder: activityOrderCase(activitiesTable.id, items) }).where(and(eq(activitiesTable.projectId, projectId), inArray(activitiesTable.id, items.map((item) => item.id))));
+    } else {
+      await Promise.all(items.map((item) => {
+        const updateData = { sortOrder: item.sortOrder };
+        if (item.groupId !== void 0) {
+          updateData.groupId = item.groupId === null ? null : item.groupId;
+          const current = currentById.get(item.id);
+          if (current?.managedByGroupId != null && item.groupId !== current.groupId) {
+            updateData.managedByGroupId = null;
+            updateData.managedSourceProjectId = null;
+          }
         }
-      }
-      return tx.update(activitiesTable).set(updateData).where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
-    }));
+        return tx.update(activitiesTable).set(updateData).where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
+      }));
+    }
     const sourceGroups = await tx.select({ groupId: activitiesTable.groupId }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
     const sourceGroupIds = [...new Set([...oldGroups, ...sourceGroups].map((a) => a.groupId).filter((groupId) => groupId != null))];
     const updated = new Set(items.filter((item) => currentById.has(item.id)).map((item) => item.id)).size;
     return { invalidGroup: false, managedLocked: false, duplicate: false, sourceGroupIds, updated };
   }));
+  if ("invalidItems" in result && result.invalidItems) {
+    res.status(400).json({ error: "\u062A\u063A\u064A\u0651\u0631\u062A \u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0628\u0646\u0648\u062F\u061B \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0635\u0641\u062D\u0629 \u0642\u0628\u0644 \u062A\u0631\u062A\u064A\u0628\u0647\u0627" });
+    return;
+  }
   if (result.invalidGroup) {
     res.status(400).json({ error: "\u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0647\u0630\u0627 \u0627\u0644\u0645\u0634\u0631\u0648\u0639" });
     return;
@@ -130333,7 +130367,7 @@ async function reorderActivityGroups(projectId, order) {
 }
 router18.get("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), async (req, res) => {
   const projectId = parseInt(req.params.projectId, 10);
-  const groups = await db.select().from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId)).orderBy(asc(activityGroupsTable.sortOrder));
+  const groups = await db.select().from(activityGroupsTable).where(eq(activityGroupsTable.projectId, projectId)).orderBy(asc(activityGroupsTable.sortOrder), asc(activityGroupsTable.id));
   res.json(groups.map(publicGroup));
 });
 router18.get("/projects/:projectId/activity-groups/search", requireProjectAccess("projectId"), async (req, res) => {

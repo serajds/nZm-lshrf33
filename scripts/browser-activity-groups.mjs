@@ -8,6 +8,8 @@ const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise(resolve => ws.addEventListener("open", resolve, { once: true }));
 let serial = 0;
 const pending = new Map(), errors = [];
+const reorderMode = process.argv.includes("--reorder");
+let reorderRequests = 0, failNextReorder = false;
 const send = (method, params = {}) => new Promise((resolve, reject) => {
   pending.set(++serial, { resolve, reject });
   ws.send(JSON.stringify({ id: serial, method, params }));
@@ -24,6 +26,10 @@ const activities = [101, 102, null].map((groupId, index) => ({
   actualStartDate: null, actualEndDate: null, sortOrder: index,
 }));
 const user = { id: 900001, fullName: "اختبار فلتر المجموعات", role: "admin", phone: "0000000000" };
+if (reorderMode) activities.push(
+  { ...activities[0], id: 4, name: "بند سحب ثان", sortOrder: 3 },
+  { ...activities[0], id: 5, name: "بند سحب ثالث", sortOrder: 4 },
+);
 ws.addEventListener("message", async event => {
   const message = JSON.parse(event.data);
   if (message.id) {
@@ -38,12 +44,27 @@ ws.addEventListener("message", async event => {
   const path = new URL(request.url).pathname;
   try {
     if (!path.startsWith("/api/")) return void await send("Fetch.continueRequest", { requestId });
+    if (request.method === "PUT" && path.endsWith("/activities/reorder")) {
+      reorderRequests++;
+      const items = JSON.parse(request.postData).items;
+      assert.ok(items.every(item => !("groupId" in item)), "A reorder must never transfer group ownership");
+      const failed = failNextReorder;
+      failNextReorder = false;
+      if (!failed) {
+        for (const item of items) activities.find(row => row.id === item.id).sortOrder = item.sortOrder;
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
+      await send("Fetch.fulfillRequest", { requestId, responseCode: failed ? 500 : 200,
+        responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+        body: Buffer.from(JSON.stringify(failed ? { error: "فشل تجريبي معزول" } : { updated: items.length })).toString("base64") });
+      return;
+    }
     let body = [];
     if (path === "/api/auth/me") body = user;
     else if (path === "/api/projects/7") body = { id: 7, name: "اختبار معزول للمجموعات",
       startDate: "2026-11-01", expectedEndDate: "2026-12-01", status: "in_progress", overallProgress: 0 };
     else if (path.endsWith("/activity-groups")) body = groups;
-    else if (path.endsWith("/activities")) body = activities;
+    else if (path.endsWith("/activities")) body = [...activities].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
     else if (path.includes("permissions")) body = { role: "project_manager", isProjectManager: true, tabPermissions: { activities: "edit" } };
     else if (path.endsWith("/my-activity-reminder/claim")) body = { show: false };
     else if (path.includes("settings")) body = {};
@@ -66,6 +87,28 @@ async function wait(expression) {
 }
 const groupButton = name => `Array.from(document.querySelectorAll('button[aria-label]')).find(button=>button.getAttribute('aria-label')===${JSON.stringify(name)})`;
 const tableText = () => evaluate(`document.querySelector('[aria-label="جدول بنود الأعمال قابل للتمرير أفقياً"]').innerText`);
+const rowNames = `Array.from(document.querySelectorAll('tbody tr')).map(row=>row.innerText).filter(text=>text.includes('بند تجريبي 1')||text.includes('بند سحب'))`;
+async function rowHandle(name) {
+  return `Array.from(document.querySelectorAll('tbody tr')).find(row=>row.innerText.includes(${JSON.stringify(name)}))?.querySelector('button[aria-label="سحب لتغيير الترتيب"]')`;
+}
+async function pointerDrag(fromName, toName) {
+  await evaluate(`(${await rowHandle(fromName)}).scrollIntoView({block:'center',inline:'nearest',behavior:'instant'})`);
+  const point = async name => evaluate(`(() => {const r=(${await rowHandle(name)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+  const from = await point(fromName), to = await point(toName);
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", ...from });
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", ...from, button: "left", clickCount: 1 });
+  for (let step = 1; step <= 12; step++) {
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: from.x + (to.x - from.x) * step / 12,
+      y: from.y + (to.y - from.y) * step / 12, buttons: 1 });
+    await new Promise(resolve => setTimeout(resolve, 35));
+  }
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", ...to, button: "left", clickCount: 1 });
+}
+async function keyboard(key, code, keyCode) {
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key, code, windowsVirtualKeyCode: keyCode });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: keyCode });
+  await new Promise(resolve => setTimeout(resolve, 100));
+}
 try {
   await send("Page.enable");
   await send("Runtime.enable");
@@ -78,8 +121,37 @@ try {
     localStorage.setItem('auth_user_cache',JSON.stringify({token:'synthetic-filter-token',sessionId:'synthetic-filter-session',user:${JSON.stringify(user)}}));
   ` });
   await send("Page.navigate", { url: `${origin}/projects/7/activities` });
-  const firstButton = groupButton("عرض مجموعة مجموعة الاختبار الأولى، 1 بند");
+  const firstButton = groupButton(`عرض مجموعة مجموعة الاختبار الأولى، ${reorderMode ? 3 : 1} بند`);
   await wait(firstButton);
+  if (reorderMode) {
+    await pointerDrag("بند تجريبي 1", "بند سحب ثالث");
+    await wait(`(${rowNames})[0]?.includes('بند سحب ثان') && (${rowNames})[2]?.includes('بند تجريبي 1')`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    assert.equal(reorderRequests, 1);
+    assert.deepEqual(activities.filter(row => row.groupId === 101).sort((a, b) => a.sortOrder - b.sortOrder).map(row => row.id), [4, 5, 1]);
+    await send("Page.reload", { ignoreCache: true });
+    await wait(firstButton);
+    await wait(`(${rowNames})[0]?.includes('بند سحب ثان') && (${rowNames})[2]?.includes('بند تجريبي 1')`);
+    await evaluate(`${firstButton}.click()`);
+    failNextReorder = true;
+    await pointerDrag("بند سحب ثان", "بند تجريبي 1");
+    await wait(`document.body.innerText.includes('لم يُحفظ ترتيب البنود')`);
+    await wait(`(${rowNames})[0]?.includes('بند سحب ثان') && (${rowNames})[2]?.includes('بند تجريبي 1')`);
+    assert.equal(reorderRequests, 2);
+    await evaluate(`(${await rowHandle("بند تجريبي 1")}).focus()`);
+    await keyboard(" ", "Space", 32);
+    await keyboard("ArrowUp", "ArrowUp", 38);
+    await keyboard(" ", "Space", 32);
+    await wait(`(${rowNames})[1]?.includes('بند تجريبي 1') && (${rowNames})[2]?.includes('بند سحب ثالث')`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    assert.equal(reorderRequests, 3);
+    assert.equal(activities.find(row => row.id === 2).groupId, 102);
+    await mkdir("generated-artifacts/activity-group-filter", { recursive: true });
+    await writeFile("generated-artifacts/activity-group-filter/reordered-activities.png",
+      Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
+    assert.deepEqual(errors, []);
+    console.log("PASS: real pointer drag; order survives reload; failed save restores prior order with message; keyboard drag; no group changes; no browser exceptions. All APIs isolated.");
+  } else {
   await evaluate(`${firstButton}.click()`);
   await wait(`document.querySelector('[role=status]')?.innerText.includes('فلتر المجموعات مفعّل')`);
   let text = await tableText();
@@ -128,6 +200,7 @@ try {
   assert.equal(await evaluate(`${firstButton}.getAttribute('aria-pressed')`), "true");
   assert.deepEqual(errors, []);
   console.log("PASS: real activity page, synthetic APIs: desktop/mobile group and status filters; clear indicators; nonmatching/empty groups hidden; zero-match status; status reset preserves group; no browser exceptions.");
+  }
 } finally {
   ws.close();
   await fetch(`http://127.0.0.1:9222/json/close/${target.id}`);
