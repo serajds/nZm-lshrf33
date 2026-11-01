@@ -1391,6 +1391,16 @@ export default function ProjectActivities() {
                     <span className="text-xs font-semibold text-muted-foreground">فهرس المجموعات</span>
                     <span className="text-[11px] text-muted-foreground">{groups.length} مجموعات</span>
                   </div>
+                  {groupFilter !== "all" && (
+                    <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary bg-primary p-3 text-sm text-primary-foreground">
+                      <span className="font-semibold">
+                        فلتر المجموعات مفعّل: {groupFilter === "ungrouped" ? "بدون مجموعة" : groups.find(group => group.id === groupFilter)?.name ?? "المجموعة المحددة"}
+                      </span>
+                      <Button type="button" size="sm" variant="secondary" onClick={() => setGroupFilter("all")}>
+                        إلغاء فلتر المجموعة
+                      </Button>
+                    </div>
+                  )}
                   <div className="grid min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" dir="rtl" role="group" aria-label="فهرس مجموعات بنود الأعمال">
                     <Button
                       type="button"
@@ -1408,7 +1418,7 @@ export default function ProjectActivities() {
                       const itemCount = groupCounts.counts.get(group.id) ?? 0;
                       const unavailableCount = unavailableByGroup.get(group.id) ?? 0;
                       return (
-                        <div key={group.id} className={`flex min-h-14 min-w-0 items-center gap-1 rounded-lg border px-1.5 py-1 transition-colors ${isSelected ? "border-primary/50 bg-primary/5" : "border-border bg-background"}`}>
+                        <div key={group.id} className={`flex min-h-14 min-w-0 items-center gap-1 rounded-lg border px-1.5 py-1 transition-colors ${isSelected ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"}`}>
                           <Button
                             type="button"
                             size="sm"
@@ -1416,13 +1426,13 @@ export default function ProjectActivities() {
                             aria-pressed={isSelected}
                             aria-label={`عرض مجموعة ${group.name}، ${itemCount} بند`}
                             title={group.name}
-                            className="h-auto min-h-11 min-w-0 flex-1 justify-start gap-2 overflow-hidden px-2 py-1 text-right hover:bg-muted/50"
+                            className={`h-auto min-h-11 min-w-0 flex-1 justify-start gap-2 overflow-hidden px-2 py-1 text-right ${isSelected ? "text-primary-foreground hover:bg-primary hover:text-primary-foreground" : "hover:bg-muted/50"}`}
                             onClick={() => setGroupFilter(group.id)}
                           >
                             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} />
                             <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 overflow-hidden">
                               <span className="w-full truncate text-xs font-semibold sm:text-sm">{group.name}</span>
-                              <span className="flex max-w-full items-center gap-1.5 overflow-hidden text-[10px] font-normal text-muted-foreground">
+                              <span className={`flex max-w-full items-center gap-1.5 overflow-hidden text-[10px] font-normal ${isSelected ? "text-primary-foreground" : "text-muted-foreground"}`}>
                                 {group.linkedProjectActive ? <><Link2 className="h-3 w-3 shrink-0" /><span className="shrink-0">مشروع مرتبط</span></> : <span className="shrink-0">مجموعة عادية</span>}
                                 {unavailableCount > 0 && <span className="flex min-w-0 items-center gap-1 truncate text-amber-700 dark:text-amber-400" title={`${unavailableCount} مصدر غير متاح؛ القيم المحفوظة ما زالت ظاهرة`}><AlertTriangle className="h-3 w-3 shrink-0" />{unavailableCount} غير متاح</span>}
                               </span>
@@ -2299,7 +2309,7 @@ export default function ProjectActivities() {
                 if (!groupMap.has(gid)) groupMap.set("ungrouped", [...(groupMap.get("ungrouped") ?? []), a]);
                 else groupMap.get(gid)!.push(a);
               }
-              const visibleGroups = sortedGroups;
+              const visibleGroups = sortedGroups.filter(group => groupFilter === "all" || groupFilter === group.id);
 
               const renderActivityRow = (a: Activity) => {
                 const isBusy = updatingId === a.id;
@@ -2596,7 +2606,8 @@ export default function ProjectActivities() {
                 if (!groupMap.has(gid)) groupMap.get("ungrouped")!.push(a);
                 else groupMap.get(gid)!.push(a);
               }
-              const visibleGroups = sortedGroups.filter((group) => (groupMap.get(group.id) ?? []).length > 0);
+              const visibleGroups = sortedGroups.filter((group) =>
+                (groupFilter === "all" || groupFilter === group.id) && (groupMap.get(group.id) ?? []).length > 0);
 
               const renderMobileCard = (a: Activity) => {
                 const isBusy = updatingId === a.id;

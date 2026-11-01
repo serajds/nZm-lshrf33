@@ -32,3 +32,9 @@ Separate Chrome debugging targets share storage when they use the same browser p
 **Why:** A prior fixture's synthetic token can make a later guest-startup check unexpectedly load an authenticated screen.
 
 **How to apply:** Clear storage before each navigation only in a dedicated, isolated test profile, or use isolated browser contexts. Never clear the user's actual browser profile as test setup.
+
+CDP checks using `Runtime.evaluate` with `returnByValue` should return primitives, not DOM elements.
+
+**Why:** Serializing a successful element lookup can fail with “Object reference chain is too long,” making a healthy page look like a failed browser check.
+
+**How to apply:** Convert readiness predicates to booleans inside the browser and return only the small fields needed for assertions.
