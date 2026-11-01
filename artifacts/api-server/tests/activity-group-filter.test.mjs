@@ -15,8 +15,8 @@ function visit(node) {
 }
 visit(source);
 const groups = [{ id: 1, name: "Selected" }, { id: 2, name: "Other" }, { id: 3, name: "Empty" }];
-function visible(index, groupFilter, groupMap = new Map([[1, [{}]], [2, [{}]], [3, []]])) {
-  return vm.runInNewContext(expressions[index], { sortedGroups: groups, groupFilter, groupMap }).map(group => group.id);
+function visible(index, groupFilter, groupMap = new Map([[1, [{}]], [2, [{}]], [3, []]]), statusFilter = "all") {
+  return vm.runInNewContext(expressions[index], { sortedGroups: groups, groupFilter, groupMap, statusFilter }).map(group => group.id);
 }
 test("desktop and mobile apply the same selected group restriction, not just row filtering", () => {
   assert.equal(expressions.length, 2);
@@ -42,4 +42,21 @@ test("active filter has an accessible label, solid selection color and a group-o
   assert.match(code, /فلتر المجموعات مفعّل:/);
   assert.match(code, /onClick=\{\(\) => setGroupFilter\("all"\)\}>\s*إلغاء فلتر المجموعة/);
   assert.match(code, /isSelected \? "border-primary bg-primary text-primary-foreground"/);
+});
+
+test("status filters hide nonmatching group headings on desktop and mobile", () => {
+  for (const status of ["completed", "in_progress", "not_started", "delayed"]) {
+    for (let index = 0; index < 2; index++) {
+      assert.deepEqual(Array.from(visible(index, "all", new Map([[1, []], [2, [{}]], [3, []]]), status)), [2]);
+      assert.deepEqual(Array.from(visible(index, "all", new Map(), status)), []);
+      assert.deepEqual(Array.from(visible(index, 1, new Map([[1, []], [2, [{}]]]), status)), []);
+    }
+  }
+});
+
+test("status filter has a solid indicator and its own reset, without removing group selection", () => {
+  assert.match(code, /aria-label="فلتر الحالة المفعّل"/);
+  assert.match(code, /فلتر الحالة مفعّل:/);
+  assert.match(code, /onClick=\{\(\) => setStatusFilter\("all"\)\}>\s*إلغاء فلتر الحالة/);
+  assert.match(code, /isSelected \? "bg-primary text-primary-foreground hover:bg-primary"/);
 });

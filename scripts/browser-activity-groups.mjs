@@ -19,7 +19,7 @@ const groups = [
 ];
 const activities = [101, 102, null].map((groupId, index) => ({
   id: index + 1, projectId: 7, name: `بند تجريبي ${index + 1}`, groupId,
-  status: "not_started", weight: 1, actualProgress: 0, plannedProgress: 0,
+  status: index === 1 ? "completed" : "not_started", weight: 1, actualProgress: index === 1 ? 100 : 0, plannedProgress: 0,
   plannedStartDate: "2026-11-01", plannedEndDate: "2026-12-01",
   actualStartDate: null, actualEndDate: null, sortOrder: index,
 }));
@@ -103,8 +103,31 @@ try {
   await wait(`document.querySelector('[role=status]')?.innerText.includes('مجموعة فارغة')`);
   text = await tableText();
   assert.ok(!text.includes(groups[0].name) && !text.includes(groups[1].name) && !text.includes("بند تجريبي 1"));
+  await evaluate(`Array.from(document.querySelectorAll('button')).find(button=>button.textContent.includes('إلغاء فلتر المجموعة')).click()`);
+  await evaluate(`${groupButton("تصفية الحالة: مكتمل")}.click()`);
+  await wait(`document.querySelector('[aria-label="فلتر الحالة المفعّل"]')?.innerText.includes('مكتمل')`);
+  text = await tableText();
+  assert.ok(text.includes(groups[1].name) && text.includes("بند تجريبي 2"));
+  assert.ok(!text.includes(groups[0].name) && !text.includes(groups[2].name));
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  const statusMobileText = await evaluate(`document.querySelector('[class*="md:hidden"][class*="space-y-3"][class*="px-3"]').innerText`);
+  assert.ok(statusMobileText.includes(groups[1].name) && !statusMobileText.includes(groups[0].name));
+  await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false });
+  await evaluate(`document.querySelector('[aria-label="فلتر الحالة المفعّل"]').scrollIntoView({block:'center'})`);
+  await writeFile("generated-artifacts/activity-group-filter/selected-status.png",
+    Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
+  await evaluate(`${groupButton("تصفية الحالة: قيد التنفيذ")}.click()`);
+  await wait(`document.querySelector('[aria-label="فلتر الحالة المفعّل"]')?.innerText.includes('قيد التنفيذ')`);
+  text = await tableText();
+  assert.ok(!text.includes(groups[0].name) && !text.includes(groups[1].name));
+  await evaluate(`${firstButton}.click()`);
+  await evaluate(`Array.from(document.querySelectorAll('button')).find(button=>button.textContent.includes('إلغاء فلتر الحالة')).click()`);
+  await wait(`!document.querySelector('[aria-label="فلتر الحالة المفعّل"]')`);
+  text = await tableText();
+  assert.ok(text.includes(groups[0].name) && !text.includes(groups[1].name));
+  assert.equal(await evaluate(`${firstButton}.getAttribute('aria-pressed')`), "true");
   assert.deepEqual(errors, []);
-  console.log("PASS: real activity page, synthetic APIs: desktop/mobile selected group only; solid color/banner; reset restores groups; empty group does not reveal others; no browser exceptions.");
+  console.log("PASS: real activity page, synthetic APIs: desktop/mobile group and status filters; clear indicators; nonmatching/empty groups hidden; zero-match status; status reset preserves group; no browser exceptions.");
 } finally {
   ws.close();
   await fetch(`http://127.0.0.1:9222/json/close/${target.id}`);
