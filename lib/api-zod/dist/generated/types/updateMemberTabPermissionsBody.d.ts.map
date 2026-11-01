@@ -1,1 +1,0 @@
-{"version":3,"file":"updateMemberTabPermissionsBody.d.ts","sourceRoot":"","sources":["../../../src/generated/types/updateMemberTabPermissionsBody.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AACH,OAAO,KAAK,EAAE,iBAAiB,EAAE,MAAM,qBAAqB,CAAC;AAE7D,MAAM,MAAM,8BAA8B,GAAG;IAC3C,cAAc,EAAE,iBAAiB,GAAG,IAAI,CAAC;CAC1C,CAAC"}

@@ -1,1 +1,0 @@
-{"version":3,"file":"activityExternalSource.d.ts","sourceRoot":"","sources":["../../../src/generated/types/activityExternalSource.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AACH,OAAO,KAAK,EAAE,mBAAmB,EAAE,MAAM,uBAAuB,CAAC;AAEjE,MAAM,MAAM,sBAAsB,GAC9B,mBAAmB,GACnB;IACE,SAAS,EAAE,OAAO,CAAC;IACnB,OAAO,EAAE,MAAM,CAAC;CACjB,CAAC"}
