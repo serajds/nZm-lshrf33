@@ -38,3 +38,9 @@ CDP checks using `Runtime.evaluate` with `returnByValue` should return primitive
 **Why:** Serializing a successful element lookup can fail with “Object reference chain is too long,” making a healthy page look like a failed browser check.
 
 **How to apply:** Convert readiness predicates to booleans inside the browser and return only the small fields needed for assertions.
+
+For pointer-driven checks, bring the actual control into view before measuring its rectangle; do not assume the window is the scrolling container.
+
+**Why:** The signed-in layout scrolls internally. Window scrolling left drag handles outside the viewport, so simulated drags sent no requests even though the application was working.
+
+**How to apply:** Use the control's `scrollIntoView`, then verify its coordinates and hit target before judging a drag failure.

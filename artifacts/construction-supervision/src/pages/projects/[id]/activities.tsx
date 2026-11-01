@@ -22,6 +22,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DraggableAttributes,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -34,6 +35,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { formatDisplayPercent } from "@/lib/format-display-percent";
+import { applyActivityOrder, planActivityReorder } from "@/lib/activity-order";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -321,8 +323,8 @@ function SortableActivityRow({ id, children }: { id: number; children: React.Rea
   };
 
   return (
-    <SortableRowContext.Provider value={{ dragRef: setActivatorNodeRef, dragListeners: listeners }}>
-      <TableRow ref={setNodeRef} style={style} {...attributes}>
+    <SortableRowContext.Provider value={{ dragRef: setActivatorNodeRef, dragListeners: listeners, dragAttributes: attributes }}>
+      <TableRow ref={setNodeRef} style={style}>
         {children}
       </TableRow>
     </SortableRowContext.Provider>
@@ -332,18 +334,24 @@ function SortableActivityRow({ id, children }: { id: number; children: React.Rea
 const SortableRowContext = React.createContext<{
   dragRef: ((node: HTMLElement | null) => void) | null;
   dragListeners: Record<string, Function> | undefined;
+  dragAttributes?: DraggableAttributes;
 }>({ dragRef: null, dragListeners: undefined });
 
 function DragHandle() {
-  const { dragRef, dragListeners } = React.useContext(SortableRowContext);
+  const { dragRef, dragListeners, dragAttributes } = React.useContext(SortableRowContext);
   return (
-    <span
+    <button
+      type="button"
       ref={dragRef as any}
+      {...dragAttributes}
       {...(dragListeners as any)}
-      className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors touch-none"
+      aria-label="سحب لتغيير الترتيب"
+      disabled={dragAttributes?.["aria-disabled"] === true}
+      onClick={event => event.stopPropagation()}
+      className="cursor-grab active:cursor-grabbing disabled:cursor-wait disabled:opacity-50 text-muted-foreground/40 hover:text-muted-foreground transition-colors touch-none"
     >
       <GripVertical className="h-4 w-4" />
-    </span>
+    </button>
   );
 }
 
@@ -365,8 +373,8 @@ function SortableGroupRow({ id, children }: { id: string; children: React.ReactN
   };
 
   return (
-    <SortableRowContext.Provider value={{ dragRef: setActivatorNodeRef, dragListeners: listeners }}>
-      <TableRow ref={setNodeRef} style={style} {...attributes} className="bg-muted/50 hover:bg-muted/70 cursor-pointer">
+    <SortableRowContext.Provider value={{ dragRef: setActivatorNodeRef, dragListeners: listeners, dragAttributes: attributes }}>
+      <TableRow ref={setNodeRef} style={style} className="bg-muted/50 hover:bg-muted/70 cursor-pointer">
         {children}
       </TableRow>
     </SortableRowContext.Provider>
@@ -576,10 +584,24 @@ export default function ProjectActivities() {
         method: "PUT",
         body: JSON.stringify({ items }),
       });
-      if (!r.ok) throw new Error("فشل إعادة الترتيب");
+      if (!r.ok) {
+        const body = await r.json().catch(() => null);
+        throw new Error(body?.error ?? "فشل إعادة الترتيب");
+      }
       return r.json();
     },
-    onSuccess: () => invalidate(),
+    onMutate: async items => {
+      const queryKey = getListActivitiesQueryKey(projectId);
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<Activity[]>(queryKey);
+      if (previous) queryClient.setQueryData(queryKey, applyActivityOrder(previous, items));
+      return { previous };
+    },
+    onError: (error: Error, _items, context) => {
+      if (context?.previous) queryClient.setQueryData(getListActivitiesQueryKey(projectId), context.previous);
+      toast({ variant: "destructive", title: "لم يُحفظ ترتيب البنود", description: error.message });
+    },
+    onSettled: () => invalidate(),
   });
 
   const sensors = useSensors(
@@ -624,11 +646,13 @@ export default function ProjectActivities() {
       return r.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: groupsQueryKey }),
+    onError: (error: Error) => toast({ variant: "destructive", title: error.message }),
   });
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+    if (reorderActivities.isPending || reorderGroupsMutation.isPending) return;
 
     const activeStr = String(active.id);
     const overStr = String(over.id);
@@ -646,45 +670,8 @@ export default function ProjectActivities() {
     }
 
     if (!activities) return;
-    const activeActivity = activities.find((activity) => activity.id === active.id);
-    if (activeActivity && isActivelyManagedActivity(activeActivity, groups) && overStr.startsWith("group-")) {
-      const targetGroupId = parseInt(overStr.replace("group-", ""), 10);
-      const sourceGroupId = (activeActivity as Activity & { groupId?: number | null }).groupId ?? null;
-      if (targetGroupId !== sourceGroupId) {
-        toast({ title: "لا يمكن نقل بند مُدار إلى مجموعة أخرى" });
-      }
-      return;
-    }
-    const overActivity = activities.find((activity) => activity.id === over.id);
-    if (!activeActivity || !overActivity) return;
-    if (isActivelyManagedActivity(activeActivity, groups)) {
-      const activeGroupId = (activeActivity as Activity & { groupId?: number | null }).groupId ?? null;
-      const overGroupId = (overActivity as Activity & { groupId?: number | null }).groupId ?? null;
-      if (activeGroupId !== overGroupId) {
-        toast({ title: "لا يمكن نقل بند مُدار إلى مجموعة أخرى" });
-        return;
-      }
-      const groupActivities = activities.filter(
-        (activity) => ((activity as Activity & { groupId?: number | null }).groupId ?? null) === activeGroupId,
-      );
-      const oldGroupIndex = groupActivities.findIndex((activity) => activity.id === activeActivity.id);
-      const newGroupIndex = groupActivities.findIndex((activity) => activity.id === overActivity.id);
-      if (oldGroupIndex === -1 || newGroupIndex === -1) return;
-      const reorderedGroup = arrayMove(groupActivities, oldGroupIndex, newGroupIndex);
-      reorderActivities.mutate(reorderedGroup.map((activity, index) => ({ id: activity.id, sortOrder: index })));
-      return;
-    }
-    const oldIndex = activities.findIndex(a => a.id === active.id);
-    const newIndex = activities.findIndex(a => a.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const reordered = arrayMove([...activities], oldIndex, newIndex);
-    const items = reordered.map((a, i) => ({
-      id: a.id,
-      sortOrder: i,
-      groupId: (a as any).groupId ?? null,
-    }));
-    reorderActivities.mutate(items);
+    const items = planActivityReorder(activities, activityRows.map(row => row.id), Number(active.id), Number(over.id));
+    if (items.length) reorderActivities.mutate(items);
   };
   const { data: suspensions = [] } = useQuery<ProjectSuspension[]>({
     queryKey: [`/api/projects/${projectId}/suspensions`],
@@ -2323,6 +2310,13 @@ export default function ProjectActivities() {
               const visibleGroups = sortedGroups.filter(group =>
                 (groupFilter === "all" || groupFilter === group.id)
                 && (statusFilter === "all" || (groupMap.get(group.id) ?? []).length > 0));
+              const sortableRowIds = visibleGroups.flatMap<string | number>(group => [
+                `group-${group.id}`,
+                ...(collapsedGroups.has(group.id) ? [] : (groupMap.get(group.id) ?? []).map(row => row.id)),
+              ]);
+              if (!collapsedGroups.has("ungrouped")) {
+                sortableRowIds.push(...(groupMap.get("ungrouped") ?? []).map(row => row.id));
+              }
 
               const renderActivityRow = (a: Activity) => {
                 const isBusy = updatingId === a.id;
@@ -2469,7 +2463,16 @@ export default function ProjectActivities() {
               };
 
               return (
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <DndContext sensors={sensors} collisionDetection={args => closestCenter({
+                  ...args,
+                  droppableContainers: args.droppableContainers.filter(container => {
+                    if (String(args.active.id).startsWith("group-")) return String(container.id).startsWith("group-");
+                    const active = activities?.find(row => row.id === args.active.id);
+                    const target = activities?.find(row => row.id === container.id);
+                    return !!active && !!target && ((active as Activity & { groupId?: number | null }).groupId ?? null)
+                      === ((target as Activity & { groupId?: number | null }).groupId ?? null);
+                  }),
+                })} onDragEnd={handleDragEnd}>
                   <Table className="table-fixed min-w-[1280px]">
                     <colgroup>
                       <col />
@@ -2504,11 +2507,11 @@ export default function ProjectActivities() {
                           <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">{hasActiveFilters ? "لا توجد نتائج مطابقة للفلاتر الحالية" : "لا يوجد بنود — أضف أول بند"}</TableCell>
                         </TableRow>
                       ) : groups.length === 0 ? (
-                        <SortableContext items={allActs.map(a => a.id)} strategy={verticalListSortingStrategy}>
+                        <SortableContext disabled={reorderActivities.isPending || reorderGroupsMutation.isPending} items={allActs.map(a => a.id)} strategy={verticalListSortingStrategy}>
                           {allActs.map(renderActivityRow)}
                         </SortableContext>
                       ) : (
-                        <SortableContext items={[...visibleGroups.map(g => `group-${g.id}`), ...allActs.map(a => a.id)]} strategy={verticalListSortingStrategy}>
+                        <SortableContext disabled={reorderActivities.isPending || reorderGroupsMutation.isPending} items={sortableRowIds} strategy={verticalListSortingStrategy}>
                           {visibleGroups.map(g => {
                             const groupActs = groupMap.get(g.id) ?? [];
                             const isCollapsed = collapsedGroups.has(g.id);

@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { activitiesTable, projectsTable, activityGroupsTable, projectMembersTable, memberGroupAssignmentsTable } from "@workspace/db";
-import { eq, and, avg, max } from "drizzle-orm";
+import { eq, and, avg, max, inArray } from "drizzle-orm";
+import { activityOrderCase, validActivityOrderItems } from "../lib/activity-order";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
@@ -11,7 +12,7 @@ import { linkedSourceIdAfterPatch, sourceIsAvailable } from "../lib/activity-sou
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { randomUUID } from "node:crypto";
-import { normalizeImportGroupName, planExcelActivityImport, type ImportMode } from "../lib/excel-activity-import";
+import { normalizeImportGroupName, planExcelActivityImport, planImportedGroupOrder, type ImportMode } from "../lib/excel-activity-import";
 
 async function checkGroupPermission(userId: number, projectId: number, activityId: number): Promise<boolean> {
   const [membership] = await db.select()
@@ -665,6 +666,7 @@ router.post("/projects/:projectId/activities/import/confirm", requireProjectAcce
       )) throw new Error("IMPORT_FORBIDDEN");
       const groupIds = new Map<number, number>();
       const createdNames = new Map<string, number>();
+      const createdGroupRows: { id: number; sortOrder: number }[] = [];
       const usedIds = new Set<number>();
       let maxGroupOrder = Math.max(0, ...currentGroups.map(group => group.sortOrder));
       let groupsCreated = 0;
@@ -695,6 +697,7 @@ router.post("/projects/:projectId/activities/import/confirm", requireProjectAcce
             projectId, name: group.name, color: "#3b82f6", sortOrder: ++maxGroupOrder,
           }).returning({ id: activityGroupsTable.id });
           id = inserted.id;
+          createdGroupRows.push({ id, sortOrder: maxGroupOrder });
           createdNames.set(nameKey, id);
           groupsCreated++;
         }
@@ -705,6 +708,10 @@ router.post("/projects/:projectId/activities/import/confirm", requireProjectAcce
         throw new Error("IMPORT_PREVIEW_STALE");
       }
       if (preview.targetGroupId != null) usedIds.add(preview.targetGroupId);
+      for (const item of planImportedGroupOrder([...currentGroups, ...createdGroupRows], [...groupIds.values()])) {
+        await tx.update(activityGroupsTable).set({ sortOrder: item.sortOrder })
+          .where(and(eq(activityGroupsTable.id, item.id), eq(activityGroupsTable.projectId, projectId)));
+      }
       const [maxOrder] = await tx.select({ val: max(activitiesTable.sortOrder) })
         .from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
       let nextOrder = (maxOrder?.val ?? 0) + 1;
@@ -963,8 +970,8 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
 router.put("/projects/:projectId/activities/reorder", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
   const { items } = req.body;
-  if (!Array.isArray(items)) {
-    res.status(400).json({ error: "items مطلوب" });
+  if (!validActivityOrderItems(items)) {
+    res.status(400).json({ error: "قائمة ترتيب البنود غير صالحة أو تحتوي بنودًا مكررة" });
     return;
   }
   if (items.some((item: any) => item.groupId !== undefined && item.groupId !== null && (!Number.isInteger(item.groupId) || item.groupId <= 0))) {
@@ -975,6 +982,9 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
   const result = await withSourceGraphLock(async () => db.transaction(async tx => {
     const currentItems = await tx.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
     const currentById = new Map(currentItems.map(item => [item.id, item]));
+    if (items.some(item => !currentById.has(item.id))) {
+      return { invalidItems: true, sourceGroupIds: [] as number[] };
+    }
     if (requestedGroupIds.length) {
       const validGroups = await tx.select({ id: activityGroupsTable.id }).from(activityGroupsTable)
         .where(and(eq(activityGroupsTable.projectId, projectId)));
@@ -999,10 +1009,14 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
       }
     }
     const oldGroups = currentItems.map(activity => ({ groupId: activity.groupId }));
-    // Run all updates in parallel inside one transaction. Previously
-    // each row was awaited serially → reordering 50 items took 50 round
-    // trips. Now it's a single batched commit.
-    await Promise.all(items.map((item: any) => {
+    if (items.every(item => item.groupId === undefined)) {
+      // Promise.all on a transaction's single connection still serialized the
+      // writes. Pure reordering needs one SQL update, regardless of row count.
+      await tx.update(activitiesTable)
+        .set({ sortOrder: activityOrderCase(activitiesTable.id, items) })
+        .where(and(eq(activitiesTable.projectId, projectId), inArray(activitiesTable.id, items.map(item => item.id))));
+    } else {
+      await Promise.all(items.map((item: any) => {
       const updateData: Record<string, unknown> = { sortOrder: item.sortOrder };
       if (item.groupId !== undefined) {
         updateData.groupId = item.groupId === null ? null : item.groupId;
@@ -1015,7 +1029,8 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
       return tx.update(activitiesTable)
         .set(updateData)
         .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
-    }));
+      }));
+    }
     const sourceGroups = await tx.select({ groupId: activitiesTable.groupId }).from(activitiesTable)
       .where(eq(activitiesTable.projectId, projectId));
     const sourceGroupIds = [...new Set([...oldGroups, ...sourceGroups]
@@ -1025,6 +1040,10 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
       .map(item => item.id)).size;
     return { invalidGroup: false, managedLocked: false, duplicate: false, sourceGroupIds, updated };
   }));
+  if ("invalidItems" in result && result.invalidItems) {
+    res.status(400).json({ error: "تغيّرت قائمة البنود؛ أعد تحميل الصفحة قبل ترتيبها" });
+    return;
+  }
   if (result.invalidGroup) {
     res.status(400).json({ error: "المجموعة غير موجودة في هذا المشروع" });
     return;

@@ -70,7 +70,7 @@ router.get("/projects/:projectId/activity-groups", requireProjectAccess("project
   const groups = await db.select()
     .from(activityGroupsTable)
     .where(eq(activityGroupsTable.projectId, projectId))
-    .orderBy(asc(activityGroupsTable.sortOrder));
+    .orderBy(asc(activityGroupsTable.sortOrder), asc(activityGroupsTable.id));
   res.json(groups.map(publicGroup));
 });
 
