@@ -1,1 +1,0 @@
-{"version":3,"file":"attendanceCheckBody.d.ts","sourceRoot":"","sources":["../../../src/generated/types/attendanceCheckBody.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AAEH,MAAM,WAAW,mBAAmB;IAClC,MAAM,EAAE,IAAI,CAAC;IACb,QAAQ,EAAE,MAAM,CAAC;IACjB,SAAS,EAAE,MAAM,CAAC;IAClB,gBAAgB;IAChB,QAAQ,CAAC,EAAE,MAAM,GAAG,IAAI,CAAC;IACzB,gBAAgB;IAChB,KAAK,CAAC,EAAE,MAAM,GAAG,IAAI,CAAC;CACvB"}
