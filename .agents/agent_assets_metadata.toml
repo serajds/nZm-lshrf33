@@ -12,6 +12,7 @@ uri = "file://attached_assets/production-database-snapshot.sql"
 type = "unspecified"
 title = "نسخة قاعدة بيانات الإنتاج"
 description = "ملف SQL قابل للاستيراد يحتوي بيانات جداول الإنتاج الحالية ويحافظ على المعرّفات والعلاقات."
+logical_id = "416b6c2d-d1a8-4d9f-ba51-b22b18e5b1d0"
 
 [[outputs]]
 id = "J6-63vBKnDpG7xF98vKyk"
@@ -19,3 +20,4 @@ uri = "file://attached_assets/development-before-production-import.sql"
 type = "unspecified"
 title = "نسخة قاعدة التطوير قبل الاستيراد"
 description = "نسخة احتياطية من بيانات التطوير السابقة، للاستخدام فقط إذا احتجت الرجوع عن استيراد نسخة الإنتاج."
+logical_id = "b67b6aba-7df3-4060-886e-e082e39ed69c"
