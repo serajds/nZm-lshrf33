@@ -36,6 +36,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { formatDisplayPercent } from "@/lib/format-display-percent";
 import { applyActivityOrder, planActivityReorder } from "@/lib/activity-order";
+import { ActivityGroupOrganizer, type ActivityGroupCategory, type CategoryFilter } from "@/components/activity-group-organizer";
+import { groupsForCategory, activityMatchesCategory } from "@/lib/activity-category-filter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -93,6 +95,7 @@ interface ActivityGroup {
   name: string;
   color: string;
   sortOrder: number;
+  categoryId?: number | null;
   linkCode?: string | null;
   linkedProjectActive?: boolean;
 }
@@ -429,6 +432,7 @@ export default function ProjectActivities() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "not_started" | "in_progress" | "completed" | "delayed">("all");
   const [groupFilter, setGroupFilter] = useState<"all" | "ungrouped" | number>("all");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { data: activities, isLoading, isError: activitiesError, refetch: refetchActivities } = useListActivities(projectId, { query: { enabled: !!projectId } });
@@ -443,6 +447,26 @@ export default function ProjectActivities() {
     },
     enabled: !!projectId,
   });
+  const categoriesQueryKey = [`/api/projects/${projectId}/activity-group-categories`];
+  const { data: categories = [], isLoading: categoriesLoading, isError: categoriesError } = useQuery<ActivityGroupCategory[]>({
+    queryKey: categoriesQueryKey,
+    queryFn: async () => {
+      const response = await fetchWithSession(`/api/projects/${projectId}/activity-group-categories`);
+      if (!response.ok) throw new Error("تعذر تحميل المجموعات الرئيسية");
+      return response.json();
+    },
+    enabled: !!projectId,
+  });
+  const categoryGroups = useMemo(() => groupsForCategory(groups, categoryFilter), [groups, categoryFilter]);
+  const categoryGroupIds = useMemo(() => new Set(categoryGroups.map(group => group.id)), [categoryGroups]);
+  useEffect(() => { setCategoryFilter("all"); setGroupFilter("all"); }, [projectId]);
+  useEffect(() => {
+    if (!categoriesLoading && !categoriesError && typeof categoryFilter === "number"
+      && !categories.some(category => category.id === categoryFilter)) {
+      setCategoryFilter("all");
+      setGroupFilter("all");
+    }
+  }, [categories, categoriesLoading, categoriesError, categoryFilter]);
 
   useEffect(() => {
     const query = sourceSearchTerm.trim();
@@ -1144,12 +1168,16 @@ export default function ProjectActivities() {
         : groupFilter === "ungrouped"
           ? activityGroupId === null
           : activityGroupId === groupFilter;
-      return matchesSearch && matchesStatus && matchesGroup;
+      return matchesSearch && matchesStatus && matchesGroup
+        && activityMatchesCategory(activityGroupId, categoryFilter, categoryGroupIds);
     });
-  }, [allActivityRows, groupFilter, searchQuery, statusFilter]);
+  }, [allActivityRows, groupFilter, searchQuery, statusFilter, categoryFilter, categoryGroupIds]);
 
   const activityRows = filteredActivities;
-  const hasActiveFilters = Boolean(searchQuery.trim()) || statusFilter !== "all" || groupFilter !== "all";
+  const categoryActivityCount = allActivityRows.filter(activity => activityMatchesCategory(
+    (activity as Activity & { groupId?: number | null }).groupId ?? null, categoryFilter, categoryGroupIds,
+  )).length;
+  const hasActiveFilters = Boolean(searchQuery.trim()) || statusFilter !== "all" || groupFilter !== "all" || categoryFilter !== "all";
   const effectiveViewMode = isContractorBase ? "gantt" : viewMode;
   const ganttData = activityRows.map((a) => ({
     name: a.name.length > 14 ? a.name.slice(0, 14) + "…" : a.name,
@@ -1288,7 +1316,7 @@ export default function ProjectActivities() {
                     variant="ghost"
                     size="sm"
                     className="h-8 px-2 text-xs text-primary"
-                    onClick={() => { setSearchQuery(""); setStatusFilter("all"); setGroupFilter("all"); }}
+                    onClick={() => { setSearchQuery(""); setStatusFilter("all"); setGroupFilter("all"); setCategoryFilter("all"); }}
                   >
                     مسح الفلاتر
                   </Button>
@@ -1333,6 +1361,22 @@ export default function ProjectActivities() {
               </div>
 
               <div className="min-w-0 space-y-3">
+                <ActivityGroupOrganizer
+                  key={projectId}
+                  projectId={projectId}
+                  groups={groups}
+                  categories={categories}
+                  categoryFilter={categoryFilter}
+                  onCategoryFilterChange={value => { setCategoryFilter(value); setGroupFilter("all"); }}
+                  canOrganize={canEditAll && !isViewer && !isContractorBase}
+                  loading={categoriesLoading || groupsLoading}
+                  error={categoriesError || groupsError}
+                  onChanged={() => {
+                    queryClient.invalidateQueries({ queryKey: categoriesQueryKey });
+                    queryClient.invalidateQueries({ queryKey: groupsQueryKey });
+                    setGroupFilter("all");
+                  }}
+                />
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold text-muted-foreground">فهرس الحالة</span>
@@ -1387,7 +1431,7 @@ export default function ProjectActivities() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold text-muted-foreground">فهرس المجموعات</span>
-                    <span className="text-[11px] text-muted-foreground">{groups.length} مجموعات</span>
+                    <span className="text-[11px] text-muted-foreground">{categoryGroups.length} مجموعات{categoryFilter !== "all" ? ` من ${groups.length}` : ""}</span>
                   </div>
                   {groupFilter !== "all" && (
                     <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary bg-primary p-3 text-sm text-primary-foreground">
@@ -1408,10 +1452,10 @@ export default function ProjectActivities() {
                       className="min-h-10 h-auto min-w-0 justify-center gap-1.5 px-2 text-xs"
                       onClick={() => setGroupFilter("all")}
                     >
-                      كل المجموعات
-                      <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{allActivityRows.length}</span>
+                      {categoryFilter === "all" ? "كل المجموعات" : "كل مجموعات التصنيف"}
+                      <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/15">{categoryActivityCount}</span>
                     </Button>
-                    {!groupsError && groups.slice().sort((a, b) => a.sortOrder - b.sortOrder).map((group) => {
+                    {!groupsError && categoryGroups.slice().sort((a, b) => a.sortOrder - b.sortOrder).map((group) => {
                       const isSelected = groupFilter === group.id;
                       const itemCount = groupCounts.counts.get(group.id) ?? 0;
                       const unavailableCount = unavailableByGroup.get(group.id) ?? 0;
@@ -1453,7 +1497,7 @@ export default function ProjectActivities() {
                         </div>
                       );
                     })}
-                    {groupCounts.ungrouped > 0 && (
+                    {groupCounts.ungrouped > 0 && (categoryFilter === "all" || categoryFilter === "uncategorized") && (
                       <Button
                         type="button"
                         size="sm"
@@ -2309,6 +2353,7 @@ export default function ProjectActivities() {
               }
               const visibleGroups = sortedGroups.filter(group =>
                 (groupFilter === "all" || groupFilter === group.id)
+                && categoryGroupIds.has(group.id)
                 && (statusFilter === "all" || (groupMap.get(group.id) ?? []).length > 0));
               const sortableRowIds = visibleGroups.flatMap<string | number>(group => [
                 `group-${group.id}`,
@@ -2623,7 +2668,7 @@ export default function ProjectActivities() {
                 else groupMap.get(gid)!.push(a);
               }
               const visibleGroups = sortedGroups.filter((group) =>
-                (groupFilter === "all" || groupFilter === group.id) && (groupMap.get(group.id) ?? []).length > 0);
+                (groupFilter === "all" || groupFilter === group.id) && categoryGroupIds.has(group.id) && (groupMap.get(group.id) ?? []).length > 0);
 
               const renderMobileCard = (a: Activity) => {
                 const isBusy = updatingId === a.id;

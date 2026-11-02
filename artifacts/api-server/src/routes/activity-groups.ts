@@ -9,8 +9,10 @@ import { normalizeProjectLinkCode } from "../lib/activity-source-rules";
 import { groupMatchesSourceQuery, resolveSourceSuggestions } from "../lib/activity-source-rules";
 import { deleteEmptyActivityGroup } from "../lib/delete-empty-activity-group";
 import { logAudit } from "../lib/audit";
+import categoryRouter from "./activity-group-categories";
 
 const router: IRouter = Router();
+router.use(categoryRouter);
 const linkAttempts = new Map<number, { startedAt: number; count: number }>();
 const LINK_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const LINK_ATTEMPT_LIMIT = 12;

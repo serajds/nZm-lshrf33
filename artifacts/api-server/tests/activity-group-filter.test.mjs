@@ -15,9 +15,15 @@ function visit(node) {
 }
 visit(source);
 const groups = [{ id: 1, name: "Selected" }, { id: 2, name: "Other" }, { id: 3, name: "Empty" }];
-function visible(index, groupFilter, groupMap = new Map([[1, [{}]], [2, [{}]], [3, []]]), statusFilter = "all") {
-  return vm.runInNewContext(expressions[index], { sortedGroups: groups, groupFilter, groupMap, statusFilter }).map(group => group.id);
+function visible(index, groupFilter, groupMap = new Map([[1, [{}]], [2, [{}]], [3, []]]), statusFilter = "all", categoryGroupIds = new Set([1, 2, 3])) {
+  return vm.runInNewContext(expressions[index], { sortedGroups: groups, groupFilter, groupMap, statusFilter, categoryGroupIds }).map(group => group.id);
 }
+test("principal filter hides all other group headers on desktop and mobile", () => {
+  for (let index = 0; index < 2; index++) {
+    assert.deepEqual(Array.from(visible(index, "all", new Map([[1, [{}]], [2, [{}]]]), "all", new Set([2]))), [2]);
+    assert.deepEqual(Array.from(visible(index, 1, new Map([[1, [{}]], [2, [{}]]]), "all", new Set([2]))), []);
+  }
+});
 test("desktop and mobile apply the same selected group restriction, not just row filtering", () => {
   assert.equal(expressions.length, 2);
   for (let index = 0; index < 2; index++) {

@@ -2,6 +2,7 @@ export * from "./users";
 export * from "./projects";
 export * from "./activities";
 export * from "./activity_groups";
+export * from "./activity_group_categories";
 export * from "./reports";
 export * from "./project_progress_history";
 export * from "./report_comments";

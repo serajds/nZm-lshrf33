@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import {
-  usersTable, projectsTable, activitiesTable, activityGroupsTable,
+  usersTable, projectsTable, activitiesTable, activityGroupsTable, activityGroupCategoriesTable,
   reportsTable, projectFilesTable, projectExtensionsTable,
   projectSuspensionsTable, companiesTable, projectMembersTable,
   auditLogTable, memberGroupAssignmentsTable, userCompaniesTable,
@@ -25,7 +25,7 @@ function getBucket() {
 router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => {
   try {
     const [
-      users, projects, activities, activityGroups,
+      users, projects, activities, activityGroups, activityGroupCategories,
       reports, projectFiles, projectExtensions,
       projectSuspensions, companies, projectMembers,
       auditLog, memberGroupAssigns, userCompanies,
@@ -35,6 +35,7 @@ router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => 
       db.select().from(projectsTable),
       db.select().from(activitiesTable),
       db.select().from(activityGroupsTable),
+      db.select().from(activityGroupCategoriesTable),
       db.select().from(reportsTable),
       db.select().from(projectFilesTable),
       db.select().from(projectExtensionsTable),
@@ -58,6 +59,7 @@ router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => 
         projects,
         activities,
         activityGroups,
+        activityGroupCategories,
         reports,
         projectFiles,
         projectExtensions,
@@ -76,6 +78,7 @@ router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => 
         projects: projects.length,
         activities: activities.length,
         activityGroups: activityGroups.length,
+        activityGroupCategories: activityGroupCategories.length,
         reports: reports.length,
         projectFiles: projectFiles.length,
         projectExtensions: projectExtensions.length,
