@@ -269,6 +269,28 @@ export interface UpdateUserBody {
   projectIds?: number[];
 }
 
+export interface ProjectCategory {
+  id: number;
+  name: string;
+}
+
+export interface ProjectCategoryBody {
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
+  name: string;
+}
+
+export type ProjectPortfolioRelation =
+  (typeof ProjectPortfolioRelation)[keyof typeof ProjectPortfolioRelation];
+
+export const ProjectPortfolioRelation = {
+  main: "main",
+  child: "child",
+  independent: "independent",
+} as const;
+
 export type ProjectStatus = (typeof ProjectStatus)[keyof typeof ProjectStatus];
 
 export const ProjectStatus = {
@@ -294,6 +316,17 @@ export interface ReportSignature {
 }
 
 export interface Project {
+  /**
+   * Visible organizational parent only; never grants access.
+   * @nullable
+   */
+  parentProjectId?: number | null;
+  /** @nullable */
+  categoryId?: number | null;
+  /** @nullable */
+  categoryName?: string | null;
+  portfolioRelation?: ProjectPortfolioRelation;
+  canManage?: boolean;
   id: number;
   name: string;
   location: string;
@@ -345,6 +378,16 @@ export const CreateProjectBodyReportDisplayMode = {
 } as const;
 
 export interface CreateProjectBody {
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  parentProjectId?: number | null;
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  categoryId?: number | null;
   name: string;
   location: string;
   ownerEntity: string;
@@ -382,6 +425,16 @@ export const UpdateProjectBodyReportDisplayMode = {
 } as const;
 
 export interface UpdateProjectBody {
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  parentProjectId?: number | null;
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  categoryId?: number | null;
   /** @nullable */
   name?: string | null;
   /** @nullable */

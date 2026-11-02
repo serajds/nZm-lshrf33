@@ -64,6 +64,8 @@ import type {
   OwnerProjectView,
   OwnerVerifyBody,
   Project,
+  ProjectCategory,
+  ProjectCategoryBody,
   ProjectFile,
   ProjectMember,
   ProjectPermissions,
@@ -96,6 +98,338 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
+/**
+ * @summary Categories visible in permitted projects; administrators see the catalog
+ */
+export const getListProjectCategoriesUrl = () => {
+  return `/api/project-categories`;
+};
+
+export const listProjectCategories = async (
+  options?: RequestInit,
+): Promise<ProjectCategory[]> => {
+  return customFetch<ProjectCategory[]>(getListProjectCategoriesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListProjectCategoriesQueryKey = () => {
+  return [`/api/project-categories`] as const;
+};
+
+export const getListProjectCategoriesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listProjectCategories>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listProjectCategories>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListProjectCategoriesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listProjectCategories>>
+  > = ({ signal }) => listProjectCategories({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listProjectCategories>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListProjectCategoriesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listProjectCategories>>
+>;
+export type ListProjectCategoriesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Categories visible in permitted projects; administrators see the catalog
+ */
+
+export function useListProjectCategories<
+  TData = Awaited<ReturnType<typeof listProjectCategories>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listProjectCategories>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListProjectCategoriesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create category as administrator
+ */
+export const getCreateProjectCategoryUrl = () => {
+  return `/api/project-categories`;
+};
+
+export const createProjectCategory = async (
+  projectCategoryBody: ProjectCategoryBody,
+  options?: RequestInit,
+): Promise<ProjectCategory> => {
+  return customFetch<ProjectCategory>(getCreateProjectCategoryUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(projectCategoryBody),
+  });
+};
+
+export const getCreateProjectCategoryMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createProjectCategory>>,
+    TError,
+    { data: BodyType<ProjectCategoryBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createProjectCategory>>,
+  TError,
+  { data: BodyType<ProjectCategoryBody> },
+  TContext
+> => {
+  const mutationKey = ["createProjectCategory"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createProjectCategory>>,
+    { data: BodyType<ProjectCategoryBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createProjectCategory(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateProjectCategoryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createProjectCategory>>
+>;
+export type CreateProjectCategoryMutationBody = BodyType<ProjectCategoryBody>;
+export type CreateProjectCategoryMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create category as administrator
+ */
+export const useCreateProjectCategory = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createProjectCategory>>,
+    TError,
+    { data: BodyType<ProjectCategoryBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createProjectCategory>>,
+  TError,
+  { data: BodyType<ProjectCategoryBody> },
+  TContext
+> => {
+  return useMutation(getCreateProjectCategoryMutationOptions(options));
+};
+
+/**
+ * @summary Rename category as administrator
+ */
+export const getUpdateProjectCategoryUrl = (id: number) => {
+  return `/api/project-categories/${id}`;
+};
+
+export const updateProjectCategory = async (
+  id: number,
+  projectCategoryBody: ProjectCategoryBody,
+  options?: RequestInit,
+): Promise<ProjectCategory> => {
+  return customFetch<ProjectCategory>(getUpdateProjectCategoryUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(projectCategoryBody),
+  });
+};
+
+export const getUpdateProjectCategoryMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProjectCategory>>,
+    TError,
+    { id: number; data: BodyType<ProjectCategoryBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateProjectCategory>>,
+  TError,
+  { id: number; data: BodyType<ProjectCategoryBody> },
+  TContext
+> => {
+  const mutationKey = ["updateProjectCategory"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateProjectCategory>>,
+    { id: number; data: BodyType<ProjectCategoryBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateProjectCategory(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateProjectCategoryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateProjectCategory>>
+>;
+export type UpdateProjectCategoryMutationBody = BodyType<ProjectCategoryBody>;
+export type UpdateProjectCategoryMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Rename category as administrator
+ */
+export const useUpdateProjectCategory = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProjectCategory>>,
+    TError,
+    { id: number; data: BodyType<ProjectCategoryBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateProjectCategory>>,
+  TError,
+  { id: number; data: BodyType<ProjectCategoryBody> },
+  TContext
+> => {
+  return useMutation(getUpdateProjectCategoryMutationOptions(options));
+};
+
+/**
+ * @summary Remove category without deleting its projects
+ */
+export const getDeleteProjectCategoryUrl = (id: number) => {
+  return `/api/project-categories/${id}`;
+};
+
+export const deleteProjectCategory = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteProjectCategoryUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteProjectCategoryMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProjectCategory>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteProjectCategory>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteProjectCategory"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteProjectCategory>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteProjectCategory(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteProjectCategoryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteProjectCategory>>
+>;
+
+export type DeleteProjectCategoryMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Remove category without deleting its projects
+ */
+export const useDeleteProjectCategory = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProjectCategory>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteProjectCategory>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteProjectCategoryMutationOptions(options));
+};
 
 /**
  * @summary Health check

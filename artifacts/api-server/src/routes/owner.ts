@@ -147,7 +147,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
     }
   }
 
-  const { ownerAccessPassword: _, linkCode: _linkCode, ...safeProject } = project;
+  const { ownerAccessPassword: _, linkCode: _linkCode, parentProjectId: _parent, categoryId: _category, ...safeProject } = project;
   const safeActivities = activities.map(({ externalSourceGroupId: _sourceGroupId, managedSourceProjectId: _sourceProjectId, ...activity }) => activity);
 
   return { project: safeProject, activities: safeActivities, reports, extensions, suspensions, summary, companyLogos };

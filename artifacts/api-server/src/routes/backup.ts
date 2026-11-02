@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import {
-  usersTable, projectsTable, activitiesTable, activityGroupsTable, activityGroupCategoriesTable,
+  usersTable, projectsTable, projectCategoriesTable, activitiesTable, activityGroupsTable, activityGroupCategoriesTable,
   reportsTable, projectFilesTable, projectExtensionsTable,
   projectSuspensionsTable, companiesTable, projectMembersTable,
   auditLogTable, memberGroupAssignmentsTable, userCompaniesTable,
@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { requireAdmin } from "../middlewares/auth";
 import { objectStorageClient } from "../lib/objectStorage";
+import { validatePortfolioSnapshot } from "../lib/portfolio-backup";
 
 const router: IRouter = Router();
 
@@ -25,7 +26,7 @@ function getBucket() {
 router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => {
   try {
     const [
-      users, projects, activities, activityGroups, activityGroupCategories,
+      users, projects, projectCategories, activities, activityGroups, activityGroupCategories,
       reports, projectFiles, projectExtensions,
       projectSuspensions, companies, projectMembers,
       auditLog, memberGroupAssigns, userCompanies,
@@ -33,6 +34,7 @@ router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => 
     ] = await Promise.all([
       db.select().from(usersTable),
       db.select().from(projectsTable),
+      db.select().from(projectCategoriesTable),
       db.select().from(activitiesTable),
       db.select().from(activityGroupsTable),
       db.select().from(activityGroupCategoriesTable),
@@ -50,6 +52,7 @@ router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => 
       db.select().from(skippedDaysTable),
     ]);
 
+    validatePortfolioSnapshot({ projects, projectCategories });
     const backupData = {
       version: 1,
       createdAt: new Date().toISOString(),
@@ -57,6 +60,7 @@ router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => 
       tables: {
         users,
         projects,
+        projectCategories,
         activities,
         activityGroups,
         activityGroupCategories,
@@ -76,6 +80,7 @@ router.post("/backup/create", requireAdmin, async (_req, res): Promise<void> => 
       stats: {
         users: users.length,
         projects: projects.length,
+        projectCategories: projectCategories.length,
         activities: activities.length,
         activityGroups: activityGroups.length,
         activityGroupCategories: activityGroupCategories.length,

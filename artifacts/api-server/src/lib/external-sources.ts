@@ -1,5 +1,5 @@
 import { db, pool, activitiesTable, activityGroupsTable, projectsTable, projectExtensionsTable, projectMembersTable, projectFilesTable, reportsTable, userCompaniesTable, usersTable } from "@workspace/db";
-import { and, eq, isNotNull, isNull, max, sum } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, max, sum, sql } from "drizzle-orm";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { measurePhase } from "@workspace/db";
 import { recalcExpectedEndDate } from "./recalc-end-date";
@@ -262,6 +262,9 @@ export async function reconcileTargetsLinkedToProject(sourceProjectId: number) {
 /** Delete a project graph atomically with respect to all source-graph mutations. */
 export async function deleteProjectUnderSourceGraphLock(projectId: number) {
   return withSourceGraphLock(async () => db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(731924614)`);
+    const children = await tx.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.parentProjectId, projectId)).limit(1);
+    if (children.length) throw Object.assign(new Error("فك تبعية المشاريع أولاً"), { code: "23514" });
     const [project] = await tx.select({ id: projectsTable.id, name: projectsTable.name })
       .from(projectsTable).where(eq(projectsTable.id, projectId));
     if (!project) return undefined;

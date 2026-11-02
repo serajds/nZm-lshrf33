@@ -1,928 +1,323 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useListProjects, useCreateProject, useUpdateProject, useDeleteProject,
+  getListProjectsQueryKey, getGetProjectQueryKey, getGetProjectSummaryQueryKey, getProject, getProjectSummary,
+} from "@workspace/api-client-react";
+import { Building2, Network, Plus, RefreshCw, SearchX, Tags, TriangleAlert, Layers, GitBranch } from "lucide-react";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useListProjects, useCreateProject, useUpdateProject, useDeleteProject, getListProjectsQueryKey, getGetProjectQueryKey, getGetProjectSummaryQueryKey, getProject, getProjectSummary, customFetch } from "@workspace/api-client-react";
-import type { Project } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { fmtDate } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Link } from "wouter";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Plus, Search, Building2, MapPin, Calendar, Edit2, Trash2, CalendarOff, Folder, FolderOpen, ChevronRight, ArrowUp, Loader2, FlaskConical, X, FileText, TriangleAlert } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
-import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { ProjectLinkCodeSettings } from "@/components/project-link-code-settings";
+import { Button } from "@/components/ui/button";
+import { useProjectCategories } from "@/hooks/use-project-categories";
+import {
+  EMPTY_FILTERS, apiErrorMessage, buildPortfolioView, hasActiveFilters, ownerOptions, portfolioCounters,
+  type PortfolioFilters,
+} from "@/lib/project-portfolio";
+import type { PortfolioProject } from "@/components/projects/types";
+import { ProjectFormDialog, emptyFormValues, formValuesToPayload, projectToFormValues, type ProjectFormValues } from "@/components/projects/project-form-dialog";
+import { DeleteProjectDialog } from "@/components/projects/delete-project-dialog";
+import { CategoryManagerDialog } from "@/components/projects/category-manager";
+import { MainProjectCard, ProjectCard, type CardActions } from "@/components/projects/portfolio-card";
+import { PortfolioTable } from "@/components/projects/portfolio-table";
+import { PortfolioCountersStrip, PortfolioFiltersBar } from "@/components/projects/portfolio-filters";
 
-const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-
-interface CompanyOption {
-  id: number;
-  name: string;
-  type: "owner" | "contractor" | "supervisor";
-  logoUrl: string | null;
+function SectionHeading({ icon, title, hint, count }: { icon: React.ReactNode; title: string; hint: string; count: number }) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="rounded-lg bg-primary/10 p-1.5 text-primary">{icon}</span>
+        <div className="min-w-0">
+          <h2 className="text-base font-bold">{title}</h2>
+          <p className="text-xs text-muted-foreground">{hint}</p>
+        </div>
+      </div>
+      <span className="font-mono text-sm text-muted-foreground">{count}</span>
+    </div>
+  );
 }
 
-const projectSchema = z.object({
-  name: z.string().min(1, "اسم المشروع مطلوب"),
-  location: z.string().min(1, "الموقع مطلوب"),
-  ownerEntity: z.string().min(1, "الجهة المالكة مطلوبة"),
-  supervisorEntity: z.string().min(1, "الجهة المشرفة مطلوبة"),
-  contractor: z.string().min(1, "المقاول مطلوب"),
-  noSchedule: z.boolean().default(false),
-  startDate: z.string().optional().default(""),
-  expectedEndDate: z.string().optional().default(""),
-  status: z.enum(["active", "completed", "delayed", "suspended"]).default("active"),
-  ownerCompanyId: z.string().optional(),
-  contractorCompanyId: z.string().optional(),
-  supervisorCompanyId: z.string().optional(),
-  onedriveTestResultsFolderId: z.string().optional(),
-}).refine((data) => {
-  if (data.noSchedule) return true;
-  return !!data.startDate && data.startDate.length > 0;
-}, {
-  message: "تاريخ البداية مطلوب",
-  path: ["startDate"],
-}).refine((data) => {
-  if (data.noSchedule) return true;
-  return !!data.expectedEndDate && data.expectedEndDate.length > 0;
-}, {
-  message: "تاريخ النهاية المتوقع مطلوب",
-  path: ["expectedEndDate"],
-}).refine((data) => {
-  if (data.noSchedule) return true;
-  if (!data.startDate || !data.expectedEndDate) return true;
-  return data.expectedEndDate >= data.startDate;
-}, {
-  message: "تاريخ النهاية يجب أن يكون بعد تاريخ البداية",
-  path: ["expectedEndDate"],
-});
-
-type ProjectFormValues = z.infer<typeof projectSchema>;
-
-const createDeleteChallenge = () => {
-  const firstNumber = Math.floor(Math.random() * 16) + 12;
-  const secondNumber = Math.floor(Math.random() * 12) + 5;
-
-  return {
-    firstNumber,
-    secondNumber,
-    answer: firstNumber + secondNumber,
-  };
-};
-
-const normalizeArabicDigits = (value: string) => value
-  .replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
-  .replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)));
+function ListSkeleton() {
+  return (
+    <div className="space-y-4" aria-label="جاري تحميل المشاريع" aria-busy>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">{Array.from({ length: 6 }, (_, i) => <div key={i} className="h-[72px] animate-pulse rounded-xl bg-muted" />)}</div>
+      <div className="h-36 animate-pulse rounded-2xl bg-muted" />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2].map(i => <div key={i} className="h-56 animate-pulse rounded-2xl bg-muted" />)}</div>
+    </div>
+  );
+}
 
 export default function Projects() {
   usePageTitle("المشاريع");
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
-  const [deleteChallenge, setDeleteChallenge] = useState(createDeleteChallenge);
-  const [deleteAnswer, setDeleteAnswer] = useState("");
-  const [folderBrowserOpen, setFolderBrowserOpen] = useState(false);
-  const [folderBrowserItems, setFolderBrowserItems] = useState<any[]>([]);
-  const [folderBrowserLoading, setFolderBrowserLoading] = useState(false);
-  const [folderBrowserParentId, setFolderBrowserParentId] = useState<string | null>(null);
-  const [folderBrowserCurrentId, setFolderBrowserCurrentId] = useState<string>("root");
-  const [folderBrowserPath, setFolderBrowserPath] = useState<{id: string; name: string}[]>([]);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const canManageProjects = isAdmin; // create/delete are admin-only server-side
 
-  // Companies barely change during a working session — trust the cache for
-  // 10 minutes so opening / re-opening the projects screen doesn't trip a
-  // network round-trip just to populate the dialog dropdowns.
-  const { data: companies = [] } = useQuery<CompanyOption[]>({
-    queryKey: ["companies"],
-    queryFn: () => customFetch<CompanyOption[]>(`${API_BASE}/companies`, { responseType: "json" }),
-    staleTime: 1000 * 60 * 10,
-  });
-
-  const ownerCompanies = companies.filter(c => c.type === "owner");
-  const contractorCompanies = companies.filter(c => c.type === "contractor");
-  const supervisorCompanies = companies.filter(c => c.type === "supervisor");
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<PortfolioFilters>(EMPTY_FILTERS);
+  const [view, setView] = useState<"cards" | "table">("cards");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<PortfolioProject | null>(null);
+  const [initialValues, setInitialValues] = useState<ProjectFormValues | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [deletingProject, setDeletingProject] = useState<PortfolioProject | null>(null);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [unlinkingId, setUnlinkingId] = useState<number | null>(null);
+  const editRequest = useRef(0);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 400);
-    return () => clearTimeout(timer);
+    const t = setTimeout(() => setFilters(f => (f.search === search ? f : { ...f, search })), 250);
+    return () => clearTimeout(t);
   }, [search]);
 
-  const { user } = useAuth();
-  const canManageProjects = user?.role === "admin" || user?.role === "project_manager";
-  const isContractor = user?.role === "contractor" || user?.isContractorCompanyUser === true;
-  const getProjectLink = (projectId: number) => `/projects/${projectId}`;
+  // Fetched ONCE unfiltered; all filtering happens on the client.
+  const listQuery = useListProjects(undefined, {
+    query: { staleTime: 1000 * 60 * 5, placeholderData: (prev: unknown) => prev } as any,
+  });
+  const projects = listQuery.data as PortfolioProject[] | undefined;
+  const all = useMemo(() => projects ?? [], [projects]);
 
-  // Prefetch a project's core data the moment the user hovers/touches its
-  // card. By the time the click navigates to the details screen, the data
-  // is usually already in the React Query cache, making the transition
-  // feel instant. Throttled by `staleTime` so it never fires twice in a row.
-  const prefetchProject = (projectId: number) => {
-    queryClient.prefetchQuery({
-      queryKey: getGetProjectQueryKey(projectId),
-      queryFn: ({ signal }) => getProject(projectId, { signal }),
-      staleTime: 1000 * 60 * 5,
-    });
-    queryClient.prefetchQuery({
-      queryKey: getGetProjectSummaryQueryKey(projectId),
-      queryFn: ({ signal }) => getProjectSummary(projectId, { signal }),
-      staleTime: 1000 * 60 * 5,
-    });
-  };
+  const categoriesQuery = useProjectCategories();
+  const categoriesState = categoriesQuery.isLoading ? "loading" : categoriesQuery.isError ? "error" : "ok";
 
-  // `placeholderData` keeps the previous list visible while a new search
-  // / filter request is in flight, so typing in the search box (or
-  // changing the status filter) no longer wipes the cards to a spinner
-  // for every keystroke. `staleTime` of 5 min prevents revisits to the
-  // page from re-fetching when the underlying data hasn't changed.
-  const { data: projects, isLoading } = useListProjects(
-    {
-      search: debouncedSearch || undefined,
-      status: statusFilter && statusFilter !== "all" ? statusFilter : undefined,
-    },
-    {
-      query: {
-        staleTime: 1000 * 60 * 5,
-        placeholderData: (prev: any) => prev,
-      } as any,
-    },
-  );
+  const counters = useMemo(() => (projects ? portfolioCounters(projects) : null), [projects]);
+  const portfolio = useMemo(() => buildPortfolioView(all, filters), [all, filters]);
+  const owners = useMemo(() => ownerOptions(all), [all]);
+  const categoryUsage = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const p of all) if (p.categoryId != null) m.set(p.categoryId, (m.get(p.categoryId) ?? 0) + 1);
+    return m;
+  }, [all]);
+  const filtering = hasActiveFilters(filters) || search.trim() !== filters.search.trim();
 
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
 
-  const form = useForm<ProjectFormValues>({
-    resolver: zodResolver(projectSchema),
-    defaultValues: {
-      name: "",
-      location: "",
-      ownerEntity: "",
-      supervisorEntity: "",
-      contractor: "",
-      noSchedule: false,
-      startDate: new Date().toISOString().split('T')[0],
-      expectedEndDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
-      status: "active",
-      ownerCompanyId: "",
-      contractorCompanyId: "",
-      supervisorCompanyId: "",
-    }
-  });
-
-  const watchNoSchedule = form.watch("noSchedule");
-
-  const browseFolders = async (folderId?: string) => {
-    setFolderBrowserLoading(true);
-    try {
-      const url = folderId
-        ? `${API_BASE}/onedrive/browse?folderId=${folderId}`
-        : `${API_BASE}/onedrive/browse`;
-      const data = await customFetch<{
-        items?: any[];
-        parentId: string | null;
-        currentFolderId: string;
-      }>(url, { responseType: "json" });
-      setFolderBrowserItems(data.items || []);
-      setFolderBrowserParentId(data.parentId);
-      setFolderBrowserCurrentId(data.currentFolderId);
-    } catch {
-      toast({ title: "حدث خطأ أثناء تصفح OneDrive", variant: "destructive" });
-    } finally {
-      setFolderBrowserLoading(false);
-    }
+  const prefetchProject = (projectId: number) => {
+    queryClient.prefetchQuery({ queryKey: getGetProjectQueryKey(projectId), queryFn: ({ signal }) => getProject(projectId, { signal }), staleTime: 1000 * 60 * 5 });
+    queryClient.prefetchQuery({ queryKey: getGetProjectSummaryQueryKey(projectId), queryFn: ({ signal }) => getProjectSummary(projectId, { signal }), staleTime: 1000 * 60 * 5 });
   };
 
-  const openFolderBrowser = () => {
-    setFolderBrowserPath([]);
-    setFolderBrowserItems([]);
-    setFolderBrowserParentId(null);
-    setFolderBrowserCurrentId("root");
-    setFolderBrowserOpen(true);
-    browseFolders();
-  };
+  const invalidateList = () => queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() });
 
-  const navigateToFolder = (folderId: string, folderName: string) => {
-    setFolderBrowserPath(prev => [...prev, { id: folderId, name: folderName }]);
-    browseFolders(folderId);
-  };
-
-  const navigateUp = () => {
-    if (folderBrowserPath.length <= 1) {
-      setFolderBrowserPath([]);
-      browseFolders();
-    } else {
-      const newPath = folderBrowserPath.slice(0, -1);
-      setFolderBrowserPath(newPath);
-      browseFolders(newPath[newPath.length - 1].id);
-    }
-  };
-
-  const selectFolder = (folderId: string) => {
-    form.setValue("onedriveTestResultsFolderId", folderId);
-    setFolderBrowserOpen(false);
-  };
-
-  const handleCompanySelect = (companyId: string, field: "ownerEntity" | "contractor" | "supervisorEntity") => {
-    const company = companies.find(c => String(c.id) === companyId);
-    if (company) {
-      form.setValue(field, company.name);
-    }
-  };
-
-  const openEdit = (p: Project) => {
-    setEditingProject(p);
-    const isNoSchedule = p.noSchedule === true;
-    form.reset({
-      name: p.name,
-      location: p.location,
-      ownerEntity: p.ownerEntity,
-      supervisorEntity: p.supervisorEntity,
-      contractor: p.contractor,
-      noSchedule: isNoSchedule,
-      startDate: p.startDate ? new Date(p.startDate).toISOString().split('T')[0] : "",
-      expectedEndDate: p.expectedEndDate ? new Date(p.expectedEndDate).toISOString().split('T')[0] : "",
-      status: p.status as ProjectFormValues["status"],
-      ownerCompanyId: (p as any).ownerCompanyId ? String((p as any).ownerCompanyId) : "",
-      contractorCompanyId: (p as any).contractorCompanyId ? String((p as any).contractorCompanyId) : "",
-      supervisorCompanyId: (p as any).supervisorCompanyId ? String((p as any).supervisorCompanyId) : "",
-      onedriveTestResultsFolderId: (p as any).onedriveTestResultsFolderId || "",
-    });
-    setIsDialogOpen(true);
-  };
-
-  const openCreate = () => {
+  const openCreate = (parent?: PortfolioProject) => {
+    editRequest.current += 1;
     setEditingProject(null);
-    form.reset({
-      name: "", location: "", ownerEntity: "", supervisorEntity: "",
-      contractor: "",
-      noSchedule: false,
-      startDate: new Date().toISOString().split('T')[0],
-      expectedEndDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
-      status: "active",
-      ownerCompanyId: "",
-      contractorCompanyId: "",
-      supervisorCompanyId: "",
-      onedriveTestResultsFolderId: "",
-    });
-    setIsDialogOpen(true);
+    setDetailError(null);
+    setInitialValues(emptyFormValues(parent && isAdmin ? parent.id : null));
+    setDialogOpen(true);
   };
+
+  // List rows are lightweight (no OneDrive folder) — load the full record before filling the form.
+  const loadDetail = async (p: PortfolioProject) => {
+    const req = ++editRequest.current;
+    setInitialValues(null);
+    setDetailError(null);
+    try {
+      const full = await queryClient.fetchQuery({ queryKey: getGetProjectQueryKey(p.id), queryFn: ({ signal }) => getProject(p.id, { signal }), staleTime: 0 });
+      if (req !== editRequest.current) return;
+      setInitialValues(projectToFormValues({ ...p, ...(full as PortfolioProject) }));
+    } catch (e) {
+      if (req === editRequest.current) setDetailError(apiErrorMessage(e, "تعذر تحميل بيانات المشروع"));
+    }
+  };
+  const openEdit = (p: PortfolioProject) => {
+    setEditingProject(p);
+    setDialogOpen(true);
+    void loadDetail(p);
+  };
+
+  const closeDialog = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) { editRequest.current += 1; setEditingProject(null); setInitialValues(null); setDetailError(null); }
+  };
+
+  const canAssignCategory = isAdmin || (editingProject ? editingProject.canManage === true : false);
 
   const onSubmit = async (values: ProjectFormValues) => {
+    const payload = formValuesToPayload(values, { isAdmin, canAssignCategory });
     try {
       if (editingProject) {
-        await updateProject.mutateAsync({ id: editingProject.id, data: values });
+        await updateProject.mutateAsync({ id: editingProject.id, data: payload as any });
+        queryClient.invalidateQueries({ queryKey: getGetProjectQueryKey(editingProject.id) });
         toast({ title: "تم تحديث المشروع بنجاح" });
       } else {
-        await createProject.mutateAsync({ data: values });
+        await createProject.mutateAsync({ data: payload as any });
         toast({ title: "تم إنشاء المشروع بنجاح" });
       }
-      queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() });
-      setIsDialogOpen(false);
-      form.reset();
-      setEditingProject(null);
-    } catch {
-      toast({ variant: "destructive", title: editingProject ? "فشل تحديث المشروع" : "فشل إنشاء المشروع" });
+      invalidateList();
+      closeDialog(false);
+    } catch (e) {
+      toast({ variant: "destructive", title: editingProject ? "فشل تحديث المشروع" : "فشل إنشاء المشروع", description: apiErrorMessage(e, "حدث خطأ غير متوقع") });
     }
   };
 
-  const confirmDelete = async () => {
-    if (!deletingProject) return;
-    if (Number(normalizeArabicDigits(deleteAnswer.trim())) !== deleteChallenge.answer) {
-      toast({ variant: "destructive", title: "إجابة المسألة غير صحيحة", description: "لن يتم حذف المشروع قبل إدخال الإجابة الصحيحة." });
-      return;
-    }
+  const confirmDelete = async (p: PortfolioProject) => {
     try {
-      await deleteProject.mutateAsync({ id: deletingProject.id });
-      queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() });
+      await deleteProject.mutateAsync({ id: p.id });
+      invalidateList();
       toast({ title: "تم حذف المشروع بنجاح" });
-    } catch {
-      toast({ variant: "destructive", title: "فشل حذف المشروع" });
+    } catch (e) {
+      toast({ variant: "destructive", title: "فشل حذف المشروع", description: apiErrorMessage(e, "حدث خطأ غير متوقع") });
     } finally {
       setDeletingProject(null);
-      setDeleteAnswer("");
     }
   };
 
-  const openDeleteConfirmation = (project: Project) => {
-    setDeleteChallenge(createDeleteChallenge());
-    setDeleteAnswer("");
-    setDeletingProject(project);
-  };
-
-  const isDeleteAnswerCorrect = Number(normalizeArabicDigits(deleteAnswer.trim())) === deleteChallenge.answer;
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'active': return <Badge variant="default" className="bg-primary hover:bg-primary text-white">نشط</Badge>;
-      case 'completed': return <Badge variant="secondary" className="bg-emerald-500 hover:bg-emerald-600 text-white">مكتمل</Badge>;
-      case 'delayed': return <Badge variant="destructive">منحرف عن الخطة</Badge>;
-      case 'suspended': return <Badge variant="outline" className="bg-orange-500 text-white hover:bg-orange-600 border-none">متوقف</Badge>;
-      default: return <Badge variant="outline">{status}</Badge>;
+  const unlink = async (p: PortfolioProject) => {
+    setUnlinkingId(p.id);
+    try {
+      await updateProject.mutateAsync({ id: p.id, data: { parentProjectId: null } as any });
+      invalidateList();
+      queryClient.invalidateQueries({ queryKey: getGetProjectQueryKey(p.id) });
+      toast({ title: "تم فك الارتباط", description: `أصبح «${p.name}» مشروعاً مستقلاً.` });
+    } catch (e) {
+      toast({ variant: "destructive", title: "تعذر فك الارتباط", description: apiErrorMessage(e, "حدث خطأ غير متوقع") });
+    } finally {
+      setUnlinkingId(null);
     }
   };
 
-  const isSubmitting = createProject.isPending || updateProject.isPending;
+  const actions: CardActions = {
+    canEdit: p => isAdmin || p.canManage === true,
+    canDelete: canManageProjects,
+    isAdmin,
+    onEdit: openEdit,
+    onDelete: setDeletingProject,
+    onAddChild: p => openCreate(p),
+    onUnlink: p => void unlink(p),
+    prefetch: prefetchProject,
+    unlinkingId,
+  };
+
+  const resetFilters = () => { setSearch(""); setFilters(EMPTY_FILTERS); };
+  const noResults = portfolio.matchedCount === 0;
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
-      <div className="page-hero flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+    <div className="mx-auto max-w-[1600px] min-w-0 space-y-5">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 px-5 py-5 text-white shadow-sm sm:px-7 sm:py-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
-          <div className="relative z-10 rounded-2xl border border-white/15 bg-white/10 p-3">
-            <Building2 className="h-6 w-6 text-cyan-200" />
-          </div>
+          <div className="relative z-10 rounded-2xl border border-white/15 bg-white/10 p-3"><Building2 className="h-6 w-6 text-cyan-200" /></div>
           <div>
-            <h1 className="relative z-10 text-lg font-bold tracking-tight text-white md:text-2xl">المشاريع</h1>
-            <p className="relative z-10 mt-1 text-sm text-white/65">إدارة ومتابعة جميع المشاريع</p>
+            <h1 className="relative z-10 text-lg font-bold tracking-tight text-white md:text-2xl">محفظة المشاريع</h1>
+            <p className="relative z-10 mt-1 text-sm text-white/65">كل مشروع بجدوله المستقل، مجمّعة تنظيمياً تحت مشاريعها الرئيسية</p>
           </div>
         </div>
-        
-        {canManageProjects && (
-          <Button className="relative z-10 gap-2 rounded-xl border-0 bg-white text-slate-900 shadow-lg shadow-slate-950/10 hover:bg-white/90" onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            مشروع جديد
-          </Button>
-        )}
-
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) { setEditingProject(null); form.reset(); }
-        }}>
-          <DialogContent className="w-[calc(100vw-1.5rem)] min-w-0 sm:max-w-[700px] max-h-[90dvh] overflow-hidden p-0" dir="rtl">
-            <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
-              <DialogHeader>
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-blue-500/10 rounded-xl">
-                    <Building2 className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <DialogTitle className="text-xl">{editingProject ? "تعديل بيانات المشروع" : "إضافة مشروع جديد"}</DialogTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {editingProject ? "قم بتحديث بيانات المشروع والجهات المشاركة فيه." : "أدخل تفاصيل المشروع الجديد لتتبعه في النظام."}
-                    </p>
-                  </div>
-                </div>
-              </DialogHeader>
-            </div>
-
-            <div className="min-w-0 overflow-y-auto max-h-[calc(90dvh-140px)]">
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="min-w-0 px-4 py-4 space-y-8 sm:px-6">
-                  
-                  {/* Section 1: Basic Info */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-primary/80 uppercase tracking-wide flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                      البيانات الأساسية
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
-                      <FormField
-                        control={form.control}
-                        name="name"
-                        render={({ field }) => (
-                          <FormItem className="sm:col-span-2">
-                            <FormLabel className="text-foreground/90">اسم المشروع</FormLabel>
-                            <FormControl><Input {...field} className="h-11 bg-background" placeholder="أدخل اسم المشروع" /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="location"
-                        render={({ field }) => (
-                          <FormItem className="sm:col-span-2">
-                            <FormLabel className="text-foreground/90">موقع المشروع</FormLabel>
-                            <FormControl><Input {...field} className="h-11 bg-background" placeholder="ليبيا - مصراتة" /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="status"
-                        render={({ field }) => (
-                          <FormItem className="sm:col-span-2">
-                            <FormLabel className="text-foreground/90">حالة المشروع</FormLabel>
-                            <Select value={field.value} onValueChange={field.onChange} dir="rtl">
-                              <FormControl>
-                                <SelectTrigger className="h-11 bg-background"><SelectValue /></SelectTrigger>
-                              </FormControl>
-                              <SelectContent dir="rtl">
-                                <SelectItem value="active">نشط (قيد التنفيذ)</SelectItem>
-                                <SelectItem value="completed">مكتمل</SelectItem>
-                                <SelectItem value="delayed">منحرف عن الخطة</SelectItem>
-                                <SelectItem value="suspended">متوقف</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Section 2: Parties */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-primary/80 uppercase tracking-wide flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                      الجهات المشاركة
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
-                      <div className="sm:col-span-2 p-4 rounded-xl border bg-background shadow-sm space-y-4">
-                        <FormField
-                          control={form.control}
-                          name="ownerCompanyId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-foreground/90">الجهة المالكة</FormLabel>
-                              <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "ownerEntity"); }} dir="rtl">
-                                <FormControl><SelectTrigger className="h-11"><SelectValue placeholder="اختر شركة..." /></SelectTrigger></FormControl>
-                                <SelectContent dir="rtl">
-                                  <SelectItem value="none">— إدخال يدوي —</SelectItem>
-                                  {ownerCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="ownerEntity"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl><Input {...field} placeholder="اسم المالك كتابة" /></FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                      <div className="p-4 rounded-xl border bg-background shadow-sm space-y-4">
-                        <FormField
-                          control={form.control}
-                          name="contractorCompanyId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-foreground/90">المقاول</FormLabel>
-                              <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "contractor"); }} dir="rtl">
-                                <FormControl><SelectTrigger className="h-11"><SelectValue placeholder="اختر مقاول..." /></SelectTrigger></FormControl>
-                                <SelectContent dir="rtl">
-                                  <SelectItem value="none">— إدخال يدوي —</SelectItem>
-                                  {contractorCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="contractor"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl><Input {...field} placeholder="اسم المقاول كتابة" /></FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                      <div className="p-4 rounded-xl border bg-background shadow-sm space-y-4">
-                        <FormField
-                          control={form.control}
-                          name="supervisorCompanyId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-foreground/90">الاستشاري المشرف</FormLabel>
-                              <Select value={field.value || ""} onValueChange={(v) => { field.onChange(v); handleCompanySelect(v, "supervisorEntity"); }} dir="rtl">
-                                <FormControl><SelectTrigger className="h-11"><SelectValue placeholder="اختر استشاري..." /></SelectTrigger></FormControl>
-                                <SelectContent dir="rtl">
-                                  <SelectItem value="none">— إدخال يدوي —</SelectItem>
-                                  {supervisorCompanies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="supervisorEntity"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl><Input {...field} placeholder="اسم المشرف كتابة" /></FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Section 3: Integrations & Dates */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-primary/80 uppercase tracking-wide flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                      الجدول الزمني والربط
-                    </h3>
-                    
-                    <div className="p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm space-y-5">
-                      <FormField
-                        control={form.control}
-                        name="noSchedule"
-                        render={({ field }) => (
-                          <FormItem className="flex items-center justify-between rounded-xl border bg-background p-4 gap-3 shadow-sm hover:border-primary/30 transition-colors">
-                            <div className="space-y-0.5 flex-1 min-w-0">
-                              <FormLabel className="text-sm font-semibold flex items-center gap-2">
-                                <CalendarOff className="h-4 w-4 text-primary shrink-0" />
-                                بدون جدول زمني معتمد
-                              </FormLabel>
-                              <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-                                عند التفعيل، لن يُحسب الانحراف الزمني أو التأخيرات، وتصبح تواريخ البداية والنهاية اختيارية تماماً.
-                              </p>
-                            </div>
-                            <FormControl>
-                              <Switch
-                                checked={field.value}
-                                onCheckedChange={(checked) => {
-                                  field.onChange(checked);
-                                  if (checked) {
-                                    form.setValue("startDate", "");
-                                    form.setValue("expectedEndDate", "");
-                                  } else {
-                                    form.setValue("startDate", new Date().toISOString().split('T')[0]);
-                                    form.setValue("expectedEndDate", new Date(Date.now() + 31536000000).toISOString().split('T')[0]);
-                                  }
-                                }}
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      {!watchNoSchedule && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl border bg-background shadow-sm">
-                          <FormField
-                            control={form.control}
-                            name="startDate"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="text-foreground/90">تاريخ البداية الفعلي</FormLabel>
-                                <FormControl><Input type="date" {...field} className="h-11" /></FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name="expectedEndDate"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="text-foreground/90">تاريخ النهاية المتوقع</FormLabel>
-                                <FormControl><Input type="date" {...field} className="h-11" /></FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      )}
-
-                      <FormField
-                        control={form.control}
-                        name="onedriveTestResultsFolderId"
-                        render={({ field }) => (
-                          <FormItem className="p-4 rounded-xl border bg-emerald-50/50 dark:bg-emerald-950/20 shadow-sm">
-                            <FormLabel className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-500 mb-3 font-semibold">
-                              <FlaskConical className="h-4 w-4" />
-                              الربط السحابي لنتائج الاختبارات (OneDrive)
-                            </FormLabel>
-                            <div className="flex items-center gap-2">
-                              <FormControl>
-                                <Input {...field} placeholder="لم يتم اختيار مجلد لنتائج الاختبارات" dir="ltr" className="text-left text-sm flex-1 bg-background" readOnly />
-                              </FormControl>
-                              <Button type="button" variant="outline" onClick={openFolderBrowser} className="shrink-0 gap-1.5 bg-background">
-                                <FolderOpen className="h-4 w-4" />
-                                تصفح
-                              </Button>
-                              {field.value && (
-                                <Button type="button" variant="ghost" size="icon" onClick={() => form.setValue("onedriveTestResultsFolderId", "")} className="shrink-0 text-muted-foreground hover:text-red-500 bg-background border shadow-sm">
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
-
-                  {editingProject && user?.role === "admin" && (
-                    <ProjectLinkCodeSettings key={editingProject.id} projectId={editingProject.id} />
-                  )}
-                  <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
-                    <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
-                    <Button type="submit" className="w-full sm:w-auto shadow-md" disabled={isSubmitting}>
-                      {isSubmitting ? "جاري الحفظ..." : editingProject ? "حفظ تعديلات المشروع" : "تأكيد إضافة المشروع"}
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="surface-card flex flex-col gap-3 p-3 sm:flex-row sm:gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="بحث عن مشروع..." 
-            className="h-11 rounded-xl pr-10"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="w-full sm:w-48">
-          <Select value={statusFilter || "all"} onValueChange={(v) => setStatusFilter(v)}>
-            <SelectTrigger className="h-11 rounded-xl">
-              <SelectValue placeholder="حالة المشروع" />
-            </SelectTrigger>
-            <SelectContent dir="rtl">
-              <SelectItem value="all">الكل</SelectItem>
-              <SelectItem value="active">نشط</SelectItem>
-              <SelectItem value="completed">مكتمل</SelectItem>
-              <SelectItem value="delayed">منحرف عن الخطة</SelectItem>
-              <SelectItem value="suspended">متوقف</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {isLoading ? (
-        <LoadingSpinner text="جاري تحميل المشاريع..." />
-      ) : projects?.length === 0 ? (
-        <Card className="border-dashed">
-          <EmptyState
-            icon={<Building2 className="h-7 w-7 text-muted-foreground/60" />}
-            title="لا توجد مشاريع"
-            description="لم يتم العثور على مشاريع مطابقة للبحث"
-          />
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {projects?.map((project) => (
-            <Card
-              key={project.id}
-              className="surface-card surface-card-hover flex h-full flex-col overflow-hidden"
-              onMouseEnter={() => prefetchProject(project.id)}
-              onTouchStart={() => prefetchProject(project.id)}
-            >
-              <CardHeader className="border-b border-border/60 bg-gradient-to-l from-primary/[0.04] to-transparent pb-4">
-                <div className="flex justify-between items-start gap-2">
-                  <CardTitle className="text-lg line-clamp-2 flex-1">
-                    <Link href={getProjectLink(project.id)} className="hover:text-primary transition-colors">
-                      {project.name}
-                    </Link>
-                  </CardTitle>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {getStatusBadge(project.status)}
-                    {canManageProjects && (
-                      <>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(project)}>
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => openDeleteConfirmation(project)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-1 flex-col justify-between space-y-4 pt-5">
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <MapPin className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{project.location}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Building2 className="h-4 w-4 shrink-0" />
-                    <span className="truncate">المالك: {project.ownerEntity}</span>
-                  </div>
-                  {project.noSchedule ? (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <CalendarOff className="h-4 w-4 shrink-0" />
-                      <span className="text-xs">بدون جدول زمني معتمد</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Calendar className="h-4 w-4 shrink-0" />
-                      <span>النهاية: <span className="font-mono">{fmtDate(project.expectedEndDate)}</span></span>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="space-y-1.5 mt-auto pt-4">
-                  <div className="flex justify-between text-sm font-medium">
-                    <span>نسبة الإنجاز</span>
-                    <span>%{(project.overallProgress ?? 0).toFixed(1)}</span>
-                  </div>
-                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-secondary/80">
-                    <div 
-                      className={`h-full ${project.overallProgress < 30 ? 'bg-destructive' : project.overallProgress < 70 ? 'bg-orange-500' : 'bg-emerald-500'}`}
-                      style={{ width: `${project.overallProgress}%` }}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      <AlertDialog open={!!deletingProject} onOpenChange={(open) => {
-        if (!open) {
-          setDeletingProject(null);
-          setDeleteAnswer("");
-        }
-      }}>
-        <AlertDialogContent dir="rtl">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <TriangleAlert className="h-5 w-5" />
-              تحذير شديد: حذف نهائي للمشروع
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-4">
-                <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm leading-6 text-foreground">
-                  سيُحذف مشروع <strong>«{deletingProject?.name}»</strong> نهائياً، بما في ذلك الأنشطة والتقارير والملفات والأعضاء والبيانات المرتبطة به.
-                  <strong className="mt-2 block text-destructive">لا يمكن التراجع عن هذا الإجراء أو استعادة البيانات بعد الحذف.</strong>
-                </div>
-                <div className="rounded-lg border bg-muted/40 p-4">
-                  <label htmlFor="delete-project-math" className="mb-2 block text-sm font-semibold text-foreground">
-                    للتأكيد، أجب عن المسألة التالية:
-                  </label>
-                  <p className="mb-3 text-lg font-bold text-foreground" dir="ltr">
-                    {deleteChallenge.firstNumber} + {deleteChallenge.secondNumber} = ?
-                  </p>
-                  <Input
-                    id="delete-project-math"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    value={deleteAnswer}
-                    onChange={(event) => setDeleteAnswer(event.target.value)}
-                    placeholder="اكتب الناتج"
-                    className="bg-background"
-                    aria-describedby="delete-project-math-help"
-                  />
-                  <p id="delete-project-math-help" className="mt-2 text-xs text-muted-foreground">
-                    لن يتفعّل الحذف إلا بعد إدخال الإجابة الصحيحة.
-                  </p>
-                </div>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-row-reverse gap-2">
-            <AlertDialogCancel>إلغاء</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={confirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={deleteProject.isPending || !isDeleteAnswerCorrect}
-            >
-              {deleteProject.isPending ? "جاري الحذف..." : "حذف المشروع"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <Dialog open={folderBrowserOpen} onOpenChange={setFolderBrowserOpen}>
-        <DialogContent className="max-w-lg" dir="rtl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FolderOpen className="h-5 w-5 text-emerald-600" />
-              اختيار مجلد من OneDrive
-            </DialogTitle>
-          </DialogHeader>
-
-          {folderBrowserPath.length > 0 && (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
-              <button type="button" onClick={() => { setFolderBrowserPath([]); browseFolders(); }} className="hover:text-foreground hover:underline">
-                OneDrive
-              </button>
-              {folderBrowserPath.map((p, i) => (
-                <span key={p.id} className="flex items-center gap-1">
-                  <ChevronRight className="h-3 w-3 rotate-180" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newPath = folderBrowserPath.slice(0, i + 1);
-                      setFolderBrowserPath(newPath);
-                      browseFolders(p.id);
-                    }}
-                    className="hover:text-foreground hover:underline"
-                  >
-                    {p.name}
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          <div className="border rounded-lg max-h-[350px] overflow-y-auto">
-            {folderBrowserLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
-              </div>
-            ) : folderBrowserItems.length === 0 ? (
-              <div className="text-center py-12 text-sm text-muted-foreground">
-                لا توجد عناصر في هذا المجلد
-              </div>
-            ) : (
-              <div className="divide-y">
-                {folderBrowserPath.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={navigateUp}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors text-right"
-                  >
-                    <ArrowUp className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">..</span>
-                  </button>
-                )}
-                {folderBrowserItems.filter(i => i.isFolder).map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors">
-                    <button
-                      type="button"
-                      onClick={() => navigateToFolder(item.id, item.name)}
-                      className="flex items-center gap-3 flex-1 min-w-0 text-right"
-                    >
-                      <Folder className="h-5 w-5 text-amber-500 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{item.childCount} عنصر</p>
-                      </div>
-                    </button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => selectFolder(item.id)}
-                      className="shrink-0 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50"
-                    >
-                      اختيار
-                    </Button>
-                  </div>
-                ))}
-                {folderBrowserItems.filter(i => !i.isFolder).map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 px-4 py-3 opacity-50">
-                    <FileText className="h-5 w-5 text-gray-400 shrink-0" />
-                    <p className="text-sm truncate">{item.name}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {folderBrowserCurrentId !== "root" && (
-            <Button
-              type="button"
-              onClick={() => selectFolder(folderBrowserCurrentId)}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
-            >
-              <FolderOpen className="h-4 w-4" />
-              اختيار المجلد الحالي
+        <div className="relative z-10 flex w-full flex-wrap gap-2 sm:w-auto">
+          {isAdmin && (
+            <Button variant="outline" className="flex-1 gap-2 rounded-xl border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white sm:flex-none" onClick={() => setCategoriesOpen(true)}>
+              <Tags className="h-4 w-4" />إدارة التصنيفات
             </Button>
           )}
-        </DialogContent>
-      </Dialog>
+          {canManageProjects && (
+            <Button className="flex-1 gap-2 rounded-xl border-0 bg-white text-slate-900 hover:bg-white/90 sm:flex-none" onClick={() => openCreate()}>
+              <Plus className="h-4 w-4" />مشروع جديد
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {listQuery.isLoading && !projects ? (
+        <ListSkeleton />
+      ) : listQuery.isError && !projects ? (
+        <div className="surface-card flex flex-col items-center gap-3 p-10 text-center" role="alert">
+          <TriangleAlert className="h-8 w-8 text-destructive" />
+          <p className="font-semibold">تعذر تحميل المشاريع</p>
+          <p className="max-w-md text-sm text-muted-foreground">{apiErrorMessage(listQuery.error, "تحقق من الاتصال ثم أعد المحاولة.")}</p>
+          <Button variant="outline" onClick={() => void listQuery.refetch()}><RefreshCw className="ml-1 h-4 w-4" />إعادة المحاولة</Button>
+        </div>
+      ) : (
+        <>
+          {listQuery.isError && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-orange-300 bg-orange-50 px-4 py-2.5 text-sm text-orange-900" role="alert">
+              <TriangleAlert className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1">تعذر تحديث القائمة؛ البيانات المعروضة من آخر تحميل ناجح.</span>
+              <Button variant="outline" size="sm" className="h-8" onClick={() => void listQuery.refetch()}><RefreshCw className="ml-1 h-3.5 w-3.5" />تحديث</Button>
+            </div>
+          )}
+
+          <PortfolioCountersStrip counters={counters} matched={portfolio.matchedCount} filtering={filtering}
+            activeRelation={filters.relation} onRelation={r => setFilters(f => ({ ...f, relation: r }))} />
+
+          <PortfolioFiltersBar
+            search={search} onSearch={setSearch} filters={filters} onChange={patch => setFilters(f => ({ ...f, ...patch }))}
+            categories={categoriesQuery.data ?? []} categoriesState={categoriesState} owners={owners}
+            view={view} onView={setView} onReset={resetFilters} filtering={filtering}
+          />
+          {categoriesState === "error" && (
+            <p className="flex items-center gap-2 text-xs text-destructive" role="alert">
+              تعذر تحميل التصنيفات، لذا تصفية التصنيف معطلة مؤقتاً.
+              <button type="button" className="font-semibold underline" onClick={() => void categoriesQuery.refetch()}>إعادة المحاولة</button>
+            </p>
+          )}
+
+          {all.length === 0 ? (
+            <div className="surface-card flex flex-col items-center gap-3 border-dashed p-12 text-center">
+              <Building2 className="h-10 w-10 text-muted-foreground/50" />
+              <p className="font-bold">لا توجد مشاريع بعد</p>
+              <p className="max-w-sm text-sm text-muted-foreground">{canManageProjects ? "أنشئ أول مشروع لتبدأ متابعة جدوله وتقاريره." : "لم يتم ربطك بأي مشروع حتى الآن. تواصل مع مسؤول النظام."}</p>
+              {canManageProjects && <Button onClick={() => openCreate()} className="gap-2"><Plus className="h-4 w-4" />مشروع جديد</Button>}
+            </div>
+          ) : noResults ? (
+            <div className="surface-card flex flex-col items-center gap-3 border-dashed p-12 text-center">
+              <SearchX className="h-10 w-10 text-muted-foreground/50" />
+              <p className="font-bold">لا توجد مشاريع مطابقة</p>
+              <p className="text-sm text-muted-foreground">جرّب كلمات أخرى أو خفف عوامل التصفية.</p>
+              <Button variant="outline" onClick={resetFilters}>مسح التصفية</Button>
+            </div>
+          ) : view === "table" ? (
+            <PortfolioTable rows={portfolio.matched} all={all} prefetch={prefetchProject} />
+          ) : (
+            <div className="space-y-8">
+              {portfolio.groups.length > 0 && (
+                <section className="space-y-4" aria-label="المشاريع الرئيسية">
+                  <SectionHeading icon={<Network className="h-4 w-4" />} title="المشاريع الرئيسية وفروعها" hint="تجميع تنظيمي — لكل مشروع فرعي جدوله الزمني المستقل" count={portfolio.groups.length} />
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    {portfolio.groups.map(g => (
+                      <MainProjectCard key={`${g.parent.id}-${filtering}`} parent={g.parent} parentMatches={g.parentMatches} children={g.children} totalChildren={g.totalChildren} a={actions} defaultOpen={filtering || g.children.length <= 4} />
+                    ))}
+                  </div>
+                </section>
+              )}
+              {portfolio.standalone.length > 0 && (
+                <section className="space-y-4" aria-label="المشاريع المستقلة">
+                  <SectionHeading icon={<Layers className="h-4 w-4" />} title="مشاريع مستقلة" hint="غير مرتبطة بمشروع رئيسي" count={portfolio.standalone.length} />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {portfolio.standalone.map(p => <ProjectCard key={p.id} project={p} a={actions} />)}
+                  </div>
+                </section>
+              )}
+              {portfolio.otherChildren.length > 0 && (
+                <section className="space-y-4" aria-label="مشاريع فرعية أخرى">
+                  <SectionHeading icon={<GitBranch className="h-4 w-4" />} title="مشاريع فرعية أخرى متاحة لك" hint="تتبع مشاريع رئيسية خارج صلاحياتك" count={portfolio.otherChildren.length} />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {portfolio.otherChildren.map(p => <ProjectCard key={p.id} project={p} a={actions} variant="orphan" />)}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      <ProjectFormDialog
+        open={dialogOpen}
+        onOpenChange={closeDialog}
+        editingProject={editingProject}
+        initialValues={initialValues}
+        detailError={detailError}
+        onRetryDetail={() => editingProject && void loadDetail(editingProject)}
+        allProjects={all}
+        isAdmin={isAdmin}
+        canAssignCategory={canAssignCategory}
+        isSubmitting={createProject.isPending || updateProject.isPending}
+        onSubmit={onSubmit}
+      />
+      <DeleteProjectDialog project={deletingProject} pending={deleteProject.isPending} onClose={() => setDeletingProject(null)} onConfirm={p => void confirmDelete(p)} />
+      {isAdmin && <CategoryManagerDialog open={categoriesOpen} onOpenChange={setCategoriesOpen} usage={categoryUsage} />}
     </div>
   );
 }

@@ -10,6 +10,16 @@ import type { UpdateProjectBodyReportDisplayMode } from "./updateProjectBodyRepo
 import type { UpdateProjectBodyStatus } from "./updateProjectBodyStatus";
 
 export interface UpdateProjectBody {
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  parentProjectId?: number | null;
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  categoryId?: number | null;
   /** @nullable */
   name?: string | null;
   /** @nullable */

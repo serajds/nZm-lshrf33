@@ -9,6 +9,8 @@ import { deleteProjectUnderSourceGraphLock, withSourceGraphLock } from "../lib/e
 import { normalizeProjectLinkCode } from "../lib/activity-source-rules";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
 import { buildProjectAiSummaryContext } from "../lib/project-ai-summary-context";
+import { projectCategoriesTable } from "@workspace/db";
+import { accessibleProjectIds, portfolioWriteFields, portfolioDatabaseError, safePortfolioProject } from "../lib/project-portfolio";
 import {
   calcActivityPlannedProgress,
   calcActualProgressForProject,
@@ -95,6 +97,8 @@ router.get("/projects", requireAuth, async (req, res): Promise<void> => {
   // with many widgets.
   let query = db.select({
     id: projectsTable.id,
+    parentProjectId: projectsTable.parentProjectId,
+    categoryId: projectsTable.categoryId,
     name: projectsTable.name,
     location: projectsTable.location,
     ownerEntity: projectsTable.ownerEntity,
@@ -127,10 +131,36 @@ router.get("/projects", requireAuth, async (req, res): Promise<void> => {
       )
     : await query.orderBy(projectsTable.createdAt);
 
-  res.json(projects);
+  // Build relationship context from the complete permitted universe, never from
+  // search results or from another project's unfiltered children.
+  const allowedIds = projectIds;
+  const universe = !search && !status ? projects : allowedIds === null
+    ? await db.select({ id: projectsTable.id, parentProjectId: projectsTable.parentProjectId, categoryId: projectsTable.categoryId }).from(projectsTable)
+    : allowedIds.length ? await db.select({ id: projectsTable.id, parentProjectId: projectsTable.parentProjectId, categoryId: projectsTable.categoryId }).from(projectsTable).where(inArray(projectsTable.id, allowedIds)) : [];
+  const visible = new Set(universe.map(p => p.id));
+  const mainIds = new Set(universe.map(p => p.parentProjectId).filter((id): id is number => id !== null && visible.has(id)));
+  const categoryIds = [...new Set(universe.map(p => p.categoryId).filter((id): id is number => id !== null))];
+  const categories = categoryIds.length ? await db.select().from(projectCategoriesTable).where(inArray(projectCategoriesTable.id, categoryIds)) : [];
+  const categoryNames = new Map(categories.map(c => [c.id, c.name]));
+  const memberships = req.user!.role === "admin" ? [] : await db.select().from(projectMembersTable).where(eq(projectMembersTable.userId, req.user!.userId));
+  const companyLinks = req.user!.role === "admin" ? [] : await db.select().from(userCompaniesTable).where(eq(userCompaniesTable.userId, req.user!.userId));
+  const contractorCompanies = new Set(companyLinks.map(c => c.companyId));
+  const organizational = new Map(universe.map(p => [p.id, p]));
+  res.json(projects.map(project => {
+    const p = organizational.get(project.id)!;
+    const contractor = req.user!.role === "contractor"
+      || (req.user!.role !== "admin" && req.user!.role !== "project_manager" && project.contractorCompanyId != null && contractorCompanies.has(project.contractorCompanyId));
+    return { ...project, parentProjectId: p.parentProjectId !== null && visible.has(p.parentProjectId) ? p.parentProjectId : null,
+      categoryId: p.categoryId, categoryName: p.categoryId ? categoryNames.get(p.categoryId) ?? null : null,
+      portfolioRelation: p.parentProjectId !== null ? "child" : mainIds.has(p.id) ? "main" : "independent",
+      canManage: req.user!.role === "admin" || (!contractor && memberships.some(m => m.projectId === p.id && m.role === "project_manager")) };
+  }));
 });
 
 router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
+  let portfolioFields;
+  try { portfolioFields = await portfolioWriteFields(req.body, true); }
+  catch (e) { res.status(400).json({ error: (e as Error).message }); return; }
   const {
     name, location, ownerEntity, supervisorEntity, contractor,
     startDate, expectedEndDate, status, noSchedule,
@@ -155,7 +185,12 @@ router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
-  const [project] = await db.insert(projectsTable).values({
+  let project: typeof projectsTable.$inferSelect;
+  try {
+  [project] = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(731924614)`);
+    return tx.insert(projectsTable).values({
+    ...portfolioFields,
     name, location, ownerEntity, supervisorEntity, contractor,
     noSchedule: isNoSchedule,
     startDate: isNoSchedule ? (startDate || null) : startDate,
@@ -168,6 +203,12 @@ router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
     onedriveTestResultsFolderId: onedriveTestResultsFolderId || null,
     reportDisplayMode: reportDisplayMode ?? "type_and_number",
   }).returning();
+  });
+  } catch (error) {
+    const message = portfolioDatabaseError(error);
+    if (message) { res.status(409).json({ error: message }); return; }
+    throw error;
+  }
 
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "create", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name });
@@ -184,12 +225,13 @@ router.get("/projects/:id", requireProjectAccess("id"), async (req, res): Promis
     res.status(404).json({ error: "المشروع غير موجود" });
     return;
   }
+  const safePortfolio = await safePortfolioProject(project, req.user!.userId, req.user!.role);
 
   if (req.user?.role === "admin") {
-    const { ownerAccessPassword: _ownerAccessPassword, ...safeProject } = project;
+    const { ownerAccessPassword: _ownerAccessPassword, ...safeProject } = safePortfolio;
     res.json(safeProject);
   } else {
-    const { linkCode: _linkCode, ownerAccessPassword: _ownerAccessPassword, ...publicProject } = project;
+    const { linkCode: _linkCode, ownerAccessPassword: _ownerAccessPassword, ...publicProject } = safePortfolio;
     if (req.projectRole === "project_manager") {
       res.json(publicProject);
     } else {
@@ -251,6 +293,11 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
   }
 
   const updateData: Record<string, unknown> = {};
+  if (body.parentProjectId !== undefined && req.user?.role !== "admin") {
+    res.status(403).json({ error: "تغيير التبعية التنظيمية متاح لمدير النظام فقط" }); return;
+  }
+  try { Object.assign(updateData, await portfolioWriteFields(body, req.user?.role === "admin")); }
+  catch (e) { res.status(400).json({ error: (e as Error).message }); return; }
   if (body.linkCode !== undefined) {
     if (body.linkCode === null || (typeof body.linkCode === "string" && body.linkCode.trim() === "")) {
       updateData.linkCode = null;
@@ -357,11 +404,16 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
 
   let project: typeof projectsTable.$inferSelect | undefined;
   try {
-    const updateProject = () => db.update(projectsTable).set(updateData).where(eq(projectsTable.id, id)).returning();
+    const updateProject = () => db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(731924614)`);
+      return tx.update(projectsTable).set(updateData).where(eq(projectsTable.id, id)).returning();
+    });
     [project] = body.linkCode !== undefined
       ? await withSourceGraphLock(updateProject)
       : await updateProject();
   } catch (error) {
+    const portfolioError = portfolioDatabaseError(error);
+    if (portfolioError) { res.status(409).json({ error: portfolioError }); return; }
     const code = (error as { code?: string; cause?: { code?: string } })?.code
       ?? (error as { cause?: { code?: string } })?.cause?.code;
     if (code === "23505" && body.linkCode !== undefined) {
@@ -380,6 +432,7 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
   delete auditDetails.linkCode;
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "update", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name, details: auditDetails });
 
+  project = await safePortfolioProject(project, req.user!.userId, req.user!.role);
   if (req.user?.role === "admin") {
     const { ownerAccessPassword: _ownerAccessPassword, ...safeProject } = project;
     res.json(safeProject);
@@ -398,7 +451,13 @@ router.delete("/projects/:id", requireAdmin, async (req, res): Promise<void> => 
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
 
-  const existing = await deleteProjectUnderSourceGraphLock(id);
+  let existing;
+  try { existing = await deleteProjectUnderSourceGraphLock(id); }
+  catch (error) {
+    const message = portfolioDatabaseError(error);
+    if (message) { res.status(409).json({ error: message }); return; }
+    throw error;
+  }
   if (!existing) {
     res.status(404).json({ error: "المشروع غير موجود" });
     return;
