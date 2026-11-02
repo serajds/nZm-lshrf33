@@ -1,5 +1,6 @@
 export * from "./users";
 export * from "./projects";
+export * from "./project_categories";
 export * from "./activities";
 export * from "./activity_groups";
 export * from "./activity_group_categories";

@@ -39,12 +39,12 @@ export function setUnauthorizedHandler(h: (tokenUsed: string) => void): void {
   _unauthorizedHandler = h;
 }
 
-let _confirmingUnauthorizedToken: string | null = null;
-async function confirmUnauthorized(tokenUsed: string): Promise<void> {
-  if (_confirmingUnauthorizedToken === tokenUsed) return;
-  _confirmingUnauthorizedToken = tokenUsed;
-  try {
-    const res = await fetch(`${BASE_URL}/api/auth/me`, {
+let _confirmingUnauthorized: { token: string; pending: Promise<boolean> } | null = null;
+async function confirmUnauthorized(tokenUsed: string): Promise<boolean> {
+  if (tokenUsed !== _tokenGetter()) return false;
+  if (_confirmingUnauthorized?.token === tokenUsed) return _confirmingUnauthorized.pending;
+  const pending = (async () => { try {
+    const res = await fetchWithDeadline(`${BASE_URL}/api/auth/me`, {
       cache: "no-store",
       headers: {
         Accept: "application/json",
@@ -52,20 +52,47 @@ async function confirmUnauthorized(tokenUsed: string): Promise<void> {
         "X-Requested-With": "XMLHttpRequest",
       },
     });
-    if (tokenUsed !== _tokenGetter()) return;
+    if (tokenUsed !== _tokenGetter()) return false;
     const renewed = res.headers.get(RENEWED_TOKEN_HEADER);
     if (renewed) {
       try { _tokenSaver(renewed, tokenUsed); } catch { /* best-effort */ }
-      return;
+      return false;
     }
     if (res.status === 401 && tokenUsed === _tokenGetter()) {
       try { _unauthorizedHandler(tokenUsed); } catch { /* never break caller flow */ }
+      return true;
     }
   } catch {
     // A transport failure cannot confirm that credentials are invalid.
-  } finally {
-    if (_confirmingUnauthorizedToken === tokenUsed) _confirmingUnauthorizedToken = null;
   }
+  return false;
+  })();
+  _confirmingUnauthorized = { token: tokenUsed, pending };
+  try { return await pending; }
+  finally { if (_confirmingUnauthorized?.pending === pending) _confirmingUnauthorized = null; }
+}
+
+// Bounded identity reads only. Never automatically retry a possibly committed
+// write, and retain credentials when this deadline expires.
+async function fetchWithDeadline(url: string, init: RequestInit, timeoutMs = 12000): Promise<Response> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      fetch(url, { ...init, signal: controller.signal }).then(async response => {
+        // Identity responses are small. Include body transfer in the deadline,
+        // not just receipt of headers; a stalled body must not block startup.
+        const body = await response.text();
+        return new Response(body, { status: response.status, headers: response.headers });
+      }),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error("انتهت مهلة التحقق من الاتصال"));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
 }
 
 // Run the renewed-token + unauthorized pipeline against any fetch Response,
@@ -266,16 +293,28 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!headers.has("X-Requested-With")) headers.set("X-Requested-With", "XMLHttpRequest");
 
   let res: Response;
-  try { res = await fetch(url, { ...init, headers, cache: "no-store" }); }
+  try {
+    const read = !init.method || init.method.toUpperCase() === "GET";
+    res = await (read
+      ? fetchWithDeadline(url, { ...init, headers, cache: "no-store" }, path === "/api/auth/me" ? 12000 : 30000)
+      : fetch(url, { ...init, headers, cache: "no-store" }));
+  }
   catch { throw new ApiError("تعذّر الاتصال بالخادم. تأكد من اتصالك بالإنترنت.", 0, null); }
 
-  processResponse(res, token);
+  // Bootstrap awaits the confirmation itself below; do not launch a second
+  // fire-and-forget probe that can finish before the error is parsed.
+  if (!(path === "/api/auth/me" && res.status === 401 && !res.headers.get(RENEWED_TOKEN_HEADER))) {
+    processResponse(res, token);
+  }
 
   const text = await res.text();
   let data: unknown = null;
   if (text) { try { data = JSON.parse(text); } catch { data = text; } }
 
   if (!res.ok) {
+    if (path === "/api/auth/me" && res.status === 401 && token && !await confirmUnauthorized(token)) {
+      throw new ApiError("تعذّر تأكيد حالة الجلسة. أعد المحاولة عند استقرار الاتصال.", 0, null);
+    }
     let msg = `HTTP ${res.status}`;
     if (data && typeof data === "object" && "error" in data) msg = String((data as Record<string, unknown>).error);
     else if (typeof data === "string" && data.length < 300) msg = data;

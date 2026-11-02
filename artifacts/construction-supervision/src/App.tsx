@@ -7,6 +7,8 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { getDefaultProjectId } from "@/lib/user-prefs";
 import { loadRouteModule } from "@/lib/route-module-recovery";
 import { AutomaticNoticeProvider } from "@/components/automatic-notices";
+import { retryRead } from "@/lib/query-policy";
+import { ConnectionStatus } from "@/components/connection-status";
 
 import Login from "@/pages/login";
 import PendingAssignment from "@/pages/pending-assignment";
@@ -74,7 +76,8 @@ const queryClient = new QueryClient({
       gcTime: 1000 * 60 * 30,
       refetchOnMount: true,
       refetchOnWindowFocus: false,
-      retry: 1,
+      retry: retryRead,
+      retryDelay: attempt => Math.min(1000 * 2 ** attempt, 8000),
     },
   },
 });
@@ -136,6 +139,7 @@ function AuthenticatedShell() {
   return (
     <AutomaticNoticeProvider key={user?.id}>
     <AppLayout>
+      <ConnectionStatus />
       {connectionError && (
         <div role="alert" dir="rtl" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted p-3 text-sm">
           <span>تعذّر تحديث بيانات الجلسة. لم يتم تسجيل خروجك.</span>

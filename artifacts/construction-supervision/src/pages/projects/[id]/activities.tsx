@@ -36,6 +36,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { formatDisplayPercent } from "@/lib/format-display-percent";
 import { applyActivityOrder, planActivityReorder } from "@/lib/activity-order";
+import { getAuthSessionSnapshot, isSameAuthSession } from "@/lib/auth-session";
 import { ActivityGroupOrganizer, type ActivityGroupCategory, type CategoryFilter } from "@/components/activity-group-organizer";
 import { groupsForCategory, activityMatchesCategory } from "@/lib/activity-category-filter";
 import { Button } from "@/components/ui/button";
@@ -433,26 +434,27 @@ export default function ProjectActivities() {
   const [statusFilter, setStatusFilter] = useState<"all" | "not_started" | "in_progress" | "completed" | "delayed">("all");
   const [groupFilter, setGroupFilter] = useState<"all" | "ungrouped" | number>("all");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const orderInFlight = useRef(false);
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
-  const { data: activities, isLoading, isError: activitiesError, refetch: refetchActivities } = useListActivities(projectId, { query: { enabled: !!projectId } });
+  const { data: activities, isLoading, isFetching, isError: activitiesError, refetch: refetchActivities } = useListActivities(projectId, { query: { enabled: !!projectId } });
 
   const groupsQueryKey = [`/api/projects/${projectId}/activity-groups`];
   const { data: groups = [], isLoading: groupsLoading, isError: groupsError, refetch: refetchGroups } = useQuery<ActivityGroup[]>({
     queryKey: groupsQueryKey,
-    queryFn: async () => {
-      const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups`);
-      if (!r.ok) throw new Error("تعذر تحميل المجموعات");
+    queryFn: async ({ signal }) => {
+      const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups`, { signal });
+      if (!r.ok) throw Object.assign(new Error("تعذر تحميل المجموعات"), { status: r.status });
       return r.json();
     },
     enabled: !!projectId,
   });
   const categoriesQueryKey = [`/api/projects/${projectId}/activity-group-categories`];
-  const { data: categories = [], isLoading: categoriesLoading, isError: categoriesError } = useQuery<ActivityGroupCategory[]>({
+  const { data: categories = [], isLoading: categoriesLoading, isError: categoriesError, refetch: refetchCategories } = useQuery<ActivityGroupCategory[]>({
     queryKey: categoriesQueryKey,
-    queryFn: async () => {
-      const response = await fetchWithSession(`/api/projects/${projectId}/activity-group-categories`);
-      if (!response.ok) throw new Error("تعذر تحميل المجموعات الرئيسية");
+    queryFn: async ({ signal }) => {
+      const response = await fetchWithSession(`/api/projects/${projectId}/activity-group-categories`, { signal });
+      if (!response.ok) throw Object.assign(new Error("تعذر تحميل المجموعات الرئيسية"), { status: response.status });
       return response.json();
     },
     enabled: !!projectId,
@@ -477,13 +479,14 @@ export default function ProjectActivities() {
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setSourceSearchLoading(true);
       setSourceSearchError("");
       setSourceSearchResolvedTerm("");
       try {
         const response = await fetchWithSession(
-          `/api/projects/${projectId}/activity-groups/search?query=${encodeURIComponent(query)}`
+          `/api/projects/${projectId}/activity-groups/search?query=${encodeURIComponent(query)}`, { signal: controller.signal }
         );
         if (!response.ok) throw new Error("تعذر البحث عن رمز المجموعة");
         const results = await response.json() as GroupSearchResult[];
@@ -502,6 +505,7 @@ export default function ProjectActivities() {
     }, 300);
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(timer);
     };
   }, [projectId, sourceSearchTerm]);
@@ -619,13 +623,22 @@ export default function ProjectActivities() {
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<Activity[]>(queryKey);
       if (previous) queryClient.setQueryData(queryKey, applyActivityOrder(previous, items));
-      return { previous };
+      return { previous, queryKey, projectId, session: getAuthSessionSnapshot() };
     },
     onError: (error: Error, _items, context) => {
-      if (context?.previous) queryClient.setQueryData(getListActivitiesQueryKey(projectId), context.previous);
-      toast({ variant: "destructive", title: "لم يُحفظ ترتيب البنود", description: error.message });
+      if (context && !isSameAuthSession(context.session, getAuthSessionSnapshot())) return;
+      if (context?.previous) queryClient.setQueryData(context.queryKey, context.previous);
+      toast({ variant: "destructive", title: "تعذّر تأكيد حفظ الترتيب", description: `${error.message}. ستُراجع القائمة من الخادم؛ لا تكرر العملية قبل اكتمال التحقق.` });
     },
-    onSettled: () => invalidate(),
+    onSettled: async (_data, _error, _items, context) => {
+      try {
+        if (context && !isSameAuthSession(context.session, getAuthSessionSnapshot())) return;
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: context?.queryKey ?? getListActivitiesQueryKey(projectId) }),
+          queryClient.invalidateQueries({ queryKey: getGetProjectSummaryQueryKey(context?.projectId ?? projectId) }),
+        ]);
+      } finally { orderInFlight.current = false; }
+    },
   });
 
   const sensors = useSensors(
@@ -670,13 +683,14 @@ export default function ProjectActivities() {
       return r.json();
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: groupsQueryKey }),
+    onSettled: () => { orderInFlight.current = false; },
     onError: (error: Error) => toast({ variant: "destructive", title: error.message }),
   });
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    if (reorderActivities.isPending || reorderGroupsMutation.isPending) return;
+    if (orderInFlight.current || reorderActivities.isPending || reorderGroupsMutation.isPending) return;
 
     const activeStr = String(active.id);
     const overStr = String(over.id);
@@ -689,13 +703,14 @@ export default function ProjectActivities() {
       const newIdx = sorted.findIndex(g => g.id === overGid);
       if (oldIdx === -1 || newIdx === -1) return;
       const reordered = arrayMove(sorted, oldIdx, newIdx);
+      orderInFlight.current = true;
       reorderGroupsMutation.mutate(reordered.map(g => g.id));
       return;
     }
 
     if (!activities) return;
     const items = planActivityReorder(activities, activityRows.map(row => row.id), Number(active.id), Number(over.id));
-    if (items.length) reorderActivities.mutate(items);
+    if (items.length) { orderInFlight.current = true; reorderActivities.mutate(items); }
   };
   const { data: suspensions = [] } = useQuery<ProjectSuspension[]>({
     queryKey: [`/api/projects/${projectId}/suspensions`],
@@ -1247,11 +1262,14 @@ export default function ProjectActivities() {
       </div>
 
       <ProjectNav projectId={projectId} />
+      {(reorderActivities.isPending || reorderGroupsMutation.isPending) && (
+        <p role="status" className="rounded-lg border bg-muted p-3 text-sm">جارٍ حفظ الترتيب والتحقق من القائمة. انتظر قبل إجراء ترتيب آخر.</p>
+      )}
 
-      {(activitiesError || groupsError) && (
+      {(activitiesError || groupsError || categoriesError) && (
         <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          تعذر تحميل {activitiesError && groupsError ? "البنود والمجموعات" : groupsError ? "المجموعات" : "البنود"}. تحقق من الاتصال وأعد المحاولة.
-          <Button type="button" variant="outline" size="sm" className="min-h-10" onClick={() => { if (activitiesError) void refetchActivities(); if (groupsError) void refetchGroups(); }}>إعادة المحاولة</Button>
+          تعذر تحديث بعض البيانات: {activitiesError ? "البنود " : ""}{groupsError ? "المجموعات " : ""}{categoriesError ? "التصنيفات " : ""}. تبقى آخر بيانات محمّلة ظاهرة إن توفرت.
+          <Button type="button" variant="outline" size="sm" className="min-h-10" onClick={() => { if (activitiesError) void refetchActivities(); if (groupsError) void refetchGroups(); if (categoriesError) void refetchCategories(); }}>إعادة المحاولة</Button>
         </div>
       )}
       {groupsLoading && <div className="h-16 animate-pulse rounded-xl bg-muted/50" aria-label="جارٍ تحميل المجموعات" />}
@@ -1265,7 +1283,7 @@ export default function ProjectActivities() {
           </div>
           <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            {isLoading ? "جاري تحديث البيانات" : hasActiveFilters ? `عرض ${activityRows.length} من ${allActivityRows.length} بند` : `آخر عرض · ${allActivityRows.length} بند`}
+            {isLoading ? "جارٍ تحميل البنود" : isFetching ? "جارٍ التحديث مع إبقاء البيانات السابقة" : !activities ? "البيانات غير متاحة" : hasActiveFilters ? `عرض ${activityRows.length} من ${allActivityRows.length} بند` : `آخر عرض · ${allActivityRows.length} بند`}
           </div>
         </div>
 
@@ -1285,8 +1303,8 @@ export default function ProjectActivities() {
                     <Icon className="h-5 w-5" />
                   </div>
                   <p className="text-xs font-medium text-muted-foreground">{stat.label}</p>
-                  <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{stat.value}</p>
-                  <p className="mt-1 break-words text-[11px] text-muted-foreground">{stat.note}</p>
+                  <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{activities ? stat.value : "—"}</p>
+                  <p className="mt-1 break-words text-[11px] text-muted-foreground">{activities ? stat.note : isLoading ? "جارٍ التحميل" : "لم تُحمّل البيانات"}</p>
                   <span className={`absolute left-0 top-0 h-1 w-full ${stat.dot}`} />
                 </CardContent>
               </Card>
@@ -2549,7 +2567,7 @@ export default function ProjectActivities() {
                         </TableRow>
                       ) : allActs.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">{hasActiveFilters ? "لا توجد نتائج مطابقة للفلاتر الحالية" : "لا يوجد بنود — أضف أول بند"}</TableCell>
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">{!activities ? "لم تُحمّل البنود؛ لا يمكن تأكيد أن القائمة فارغة." : hasActiveFilters ? "لا توجد نتائج مطابقة للفلاتر الحالية" : "لا يوجد بنود — أضف أول بند"}</TableCell>
                         </TableRow>
                       ) : groups.length === 0 ? (
                         <SortableContext disabled={reorderActivities.isPending || reorderGroupsMutation.isPending} items={allActs.map(a => a.id)} strategy={verticalListSortingStrategy}>
@@ -2655,7 +2673,7 @@ export default function ProjectActivities() {
                 <span className="text-sm text-muted-foreground">جاري تحميل بنود الأعمال...</span>
               </div>
             ) : activityRows.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">{hasActiveFilters ? "لا توجد نتائج مطابقة للفلاتر الحالية" : "لا يوجد بنود — أضف أول بند"}</div>
+              <div className="text-center py-8 text-muted-foreground">{!activities ? "لم تُحمّل البنود؛ لا يمكن تأكيد أن القائمة فارغة." : hasActiveFilters ? "لا توجد نتائج مطابقة للفلاتر الحالية" : "لا يوجد بنود — أضف أول بند"}</div>
             ) : (() => {
               const allActs = activityRows;
               const sortedGroups = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);

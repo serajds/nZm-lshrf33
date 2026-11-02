@@ -1,6 +1,7 @@
 import { db, pool, activitiesTable, activityGroupsTable, projectsTable, projectExtensionsTable, projectMembersTable, projectFilesTable, reportsTable, userCompaniesTable, usersTable } from "@workspace/db";
-import { and, eq, isNotNull, isNull, max, sum } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, max, sum, sql } from "drizzle-orm";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { measurePhase } from "@workspace/db";
 import { recalcExpectedEndDate } from "./recalc-end-date";
 import { calcActivityPlannedProgress, roundPercent, utcDay, type PlannedCurve } from "./progress";
 import {
@@ -45,7 +46,7 @@ export async function withSourceGraphLock<T>(operation: () => Promise<T>): Promi
   processGraphLock = new Promise<void>(resolve => {
     releaseProcessLock = resolve;
   });
-  await previous;
+  await measurePhase("graph-process-wait", () => previous);
   try {
     const client = await pool.connect();
     const lockKey = 731924613;
@@ -53,7 +54,7 @@ export async function withSourceGraphLock<T>(operation: () => Promise<T>): Promi
     try {
       await client.query("BEGIN");
       transactionOpen = true;
-      await client.query("SELECT pg_advisory_xact_lock($1)", [lockKey]);
+      await measurePhase("graph-db-lock", () => client.query("SELECT pg_advisory_xact_lock($1)", [lockKey]));
       const result = await graphLockContext.run(true, operation);
       await client.query("COMMIT");
       transactionOpen = false;
@@ -261,6 +262,9 @@ export async function reconcileTargetsLinkedToProject(sourceProjectId: number) {
 /** Delete a project graph atomically with respect to all source-graph mutations. */
 export async function deleteProjectUnderSourceGraphLock(projectId: number) {
   return withSourceGraphLock(async () => db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(731924614)`);
+    const children = await tx.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.parentProjectId, projectId)).limit(1);
+    if (children.length) throw Object.assign(new Error("فك تبعية المشاريع أولاً"), { code: "23514" });
     const [project] = await tx.select({ id: projectsTable.id, name: projectsTable.name })
       .from(projectsTable).where(eq(projectsTable.id, projectId));
     if (!project) return undefined;
@@ -297,7 +301,8 @@ export async function createActivityGroupUnderSourceGraphLock(
   }));
 }
 
-type GroupSummaryMemo = Map<string, Promise<SourceGroupSummary | null>>;
+export type GroupSummaryMemo = Map<string, Promise<SourceGroupSummary | null>>;
+const summaryDependencies = new WeakMap<GroupSummaryMemo, Map<number, Set<number>>>();
 
 export async function getGroupSummary(
   groupId: number,
@@ -305,8 +310,25 @@ export async function getGroupSummary(
   memo: GroupSummaryMemo = new Map(),
   curve: PlannedCurve = "linear",
 ): Promise<SourceGroupSummary | null> {
+  let dependencies = summaryDependencies.get(memo);
+  if (!dependencies) { dependencies = new Map(); summaryDependencies.set(memo, dependencies); }
+  const reaches = (from: number, target: number, visited = new Set<number>()): boolean => {
+    if (from === target) return true;
+    if (visited.has(from)) return false;
+    visited.add(from);
+    return [...(dependencies!.get(from) ?? [])].some(next => reaches(next, target, visited));
+  };
   const resolve = (id: number, ancestors: Set<number>): Promise<SourceGroupSummary | null> => {
     if (ancestors.has(id)) return Promise.resolve(null);
+    const parent = [...ancestors].at(-1);
+    if (parent !== undefined) {
+      // Concurrent sibling branches can otherwise wait on each other's pending
+      // memo promises even though neither local ancestor set sees the cycle.
+      if (reaches(id, parent)) return Promise.resolve(null);
+      const children = dependencies!.get(parent) ?? new Set<number>();
+      children.add(id);
+      dependencies!.set(parent, children);
+    }
     const cacheKey = `${utcDay(asOf).getTime()}:${curve}:${id}`;
     const cached = memo.get(cacheKey);
     if (cached) return cached;

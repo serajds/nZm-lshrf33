@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
+import { measurePhase } from "@workspace/db";
 import { activitiesTable, projectsTable, activityGroupsTable, projectMembersTable, memberGroupAssignmentsTable } from "@workspace/db";
 import { eq, and, avg, max, inArray } from "drizzle-orm";
 import { activityOrderCase, validActivityOrderItems } from "../lib/activity-order";
@@ -87,10 +88,14 @@ async function serializeActivityForUser(
   userId: number | undefined,
   asOf: Date = new Date(),
   hasSchedule = true,
+  context = {
+    summaries: new Map() as import("../lib/external-sources").GroupSummaryMemo,
+    access: new Map<number, Promise<boolean>>(),
+  },
 ) {
   const source = activity.externalSourceGroupId == null
     ? null
-    : await getGroupSummary(activity.externalSourceGroupId, asOf);
+    : await getGroupSummary(activity.externalSourceGroupId, asOf, context.summaries);
   const plannedProgress = hasSchedule
     ? source?.plannedProgress
       ?? (activity.externalSourceGroupId == null
@@ -103,8 +108,10 @@ async function serializeActivityForUser(
     plannedProgress: roundPercent(plannedProgress),
   };
   const sourceProjectId = source?.projectId ?? activity.managedSourceProjectId ?? undefined;
-  const canReadSource = sourceProjectId !== undefined && userId !== undefined
-    && await canReadProject(userId, sourceProjectId);
+  if (sourceProjectId !== undefined && userId !== undefined && !context.access.has(sourceProjectId)) {
+    context.access.set(sourceProjectId, canReadProject(userId, sourceProjectId));
+  }
+  const canReadSource = sourceProjectId !== undefined && await context.access.get(sourceProjectId);
   if (activity.externalSourceGroupId == null) {
     if (canReadSource || activity.managedSourceProjectId == null) return liveActivity;
     const { managedSourceProjectId: _sourceProjectId, ...safeActivity } = liveActivity;
@@ -150,8 +157,14 @@ router.get("/projects/:projectId/activities", requireProjectAccess("projectId"),
     .orderBy(activitiesTable.sortOrder, activitiesTable.id);
 
   const asOf = new Date();
+  const context = {
+    summaries: new Map() as import("../lib/external-sources").GroupSummaryMemo,
+    access: new Map<number, Promise<boolean>>(),
+  };
+  // Keep independent sources concurrent; the shared summary resolver detects
+  // cycles across pending branches as well as local ancestor cycles.
   const response = await Promise.all(activities.map(activity =>
-    serializeActivityForUser(activity, req.user?.userId, asOf, hasSchedule),
+    serializeActivityForUser(activity, req.user?.userId, asOf, hasSchedule, context),
   ));
   res.json(response);
 });
@@ -979,7 +992,7 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
     return;
   }
   const requestedGroupIds = [...new Set(items.map((item: any) => item.groupId).filter((id: unknown): id is number => id !== undefined && id !== null))];
-  const result = await withSourceGraphLock(async () => db.transaction(async tx => {
+  const result = await withSourceGraphLock(() => measurePhase("reorder-transaction", () => db.transaction(async tx => {
     const currentItems = await tx.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId));
     const currentById = new Map(currentItems.map(item => [item.id, item]));
     if (items.some(item => !currentById.has(item.id))) {
@@ -1009,7 +1022,8 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
       }
     }
     const oldGroups = currentItems.map(activity => ({ groupId: activity.groupId }));
-    if (items.every(item => item.groupId === undefined)) {
+    const pureOrder = items.every(item => item.groupId === undefined || item.groupId === currentById.get(item.id)?.groupId);
+    if (pureOrder) {
       // Promise.all on a transaction's single connection still serialized the
       // writes. Pure reordering needs one SQL update, regardless of row count.
       await tx.update(activitiesTable)
@@ -1031,15 +1045,17 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
         .where(and(eq(activitiesTable.id, item.id), eq(activitiesTable.projectId, projectId)));
       }));
     }
-    const sourceGroups = await tx.select({ groupId: activitiesTable.groupId }).from(activitiesTable)
+    // Summaries are weighted aggregates, independent of order. Membership
+    // changes still require propagation; pure order retains the audit/lock.
+    const sourceGroups = pureOrder ? [] : await tx.select({ groupId: activitiesTable.groupId }).from(activitiesTable)
       .where(eq(activitiesTable.projectId, projectId));
-    const sourceGroupIds = [...new Set([...oldGroups, ...sourceGroups]
+    const sourceGroupIds = pureOrder ? [] : [...new Set([...oldGroups, ...sourceGroups]
       .map(a => a.groupId).filter((groupId): groupId is number => groupId != null))];
     const updated = new Set((items as any[])
       .filter(item => currentById.has(item.id))
       .map(item => item.id)).size;
     return { invalidGroup: false, managedLocked: false, duplicate: false, sourceGroupIds, updated };
-  }));
+  })));
   if ("invalidItems" in result && result.invalidItems) {
     res.status(400).json({ error: "تغيّرت قائمة البنود؛ أعد تحميل الصفحة قبل ترتيبها" });
     return;
@@ -1058,17 +1074,17 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
   }
   // Keep propagation outside the graph lock; refreshLinkedSources acquires it
   // itself and nested acquisition would deadlock.
-  if (result.sourceGroupIds.length) await refreshLinkedSources(result.sourceGroupIds);
+  if (result.sourceGroupIds.length) await measurePhase("reorder-propagation", () => refreshLinkedSources(result.sourceGroupIds));
   if ((result.updated ?? 0) > 0) {
     const { logAudit } = await import("../lib/audit");
-    await logAudit({
+    await measurePhase("reorder-audit", () => logAudit({
       userId: (req as any).user?.userId,
       action: "update",
       entityType: "activity_reorder",
       entityName: "إعادة ترتيب البنود",
       projectId,
       details: { operation: "reorder", updated: result.updated },
-    });
+    }));
   }
   res.json({ success: true });
 });

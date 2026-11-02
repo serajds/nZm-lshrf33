@@ -8,6 +8,51 @@
 import * as zod from "zod";
 
 /**
+ * @summary Categories visible in permitted projects; administrators see the catalog
+ */
+export const ListProjectCategoriesResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+});
+export const ListProjectCategoriesResponse = zod.array(
+  ListProjectCategoriesResponseItem,
+);
+
+/**
+ * @summary Create category as administrator
+ */
+export const createProjectCategoryBodyNameMax = 120;
+
+export const CreateProjectCategoryBody = zod.object({
+  name: zod.string().min(1).max(createProjectCategoryBodyNameMax),
+});
+
+/**
+ * @summary Rename category as administrator
+ */
+export const UpdateProjectCategoryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const updateProjectCategoryBodyNameMax = 120;
+
+export const UpdateProjectCategoryBody = zod.object({
+  name: zod.string().min(1).max(updateProjectCategoryBodyNameMax),
+});
+
+export const UpdateProjectCategoryResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+});
+
+/**
+ * @summary Remove category without deleting its projects
+ */
+export const DeleteProjectCategoryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -124,6 +169,14 @@ export const ListProjectsQueryParams = zod.object({
 });
 
 export const ListProjectsResponseItem = zod.object({
+  parentProjectId: zod
+    .number()
+    .nullish()
+    .describe("Visible organizational parent only; never grants access."),
+  categoryId: zod.number().nullish(),
+  categoryName: zod.string().nullish(),
+  portfolioRelation: zod.enum(["main", "child", "independent"]).optional(),
+  canManage: zod.boolean().optional(),
   id: zod.number(),
   name: zod.string(),
   location: zod.string(),
@@ -161,11 +214,14 @@ export const ListProjectsResponse = zod.array(ListProjectsResponseItem);
 /**
  * @summary Create a new project
  */
+
 export const createProjectBodyNoScheduleDefault = false;
 export const createProjectBodyStatusDefault = `active`;
 export const createProjectBodyReportDisplayModeDefault = `type_and_number`;
 
 export const CreateProjectBody = zod.object({
+  parentProjectId: zod.number().min(1).nullish(),
+  categoryId: zod.number().min(1).nullish(),
   name: zod.string(),
   location: zod.string(),
   ownerEntity: zod.string(),
@@ -190,6 +246,14 @@ export const GetProjectParams = zod.object({
 });
 
 export const GetProjectResponse = zod.object({
+  parentProjectId: zod
+    .number()
+    .nullish()
+    .describe("Visible organizational parent only; never grants access."),
+  categoryId: zod.number().nullish(),
+  categoryName: zod.string().nullish(),
+  portfolioRelation: zod.enum(["main", "child", "independent"]).optional(),
+  canManage: zod.boolean().optional(),
   id: zod.number(),
   name: zod.string(),
   location: zod.string(),
@@ -231,6 +295,8 @@ export const UpdateProjectParams = zod.object({
 });
 
 export const UpdateProjectBody = zod.object({
+  parentProjectId: zod.number().min(1).nullish(),
+  categoryId: zod.number().min(1).nullish(),
   name: zod.string().nullish(),
   location: zod.string().nullish(),
   ownerEntity: zod.string().nullish(),
@@ -267,6 +333,14 @@ export const UpdateProjectBody = zod.object({
 });
 
 export const UpdateProjectResponse = zod.object({
+  parentProjectId: zod
+    .number()
+    .nullish()
+    .describe("Visible organizational parent only; never grants access."),
+  categoryId: zod.number().nullish(),
+  categoryName: zod.string().nullish(),
+  portfolioRelation: zod.enum(["main", "child", "independent"]).optional(),
+  canManage: zod.boolean().optional(),
   id: zod.number(),
   name: zod.string(),
   location: zod.string(),
@@ -1367,6 +1441,14 @@ export const verifyOwnerAccessResponseActivitiesItemExternalSourceOneAvailableDe
 
 export const VerifyOwnerAccessResponse = zod.object({
   project: zod.object({
+    parentProjectId: zod
+      .number()
+      .nullish()
+      .describe("Visible organizational parent only; never grants access."),
+    categoryId: zod.number().nullish(),
+    categoryName: zod.string().nullish(),
+    portfolioRelation: zod.enum(["main", "child", "independent"]).optional(),
+    canManage: zod.boolean().optional(),
     id: zod.number(),
     name: zod.string(),
     location: zod.string(),
@@ -1580,6 +1662,14 @@ export const GetDashboardSummaryResponse = zod.object({
   inProgressActivities: zod.number(),
   recentProjects: zod.array(
     zod.object({
+      parentProjectId: zod
+        .number()
+        .nullish()
+        .describe("Visible organizational parent only; never grants access."),
+      categoryId: zod.number().nullish(),
+      categoryName: zod.string().nullish(),
+      portfolioRelation: zod.enum(["main", "child", "independent"]).optional(),
+      canManage: zod.boolean().optional(),
       id: zod.number(),
       name: zod.string(),
       location: zod.string(),

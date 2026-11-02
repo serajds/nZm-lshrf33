@@ -56,11 +56,11 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [flushing, setFlushing] = useState(false);
 
-  const { data: list = [], refetch } = useQuery<MyStatus[]>({
+  const { data: list = [], refetch, isError: statusError } = useQuery<MyStatus[]>({
     queryKey: ["/api/attendance/my-status"],
     queryFn: async () => {
       const r = await fetchWithSession(`${API_BASE}/attendance/my-status`);
-      if (!r.ok) return [];
+      if (!r.ok) throw Object.assign(new Error("تعذّر قراءة حالة الحضور"), { status: r.status });
       return r.json();
     },
     enabled: !!user && !hideSelfCheck,
@@ -235,7 +235,7 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
             {isCheckedIn ? (
               <Badge className="bg-green-600 hover:bg-green-600 text-white">مسجّل حضور الآن</Badge>
             ) : (
-              <Badge variant="secondary">غير حاضر</Badge>
+              <Badge variant="secondary">{status ? "غير حاضر" : "حالة الحضور غير معروفة"}</Badge>
             )}
             <span>تسجيل الحضور والانصراف</span>
             <Link href={`/projects/${projectId}/attendance`} className="text-xs text-primary hover:underline mr-auto">
@@ -244,6 +244,9 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {statusError && <p role="alert" className="text-sm text-destructive">
+            تعذّر تحديث حالة الحضور. <button type="button" className="underline" onClick={() => { void refetch(); }}>إعادة المحاولة</button>
+          </p>}
           {!hasLocation && (
             <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs p-2 flex gap-2">
               <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -282,7 +285,7 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
             <Button
               size="lg"
               onClick={() => start("check_in")}
-              disabled={submitting || isCheckedIn}
+              disabled={submitting || !status || isCheckedIn}
               className="bg-green-600 hover:bg-green-700"
             >
               {submitting ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <LogIn className="h-4 w-4 ml-2" />}

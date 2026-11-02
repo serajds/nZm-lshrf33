@@ -11,7 +11,7 @@ import * as SplashScreen from "expo-splash-screen";
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { I18nManager, Platform } from "react-native";
+import { AppState, I18nManager, Platform, View, Text, Pressable } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -35,16 +35,17 @@ if (Platform.OS !== "web" && !I18nManager.isRTL) {
 }
 
 function GeofenceReminderBoot() {
-  const { token, ready } = useAuth();
+  const { user, ready } = useAuth();
   useEffect(() => {
     if (!ready) return;
-    if (token) {
-      void startGeofenceReminder();
-    } else {
-      stopGeofenceReminder();
-    }
-    return () => stopGeofenceReminder();
-  }, [ready, token]);
+    const update = () => {
+      if (user && AppState.currentState === "active") void startGeofenceReminder(user.id);
+      else stopGeofenceReminder();
+    };
+    update();
+    const subscription = AppState.addEventListener("change", update);
+    return () => { subscription.remove(); stopGeofenceReminder(); };
+  }, [ready, user?.id]);
   return null;
 }
 
@@ -82,6 +83,7 @@ function OfflineAttendanceBoot() {
 }
 
 function RootLayoutNav() {
+  const { connectionError, isRetryingAuth, retryAuth, token } = useAuth();
   // Deep-link push notifications: when the user taps a notification, route
   // them to the relevant screen if our payload tells us where to go.
   useEffect(() => {
@@ -109,6 +111,13 @@ function RootLayoutNav() {
   }, []);
 
   return (
+    <>
+    {connectionError && token && <View style={{ padding: 12, backgroundColor: "#fff4db" }}>
+      <Text style={{ textAlign: "right", color: "#754b00" }}>تعذّر التحقق من الجلسة. لم يتم تسجيل خروجك.</Text>
+      <Pressable disabled={isRetryingAuth} onPress={() => { void retryAuth(); }}>
+        <Text style={{ textAlign: "right", color: "#086c85", paddingTop: 6 }}>{isRetryingAuth ? "جارٍ التحقق..." : "إعادة المحاولة"}</Text>
+      </Pressable>
+    </View>}
     <Stack
       screenOptions={{
         headerShown: false,
@@ -116,6 +125,7 @@ function RootLayoutNav() {
         contentStyle: { backgroundColor: "#f1f3f6" },
       }}
     />
+    </>
   );
 }
 

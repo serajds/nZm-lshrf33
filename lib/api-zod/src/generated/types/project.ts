@@ -5,11 +5,23 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { ProjectPortfolioRelation } from "./projectPortfolioRelation";
 import type { ProjectReportDisplayMode } from "./projectReportDisplayMode";
 import type { ProjectStatus } from "./projectStatus";
 import type { ReportSignature } from "./reportSignature";
 
 export interface Project {
+  /**
+   * Visible organizational parent only; never grants access.
+   * @nullable
+   */
+  parentProjectId?: number | null;
+  /** @nullable */
+  categoryId?: number | null;
+  /** @nullable */
+  categoryName?: string | null;
+  portfolioRelation?: ProjectPortfolioRelation;
+  canManage?: boolean;
   id: number;
   name: string;
   location: string;

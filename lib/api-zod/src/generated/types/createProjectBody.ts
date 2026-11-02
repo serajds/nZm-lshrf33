@@ -9,6 +9,16 @@ import type { CreateProjectBodyReportDisplayMode } from "./createProjectBodyRepo
 import type { CreateProjectBodyStatus } from "./createProjectBodyStatus";
 
 export interface CreateProjectBody {
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  parentProjectId?: number | null;
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  categoryId?: number | null;
   name: string;
   location: string;
   ownerEntity: string;

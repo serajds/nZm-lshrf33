@@ -11,11 +11,31 @@ import { verifyToken } from "./lib/auth";
 import { diagnoseRejectedToken } from "./lib/auth";
 import { canViewAttendancePhoto, verifyAndMaybeRenewToken } from "./middlewares/auth";
 import { streamFromCloud, migrateExistingUploads } from "./lib/fileStorage";
-import { db } from "@workspace/db";
+import { db, requestMetrics, newRequestMetrics } from "@workspace/db";
 import { usersTable, userCompaniesTable, projectMembersTable, projectsTable, projectFilesTable, attendanceRecordsTable } from "@workspace/db";
 import { eq, count, inArray, and } from "drizzle-orm";
 
 const app: Express = express();
+app.use((req, res, next) => {
+  const metrics = newRequestMetrics();
+  const start = performance.now();
+  const json = res.json.bind(res);
+  res.json = (body) => {
+    res.setHeader("Server-Timing", [
+      `db;dur=${metrics.queryMs.toFixed(1)};desc="${metrics.queries} queries"`,
+      `pool;dur=${metrics.poolWaitMs.toFixed(1)}`,
+      ...Object.entries(metrics.phases).map(([key, value]) => `${key};dur=${value.toFixed(1)}`),
+    ].join(", "));
+    return json(body);
+  };
+  res.on("finish", () => {
+    if (performance.now() - start >= 1000) logger.info({
+      method: req.method, route: req.route?.path ?? "unmatched",
+      status: res.statusCode, metrics,
+    }, "slow request phases");
+  });
+  requestMetrics.run(metrics, next);
+});
 
 app.use(
   pinoHttp({

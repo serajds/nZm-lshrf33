@@ -32,6 +32,68 @@ tags:
     description: Staff attendance check-in/check-out
 
 paths:
+  /project-categories:
+    get:
+      operationId: listProjectCategories
+      tags: [projects]
+      summary: Categories visible in permitted projects; administrators see the catalog
+      responses:
+        "200":
+          description: Visible project categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectCategory"
+    post:
+      operationId: createProjectCategory
+      tags: [projects]
+      summary: Create category as administrator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCategoryBody"
+      responses:
+        "201":
+          description: Created category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCategory"
+  /project-categories/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    patch:
+      operationId: updateProjectCategory
+      tags: [projects]
+      summary: Rename category as administrator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCategoryBody"
+      responses:
+        "200":
+          description: Renamed category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCategory"
+    delete:
+      operationId: deleteProjectCategory
+      tags: [projects]
+      summary: Remove category without deleting its projects
+      responses:
+        "204":
+          description: Removed category
   /healthz:
     get:
       operationId: healthCheck
@@ -1947,9 +2009,37 @@ components:
             type: integer
 
     # Projects
+    ProjectCategory:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+    ProjectCategoryBody:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
     Project:
       type: object
       properties:
+        parentProjectId:
+          type: ["integer", "null"]
+          description: Visible organizational parent only; never grants access.
+        categoryId:
+          type: ["integer", "null"]
+        categoryName:
+          type: ["string", "null"]
+        portfolioRelation:
+          type: string
+          enum: [main, child, independent]
+        canManage:
+          type: boolean
         id:
           type: integer
         name:
@@ -2022,6 +2112,12 @@ components:
     CreateProjectBody:
       type: object
       properties:
+        parentProjectId:
+          type: ["integer", "null"]
+          minimum: 1
+        categoryId:
+          type: ["integer", "null"]
+          minimum: 1
         name:
           type: string
         location:
@@ -2071,6 +2167,12 @@ components:
     UpdateProjectBody:
       type: object
       properties:
+        parentProjectId:
+          type: ["integer", "null"]
+          minimum: 1
+        categoryId:
+          type: ["integer", "null"]
+          minimum: 1
         name:
           type: ["string", "null"]
         location:

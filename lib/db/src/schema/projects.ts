@@ -1,10 +1,13 @@
-import { pgTable, text, serial, timestamp, real, date, integer, boolean, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, date, integer, boolean, jsonb, index, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { projectCategoriesTable } from "./project_categories";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const projectsTable = pgTable("projects", {
   id: serial("id").primaryKey(),
+  parentProjectId: integer("parent_project_id").references((): AnyPgColumn => projectsTable.id, { onDelete: "restrict" }),
+  categoryId: integer("category_id").references(() => projectCategoriesTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   location: text("location").notNull(),
   ownerEntity: text("owner_entity").notNull(),
@@ -34,6 +37,8 @@ export const projectsTable = pgTable("projects", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [
+  index("projects_parent_idx").on(t.parentProjectId),
+  index("projects_category_idx").on(t.categoryId),
   index("projects_contractor_company_idx").on(t.contractorCompanyId),
   index("projects_owner_company_idx").on(t.ownerCompanyId),
   index("projects_supervisor_company_idx").on(t.supervisorCompanyId),

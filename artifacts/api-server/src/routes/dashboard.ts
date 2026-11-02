@@ -180,6 +180,8 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
     linkCode: _linkCode,
     ownerAccessToken: _ownerAccessToken,
     ownerAccessPassword: _ownerAccessPassword,
+    parentProjectId: _portfolioParent,
+    categoryId: _portfolioCategory,
     ...project
   }) => {
     const projectActivities = activitiesByProject.get(project.id) ?? [];
