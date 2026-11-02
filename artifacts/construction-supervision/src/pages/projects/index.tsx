@@ -202,8 +202,7 @@ export default function Projects() {
         <div className="flex items-center gap-3">
           <div className="relative z-10 rounded-2xl border border-white/15 bg-white/10 p-3"><Building2 className="h-6 w-6 text-cyan-200" /></div>
           <div>
-            <h1 className="relative z-10 text-lg font-bold tracking-tight text-white md:text-2xl">محفظة المشاريع</h1>
-            <p className="relative z-10 mt-1 text-sm text-white/65">كل مشروع بجدوله المستقل، مجمّعة تنظيمياً تحت مشاريعها الرئيسية</p>
+            <h1 className="relative z-10 text-lg font-bold tracking-tight text-white md:text-2xl">المشاريع</h1>
           </div>
         </div>
         <div className="relative z-10 flex w-full flex-wrap gap-2 sm:w-auto">
@@ -277,7 +276,7 @@ export default function Projects() {
                   <SectionHeading icon={<Network className="h-4 w-4" />} title="المشاريع الرئيسية وفروعها" hint="تجميع تنظيمي — لكل مشروع فرعي جدوله الزمني المستقل" count={portfolio.groups.length} />
                   <div className="grid gap-4 xl:grid-cols-2">
                     {portfolio.groups.map(g => (
-                      <MainProjectCard key={`${g.parent.id}-${filtering}`} parent={g.parent} parentMatches={g.parentMatches} children={g.children} totalChildren={g.totalChildren} a={actions} defaultOpen={filtering || g.children.length <= 4} />
+                      <MainProjectCard key={`${g.parent.id}-${filtering}`} parent={g.parent} parentMatches={g.parentMatches} children={g.children} totalChildren={g.totalChildren} a={actions} />
                     ))}
                   </div>
                 </section>
