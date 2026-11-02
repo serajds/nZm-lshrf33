@@ -107,7 +107,7 @@ async function shot(name) {
 }
 async function reload() {
   await send("Page.reload", { ignoreCache: true });
-  await wait(`Array.from(document.querySelectorAll('h1')).some(h=>h.textContent.includes('محفظة المشاريع'))`);
+  await wait(`Array.from(document.querySelectorAll('h1')).some(h=>h.textContent.trim() === 'المشاريع')`);
 }
 try {
   await send("Page.enable"); await send("Runtime.enable");
@@ -117,7 +117,16 @@ try {
   await send("Page.navigate", { url: `${origin}/projects` });
   await wait(aria("بحث في المشاريع"));
   await wait(`document.querySelector('[aria-label="المشاريع الرئيسية"]')`);
+  assert.equal(await ev(`Array.from(document.querySelectorAll('h1')).some(h => h.textContent.trim() === 'المشاريع')`), true);
+  assert.equal(await ev(`document.body.innerText.includes('كل مشروع بجدوله المستقل، مجمّعة تنظيمياً تحت مشاريعها الرئيسية')`), false);
+  // More than four children must be visible immediately, without expanding.
+  projects.push(...[6, 7, 8].map(id => ({ ...basic, id, name: `فرعي تجريبي ${id}`, portfolioRelation: "child", parentProjectId: 1 })));
+  await reload();
+  await wait(`document.querySelectorAll('[aria-label="المشاريع الفرعية لـ المجمع الرئيسي"] > li').length === 5`);
   await shot("desktop");
+  projects = projects.filter(p => p.id < 6);
+  await reload();
+  await wait(`document.querySelectorAll('[aria-label="المشاريع الفرعية لـ المجمع الرئيسي"] > li').length === 2`);
   assert.ok((await ev(`document.body.innerText`)).includes("إنجاز المشروع الرئيسي"));
   assert.ok(!(await ev(`document.body.innerText`)).includes("متوسط"));
   const initialRequests = listRequests;

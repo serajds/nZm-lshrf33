@@ -120,10 +120,10 @@ export function ProjectCard({ project, a, variant = "standalone" }: { project: P
 }
 
 /** Main project with collapsible accessible children. */
-export function MainProjectCard({ parent, parentMatches, children, totalChildren, a, defaultOpen }: {
-  parent: PortfolioProject; parentMatches: boolean; children: PortfolioProject[]; totalChildren: number; a: CardActions; defaultOpen: boolean;
+export function MainProjectCard({ parent, parentMatches, children, totalChildren, a }: {
+  parent: PortfolioProject; parentMatches: boolean; children: PortfolioProject[]; totalChildren: number; a: CardActions;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(true);
   const delayed = children.filter(c => c.status === "delayed").length;
   const listId = `children-of-${parent.id}`;
 
