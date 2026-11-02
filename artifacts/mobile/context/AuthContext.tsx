@@ -18,6 +18,9 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   login(phone: string, password: string): Promise<void>;
   logout(): Promise<void>;
+  connectionError: boolean;
+  isRetryingAuth: boolean;
+  retryAuth(): Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -27,6 +30,7 @@ let _currentUser: ApiUser | null = null;
 let _authRevision = 0;
 let _hydratingRevision: number | null = null;
 let _credentialWrites: Promise<void> = Promise.resolve();
+let _retryPending = false;
 setTokenGetter(() => _currentToken);
 
 function serializeCredentialWrite(write: () => Promise<void>): Promise<void> {
@@ -70,6 +74,8 @@ async function persistCredentials(credentials: PersistedCredentials | null): Pro
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({ ready: false, user: null, token: null });
+  const [connectionError, setConnectionError] = useState(false);
+  const [isRetryingAuth, setIsRetryingAuth] = useState(false);
 
   useEffect(() => {
     const hydrationRevision = _authRevision;
@@ -108,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               credentials = { token: _currentToken, user: freshUser };
             }
           } catch (error) {
+            if (!(error instanceof ApiError && error.status === 401)) setConnectionError(true);
             if (error instanceof ApiError && error.status === 401) {
               credentials = null;
             } else if (migratedFromLegacy) {
@@ -162,7 +169,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // and leave the app permanently at ready=false.
         return;
       }
-      _authRevision++;
       serializeCredentialWrite(async () => {
         if (_currentToken === token && _currentUser) {
           await persistCredentials({ token, user: _currentUser });
@@ -202,6 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (revision !== _authRevision) return;
     _currentToken = res.token;
     _currentUser = res.user;
+    setConnectionError(false);
     setState({ ready: true, user: res.user, token: res.token });
     await serializeCredentialWrite(async () => {
       if (_currentToken !== res.token || revision !== _authRevision) return;
@@ -215,6 +222,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const sessionToken = _currentToken;
     _currentToken = null;
     _currentUser = null;
+    setConnectionError(false);
     setState({ ready: true, user: null, token: null });
     // The API override keeps this one cleanup request authenticated even
     // though the active session has already been cleared locally.
@@ -225,7 +233,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const value = useMemo<AuthContextValue>(() => ({ ...state, login, logout }), [state, login, logout]);
+  const retryAuth = useCallback(async () => {
+    if (_retryPending || !_currentToken) return;
+    _retryPending = true;
+    const revision = _authRevision;
+    setIsRetryingAuth(true);
+    try {
+      const user = await apiGetMe();
+      if (revision !== _authRevision || !_currentToken) return;
+      _currentUser = user;
+      setState({ ready: true, token: _currentToken, user });
+      setConnectionError(false);
+      await serializeCredentialWrite(async () => {
+        if (revision === _authRevision && _currentToken && _currentUser) {
+          await persistCredentials({ token: _currentToken, user: _currentUser });
+        }
+      });
+    } catch {
+      if (revision === _authRevision) setConnectionError(true);
+    } finally { _retryPending = false; setIsRetryingAuth(false); }
+  }, []);
+
+  const value = useMemo<AuthContextValue>(() => ({ ...state, login, logout, connectionError, isRetryingAuth, retryAuth }),
+    [state, login, logout, connectionError, isRetryingAuth, retryAuth]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

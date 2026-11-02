@@ -13,6 +13,7 @@ const STORE = "queue";
 const DB_VERSION = 1;
 
 import { fetchWithSession } from "@workspace/api-client-react";
+import { installVisiblePolling } from "./visible-polling";
 import { getAuthToken } from "@/lib/auth-session";
 import {
   isAttendanceSessionCurrent,
@@ -361,21 +362,10 @@ export function subscribeQueue(l: Listener): () => void {
 // ---------------------------------------------------------------------------
 
 let autoFlushInstalled = false;
-export function installAutoFlush(): void {
+export function installAutoFlush(): (() => void) | undefined {
   if (autoFlushInstalled || typeof window === "undefined") return;
   autoFlushInstalled = true;
 
-  // Try once at startup (catches the case where the device started offline
-  // and the user is now back online before they re-open the app).
-  flushQueue().catch(() => { /* swallow */ });
-
-  window.addEventListener("online", () => {
-    flushQueue().catch(() => { /* swallow */ });
-  });
-
-  // Periodic safety net for cases where the browser does not fire `online`
-  // reliably (some mobile browsers).
-  setInterval(() => {
-    if (navigator.onLine) flushQueue().catch(() => { /* swallow */ });
-  }, 60_000);
+  const dispose = installVisiblePolling(flushQueue, 60_000);
+  return () => { dispose(); autoFlushInstalled = false; };
 }

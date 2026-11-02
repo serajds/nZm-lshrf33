@@ -21,3 +21,17 @@ type = "unspecified"
 title = "نسخة قاعدة التطوير قبل الاستيراد"
 description = "نسخة احتياطية من بيانات التطوير السابقة، للاستخدام فقط إذا احتجت الرجوع عن استيراد نسخة الإنتاج."
 logical_id = "b67b6aba-7df3-4060-886e-e082e39ed69c"
+
+[[outputs]]
+id = "WcTC9etqR-tCk6dy0BWaU"
+uri = "file://docs/performance-audit-2026-11-02.html"
+type = "html"
+title = "تقرير فحص التحميل والاتصال"
+description = "تقرير عربي يتضمن المشكلات المثبتة والإصلاحات وقياسات قبل/بعد وخريطة الطلبات والاختبارات وحدود التحقق."
+logical_id = "5f00b61c-ff5c-4eb6-b8fd-8b6b06424f2f"
+content_hash = "sha256:4d91ea86b6fa91741a1f590df2638c68a02fa920019ef2c92b9e750b0597042f"
+size = 27649
+mtime_ms = 1793640269411
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:36064327-e501-4c16-88c7-f8a88267d13f/5f00b61c-ff5c-4eb6-b8fd-8b6b06424f2f/6ee32c5b-9ca6-4102-80ec-6c9c1a7122e0"
+storage_version_token = "1793640371485009"
+content_type = "text/html"

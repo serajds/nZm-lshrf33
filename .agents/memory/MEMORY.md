@@ -21,3 +21,4 @@
 - [Checkpoint restore and API runtime](checkpoint-api-runtime.md) — restoring source and rebuilt dist can leave the build-once API process serving the pre-restore code until restarted.
 - [Activity quick-action approval](activity-quick-actions.md) — preserve the user-approved percentage icon; direct relative-weight editing is a separate action.
 - [Project update reminders](project-update-reminders.md) — daily on project open, manager-controlled per member, attributed to that member’s own activity edits.
+- [Request metrics attribution](request-metrics-attribution.md) — bind pooled callbacks to request context; concurrent SQL totals are not wall time, and internal DB transport differs from cloud TLS.

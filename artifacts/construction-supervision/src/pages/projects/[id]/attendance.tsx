@@ -168,11 +168,11 @@ export default function ProjectAttendance() {
   const canSelfCheck = !isOwner && !isContractor && canEditAttendance;
 
   // My status for this project
-  const { data: myStatusList = [], refetch: refetchMyStatus } = useQuery<MyStatusItem[]>({
+  const { data: myStatusList = [], refetch: refetchMyStatus, isError: statusError } = useQuery<MyStatusItem[]>({
     queryKey: ["/api/attendance/my-status"],
     queryFn: async () => {
       const r = await fetchWithSession(`${API_BASE}/attendance/my-status`);
-      if (!r.ok) return [];
+      if (!r.ok) throw Object.assign(new Error("تعذّر قراءة حالة الحضور"), { status: r.status });
       return r.json();
     },
     enabled: !!user && canSelfCheck,
@@ -186,11 +186,11 @@ export default function ProjectAttendance() {
   );
 
   // Active list
-  const { data: active, refetch: refetchActive, isLoading: activeLoading } = useQuery<ActiveResponse>({
+  const { data: active, refetch: refetchActive, isLoading: activeLoading, isError: activeError } = useQuery<ActiveResponse>({
     queryKey: [`/api/attendance/projects/${projectId}/active`],
     queryFn: async () => {
       const r = await fetchWithSession(`${API_BASE}/attendance/projects/${projectId}/active`);
-      if (!r.ok) return { activeCount: 0, members: [] };
+      if (!r.ok) throw Object.assign(new Error("تعذّر تحميل الحاضرين"), { status: r.status });
       return r.json();
     },
     enabled: !!projectId && isManager,
@@ -274,6 +274,10 @@ export default function ProjectAttendance() {
       </div>
 
       <ProjectNav projectId={projectId} />
+      {(statusError || activeError) && <div role="alert" className="rounded-lg border p-3">
+        تعذّر تحديث حالة الحضور؛ تبقى آخر قراءة إن توفرت ولا يُعد ذلك إثباتًا لعدم الحضور.
+        <Button variant="outline" onClick={() => { if (statusError) void refetchMyStatus(); if (activeError) void refetchActive(); }}>إعادة المحاولة</Button>
+      </div>}
 
       {/* Self check-in/out card (visible to anyone except owner) */}
       {canSelfCheck && (
@@ -304,13 +308,13 @@ export default function ProjectAttendance() {
 
         {isManager && (
           <TabsContent value="active" className="mt-4">
-            <ActiveTab
+            {activeError && !active ? <p role="alert">لم تُحمّل قائمة الحاضرين.</p> : <ActiveTab
               active={active}
               loading={activeLoading}
               showDetails={isManager}
               onShowPhoto={setPhotoModalUrl}
               onShowMap={showMap}
-            />
+            />}
           </TabsContent>
         )}
 
@@ -395,7 +399,7 @@ function SelfCheckCard({
           {isCheckedIn ? (
             <Badge className="bg-green-600 hover:bg-green-600 text-white">مسجّل حضور الآن</Badge>
           ) : (
-            <Badge variant="secondary">غير حاضر</Badge>
+            <Badge variant="secondary">{myStatus ? "غير حاضر" : "حالة الحضور غير معروفة"}</Badge>
           )}
           <span>سجّل حضورك أو انصرافك</span>
         </CardTitle>
@@ -424,7 +428,7 @@ function SelfCheckCard({
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => onStart("check_in")}
-            disabled={submitting || isCheckedIn}
+            disabled={submitting || !myStatus || isCheckedIn}
             className="bg-green-600 hover:bg-green-700"
           >
             {submitting ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <LogIn className="h-4 w-4 ml-2" />}
@@ -465,7 +469,7 @@ function ActiveTab({
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <CheckCircle2 className="h-5 w-5 text-green-600" />
-          الحاضرون الآن: <span className="text-primary">{active?.activeCount ?? 0}</span>
+          الحاضرون الآن: <span className="text-primary">{active?.activeCount ?? "—"}</span>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -589,11 +593,11 @@ function MyHistoryTab({ projectId, onShowPhoto, onShowMap }: {
   onShowPhoto: (url: string) => void;
   onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
 }) {
-  const { data: rows = [], isLoading } = useQuery<(AttendanceRecordWithUser & { projectId: number; projectName: string | null })[]>({
+  const { data: rows = [], isLoading, isError, refetch } = useQuery<(AttendanceRecordWithUser & { projectId: number; projectName: string | null })[]>({
     queryKey: ["/api/attendance/my-history", projectId],
-    queryFn: async () => {
-      const r = await fetchWithSession(`${API_BASE}/attendance/my-history?projectId=${projectId}`);
-      if (!r.ok) return [];
+    queryFn: async ({ signal }) => {
+      const r = await fetchWithSession(`${API_BASE}/attendance/my-history?projectId=${projectId}`, { signal });
+      if (!r.ok) throw Object.assign(new Error("تعذّر تحميل سجل الحضور"), { status: r.status });
       return r.json();
     },
     enabled: !!projectId,
@@ -605,7 +609,8 @@ function MyHistoryTab({ projectId, onShowPhoto, onShowMap }: {
         <CardTitle className="text-base">سجلّي في هذا المشروع</CardTitle>
       </CardHeader>
       <CardContent>
-        {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : rows.length === 0 ? (
+        {isError && <p role="alert">تعذّر تحديث سجل الحضور. <Button variant="outline" onClick={() => { void refetch(); }}>إعادة المحاولة</Button></p>}
+        {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : isError && !rows.length ? null : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">لا توجد سجلات بعد.</p>
         ) : (
           <RecordsTable rows={rows} showName={false} canManage={false} onShowPhoto={onShowPhoto} onShowMap={onShowMap} />
@@ -644,11 +649,11 @@ function ProjectHistoryTab({ projectId, onShowPhoto, onShowMap }: {
     [projectId, params],
   );
 
-  const { data: rows = [], isLoading } = useQuery<AttendanceRecordWithUser[]>({
+  const { data: rows = [], isLoading, isError, refetch } = useQuery<AttendanceRecordWithUser[]>({
     queryKey,
-    queryFn: async () => {
-      const r = await fetchWithSession(`${API_BASE}/attendance/projects/${projectId}/records?${params}`);
-      if (!r.ok) return [];
+    queryFn: async ({ signal }) => {
+      const r = await fetchWithSession(`${API_BASE}/attendance/projects/${projectId}/records?${params}`, { signal });
+      if (!r.ok) throw Object.assign(new Error("تعذّر تحميل سجل المشروع"), { status: r.status });
       return r.json();
     },
   });
@@ -694,7 +699,8 @@ function ProjectHistoryTab({ projectId, onShowPhoto, onShowMap }: {
           </div>
         </div>
 
-        {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : rows.length === 0 ? (
+        {isError && <p role="alert">تعذّر تحديث سجل المشروع. <Button variant="outline" onClick={() => { void refetch(); }}>إعادة المحاولة</Button></p>}
+        {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : isError && !rows.length ? null : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">لا توجد سجلات تطابق الفلترة.</p>
         ) : (
           <RecordsTable rows={rows} showName canManage={isManager} onMutated={onMutated} onShowPhoto={onShowPhoto} onShowMap={onShowMap} />

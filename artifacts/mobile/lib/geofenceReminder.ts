@@ -14,7 +14,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 
-import { apiListProjects, apiMyAttendanceStatus, type ApiProject, type MyAttendanceProjectStatus } from "./api";
+import { apiListProjects, apiMyAttendanceStatus, type ApiProject } from "./api";
 
 const STORAGE_KEY = "geofence_reminder_last_v1";
 const REMINDER_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours per project
@@ -24,17 +24,22 @@ let _projects: Array<{ id: number; name: string; lat: number; lng: number; radiu
 let _lastSentByProject: Record<string, number> = {};
 let _lastRefreshAt = 0;
 let _refreshing = false;
+let generation = 0;
+let starting: Promise<void> | null = null;
+let checking: number | null = null;
+let storageKey = STORAGE_KEY;
 
 async function loadLastSent(): Promise<void> {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (raw) _lastSentByProject = JSON.parse(raw) as Record<string, number>;
+    const current = generation;
+    const raw = await AsyncStorage.getItem(storageKey);
+    if (current === generation && raw) _lastSentByProject = JSON.parse(raw) as Record<string, number>;
   } catch { /* ignore */ }
 }
 
 async function persistLastSent(): Promise<void> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(_lastSentByProject));
+    await AsyncStorage.setItem(storageKey, JSON.stringify(_lastSentByProject));
   } catch { /* ignore */ }
 }
 
@@ -52,8 +57,10 @@ async function refreshProjectsCache(): Promise<void> {
   if (_refreshing) return;
   if (Date.now() - _lastRefreshAt < 5 * 60 * 1000 && _projects.length > 0) return;
   _refreshing = true;
+  const current = generation;
   try {
     const list = await apiListProjects();
+    if (current !== generation) return;
     _projects = (list as ApiProject[])
       .filter((p) => typeof p.siteLatitude === "number" && typeof p.siteLongitude === "number")
       .map((p) => ({
@@ -65,24 +72,14 @@ async function refreshProjectsCache(): Promise<void> {
       }));
     _lastRefreshAt = Date.now();
   } catch { /* ignore — keep last cache */ }
-  finally { _refreshing = false; }
+  finally { if (current === generation) _refreshing = false; }
 }
 
-async function isCheckedIn(projectId: number): Promise<boolean> {
-  try {
-    const statuses = await apiMyAttendanceStatus();
-    const arr = statuses as MyAttendanceProjectStatus[];
-    return !!arr.find((s) => s.projectId === projectId && s.currentlyCheckedIn);
-  } catch {
-    return false;
-  }
-}
-
-async function maybeNotify(projectId: number, projectName: string): Promise<void> {
+async function maybeNotify(projectId: number, projectName: string, current: number): Promise<void> {
   const key = String(projectId);
   const last = _lastSentByProject[key] ?? 0;
   if (Date.now() - last < REMINDER_COOLDOWN_MS) return;
-  if (await isCheckedIn(projectId)) return;
+  if (current !== generation) return;
 
   try {
     await Notifications.scheduleNotificationAsync({
@@ -94,53 +91,78 @@ async function maybeNotify(projectId: number, projectName: string): Promise<void
       },
       trigger: null,
     });
+    if (current !== generation) return;
     _lastSentByProject[key] = Date.now();
     await persistLastSent();
   } catch { /* ignore */ }
 }
 
 async function onLocation(loc: Location.LocationObject): Promise<void> {
-  if (_projects.length === 0) return;
+  if (_projects.length === 0 || checking === generation) return;
+  const current = generation;
+  checking = current; // Reserve before the first await, not after the request.
   const { latitude, longitude } = loc.coords;
-  for (const p of _projects) {
-    const d = distanceMeters(latitude, longitude, p.lat, p.lng);
-    if (d <= p.radius) {
-      // Fire & forget; debouncing happens inside maybeNotify.
-      void maybeNotify(p.id, p.name);
+  try {
+    await refreshProjectsCache();
+    if (current !== generation) return;
+    const nearby = _projects.filter(p => distanceMeters(latitude, longitude, p.lat, p.lng) <= p.radius
+      && Date.now() - (_lastSentByProject[String(p.id)] ?? 0) >= REMINDER_COOLDOWN_MS);
+    if (!nearby.length) return;
+    // One authoritative status list for all nearby sites, not one per project.
+    const statuses = await apiMyAttendanceStatus();
+    if (current !== generation) return;
+    for (const project of nearby) {
+      const status = statuses.find(s => s.projectId === project.id);
+      // A missing row or failed read is unknown, never proof of absence.
+      if (status?.currentlyCheckedIn === false) await maybeNotify(project.id, project.name, current);
     }
-  }
+  } catch { /* Unknown attendance: retry on a later location event, no notification. */ }
+  finally { if (checking === current) checking = null; }
 }
 
 /**
  * Start watching location and firing reminders. Safe to call repeatedly —
  * subsequent calls are no-ops while a watcher is active.
  */
-export async function startGeofenceReminder(): Promise<void> {
+export async function startGeofenceReminder(userId: number): Promise<void> {
   if (_watcher) return;
-  try {
+  if (starting) return starting;
+  const current = generation;
+  storageKey = `${STORAGE_KEY}:${userId}`;
+  const pending = (async () => { try {
     const perm = await Location.getForegroundPermissionsAsync();
-    if (!perm.granted) return; // attendance flow will request it; we don't prompt here.
+    if (!perm.granted || current !== generation) return;
 
     await loadLastSent();
+    if (current !== generation) return;
     await refreshProjectsCache();
-    if (_projects.length === 0) return;
+    if (_projects.length === 0 || current !== generation) return;
 
-    _watcher = await Location.watchPositionAsync(
+    const watcher = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.Balanced,
         timeInterval: 60_000,
         distanceInterval: 50,
       },
-      (loc) => { void onLocation(loc); },
+      (loc) => { if (current === generation) void onLocation(loc); },
     );
-  } catch { /* ignore */ }
+    if (current !== generation) watcher.remove();
+    else _watcher = watcher;
+  } catch { /* ignore */ } })();
+  starting = pending;
+  try { await pending; } finally { if (starting === pending) starting = null; }
 }
 
 export function stopGeofenceReminder(): void {
+  generation++;
+  starting = null;
+  checking = null;
+  _refreshing = false;
   if (_watcher) {
     try { _watcher.remove(); } catch { /* ignore */ }
     _watcher = null;
   }
   _projects = [];
+  _lastSentByProject = {};
   _lastRefreshAt = 0;
 }

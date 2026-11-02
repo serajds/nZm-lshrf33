@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import path from "node:path";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
-const origin = process.env.ACTIVITIES_VISUAL_URL;
+let origin = process.env.ACTIVITIES_VISUAL_URL;
 const user = { id: 1, role: "admin", fullName: "مستخدم تجريبي", phone: "0000000000" };
 const project = { id: 1, name: "مشروع اختبار العرض", status: "active", startDate: "2026-01-01", expectedEndDate: "2026-12-31" };
 const groups = Array.from({ length: 7 }, (_, i) => ({
@@ -32,7 +33,10 @@ function fixtureFor(url) {
   if (path === "/api/projects/1/my-permissions") return { canEditAll: true, isViewer: false, projectRole: "admin" };
   if (path === "/api/projects") return [project];
   if (path === "/api/projects/1/suspensions" || path === "/api/companies" || path === "/api/notifications") return [];
-  if (path === "/api/attendance/my-status") return { checkedIn: false };
+  if (path === "/api/attendance/my-status") return [{ projectId: 1, currentlyCheckedIn: false }];
+  if (path === "/api/projects/1/summary") return { overallProgress: 10.8, plannedProgress: 40.4, recentReports: [], activitiesTotal: 7 };
+  if (path === "/api/dashboard/summary") return { allProjects: [], recentProjects: [], recentReports: [], delayedActivities: [] };
+  if (path === "/api/attendance/projects/1/active") return { activeCount: 0, members: [] };
   return [];
 }
 
@@ -41,6 +45,9 @@ class Browser {
     this.socket = new WebSocket(url);
     this.pending = new Map();
     this.events = [];
+    this.requests = [];
+    this.delayMs = 0;
+    this.failCategories = false;
     this.id = 0;
     this.socket.onmessage = ({ data }) => {
       const message = JSON.parse(data);
@@ -48,11 +55,18 @@ class Browser {
         if (message.method === "Runtime.exceptionThrown") this.events.push(message.params.exceptionDetails.text);
         if (message.method === "Fetch.requestPaused") {
           const { requestId, request } = message.params;
+          this.requests.push({ path: new URL(request.url).pathname, method: request.method });
+          if (this.failCategories && request.url.includes("activity-group-categories")) {
+            void this.send("Fetch.fulfillRequest", { requestId, responseCode: 403,
+              body: Buffer.from('{"error":"forbidden"}').toString("base64"),
+              responseHeaders: [{ name: "Content-Type", value: "application/json" }] });
+            return;
+          }
           const body = Buffer.from(JSON.stringify(fixtureFor(request.url))).toString("base64");
-          void this.send("Fetch.fulfillRequest", {
+          void delay(this.delayMs).then(() => this.send("Fetch.fulfillRequest", {
             requestId, responseCode: 200, body,
             responseHeaders: [{ name: "Content-Type", value: "application/json" }],
-          }).catch((error) => this.events.push(error.message));
+          })).catch((error) => this.events.push(error.message));
         }
         return;
       }
@@ -85,7 +99,11 @@ class Browser {
 
 async function waitFor(check) {
   for (let i = 0; i < 200; i++) {
-    const result = await check();
+    let result;
+    try { result = await check(); }
+    catch (error) {
+      if (!/context.*(destroyed|not found)|Cannot find context/i.test(error.message)) throw error;
+    }
     if (result) return result;
     await delay(100);
   }
@@ -93,6 +111,28 @@ async function waitFor(check) {
 }
 
 test("activities layout is RTL and percentages fit on desktop, mobile and Gantt", { timeout: 90_000 }, async () => {
+  let fixtureServer;
+  const baselineRef = process.env.ACTIVITIES_BASELINE_REF;
+  if (process.env.ACTIVITIES_ISOLATED === "1") {
+    const { createServer } = await import("../artifacts/construction-supervision/node_modules/vite/dist/node/index.js");
+    const root = path.resolve("artifacts/construction-supervision");
+    const original = new Map();
+    if (baselineRef) {
+      for (const relative of ["App.tsx", "main.tsx", "pages/projects/[id]/activities.tsx", "pages/projects/[id].tsx",
+        "pages/projects/[id]/attendance.tsx", "components/attendance-quick-actions.tsx", "lib/offline-attendance.ts"]) {
+        const filename = `${root}/src/${relative}`;
+        original.set(filename, execFileSync("git", ["show", `${baselineRef}:${path.relative(process.cwd(), filename)}`], { encoding: "utf8" }));
+      }
+    }
+    fixtureServer = await createServer({
+      root, configFile: `${root}/vite.config.ts`, logLevel: "error",
+      plugins: [{ name: "exact-frontend-baseline", enforce: "pre",
+        load(id) { return original.get(id.split("?")[0]); } }],
+      server: { host: "127.0.0.1", port: 0, hmr: false, open: false },
+    });
+    await fixtureServer.listen();
+    origin = `http://127.0.0.1:${fixtureServer.httpServer.address().port}`;
+  }
   assert.ok(origin, "Set ACTIVITIES_VISUAL_URL to the running web preview URL");
   const probe = createServer();
   probe.listen(0, "127.0.0.1");
@@ -120,8 +160,25 @@ test("activities layout is RTL and percentages fit on desktop, mobile and Gantt"
       }`,
     });
     await browser.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+    const start = performance.now();
     await browser.send("Page.navigate", { url: `${origin}/projects/1/activities` });
     await waitFor(() => browser.evaluate('document.querySelector("[aria-label=\\"فهرس مجموعات بنود الأعمال\\"]")?.children.length > 5 && document.body.innerText.includes("10.8%")'));
+    const initialRenderMs = performance.now() - start;
+    const initialRequests = [...browser.requests];
+    const initialResources = await browser.evaluate(`performance.getEntriesByType("resource").map(r => ({
+      name: new URL(r.name).pathname, transferSize: r.transferSize, encodedBodySize: r.encodedBodySize, duration: r.duration
+    }))`);
+    const initialMeasurement = { label: baselineRef ? "before" : "after", initialRenderMs, initialRequests, resources: initialResources };
+    await mkdir("generated-artifacts", { recursive: true });
+    await writeFile(`generated-artifacts/performance-browser-${initialMeasurement.label}.json`, JSON.stringify(initialMeasurement, null, 2));
+    if (process.env.ACTIVITIES_MEASURE_ONLY === "1") {
+      console.log("PAGE_BASELINE", JSON.stringify({ ...initialMeasurement, resources: {
+        count: initialResources.length,
+        transferBytes: initialResources.reduce((sum, r) => sum + r.transferSize, 0),
+        encodedBodyBytes: initialResources.reduce((sum, r) => sum + r.encodedBodySize, 0),
+      } }));
+      return;
+    }
     const measure = async () => browser.evaluate(`(() => {
       const grid = document.querySelector('[aria-label="فهرس مجموعات بنود الأعمال"]');
       const table = document.querySelector('[aria-label="جدول بنود الأعمال قابل للتمرير أفقياً"]');
@@ -186,6 +243,69 @@ test("activities layout is RTL and percentages fit on desktop, mobile and Gantt"
     await browser.screenshot("/tmp/activities-desktop-gantt.png");
     assert.deepEqual(browser.events, []);
     console.log({ desktop, mobile, narrowMobile, gantt: { width: gantt.width, scrollWidth: gantt.scrollWidth }, desktopGantt });
+    const navigate = async route => {
+      await browser.evaluate(`(() => {
+        history.pushState(null, "", ${JSON.stringify(route)});
+        dispatchEvent(new PopStateEvent("popstate"));
+      })()`);
+      await delay(600);
+    };
+    const beforeReturn = browser.requests.filter(r => r.path === "/api/projects/1/activities").length;
+    await navigate("/projects/1/reports");
+    await waitFor(() => browser.evaluate('document.body.innerText.includes("إنشاء تقرير") || document.body.innerText.includes("التقارير")'));
+    await navigate("/projects/1/activities");
+    assert.equal(browser.requests.filter(r => r.path === "/api/projects/1/activities").length, beforeReturn,
+      "returning to a fresh cached activities query must not issue another network read");
+    await navigate("/projects/1/attendance");
+    await waitFor(() => browser.evaluate('document.body.innerText.includes("حضور وانصراف الطاقم")'));
+    await navigate("/projects/1");
+    await waitFor(() => browser.evaluate('document.body.innerText.includes("نسبة الإنجاز") || document.body.innerText.includes("ملخص المشروع")'));
+    await navigate("/dashboard");
+    await navigate("/projects/1/activities");
+    assert.deepEqual(browser.events, []);
+    const journeys = [...browser.requests];
+    await browser.send("Network.enable");
+    await browser.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
+    await waitFor(() => browser.evaluate('document.body.innerText.includes("لا يوجد اتصال بالشبكة")'));
+    assert.equal(await browser.evaluate('document.body.innerText.includes("10.8%")'), true);
+    await browser.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
+    await waitFor(() => browser.evaluate('!document.body.innerText.includes("لا يوجد اتصال بالشبكة")'));
+
+    // Cold failed helper query: do not turn a permission rejection into a
+    // successful empty classification list or retry it automatically.
+    browser.failCategories = true;
+    browser.delayMs = 900;
+    const categoryBefore = browser.requests.filter(r => r.path.endsWith("activity-group-categories")).length;
+    await browser.send("Page.reload", { ignoreCache: true });
+    await waitFor(() => browser.evaluate('document.body?.innerText.includes("تعذر تحديث بعض البيانات")'));
+    await delay(1400);
+    assert.equal(browser.requests.filter(r => r.path.endsWith("activity-group-categories")).length, categoryBefore + 1);
+    assert.equal(await browser.evaluate('document.body.innerText.includes("التصنيفات")'), true);
+    browser.failCategories = false;
+    browser.delayMs = 0;
+    await browser.evaluate(`(() => {
+      const alert = [...document.querySelectorAll('[role="alert"]')].find(el => el.textContent.includes("تعذر تحديث"));
+      alert?.querySelector("button")?.click();
+    })()`);
+    await waitFor(() => browser.evaluate('!document.body.innerText.includes("تعذر تحديث بعض البيانات")'));
+    browser.delayMs = 6000;
+    await browser.send("Page.reload", { ignoreCache: true });
+    await waitFor(() => browser.evaluate('document.body?.innerText.includes("جارٍ تحميل البنود")'));
+    assert.equal(await browser.evaluate(`(() => {
+      const section = document.querySelector('[aria-labelledby="activities-overview"]');
+      return section?.querySelector(".tabular-nums.text-2xl")?.textContent === "—";
+    })()`), true);
+    await waitFor(() => browser.evaluate('document.body.innerText.includes("الاتصال أبطأ من المعتاد")'));
+    await waitFor(() => browser.evaluate('document.body.innerText.includes("10.8%")'));
+    browser.delayMs = 0;
+    const resources = await browser.evaluate(`performance.getEntriesByType("resource").map(r => ({
+      name: new URL(r.name).pathname, transferSize: r.transferSize, encodedBodySize: r.encodedBodySize, duration: r.duration
+    }))`);
+    const measurement = { initialRenderMs, initialRequests, journeys, resources };
+    await mkdir("generated-artifacts", { recursive: true });
+    await writeFile("generated-artifacts/performance-browser.json", JSON.stringify(measurement, null, 2));
+    console.log("PERFORMANCE_BROWSER", JSON.stringify({ initialRenderMs, initialRequests, journeys,
+      resourceCount: resources.length, transferBytes: resources.reduce((sum, r) => sum + r.transferSize, 0) }));
   } finally {
     browser?.close();
     if (chromium.exitCode === null) {
@@ -193,5 +313,6 @@ test("activities layout is RTL and percentages fit on desktop, mobile and Gantt"
       await Promise.race([once(chromium, "exit"), delay(2000)]);
     }
     await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    if (fixtureServer) await fixtureServer.close();
   }
 });

@@ -6,6 +6,7 @@ import { registerSW } from "virtual:pwa-register";
 import { getAuthToken, renewAuthToken } from "@/lib/auth-session";
 import { reloadOnceOnServiceWorkerUpdate } from "@/lib/pwa-update";
 import { installAutoFlush } from "@/lib/offline-attendance";
+import { installVisiblePolling } from "@/lib/visible-polling";
 
 setAuthTokenGetter(getAuthToken);
 // When the server rolls our session forward via X-Renewed-Token, persist
@@ -28,7 +29,8 @@ const scheduleIdle =
   (window as unknown as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback ??
   ((cb: () => void) => setTimeout(cb, 200));
 scheduleIdle(() => {
-  installAutoFlush();
+  const dispose = installAutoFlush();
+  if (dispose) import.meta.hot?.dispose(dispose);
 });
 
 // Hide the splash screen ONLY when the auth bootstrap has settled — see
@@ -58,9 +60,8 @@ if (import.meta.env.PROD) {
     onRegisteredSW(_url, registration) {
       // Keep long-lived tabs and installed PWAs aligned with the deployed
       // session code instead of waiting for a navigation to discover updates.
-      window.setInterval(() => {
-        void registration?.update();
-      }, 5 * 60 * 1000);
+      const dispose = installVisiblePolling(async () => { await registration?.update(); }, 5 * 60 * 1000, false);
+      import.meta.hot?.dispose(dispose);
     },
   });
 }

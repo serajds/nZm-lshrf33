@@ -6,6 +6,8 @@
     "build": "pnpm run typecheck && pnpm -r --if-present --filter=!@workspace/mobile run build",
     "test:session-cache": "node --test --experimental-strip-types tests/*.test.mjs",
     "test:activity-sources": "node --test --experimental-strip-types tests/activity-source-rules.test.mjs",
+    "test:network-lifecycle": "node --test --experimental-strip-types tests/network-lifecycle.test.mjs",
+    "test:performance:http": "NODE_ENV=development PERFORMANCE_HTTP_TESTS=1 LOG_LEVEL=silent node --import ./scripts/node_modules/tsx/dist/loader.mjs --test tests/performance-http.integration.test.mjs",
     "test:excel-import:http": "NODE_ENV=development EXCEL_IMPORT_HTTP_TESTS=1 LOG_LEVEL=silent node --import ./scripts/node_modules/tsx/dist/loader.mjs --test tests/excel-import-http.integration.test.mjs",
     "test:session-cache:browser": "node --test tests/browser-session-cache.test.mjs",
     "typecheck:libs": "tsc --build",

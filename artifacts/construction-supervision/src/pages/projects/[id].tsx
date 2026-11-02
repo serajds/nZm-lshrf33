@@ -112,18 +112,16 @@ export default function ProjectDetails() {
     query: {
       enabled: !!projectId,
       staleTime: 1000 * 60 * 5,
-      placeholderData: (prev: any) => prev,
     } as any,
   });
   usePageTitle(project?.name ?? "تفاصيل المشروع");
   // Project summary aggregates progress + activities + recent reports —
   // it's the heaviest query on this page. Same treatment: keep the prior
   // payload visible so the overview never blanks while revalidating.
-  const { data: summary, isLoading: isSummaryLoading } = useGetProjectSummary(projectId, {
+  const { data: summary, isLoading: isSummaryLoading, isError: summaryError, refetch: refetchSummary } = useGetProjectSummary(projectId, {
     query: {
       enabled: !!projectId,
       staleTime: 1000 * 60 * 5,
-      placeholderData: (prev: any) => prev,
     } as any,
   });
   const { data: activities = [] } = useListActivities(projectId, { query: { enabled: !!projectId } });
@@ -149,7 +147,7 @@ export default function ProjectDetails() {
     queryKey: [`/api/projects/${projectId}/activity-groups`],
     queryFn: async () => {
       const r = await fetchWithSession(`/api/projects/${projectId}/activity-groups`);
-      if (!r.ok) return [];
+      if (!r.ok) throw Object.assign(new Error("تعذّر تحميل المجموعات"), { status: r.status });
       return r.json();
     },
     enabled: !!projectId && !isContractor,
@@ -160,7 +158,7 @@ export default function ProjectDetails() {
     queryFn: async () => {
       const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
       const r = await fetchWithSession(`${API_BASE}/attendance/my-status`);
-      if (!r.ok) return [];
+      if (!r.ok) throw Object.assign(new Error("تعذّر قراءة حالة الحضور"), { status: r.status });
       return r.json();
     },
     enabled: !!user && !isContractor && user.role !== "owner",
@@ -171,7 +169,7 @@ export default function ProjectDetails() {
     queryKey: [`/api/projects/${projectId}/extensions`],
     queryFn: async () => {
       const r = await fetchWithSession(`/api/projects/${projectId}/extensions`);
-      if (!r.ok) return [];
+      if (!r.ok) throw Object.assign(new Error("تعذّر تحميل التمديدات"), { status: r.status });
       return r.json();
     },
     enabled: !!projectId,
@@ -187,7 +185,7 @@ export default function ProjectDetails() {
     queryKey: [`/api/projects/${projectId}/summary-widgets`],
     queryFn: async () => {
       const r = await fetchWithSession(`/api/projects/${projectId}/summary-widgets`);
-      if (!r.ok) return [];
+      if (!r.ok) throw Object.assign(new Error("تعذّر تحميل أدوات الملخص"), { status: r.status });
       return r.json();
     },
     enabled: !!projectId,
@@ -201,7 +199,7 @@ export default function ProjectDetails() {
     queryKey: [`/api/projects/${projectId}/form-templates`],
     queryFn: async () => {
       const r = await fetchWithSession(`/api/projects/${projectId}/form-templates`);
-      if (!r.ok) return [];
+      if (!r.ok) throw Object.assign(new Error("تعذّر تحميل النماذج"), { status: r.status });
       return r.json();
     },
     enabled: !!projectId,
@@ -443,6 +441,12 @@ export default function ProjectDetails() {
       </div>
     );
   }
+  if (!summary && summaryError) return (
+    <div role="alert" className="rounded-lg border p-6 text-center">
+      تعذّر تحميل ملخص المشروع. لم تُحتسب مؤشرات بديلة.
+      <Button variant="outline" onClick={() => { void refetchSummary(); }}>إعادة المحاولة</Button>
+    </div>
+  );
 
   const getStatusBadge = (status: string) => {
     switch (status) {
