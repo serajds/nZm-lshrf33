@@ -1,5 +1,16 @@
 export const DASH = "—";
 
+export function forecastTiming(days: number | null | undefined, status: string) {
+  if (status !== "estimated" || days == null || !Number.isFinite(days)) {
+    return { text: DASH, tone: "" };
+  }
+  if (days === 0) return { text: "في الموعد المجدول", tone: "" };
+  const count = fmtNum(Math.abs(days), 0);
+  return days < 0
+    ? { text: `أبكر من الموعد بـ${count} يومًا`, tone: "text-emerald-700 dark:text-emerald-400" }
+    : { text: `متأخر عن الموعد بـ${count} يومًا`, tone: "text-red-700 dark:text-red-400" };
+}
+
 export function fmtNum(v: number | null | undefined, digits = 2): string {
   if (v == null || !Number.isFinite(v)) return DASH;
   return v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
