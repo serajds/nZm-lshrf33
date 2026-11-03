@@ -14,3 +14,9 @@ Show child projects expanded by default beneath their parent, regardless of thei
 **Why:** The user asked for children to be visible immediately without pressing “عرض المشاريع الفرعية”.
 
 **How to apply:** Keep this default when revising the cards; optional manual collapse must not hide children on initial display.
+
+Display all top-level project cards in one shared grid, not separate main/independent/other-child sections. Keep accessible children nested under their parent instead of duplicating them as top-level cards.
+
+**Why:** The user requested a unified cards view because child projects already form a tree beneath their parent.
+
+**How to apply:** Preserve filtering and permission boundaries; a child whose parent is inaccessible still needs its own card without revealing the parent.
