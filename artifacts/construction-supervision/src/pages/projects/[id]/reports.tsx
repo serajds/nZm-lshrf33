@@ -751,6 +751,7 @@ export default function ProjectReports() {
           return result.data;
         },
         loadAsset: url => protectedAssetToPreviewUrl(url, previewWindow),
+        loadLogoAsset: url => protectedAssetToPreviewUrl(url, previewWindow, "logo"),
         onProgress: (done, total) => updateReportPreviewStatus(
           previewWindow, "جارٍ تحميل صور التقرير والشعارات", done, total,
         ),

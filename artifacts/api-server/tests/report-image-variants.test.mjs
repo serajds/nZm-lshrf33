@@ -1,0 +1,72 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createRequire } from "node:module";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
+const require = createRequire(new URL("../package.json", import.meta.url));
+const sharp = require("sharp");
+const bundle = await build({
+  entryPoints: [fileURLToPath(new URL("../src/lib/reportImageVariants.ts", import.meta.url))],
+  bundle: true, write: false, platform: "node", format: "cjs", packages: "external",
+});
+const module = { exports: {} };
+new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
+const { createReportImageVariants } = module.exports;
+
+test("large photos are smaller, bounded for printing, and originals are untouched", async () => {
+  const source = await sharp({ create: { width: 3600, height: 2400, channels: 3, background: "#bb845d" } })
+    .jpeg({ quality: 100 }).toBuffer();
+  const original = Buffer.from(source);
+  const variant = await createReportImageVariants()("photo", "report-photo", async () => source);
+  const metadata = await sharp(variant.buffer).metadata();
+  assert.equal(metadata.width, 1600);
+  assert.equal(metadata.height, 1067);
+  assert.equal(variant.contentType, "image/jpeg");
+  assert.ok(variant.buffer.length < source.length);
+  assert.deepEqual(source, original);
+  console.log(`Synthetic photo: ${source.length} -> ${variant.buffer.length} bytes (${(100 * (1 - variant.buffer.length/source.length)).toFixed(1)}% smaller)`);
+});
+
+test("transparent logos retain transparency and readable resolution", async () => {
+  const source = await sharp({ create: { width: 1800, height: 900, channels: 4, background: { r: 40, g: 80, b: 100, alpha: 0.4 } } })
+    .png().toBuffer();
+  const result = await createReportImageVariants()("logo", "report-logo", async () => source);
+  const metadata = await sharp(result.buffer).metadata();
+  assert.equal(metadata.width, 1000);
+  assert.equal(metadata.hasAlpha, true);
+  assert.equal(result.contentType, "image/png");
+});
+
+test("small images aren't enlarged or made heavier", async () => {
+  const source = await sharp({ create: { width: 120, height: 60, channels: 3, background: "white" } }).jpeg().toBuffer();
+  const result = await createReportImageVariants()("small", "report-photo", async () => source);
+  assert.ok(result.buffer.length <= source.length);
+  assert.equal((await sharp(result.buffer).metadata()).width, 120);
+});
+
+test("reuse is versioned, coalesced and distinct for photos and logos", async () => {
+  const get = createReportImageVariants();
+  const source = await sharp({ create: { width: 80, height: 80, channels: 3, background: "blue" } }).png().toBuffer();
+  let reads = 0;
+  const read = async () => { reads++; return source; };
+  await Promise.all([get("file:v1", "report-photo", read), get("file:v1", "report-photo", read)]);
+  await get("file:v1", "report-photo", read);
+  assert.equal(reads, 1);
+  await get("file:v2", "report-photo", read);
+  await get("file:v1", "report-logo", read);
+  assert.equal(reads, 3);
+});
+
+test("corrupt input fails explicitly and does not poison reuse", async () => {
+  const get = createReportImageVariants();
+  for (let i = 0; i < 2; i++) {
+    await assert.rejects(get("bad", "report-photo", async () => Buffer.from("not an image")));
+  }
+});
+
+test("derivatives remain behind the unchanged authorization gate and no-store", async () => {
+  const source = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
+  assert.ok(source.indexOf("canAccessPrivateUpload(reqPath, token, res)") < source.indexOf('req.query.variant === "report-photo"'));
+  assert.match(source.slice(source.indexOf('req.query.variant === "report-photo"')), /Cache-Control", "private, no-store, no-cache, must-revalidate"/);
+});

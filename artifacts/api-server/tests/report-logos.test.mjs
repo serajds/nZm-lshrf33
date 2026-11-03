@@ -10,9 +10,18 @@ async function load(file) {
   });
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 }
-const { prepareReportLogos, reportAssetUrl } = await load("../../construction-supervision/src/lib/report-logos.ts");
+const { prepareReportLogos, reportAssetUrl, reportPreviewAssetUrl } = await load("../../construction-supervision/src/lib/report-logos.ts");
 const { buildPrintHTML } = await load("../../construction-supervision/src/lib/report-pdf.ts");
 const image = "data:image/png;base64,iVBORw0KGgo=";
+
+test("preview requests server variants only for same-origin uploads; original links stay intact", () => {
+  const origin = "https://app.test";
+  assert.equal(reportPreviewAssetUrl("/api/uploads/photo.jpg", "photo", origin), "/api/uploads/photo.jpg?variant=report-photo");
+  assert.equal(reportPreviewAssetUrl("/api/uploads/logo.png?token=example", "logo", origin), "/api/uploads/logo.png?token=example&variant=report-logo");
+  for (const url of ["https://external.test/photo.jpg", "data:image/png;base64,abc", "blob:example", "/api/other/file"]) {
+    assert.equal(reportPreviewAssetUrl(url, "photo", origin), url);
+  }
+});
 
 test("all three protected logos are resolved before printing without mutating company data", async () => {
   const original = Object.fromEntries(["owner", "contractor", "supervisor"].map(role =>

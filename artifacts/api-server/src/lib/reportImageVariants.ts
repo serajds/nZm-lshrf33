@@ -1,0 +1,78 @@
+import sharp from "sharp";
+
+export type ReportImageVariant = "report-photo" | "report-logo";
+type ImageResult = { buffer: Buffer; contentType: string };
+const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
+const MAX_CACHE_BYTES = 32 * 1024 * 1024;
+const TTL = 10 * 60 * 1000;
+
+/** Server-only derived bytes; callers MUST authorize before even consulting it. */
+export function createReportImageVariants() {
+  const cache = new Map<string, ImageResult & { expires: number }>();
+  const pending = new Map<string, Promise<ImageResult>>();
+  let bytes = 0;
+  let active = 0;
+  const queue: Array<() => void> = [];
+  const evict = (key: string) => {
+    const entry = cache.get(key);
+    if (entry) bytes -= entry.buffer.length;
+    cache.delete(key);
+  };
+  return async (key: string, variant: ReportImageVariant, readSource: () => Promise<Buffer>): Promise<ImageResult> => {
+    const cacheKey = `${key}:${variant}:v1`;
+    const now = Date.now();
+    for (const [k, value] of cache) if (value.expires <= now) evict(k);
+    const hit = cache.get(cacheKey);
+    if (hit) {
+      cache.delete(cacheKey);
+      cache.set(cacheKey, hit);
+      return hit;
+    }
+    const existing = pending.get(cacheKey);
+    if (existing) return existing;
+    if (active >= 2 && queue.length >= 16) throw new Error("Report image processor is busy");
+    const task = (async () => {
+      if (active >= 2) await new Promise<void>(resolve => queue.push(resolve));
+      else active++;
+      try {
+        const source = await readSource();
+        if (source.length > MAX_SOURCE_BYTES) throw new Error("Report image is too large");
+        const options = { limitInputPixels: 40_000_000 };
+        const metadata = await sharp(source, options).metadata();
+        const edge = variant === "report-logo" ? 1000 : 1600;
+        const png = variant === "report-logo" || metadata.hasAlpha;
+        let pipeline = sharp(source, options).rotate().resize({
+          width: edge, height: edge, fit: "inside", withoutEnlargement: true,
+        });
+        pipeline = png
+          ? pipeline.png({ compressionLevel: 9, adaptiveFiltering: true })
+          : pipeline.jpeg({ quality: 82, mozjpeg: true });
+        let buffer = await pipeline.toBuffer();
+        let contentType = png ? "image/png" : "image/jpeg";
+        // Do not inflate an already-small supported image or lose alpha/orientation.
+        const originalTypes: Record<string, string> = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+        const originalType = originalTypes[metadata.format ?? ""];
+        if (originalType && !metadata.orientation && (metadata.width ?? Infinity) <= edge
+          && (metadata.height ?? Infinity) <= edge && source.length < buffer.length) {
+          buffer = source;
+          contentType = originalType;
+        }
+        const result = { buffer, contentType };
+        while (bytes + buffer.length > MAX_CACHE_BYTES && cache.size) evict(cache.keys().next().value!);
+        if (buffer.length <= MAX_CACHE_BYTES) {
+          cache.set(cacheKey, { ...result, expires: Date.now() + TTL });
+          bytes += buffer.length;
+        }
+        return result;
+      } finally {
+        const next = queue.shift();
+        if (next) next();
+        else active--;
+      }
+    })();
+    pending.set(cacheKey, task);
+    try { return await task; } finally { pending.delete(cacheKey); }
+  };
+}
+
+export const reportImageVariant = createReportImageVariants();

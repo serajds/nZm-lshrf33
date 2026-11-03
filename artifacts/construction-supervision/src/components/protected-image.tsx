@@ -1,5 +1,6 @@
 import { useEffect, useState, type ImgHTMLAttributes } from "react";
 import { fetchWithSession } from "@workspace/api-client-react";
+import { reportPreviewAssetUrl } from "@/lib/report-logos";
 
 const TRANSPARENT_PIXEL =
   "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
@@ -26,12 +27,12 @@ async function fetchProtectedBlob(url: string, signal?: AbortSignal): Promise<Bl
 }
 
 /** Preview-owned blob URLs avoid base64 expansion and are released with its window. */
-export async function protectedAssetToPreviewUrl(url: string, owner: Window): Promise<string> {
+export async function protectedAssetToPreviewUrl(url: string, owner: Window, kind: "photo" | "logo" = "photo"): Promise<string> {
   if (!isProtectedApiAsset(url)) return url;
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 45_000);
   try {
-    const blob = await fetchProtectedBlob(url, controller.signal);
+    const blob = await fetchProtectedBlob(reportPreviewAssetUrl(url, kind, window.location.origin), controller.signal);
     if (owner.closed) throw new Error("Report preview was closed");
     return (owner as Window & typeof globalThis).URL.createObjectURL(blob);
   } finally {

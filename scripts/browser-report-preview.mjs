@@ -6,6 +6,7 @@ const target = await (await fetch("http://127.0.0.1:9222/json/new?about:blank", 
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise(resolve => ws.addEventListener("open", resolve, { once: true }));
 let seq = 0;
+let photos = 0, logos = 0;
 const pending = new Map();
 const send = (method, params = {}) => new Promise((resolve, reject) => {
   pending.set(++seq, { resolve, reject });
@@ -18,6 +19,9 @@ ws.addEventListener("message", async ({ data }) => {
     pending.delete(msg.id);
     msg.error ? p?.reject(new Error(msg.error.message)) : p?.resolve(msg.result);
   } else if (msg.method === "Fetch.requestPaused") {
+    const url = new URL(msg.params.request.url);
+    if (url.searchParams.get("variant") === "report-photo") photos++;
+    if (url.searchParams.get("variant") === "report-logo") logos++;
     await send("Fetch.fulfillRequest", {
       requestId: msg.params.requestId, responseCode: 200,
       responseHeaders: [{ name: "Content-Type", value: "image/svg+xml" }],
@@ -39,15 +43,21 @@ try {
   await send("Page.setDocumentContent", { frameId: (await send("Page.getFrameTree")).frameTree.frame.id, html: "<html><body></body></html>" });
   await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/*" }] });
   const result = await ev(`(async () => {
+    const RefreshRuntime = (await import('${origin}/@react-refresh')).default;
+    RefreshRuntime.injectIntoGlobalHook(window);
+    window.$RefreshReg$ = () => {};
+    window.$RefreshSig$ = () => type => type;
+    window.__vite_plugin_react_preamble_installed__ = true;
     const loader = await import('${origin}/src/lib/report-preview-loader.ts');
     const { protectedAssetToPreviewUrl } = await import('${origin}/src/components/protected-image.tsx');
     const popup = loader.openReportPreviewWindow();
     if (!popup) throw new Error('Popup blocked');
     window.testPopup = popup;
     const preview = await loader.loadReportPreview({
-      loadReport: async () => ({imageUrls: Array.from({length:60}, (_, i) => '/api/fixture/photo-' + i)}),
-      loadLogos: async () => ({owner:{name:'مالك',logoUrl:'/api/fixture/logo'}}),
+      loadReport: async () => ({imageUrls: Array.from({length:60}, (_, i) => '/api/uploads/fixture-photo-' + i + '.jpg')}),
+      loadLogos: async () => ({owner:{name:'مالك',logoUrl:'/api/uploads/logo-fixture.png'}}),
       loadAsset: url => protectedAssetToPreviewUrl(url, popup),
+      loadLogoAsset: url => protectedAssetToPreviewUrl(url, popup, 'logo'),
       onProgress: (done,total) => loader.updateReportPreviewStatus(popup, 'جارٍ تحميل صور التقرير والشعارات', done,total)
     });
     const count = popup.document.getElementById('preview-count').textContent;
@@ -62,6 +72,8 @@ try {
     return { count, progress, decoded, allBlob: urls.every(url => url.startsWith('blob:')) };
   })()`);
   assert.deepEqual(result, { count: "61 / 61", progress: 100, decoded: 61, allBlob: true });
+  assert.equal(photos, 60, "all site photos request server-compressed variants");
+  assert.equal(logos, 1, "logos request the transparency-preserving variant");
   const html = await ev(`(async () => {
     const {reportPreviewScreenHtml} = await import('${origin}/src/lib/report-preview-screen.ts');
     return reportPreviewScreenHtml();
