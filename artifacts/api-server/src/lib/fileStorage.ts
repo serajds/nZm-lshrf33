@@ -45,6 +45,32 @@ export async function deleteFromCloud(filename: string): Promise<void> {
   }
 }
 
+/** Metadata is checked per request, so replaced objects never reuse an old variant. */
+export async function cloudReportImageSource(filename: string): Promise<{
+  version: string;
+  read: () => Promise<Buffer>;
+} | null> {
+  if (!BUCKET_ID) return null;
+  const file = getBucket().file(UPLOADS_PREFIX + filename);
+  try {
+    const [metadata] = await file.getMetadata();
+    if (Number(metadata.size) > 25 * 1024 * 1024) throw new Error("Report image is too large");
+    return {
+      version: `${metadata.generation}:${metadata.metageneration}`,
+      // Pin to the inspected generation if the original is replaced concurrently.
+      read: async () => {
+        const [buffer] = await getBucket().file(UPLOADS_PREFIX + filename, {
+          generation: metadata.generation,
+        }).download();
+        return buffer;
+      },
+    };
+  } catch (error) {
+    if ((error as { code?: number }).code === 404) return null;
+    throw error;
+  }
+}
+
 export async function migrateExistingUploads(uploadsDir: string): Promise<void> {
   if (!BUCKET_ID) return;
   if (!fs.existsSync(uploadsDir)) return;

@@ -10,7 +10,8 @@ import { logger } from "./lib/logger";
 import { verifyToken } from "./lib/auth";
 import { diagnoseRejectedToken } from "./lib/auth";
 import { canViewAttendancePhoto, verifyAndMaybeRenewToken } from "./middlewares/auth";
-import { streamFromCloud, migrateExistingUploads } from "./lib/fileStorage";
+import { streamFromCloud, migrateExistingUploads, cloudReportImageSource } from "./lib/fileStorage";
+import { reportImageVariant } from "./lib/reportImageVariants";
 import { db, requestMetrics, newRequestMetrics } from "@workspace/db";
 import { usersTable, userCompaniesTable, projectMembersTable, projectsTable, projectFilesTable, attendanceRecordsTable } from "@workspace/db";
 import { eq, count, inArray, and } from "drizzle-orm";
@@ -223,6 +224,37 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
     return;
   }
   const localPath = path.join(uploadsDir, filename);
+
+  // Deliberately after the unchanged upload authorization middleware.
+  if (req.query.variant === "report-photo" || req.query.variant === "report-logo") {
+    const variant = req.query.variant;
+    void (async () => {
+      let key: string;
+      let read: () => Promise<Buffer>;
+      try {
+        const stat = await fs.promises.stat(localPath);
+        if (stat.size > 25 * 1024 * 1024) throw new Error("Report image is too large");
+        key = `local:${filename}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
+        read = () => fs.promises.readFile(localPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        const source = await cloudReportImageSource(filename);
+        if (!source) {
+          res.status(404).json({ error: "الملف غير موجود" });
+          return;
+        }
+        key = `cloud:${filename}:${source.version}`;
+        read = source.read;
+      }
+      const image = await reportImageVariant(key, variant, read);
+      res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+      res.type(image.contentType).send(image.buffer);
+    })().catch((error) => {
+      logger.warn({ err: error, filename }, "Report image preparation failed");
+      if (!res.headersSent) res.status(500).json({ error: "تعذّر تجهيز صورة التقرير" });
+    });
+    return;
+  }
 
   if (fs.existsSync(localPath)) {
     const isPublicLogo = filename.startsWith("logo-");

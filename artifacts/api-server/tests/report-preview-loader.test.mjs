@@ -48,6 +48,18 @@ test("duplicate assets load once per preview without retaining a cross-session c
   assert.equal(count, 2);
 });
 
+test("logos use their lossless variant separately from report photos", async () => {
+  const result = await loadReportPreview({
+    loadReport: async () => ({ imageUrls: ["same"] }),
+    loadLogos: async () => ({ owner: { name: "مالك", logoUrl: "same" } }),
+    loadAsset: async () => "blob:photo",
+    loadLogoAsset: async () => "blob:lossless-logo",
+    onProgress: () => {},
+  });
+  assert.deepEqual(result.imageUrls, ["blob:photo"]);
+  assert.equal(result.companyLogos.owner.logoUrl, "blob:lossless-logo");
+});
+
 test("failed photos and logos reject instead of silently issuing an incomplete report", async () => {
   for (const failure of ["photo", "logo"]) {
     await assert.rejects(loadReportPreview({

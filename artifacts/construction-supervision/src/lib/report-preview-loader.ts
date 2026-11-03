@@ -9,6 +9,7 @@ export async function loadReportPreview<T extends ReportImages>(options: {
   loadReport: () => Promise<T>;
   loadLogos: () => Promise<Record<string, ReportLogo>>;
   loadAsset: (url: string) => Promise<string>;
+  loadLogoAsset?: (url: string) => Promise<string>;
   onProgress: (completed: number, total: number) => void;
 }) {
   const assets = new Map<string, Promise<string>>();
@@ -17,29 +18,30 @@ export async function loadReportPreview<T extends ReportImages>(options: {
   // Bound downloads rather than sending a large report's full photo set at once.
   let active = 0;
   const queue: Array<() => void> = [];
-  const runAsset = async (url: string): Promise<string> => {
+  const runAsset = async (url: string, logo: boolean): Promise<string> => {
     if (active >= 6) await new Promise<void>(resolve => queue.push(resolve));
     else active++;
     try {
       if (!preparing) throw new Error("Report preview preparation has ended");
-      return await options.loadAsset(url);
+      return await (logo && options.loadLogoAsset ? options.loadLogoAsset : options.loadAsset)(url);
     } finally {
       const next = queue.shift();
       if (next) next();
       else active--;
     }
   };
-  const load = (url: string) => {
+  const load = (url: string, logo = false) => {
     if (!preparing) throw new Error("Report preview preparation has ended");
-    let pending = assets.get(url);
+    const key = logo && options.loadLogoAsset ? `logo:${url}` : url;
+    let pending = assets.get(key);
     if (!pending) {
-      pending = runAsset(url).then(result => {
+      pending = runAsset(url, logo).then(result => {
         if (!result) throw new Error("تعذّر تحميل إحدى صور التقرير");
         completed += 1;
         if (preparing) options.onProgress(completed, assets.size);
         return result;
       });
-      assets.set(url, pending);
+      assets.set(key, pending);
       options.onProgress(completed, assets.size);
     }
     return pending;
@@ -49,13 +51,13 @@ export async function loadReportPreview<T extends ReportImages>(options: {
     const imageGroups = groups?.length
       ? await Promise.all(groups.map(async group => ({
           category: group.category,
-          urls: await Promise.all((group.urls ?? []).map(load)),
+          urls: await Promise.all((group.urls ?? []).map(url => load(url))),
         })))
       : null;
-    const imageUrls = imageGroups ? [] : await Promise.all((report.imageUrls ?? []).map(load));
+    const imageUrls = imageGroups ? [] : await Promise.all((report.imageUrls ?? []).map(url => load(url)));
     return { report, imageGroups, imageUrls };
   });
-  const logosTask = options.loadLogos().then(logos => prepareReportLogos(logos, load));
+  const logosTask = options.loadLogos().then(logos => prepareReportLogos(logos, url => load(url, true)));
   const [images, companyLogos] = await Promise.all([reportTask, logosTask])
     .finally(() => { preparing = false; });
   return { ...images, companyLogos };

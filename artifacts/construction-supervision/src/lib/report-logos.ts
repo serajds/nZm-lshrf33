@@ -1,5 +1,16 @@
 export type ReportLogo = { name: string; logoUrl: string | null };
 
+export function reportPreviewAssetUrl(url: string, kind: "photo" | "logo", origin: string): string {
+  try {
+    const parsed = new URL(url, origin);
+    if (parsed.origin !== origin || !/^\/api\/uploads\/[^/]+$/.test(parsed.pathname)) return url;
+    parsed.searchParams.set("variant", kind === "logo" ? "report-logo" : "report-photo");
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url;
+  }
+}
+
 export function reportAssetUrl(url: string, base = ""): string {
   if (/^(?:https?:|data:|blob:)/i.test(url) || url.startsWith("//")) return url;
   return `${base.replace(/\/$/, "")}/${url.replace(/^\//, "")}`;
