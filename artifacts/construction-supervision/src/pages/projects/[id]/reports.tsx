@@ -61,12 +61,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Progress } from "@/components/ui/progress";
 import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
-import { loadReportPreview, openReportPreviewWindow, updateReportPreviewStatus } from "@/lib/report-preview-loader";
+import { loadReportPreview, openReportPreviewWindow, updateReportPreviewStatus, showReportPreviewError } from "@/lib/report-preview-loader";
 import { getAuthToken } from "@/lib/auth-session";
 import {
   ProtectedImage,
   openProtectedAsset,
-  protectedAssetToDataUrl,
+  protectedAssetToPreviewUrl,
 } from "@/components/protected-image";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
@@ -750,9 +750,9 @@ export default function ProjectReports() {
           if (result.error || !result.data) throw result.error ?? new Error("Missing company logos");
           return result.data;
         },
-        loadAsset: protectedAssetToDataUrl,
+        loadAsset: url => protectedAssetToPreviewUrl(url, previewWindow),
         onProgress: (done, total) => updateReportPreviewStatus(
-          previewWindow, `جارٍ تجهيز الصور والشعارات: ${done} من ${total}`,
+          previewWindow, "جارٍ تحميل صور التقرير والشعارات", done, total,
         ),
       });
     // A historical report without a saved snapshot cannot be reconstructed
@@ -859,7 +859,7 @@ export default function ProjectReports() {
       reportDisplayMode: project.reportDisplayMode,
     }, previewWindow);
     } catch {
-      updateReportPreviewStatus(previewWindow, "تعذّر تجهيز التقرير كاملًا. ارجع إلى صفحة التقارير وأعد المحاولة.");
+      showReportPreviewError(previewWindow);
       toast({
         title: "تعذّر تجهيز معاينة التقرير",
         description: "لم تُصدر معاينة ناقصة. تحقق من الاتصال وأعد المحاولة.",

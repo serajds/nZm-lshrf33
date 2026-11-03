@@ -14,14 +14,29 @@ function isProtectedApiAsset(url: string): boolean {
   }
 }
 
-async function fetchProtectedBlob(url: string): Promise<Blob> {
+async function fetchProtectedBlob(url: string, signal?: AbortSignal): Promise<Blob> {
   const response = await fetchWithSession(url, {
+    signal,
     headers: { Accept: "image/*,application/pdf,application/octet-stream" },
   });
   if (!response.ok) {
     throw new Error(`Protected asset request failed with HTTP ${response.status}`);
   }
   return response.blob();
+}
+
+/** Preview-owned blob URLs avoid base64 expansion and are released with its window. */
+export async function protectedAssetToPreviewUrl(url: string, owner: Window): Promise<string> {
+  if (!isProtectedApiAsset(url)) return url;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 45_000);
+  try {
+    const blob = await fetchProtectedBlob(url, controller.signal);
+    if (owner.closed) throw new Error("Report preview was closed");
+    return (owner as Window & typeof globalThis).URL.createObjectURL(blob);
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 export async function protectedAssetToDataUrl(url: string): Promise<string> {
