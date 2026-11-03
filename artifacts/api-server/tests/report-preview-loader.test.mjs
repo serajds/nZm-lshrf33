@@ -59,6 +59,45 @@ test("failed photos and logos reject instead of silently issuing an incomplete r
   }
 });
 
+test("large reports use at most six downloads and preserve all 61 assets in order", async () => {
+  let active = 0;
+  let peak = 0;
+  const urls = Array.from({ length: 60 }, (_, i) => `photo-${i}`);
+  const progress = [];
+  const result = await loadReportPreview({
+    loadReport: async () => ({ imageGroups: [{ category: "الموقع", urls }] }),
+    loadLogos: async () => ({ owner: { name: "مالك", logoUrl: "logo" } }),
+    loadAsset: async url => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise(resolve => setTimeout(resolve, 2));
+      active--;
+      return `blob:${url}`;
+    },
+    onProgress: (done, total) => progress.push([done, total]),
+  });
+  assert.equal(peak, 6);
+  assert.deepEqual(result.imageGroups[0].urls, urls.map(url => `blob:${url}`));
+  assert.equal(result.companyLogos.owner.logoUrl, "blob:logo");
+  assert.deepEqual(progress.at(-1), [61, 61]);
+});
+
+test("failed preparation stops queued downloads instead of continuing the entire report", async () => {
+  let started = 0;
+  await assert.rejects(loadReportPreview({
+    loadReport: async () => ({ imageUrls: Array.from({ length: 61 }, (_, i) => `photo-${i}`) }),
+    loadLogos: async () => ({}),
+    loadAsset: async () => {
+      started++;
+      await new Promise(resolve => setTimeout(resolve, 2));
+      throw new Error("offline");
+    },
+    onProgress: () => {},
+  }), /offline/);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.ok(started <= 7, `too many downloads started: ${started}`);
+});
+
 test("preview window opens synchronously and progress is plain text", () => {
   const originalWindow = globalThis.window;
   const status = { textContent: "" };
