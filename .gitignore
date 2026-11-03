@@ -11,3 +11,8 @@ docker-compose.yml
 *.dump
 *.sqlite
 /generated-artifacts/
+
+# Generated Expo output can remain after an artifact is removed.
+**/.expo/
+**/expo-env.d.ts
+**/static-build/
