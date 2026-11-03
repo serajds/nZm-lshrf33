@@ -188,7 +188,7 @@ export default function Projects() {
   const noResults = portfolio.matchedCount === 0;
 
   return (
-    <div className="mx-auto max-w-[1600px] min-w-0 space-y-5">
+    <div className="mx-auto w-full max-w-[1600px] min-w-0 space-y-5">
       <div className="relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 px-5 py-5 text-white shadow-sm sm:px-7 sm:py-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
           <div className="relative z-10 rounded-2xl border border-white/15 bg-white/10 p-3"><Building2 className="h-6 w-6 text-cyan-200" /></div>

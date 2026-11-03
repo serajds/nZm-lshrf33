@@ -105,8 +105,32 @@ async function shot(name) {
   const r = await send("Page.captureScreenshot", { format: "png" });
   await writeFile(`generated-artifacts/portfolio/${name}.png`, Buffer.from(r.data, "base64"));
 }
+async function checkPageFooter(name) {
+  await wait(`document.querySelector('footer[aria-label="تذييل الصفحة"]')`);
+  await delay(500); // Let route entrance animations and viewport resizing settle.
+  assert.equal(await ev(`document.querySelectorAll('footer[aria-label="تذييل الصفحة"]').length`), 1, "shared footer must not be duplicated");
+  assert.ok(await ev(`(() => {
+    const footer = document.querySelector('footer[aria-label="تذييل الصفحة"]');
+    const grid = document.querySelector('[aria-label="بطاقات المشاريع"]');
+    return !grid || footer.getBoundingClientRect().top - grid.getBoundingClientRect().bottom >= 39;
+  })()`), "footer must have space below project cards");
+  await ev(`document.querySelector('footer[aria-label="تذييل الصفحة"]').scrollIntoView({block:'end'})`);
+  await delay(250);
+  await shot(name);
+  const footerBounds = await ev(`(() => {
+    const r = document.querySelector('footer[aria-label="تذييل الصفحة"]').getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, width: r.width, viewport: innerHeight, viewportWidth: innerWidth };
+  })()`);
+  assert.ok(await ev(`(() => {
+    const r = document.querySelector('footer[aria-label="تذييل الصفحة"]').getBoundingClientRect();
+    return r.top >= -1 && r.bottom <= innerHeight + 1 && r.width <= innerWidth + 1;
+  })()`), `footer must be reachable without clipping or horizontal overflow: ${JSON.stringify(footerBounds)}`);
+  await ev(`(() => {let el=document.querySelector('footer[aria-label="تذييل الصفحة"]').parentElement;while(el){if(el.scrollHeight>el.clientHeight)el.scrollTop=0;el=el.parentElement}})()`);
+}
 async function reload() {
+  const previousOrigin = await ev("performance.timeOrigin");
   await send("Page.reload", { ignoreCache: true });
+  await wait(`performance.timeOrigin !== ${previousOrigin} && document.readyState === 'complete'`);
   await wait(`Array.from(document.querySelectorAll('h1')).some(h=>h.textContent.trim() === 'المشاريع')`);
 }
 try {
@@ -125,6 +149,7 @@ try {
   projects.push(...[6, 7, 8].map(id => ({ ...basic, id, name: `فرعي تجريبي ${id}`, portfolioRelation: "child", parentProjectId: 1 })));
   await reload();
   await wait(`document.querySelectorAll('[aria-label="المشاريع الفرعية لـ المجمع الرئيسي"] > li').length === 5`);
+  await checkPageFooter("desktop-footer");
   await shot("desktop");
   projects = projects.filter(p => p.id < 6);
   await reload();
@@ -213,6 +238,7 @@ try {
   // Hard reload fixture state persists, then mobile no overflow in cards/table/form.
   await reload(); await wait(aria("بحث في المشاريع"));
   await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await checkPageFooter("mobile-footer");
   await shot("mobile");
   assert.ok(await ev(`document.documentElement.scrollWidth<=innerWidth`), "mobile cards overflow");
   await click(btn("جدول مقارنة"));
@@ -241,7 +267,25 @@ try {
   failList = false; await click(btn("إعادة المحاولة")); await wait(aria("بحث في المشاريع"));
   projects = []; await reload();
   await wait(`document.body.innerText.includes('لا توجد مشاريع بعد')`);
+  await checkPageFooter("empty-footer");
+  await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false });
+  await delay(500);
+  await shot("empty-desktop-footer");
+  const shortPageBounds = await ev(`(() => {
+    const footer = document.querySelector('footer[aria-label="تذييل الصفحة"]');
+    return { bottom: footer.getBoundingClientRect().bottom, height: innerHeight, parents: [footer.parentElement, footer.parentElement.parentElement].map(el=>({height:el.clientHeight, scrollHeight:el.scrollHeight, top:el.getBoundingClientRect().top})) };
+  })()`);
+  assert.ok(shortPageBounds.bottom >= shortPageBounds.height - 60, `short projects page must fill the content area: ${JSON.stringify(shortPageBounds)}`);
   assert.equal(await ev(`document.body.innerText.includes('تعذر تحميل المشاريع')`), false);
+  role = "admin";
+  for (const path of ["/companies", "/users"]) {
+    await send("Page.navigate", { url: `${origin}${path}` });
+    await wait(`location.pathname === '${path}' && document.readyState === 'complete' && document.querySelector('footer[aria-label="تذييل الصفحة"]')`);
+    await checkPageFooter(path === "/companies" ? "companies-footer" : "users-footer");
+  }
+  await send("Emulation.setEmulatedMedia", { media: "print" });
+  assert.equal(await ev(`getComputedStyle(document.querySelector('footer[aria-label="تذييل الصفحة"]')).display`), "none");
+  await send("Emulation.setEmulatedMedia", { media: "" });
   assert.deepEqual(errors, []);
   console.log("PASS portfolio UI: composed filters/context, original parent progress, table, collapse, create noSchedule child, edit/retry/full detail, mobile, role gates, hard reload, network error; all APIs isolated");
 } finally {
