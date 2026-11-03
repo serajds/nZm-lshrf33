@@ -14,6 +14,33 @@ const { prepareReportLogos, reportAssetUrl, reportPreviewAssetUrl } = await load
 const { buildPrintHTML } = await load("../../construction-supervision/src/lib/report-pdf.ts");
 const image = "data:image/png;base64,iVBORw0KGgo=";
 
+test("actual report template preserves blob photos in both image layouts and all three logos", () => {
+  const urls = Array.from({ length: 5 }, (_, i) => `blob:https://app.test/00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
+  const base = {
+    projectName: "اختبار", reportType: "weekly", reportId: 1,
+    reportDate: "2026-11-03", periodStart: "2026-11-01", periodEnd: "2026-11-03",
+    progressPercentage: 40, workDescription: "أعمال",
+    companyLogos: Object.fromEntries(["owner", "contractor", "supervisor"].map((role, i) =>
+      [role, { name: role, logoUrl: urls[i + 2] }])),
+  };
+  for (const layout of [{ imageUrls: urls.slice(0, 2) }, { imageGroups: [{ category: "الموقع", urls: urls.slice(0, 2) }] }]) {
+    const html = buildPrintHTML({ ...base, ...layout });
+    for (const url of urls) assert.ok(html.includes(`src="${url}"`), `dropped ${url}`);
+  }
+});
+
+test("report template continues to reject unsafe and malformed image schemes", () => {
+  for (const url of ["javascript:alert(1)", "data:text/html;base64,abc", "blob:javascript:alert(1)", "blob:null/invalid", "blob:https://app.test/not-an-object-id"]) {
+    const html = buildPrintHTML({
+      projectName: "اختبار", reportType: "weekly", reportId: 1,
+      reportDate: "2026-11-03", periodStart: "2026-11-01", periodEnd: "2026-11-03",
+      progressPercentage: 40, workDescription: "أعمال", imageUrls: [url],
+      companyLogos: { owner: { name: "مالك", logoUrl: url } },
+    });
+    assert.ok(!html.includes(`src="${url}"`));
+  }
+});
+
 test("preview requests server variants only for same-origin uploads; original links stay intact", () => {
   const origin = "https://app.test";
   assert.equal(reportPreviewAssetUrl("/api/uploads/photo.jpg", "photo", origin), "/api/uploads/photo.jpg?variant=report-photo");
