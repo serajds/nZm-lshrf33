@@ -86,6 +86,10 @@ function escAttr(url: string): string {
   if (/^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(cleaned)) {
     return cleaned;
   }
+  // Authenticated preview assets are browser-generated object URLs, not API links.
+  if (/^blob:https?:\/\/[^/\s]+\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleaned)) {
+    return esc(cleaned);
+  }
   if (/^(https?:\/\/|\/)/i.test(cleaned)) return esc(cleaned);
   return "";
 }

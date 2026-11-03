@@ -49,6 +49,7 @@ try {
     window.$RefreshSig$ = () => type => type;
     window.__vite_plugin_react_preamble_installed__ = true;
     const loader = await import('${origin}/src/lib/report-preview-loader.ts');
+    const { previewReport } = await import('${origin}/src/lib/report-pdf.ts');
     const { protectedAssetToPreviewUrl } = await import('${origin}/src/components/protected-image.tsx');
     const popup = loader.openReportPreviewWindow();
     if (!popup) throw new Error('Popup blocked');
@@ -63,17 +64,29 @@ try {
     const count = popup.document.getElementById('preview-count').textContent;
     const progress = popup.document.getElementById('preview-progress').value;
     const urls = [...preview.imageUrls, preview.companyLogos.owner.logoUrl];
-    popup.document.open();
-    popup.document.write('<html><body>' + urls.map(url => '<img src="' + url + '">').join('') + '</body></html>');
-    popup.document.close();
+    previewReport({
+      projectName: 'اختبار صور التقرير', reportType: 'weekly', reportId: 1,
+      reportDate: '2026-11-03', periodStart: '2026-11-01', periodEnd: '2026-11-03',
+      progressPercentage: 40, workDescription: 'التحقق من ظهور صور الموقع والشعارات داخل قالب التقرير الفعلي.',
+      imageGroups: [{category:'صور الموقع',urls:preview.imageUrls}],
+      companyLogos: preview.companyLogos,
+    }, popup);
     await Promise.all([...popup.document.images].map(image => image.decode()));
     const decoded = [...popup.document.images].filter(i => i.naturalWidth > 0).length;
-    popup.close();
     return { count, progress, decoded, allBlob: urls.every(url => url.startsWith('blob:')) };
   })()`);
   assert.deepEqual(result, { count: "61 / 61", progress: 100, decoded: 61, allBlob: true });
   assert.equal(photos, 60, "all site photos request server-compressed variants");
   assert.equal(logos, 1, "logos request the transparency-preserving variant");
+  // Capture the rendered, real report while its popup-owned blob URLs remain alive.
+  const reportHTML = await ev("window.testPopup.document.documentElement.outerHTML");
+  await send("Page.setDocumentContent", { frameId: (await send("Page.getFrameTree")).frameTree.frame.id, html: reportHTML });
+  await ev("Promise.all([...document.images].map(image => image.decode())).then(() => true)");
+  assert.equal(await ev("[...document.images].filter(image => image.naturalWidth > 0).length"), 61);
+  await mkdir("generated-artifacts/report-preview", { recursive: true });
+  const reportShot = await send("Page.captureScreenshot", { format: "png" });
+  await writeFile("generated-artifacts/report-preview/rendered-report.png", Buffer.from(reportShot.data, "base64"));
+  await ev("window.testPopup.close()");
   const html = await ev(`(async () => {
     const {reportPreviewScreenHtml} = await import('${origin}/src/lib/report-preview-screen.ts');
     return reportPreviewScreenHtml();
@@ -95,7 +108,7 @@ try {
   assert.equal(await ev("document.body.classList.contains('is-error')"), true);
   assert.equal(await ev("getComputedStyle(document.querySelector('.meter')).display"), "none");
   assert.equal(await ev("document.querySelector('#preview-title').textContent"), "تعذّر تجهيز المعاينة");
-  console.log("PASS: 61 protected blobs survive document replacement and decode; desktop/mobile waiting screen; error state; no gradients.");
+  console.log("PASS: real report template renders and decodes all 60 protected photos + logo; compressed variant requests; desktop/mobile waiting screen; error state.");
 } finally {
   await send("Target.closeTarget", { targetId: target.id }).catch(() => {});
   ws.close();

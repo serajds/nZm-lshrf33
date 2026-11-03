@@ -14,3 +14,9 @@ Server-side derived image reuse is acceptable only behind the original file's au
 **Why:** Server-side resizing reduces download bytes; client-side compression after download does not. Reuse must never bypass a revoked project permission or return a derivative from a replaced original.
 
 **How to apply:** Use separate photo and transparency-preserving logo variants, while leaving original download links intact. Do not persist derivatives into a shared cloud bucket as an incidental development optimization.
+
+Validate image transport changes through the actual report HTML builder, including its URL sanitization, not a hand-written page of image tags.
+
+**Why:** A successful download and blob decode can still produce a report with no photos if the final template rejects that URL scheme. A synthetic image-only browser page previously missed exactly this regression.
+
+**How to apply:** Assert expected photo and logo counts and successful decoding after rendering the real report, with both grouped and legacy photo inputs. Keep unsafe URL schemes rejected.
