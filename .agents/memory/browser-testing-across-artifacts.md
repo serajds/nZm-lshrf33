@@ -44,3 +44,9 @@ For pointer-driven checks, bring the actual control into view before measuring i
 **Why:** The signed-in layout scrolls internally. Window scrolling left drag handles outside the viewport, so simulated drags sent no requests even though the application was working.
 
 **How to apply:** Use the control's `scrollIntoView`, then verify its coordinates and hit target before judging a drag failure.
+
+Wait for a new document after CDP reloads and let responsive/entrance transitions settle before geometry assertions.
+
+**Why:** Reload can resolve while the previous heading still exists, and viewport changes can briefly report old layout bounds. These produced false footer clipping and page-height failures.
+
+**How to apply:** Compare `performance.timeOrigin` before and after reload, require document readiness, and measure stable bounds after viewport/route transitions rather than immediately.

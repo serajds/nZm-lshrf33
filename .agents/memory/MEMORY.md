@@ -23,3 +23,4 @@
 - [Project update reminders](project-update-reminders.md) — daily on project open, manager-controlled per member, attributed to that member’s own activity edits.
 - [Request metrics attribution](request-metrics-attribution.md) — bind pooled callbacks to request context; concurrent SQL totals are not wall time, and internal DB transport differs from cloud TLS.
 - [Project portfolio boundaries](project-portfolio.md) — organizational two-level hierarchy never inherits permissions or changes schedules, source links, or parent progress.
+- [Shared application footer](application-footer.md) — preserve the user-approved footer consistently across internal pages, with bottom spacing and no duplication.

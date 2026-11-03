@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { InstallButton } from "@/components/install-button";
 import { InstallPromptBanner } from "@/components/install-prompt-banner";
 import { NotificationToggle } from "@/components/notification-toggle";
+import { AppFooter } from "@/components/app-footer";
 import {
   LayoutDashboard,
   Building2,
@@ -343,8 +344,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </header>
 
           {/* ---- Page Content ---- */}
-          <div className="z-0 flex-1 overflow-auto bg-background p-3 sm:p-5 lg:p-7">
-            {children}
+          <div className="z-0 flex min-h-0 flex-1 flex-col overflow-auto bg-background p-3 sm:p-5 lg:p-7">
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="min-w-0 flex-1 pb-10">{children}</div>
+              <AppFooter />
+            </div>
           </div>
         </main>
       </div>
