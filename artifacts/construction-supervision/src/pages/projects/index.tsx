@@ -4,7 +4,7 @@ import {
   useListProjects, useCreateProject, useUpdateProject, useDeleteProject,
   getListProjectsQueryKey, getGetProjectQueryKey, getGetProjectSummaryQueryKey, getProject, getProjectSummary,
 } from "@workspace/api-client-react";
-import { Building2, Network, Plus, RefreshCw, SearchX, Tags, TriangleAlert, Layers, GitBranch } from "lucide-react";
+import { Building2, Plus, RefreshCw, SearchX, Tags, TriangleAlert } from "lucide-react";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -21,21 +21,6 @@ import { CategoryManagerDialog } from "@/components/projects/category-manager";
 import { MainProjectCard, ProjectCard, type CardActions } from "@/components/projects/portfolio-card";
 import { PortfolioTable } from "@/components/projects/portfolio-table";
 import { PortfolioCountersStrip, PortfolioFiltersBar } from "@/components/projects/portfolio-filters";
-
-function SectionHeading({ icon, title, hint, count }: { icon: React.ReactNode; title: string; hint: string; count: number }) {
-  return (
-    <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-2">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="rounded-lg bg-primary/10 p-1.5 text-primary">{icon}</span>
-        <div className="min-w-0">
-          <h2 className="text-base font-bold">{title}</h2>
-          <p className="text-xs text-muted-foreground">{hint}</p>
-        </div>
-      </div>
-      <span className="font-mono text-sm text-muted-foreground">{count}</span>
-    </div>
-  );
-}
 
 function ListSkeleton() {
   return (
@@ -84,6 +69,12 @@ export default function Projects() {
 
   const counters = useMemo(() => (projects ? portfolioCounters(projects) : null), [projects]);
   const portfolio = useMemo(() => buildPortfolioView(all, filters), [all, filters]);
+  const cardProjects = useMemo(() => {
+    const groups = new Map(portfolio.groups.map(group => [group.parent.id, group]));
+    const individualIds = new Set([...portfolio.standalone, ...portfolio.otherChildren].map(project => project.id));
+    return all.filter(project => groups.has(project.id) || individualIds.has(project.id))
+      .map(project => ({ project, group: groups.get(project.id) }));
+  }, [all, portfolio]);
   const owners = useMemo(() => ownerOptions(all), [all]);
   const categoryUsage = useMemo(() => {
     const m = new Map<number, number>();
@@ -270,33 +261,12 @@ export default function Projects() {
           ) : view === "table" ? (
             <PortfolioTable rows={portfolio.matched} all={all} prefetch={prefetchProject} />
           ) : (
-            <div className="space-y-8">
-              {portfolio.groups.length > 0 && (
-                <section className="space-y-4" aria-label="المشاريع الرئيسية">
-                  <SectionHeading icon={<Network className="h-4 w-4" />} title="المشاريع الرئيسية وفروعها" hint="تجميع تنظيمي — لكل مشروع فرعي جدوله الزمني المستقل" count={portfolio.groups.length} />
-                  <div className="grid gap-4 xl:grid-cols-2">
-                    {portfolio.groups.map(g => (
-                      <MainProjectCard key={`${g.parent.id}-${filtering}`} parent={g.parent} parentMatches={g.parentMatches} children={g.children} totalChildren={g.totalChildren} a={actions} />
-                    ))}
-                  </div>
-                </section>
-              )}
-              {portfolio.standalone.length > 0 && (
-                <section className="space-y-4" aria-label="المشاريع المستقلة">
-                  <SectionHeading icon={<Layers className="h-4 w-4" />} title="مشاريع مستقلة" hint="غير مرتبطة بمشروع رئيسي" count={portfolio.standalone.length} />
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {portfolio.standalone.map(p => <ProjectCard key={p.id} project={p} a={actions} />)}
-                  </div>
-                </section>
-              )}
-              {portfolio.otherChildren.length > 0 && (
-                <section className="space-y-4" aria-label="مشاريع فرعية أخرى">
-                  <SectionHeading icon={<GitBranch className="h-4 w-4" />} title="مشاريع فرعية أخرى متاحة لك" hint="تتبع مشاريع رئيسية خارج صلاحياتك" count={portfolio.otherChildren.length} />
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {portfolio.otherChildren.map(p => <ProjectCard key={p.id} project={p} a={actions} variant="orphan" />)}
-                  </div>
-                </section>
-              )}
+            <div aria-label="بطاقات المشاريع" className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {cardProjects.map(({ project, group }) => group ? (
+                <MainProjectCard key={`${project.id}-${filtering}`} parent={project} parentMatches={group.parentMatches} children={group.children} totalChildren={group.totalChildren} a={actions} />
+              ) : (
+                <ProjectCard key={project.id} project={project} a={actions} />
+              ))}
             </div>
           )}
         </>

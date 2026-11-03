@@ -116,7 +116,9 @@ try {
   await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false });
   await send("Page.navigate", { url: `${origin}/projects` });
   await wait(aria("بحث في المشاريع"));
-  await wait(`document.querySelector('[aria-label="المشاريع الرئيسية"]')`);
+  await wait(`document.querySelector('[aria-label="بطاقات المشاريع"]')`);
+  assert.equal(await ev(`document.querySelectorAll('[aria-label="بطاقات المشاريع"] > article').length`), 3);
+  assert.equal(await ev(`document.querySelector('[aria-label="المشاريع المستقلة"]') !== null`), false);
   assert.equal(await ev(`Array.from(document.querySelectorAll('h1')).some(h => h.textContent.trim() === 'المشاريع')`), true);
   assert.equal(await ev(`document.body.innerText.includes('كل مشروع بجدوله المستقل، مجمّعة تنظيمياً تحت مشاريعها الرئيسية')`), false);
   // More than four children must be visible immediately, without expanding.
@@ -127,7 +129,7 @@ try {
   projects = projects.filter(p => p.id < 6);
   await reload();
   await wait(`document.querySelectorAll('[aria-label="المشاريع الفرعية لـ المجمع الرئيسي"] > li').length === 2`);
-  assert.ok((await ev(`document.body.innerText`)).includes("إنجاز المشروع الرئيسي"));
+  assert.ok((await ev(`document.body.innerText`)).includes("نسبة الإنجاز"));
   assert.ok(!(await ev(`document.body.innerText`)).includes("متوسط"));
   const initialRequests = listRequests;
   await input('[aria-label="بحث في المشاريع"]', "شبكات المياه");

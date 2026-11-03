@@ -87,7 +87,7 @@ function RowActions({ project, a, showAddChild }: { project: PortfolioProject; a
 }
 
 /** Independent project or "other accessible child" card. */
-export function ProjectCard({ project, a, variant = "standalone" }: { project: PortfolioProject; a: CardActions; variant?: "standalone" | "orphan" }) {
+export function ProjectCard({ project, a }: { project: PortfolioProject; a: CardActions }) {
   return (
     <article
       className="surface-card surface-card-hover flex h-full min-w-0 flex-col overflow-hidden"
@@ -103,10 +103,9 @@ export function ProjectCard({ project, a, variant = "standalone" }: { project: P
           <div className="flex flex-wrap items-center gap-1.5">
             <StatusBadge status={project.status} />
             <CategoryChip name={project.categoryName} />
-            {variant === "orphan" && <span aria-label="مشروع فرعي من مشروع رئيسي غير متاح" className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"><Network className="h-3 w-3" />فرعي من مشروع غير متاح لك</span>}
           </div>
         </div>
-        <RowActions project={project} a={a} showAddChild={variant === "standalone"} />
+        <RowActions project={project} a={a} showAddChild={project.portfolioRelation !== "child" && project.parentProjectId == null} />
       </header>
       <div className="flex flex-1 flex-col justify-between gap-4 p-4">
         <Meta project={project} />
@@ -137,7 +136,7 @@ export function MainProjectCard({ parent, parentMatches, children, totalChildren
         )}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-2">
-            <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-primary"><Network className="h-3.5 w-3.5" />مشروع رئيسي · {totalChildren} {totalChildren === 1 ? "مشروع فرعي" : "مشاريع فرعية"}</div>
+            <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-primary"><Network className="h-3.5 w-3.5" />{totalChildren} {totalChildren === 1 ? "مشروع فرعي" : "مشاريع فرعية"}</div>
             <h3 className={`line-clamp-2 text-lg font-bold leading-snug ${parentMatches ? "" : "text-foreground/70"}`}>
               <Link href={`/projects/${parent.id}`} className="transition-colors hover:text-primary">{parent.name}</Link>
             </h3>
@@ -151,7 +150,7 @@ export function MainProjectCard({ parent, parentMatches, children, totalChildren
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
           <div className="space-y-1.5">
-            <div className="flex justify-between text-xs font-medium text-muted-foreground"><span>إنجاز المشروع الرئيسي</span><span className="font-mono text-foreground">%{(parent.overallProgress ?? 0).toFixed(1)}</span></div>
+            <div className="flex justify-between text-xs font-medium text-muted-foreground"><span>نسبة الإنجاز</span><span className="font-mono text-foreground">%{(parent.overallProgress ?? 0).toFixed(1)}</span></div>
             <ProgressBar value={parent.overallProgress} />
           </div>
           <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
