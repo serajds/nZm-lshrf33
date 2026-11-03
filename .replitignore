@@ -1,1 +1,4 @@
 /generated-artifacts/
+**/.expo/
+**/expo-env.d.ts
+**/static-build/

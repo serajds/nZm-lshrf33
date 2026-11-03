@@ -1789,35 +1789,68 @@ export const GetProjectDeviationQueryParams = zod.object({
 });
 
 export const GetProjectDeviationResponse = zod.object({
+  asOfDate: zod.coerce.date(),
+  scheduleStatus: zod.enum([
+    "available",
+    "missing",
+    "invalid",
+    "no_schedule",
+    "incomplete",
+  ]),
+  dataStatus: zod.enum(["live", "stale"]),
+  roundingTolerance: zod
+    .number()
+    .describe(
+      "Raw contribution reconciliation tolerance in percentage points. Display rounding may accumulate up to rowCount \* 0.005.",
+    ),
+  currentEndDate: zod.coerce
+    .date()
+    .nullable()
+    .describe(
+      "Current scheduled end, not necessarily the original contractual end.",
+    ),
+  forecastStatus: zod.enum([
+    "estimated",
+    "not_started",
+    "completed_without_date",
+    "unavailable",
+  ]),
+  shiftedSuspensionDays: zod.number(),
+  unshiftedSuspensionDays: zod.number(),
+  contractorSuspensionDays: zod.number(),
   projectId: zod.number(),
-  timeDeviation: zod.number(),
-  progressDeviation: zod.number(),
+  timeDeviation: zod
+    .number()
+    .nullable()
+    .describe(
+      "Signed estimated day equivalent of actual minus planned; not proven delay.",
+    ),
+  progressDeviation: zod.number().nullable(),
   plannedProgress: zod
     .number()
-    .optional()
+    .nullable()
     .describe("Weighted planned progress for the project at today's date."),
   actualProgress: zod
     .number()
-    .optional()
     .describe("Weighted actual progress (overall project progress)."),
   status: zod.enum([
     "on_track",
     "slightly_delayed",
     "significantly_delayed",
     "ahead",
+    "unavailable",
   ]),
-  criticalPathStatus: zod
-    .enum(["healthy", "at_risk", "critical"])
-    .optional()
-    .describe(
-      "Health of the critical path based on the count of activities deviating > 10%.",
-    ),
   suspensionDays: zod.number().optional(),
-  grossDelayDays: zod.number().optional(),
-  netDelayDays: zod.number().optional(),
+  grossDelayDays: zod.number().nullish(),
+  netDelayDays: zod
+    .number()
+    .nullish()
+    .describe(
+      "Unknown without causal evidence; suspensions are not mechanically deducted.",
+    ),
   overrunDays: zod
     .number()
-    .optional()
+    .nullish()
     .describe("Days passed after expectedEndDate while progress < 100%"),
   spi: zod
     .number()
@@ -1831,14 +1864,19 @@ export const GetProjectDeviationResponse = zod.object({
     .describe("Forecast completion date if the current pace continues."),
   expectedProgressAtEnd: zod
     .number()
-    .optional()
+    .nullish()
     .describe(
-      "Expected progress percentage at the contractual end date if the current pace continues.",
+      "Conditional expected progress at the current scheduled end; unavailable after that date.",
     ),
-  contractEndDate: zod.coerce.date().nullish(),
+  contractEndDate: zod.coerce
+    .date()
+    .nullish()
+    .describe(
+      "Compatibility alias for currentEndDate, not proof of original contractual date.",
+    ),
   forecastDelayDays: zod
     .number()
-    .optional()
+    .nullish()
     .describe(
       "Days between forecastCompletionDate and contractEndDate (positive = late).",
     ),
@@ -1868,11 +1906,42 @@ export const GetProjectDeviationResponse = zod.object({
     .describe("Auto-generated recommendations based on the project state."),
   activitiesAnalysis: zod.array(
     zod.object({
+      groupId: zod.number().nullable(),
+      groupName: zod.string().nullable(),
+      effectiveWeight: zod
+        .number()
+        .describe("Percentage of target project weight."),
+      sourceKind: zod.enum(["local", "linked"]),
+      sourceStatus: zod.enum(["local", "live", "stale", "restricted"]),
+      sourceKey: zod
+        .string()
+        .describe("Safe filter identifier, not a source access capability."),
+      sourceLabel: zod.string().nullable(),
+      sourceDetails: zod.array(
+        zod.object({
+          activityName: zod.string(),
+          actualProgress: zod.number(),
+          plannedProgress: zod.number().nullable(),
+          deviation: zod.number().nullable(),
+          weightedImpact: zod.number().nullable(),
+          effectiveWeight: zod.number(),
+          sourceStatus: zod.enum(["local", "live", "stale", "restricted"]),
+          sourceLabel: zod.string().nullable(),
+          children: zod.array(zod.unknown()),
+        }),
+      ),
+      status: zod.enum([
+        "on_track",
+        "slightly_delayed",
+        "significantly_delayed",
+        "ahead",
+        "unavailable",
+      ]),
       activityId: zod.number(),
       activityName: zod.string(),
-      plannedProgress: zod.number(),
+      plannedProgress: zod.number().nullable(),
       actualProgress: zod.number(),
-      deviation: zod.number(),
+      deviation: zod.number().nullable(),
       weight: zod
         .number()
         .optional()
@@ -1881,7 +1950,7 @@ export const GetProjectDeviationResponse = zod.object({
         ),
       weightedImpact: zod
         .number()
-        .optional()
+        .nullish()
         .describe(
           "Contribution of this activity's deviation to overall project deviation (= deviation × weight \/ totalWeight).",
         ),
@@ -1921,10 +1990,13 @@ export const GetProjectDeviationTimelineResponse = zod.object({
   noSchedule: zod.boolean().optional(),
   points: zod.array(
     zod.object({
+      kind: zod.enum(["report", "live"]),
+      reportId: zod.number().nullable(),
+      baselineStatus: zod.string(),
       date: zod.coerce.date(),
-      plannedProgress: zod.number(),
-      actualProgress: zod.number(),
-      deviation: zod.number(),
+      plannedProgress: zod.number().nullable(),
+      actualProgress: zod.number().nullable(),
+      deviation: zod.number().nullable(),
     }),
   ),
   suspensionsBreakdown: zod

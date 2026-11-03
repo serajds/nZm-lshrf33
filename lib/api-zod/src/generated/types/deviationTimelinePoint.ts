@@ -5,10 +5,18 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { DeviationTimelinePointKind } from "./deviationTimelinePointKind";
 
 export interface DeviationTimelinePoint {
+  kind: DeviationTimelinePointKind;
+  /** @nullable */
+  reportId: number | null;
+  baselineStatus: string;
   date: Date;
-  plannedProgress: number;
-  actualProgress: number;
-  deviation: number;
+  /** @nullable */
+  plannedProgress: number | null;
+  /** @nullable */
+  actualProgress: number | null;
+  /** @nullable */
+  deviation: number | null;
 }

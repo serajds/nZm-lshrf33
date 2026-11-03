@@ -6,27 +6,57 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ActivityDeviation } from "./activityDeviation";
-import type { DeviationAnalysisCriticalPathStatus } from "./deviationAnalysisCriticalPathStatus";
+import type { DeviationAnalysisDataStatus } from "./deviationAnalysisDataStatus";
+import type { DeviationAnalysisForecastStatus } from "./deviationAnalysisForecastStatus";
 import type { DeviationAnalysisRecommendationsItem } from "./deviationAnalysisRecommendationsItem";
+import type { DeviationAnalysisScheduleStatus } from "./deviationAnalysisScheduleStatus";
 import type { DeviationAnalysisStatus } from "./deviationAnalysisStatus";
 import type { DeviationAnalysisSuspensionsBreakdownItem } from "./deviationAnalysisSuspensionsBreakdownItem";
 
 export interface DeviationAnalysis {
+  asOfDate: Date;
+  scheduleStatus: DeviationAnalysisScheduleStatus;
+  dataStatus: DeviationAnalysisDataStatus;
+  /** Raw contribution reconciliation tolerance in percentage points. Display rounding may accumulate up to rowCount * 0.005. */
+  roundingTolerance: number;
+  /**
+   * Current scheduled end, not necessarily the original contractual end.
+   * @nullable
+   */
+  currentEndDate: Date | null;
+  forecastStatus: DeviationAnalysisForecastStatus;
+  shiftedSuspensionDays: number;
+  unshiftedSuspensionDays: number;
+  contractorSuspensionDays: number;
   projectId: number;
-  timeDeviation: number;
-  progressDeviation: number;
-  /** Weighted planned progress for the project at today's date. */
-  plannedProgress?: number;
+  /**
+   * Signed estimated day equivalent of actual minus planned; not proven delay.
+   * @nullable
+   */
+  timeDeviation: number | null;
+  /** @nullable */
+  progressDeviation: number | null;
+  /**
+   * Weighted planned progress for the project at today's date.
+   * @nullable
+   */
+  plannedProgress: number | null;
   /** Weighted actual progress (overall project progress). */
-  actualProgress?: number;
+  actualProgress: number;
   status: DeviationAnalysisStatus;
-  /** Health of the critical path based on the count of activities deviating > 10%. */
-  criticalPathStatus?: DeviationAnalysisCriticalPathStatus;
   suspensionDays?: number;
-  grossDelayDays?: number;
-  netDelayDays?: number;
-  /** Days passed after expectedEndDate while progress < 100% */
-  overrunDays?: number;
+  /** @nullable */
+  grossDelayDays?: number | null;
+  /**
+   * Unknown without causal evidence; suspensions are not mechanically deducted.
+   * @nullable
+   */
+  netDelayDays?: number | null;
+  /**
+   * Days passed after expectedEndDate while progress < 100%
+   * @nullable
+   */
+  overrunDays?: number | null;
   /**
    * Schedule Performance Index = actual / planned (>1 ahead, <1 behind).
    * @nullable
@@ -37,12 +67,22 @@ export interface DeviationAnalysis {
    * @nullable
    */
   forecastCompletionDate?: Date | null;
-  /** Expected progress percentage at the contractual end date if the current pace continues. */
-  expectedProgressAtEnd?: number;
-  /** @nullable */
+  /**
+   * Conditional expected progress at the current scheduled end; unavailable after that date.
+   * @nullable
+   */
+  expectedProgressAtEnd?: number | null;
+  /**
+   * Compatibility alias for currentEndDate, not proof of original contractual date.
+   * @deprecated
+   * @nullable
+   */
   contractEndDate?: Date | null;
-  /** Days between forecastCompletionDate and contractEndDate (positive = late). */
-  forecastDelayDays?: number;
+  /**
+   * Days between forecastCompletionDate and contractEndDate (positive = late).
+   * @nullable
+   */
+  forecastDelayDays?: number | null;
   /** Breakdown of suspension days by cause type. */
   suspensionsBreakdown?: DeviationAnalysisSuspensionsBreakdownItem[];
   /** Auto-generated recommendations based on the project state. */

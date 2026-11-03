@@ -14,4 +14,5 @@ export const DeviationAnalysisStatus = {
   slightly_delayed: "slightly_delayed",
   significantly_delayed: "significantly_delayed",
   ahead: "ahead",
+  unavailable: "unavailable",
 } as const;

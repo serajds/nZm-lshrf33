@@ -875,6 +875,35 @@ export interface DashboardSummary {
   delayedActivitiesList: DashboardSummaryDelayedActivitiesListItem[];
 }
 
+export type DeviationAnalysisScheduleStatus =
+  (typeof DeviationAnalysisScheduleStatus)[keyof typeof DeviationAnalysisScheduleStatus];
+
+export const DeviationAnalysisScheduleStatus = {
+  available: "available",
+  missing: "missing",
+  invalid: "invalid",
+  no_schedule: "no_schedule",
+  incomplete: "incomplete",
+} as const;
+
+export type DeviationAnalysisDataStatus =
+  (typeof DeviationAnalysisDataStatus)[keyof typeof DeviationAnalysisDataStatus];
+
+export const DeviationAnalysisDataStatus = {
+  live: "live",
+  stale: "stale",
+} as const;
+
+export type DeviationAnalysisForecastStatus =
+  (typeof DeviationAnalysisForecastStatus)[keyof typeof DeviationAnalysisForecastStatus];
+
+export const DeviationAnalysisForecastStatus = {
+  estimated: "estimated",
+  not_started: "not_started",
+  completed_without_date: "completed_without_date",
+  unavailable: "unavailable",
+} as const;
+
 export type DeviationAnalysisStatus =
   (typeof DeviationAnalysisStatus)[keyof typeof DeviationAnalysisStatus];
 
@@ -883,18 +912,7 @@ export const DeviationAnalysisStatus = {
   slightly_delayed: "slightly_delayed",
   significantly_delayed: "significantly_delayed",
   ahead: "ahead",
-} as const;
-
-/**
- * Health of the critical path based on the count of activities deviating > 10%.
- */
-export type DeviationAnalysisCriticalPathStatus =
-  (typeof DeviationAnalysisCriticalPathStatus)[keyof typeof DeviationAnalysisCriticalPathStatus];
-
-export const DeviationAnalysisCriticalPathStatus = {
-  healthy: "healthy",
-  at_risk: "at_risk",
-  critical: "critical",
+  unavailable: "unavailable",
 } as const;
 
 export type DeviationAnalysisSuspensionsBreakdownItemType =
@@ -927,16 +945,90 @@ export type DeviationAnalysisRecommendationsItem = {
   description: string;
 };
 
+export type ActivityDeviationSourceKind =
+  (typeof ActivityDeviationSourceKind)[keyof typeof ActivityDeviationSourceKind];
+
+export const ActivityDeviationSourceKind = {
+  local: "local",
+  linked: "linked",
+} as const;
+
+export type ActivityDeviationSourceStatus =
+  (typeof ActivityDeviationSourceStatus)[keyof typeof ActivityDeviationSourceStatus];
+
+export const ActivityDeviationSourceStatus = {
+  local: "local",
+  live: "live",
+  stale: "stale",
+  restricted: "restricted",
+} as const;
+
+export type DeviationSourceDetailSourceStatus =
+  (typeof DeviationSourceDetailSourceStatus)[keyof typeof DeviationSourceDetailSourceStatus];
+
+export const DeviationSourceDetailSourceStatus = {
+  local: "local",
+  live: "live",
+  stale: "stale",
+  restricted: "restricted",
+} as const;
+
+export interface DeviationSourceDetail {
+  activityName: string;
+  actualProgress: number;
+  /** @nullable */
+  plannedProgress: number | null;
+  /** @nullable */
+  deviation: number | null;
+  /** @nullable */
+  weightedImpact: number | null;
+  effectiveWeight: number;
+  sourceStatus: DeviationSourceDetailSourceStatus;
+  /** @nullable */
+  sourceLabel: string | null;
+  children: DeviationSourceDetail[];
+}
+
+export type ActivityDeviationStatus =
+  (typeof ActivityDeviationStatus)[keyof typeof ActivityDeviationStatus];
+
+export const ActivityDeviationStatus = {
+  on_track: "on_track",
+  slightly_delayed: "slightly_delayed",
+  significantly_delayed: "significantly_delayed",
+  ahead: "ahead",
+  unavailable: "unavailable",
+} as const;
+
 export interface ActivityDeviation {
+  /** @nullable */
+  groupId: number | null;
+  /** @nullable */
+  groupName: string | null;
+  /** Percentage of target project weight. */
+  effectiveWeight: number;
+  sourceKind: ActivityDeviationSourceKind;
+  sourceStatus: ActivityDeviationSourceStatus;
+  /** Safe filter identifier, not a source access capability. */
+  sourceKey: string;
+  /** @nullable */
+  sourceLabel: string | null;
+  sourceDetails: DeviationSourceDetail[];
+  status: ActivityDeviationStatus;
   activityId: number;
   activityName: string;
-  plannedProgress: number;
+  /** @nullable */
+  plannedProgress: number | null;
   actualProgress: number;
-  deviation: number;
+  /** @nullable */
+  deviation: number | null;
   /** Activity weight used in the project-level weighted average. */
   weight?: number;
-  /** Contribution of this activity's deviation to overall project deviation (= deviation × weight / totalWeight). */
-  weightedImpact?: number;
+  /**
+   * Contribution of this activity's deviation to overall project deviation (= deviation × weight / totalWeight).
+   * @nullable
+   */
+  weightedImpact?: number | null;
   /**
    * Deprecated alias for overrunDays (kept for backward compatibility)
    * @nullable
@@ -950,21 +1042,49 @@ export interface ActivityDeviation {
 }
 
 export interface DeviationAnalysis {
+  asOfDate: string;
+  scheduleStatus: DeviationAnalysisScheduleStatus;
+  dataStatus: DeviationAnalysisDataStatus;
+  /** Raw contribution reconciliation tolerance in percentage points. Display rounding may accumulate up to rowCount * 0.005. */
+  roundingTolerance: number;
+  /**
+   * Current scheduled end, not necessarily the original contractual end.
+   * @nullable
+   */
+  currentEndDate: string | null;
+  forecastStatus: DeviationAnalysisForecastStatus;
+  shiftedSuspensionDays: number;
+  unshiftedSuspensionDays: number;
+  contractorSuspensionDays: number;
   projectId: number;
-  timeDeviation: number;
-  progressDeviation: number;
-  /** Weighted planned progress for the project at today's date. */
-  plannedProgress?: number;
+  /**
+   * Signed estimated day equivalent of actual minus planned; not proven delay.
+   * @nullable
+   */
+  timeDeviation: number | null;
+  /** @nullable */
+  progressDeviation: number | null;
+  /**
+   * Weighted planned progress for the project at today's date.
+   * @nullable
+   */
+  plannedProgress: number | null;
   /** Weighted actual progress (overall project progress). */
-  actualProgress?: number;
+  actualProgress: number;
   status: DeviationAnalysisStatus;
-  /** Health of the critical path based on the count of activities deviating > 10%. */
-  criticalPathStatus?: DeviationAnalysisCriticalPathStatus;
   suspensionDays?: number;
-  grossDelayDays?: number;
-  netDelayDays?: number;
-  /** Days passed after expectedEndDate while progress < 100% */
-  overrunDays?: number;
+  /** @nullable */
+  grossDelayDays?: number | null;
+  /**
+   * Unknown without causal evidence; suspensions are not mechanically deducted.
+   * @nullable
+   */
+  netDelayDays?: number | null;
+  /**
+   * Days passed after expectedEndDate while progress < 100%
+   * @nullable
+   */
+  overrunDays?: number | null;
   /**
    * Schedule Performance Index = actual / planned (>1 ahead, <1 behind).
    * @nullable
@@ -975,12 +1095,22 @@ export interface DeviationAnalysis {
    * @nullable
    */
   forecastCompletionDate?: string | null;
-  /** Expected progress percentage at the contractual end date if the current pace continues. */
-  expectedProgressAtEnd?: number;
-  /** @nullable */
+  /**
+   * Conditional expected progress at the current scheduled end; unavailable after that date.
+   * @nullable
+   */
+  expectedProgressAtEnd?: number | null;
+  /**
+   * Compatibility alias for currentEndDate, not proof of original contractual date.
+   * @deprecated
+   * @nullable
+   */
   contractEndDate?: string | null;
-  /** Days between forecastCompletionDate and contractEndDate (positive = late). */
-  forecastDelayDays?: number;
+  /**
+   * Days between forecastCompletionDate and contractEndDate (positive = late).
+   * @nullable
+   */
+  forecastDelayDays?: number | null;
   /** Breakdown of suspension days by cause type. */
   suspensionsBreakdown?: DeviationAnalysisSuspensionsBreakdownItem[];
   /** Auto-generated recommendations based on the project state. */
@@ -989,11 +1119,26 @@ export interface DeviationAnalysis {
   noSchedule?: boolean;
 }
 
+export type DeviationTimelinePointKind =
+  (typeof DeviationTimelinePointKind)[keyof typeof DeviationTimelinePointKind];
+
+export const DeviationTimelinePointKind = {
+  report: "report",
+  live: "live",
+} as const;
+
 export interface DeviationTimelinePoint {
+  kind: DeviationTimelinePointKind;
+  /** @nullable */
+  reportId: number | null;
+  baselineStatus: string;
   date: string;
-  plannedProgress: number;
-  actualProgress: number;
-  deviation: number;
+  /** @nullable */
+  plannedProgress: number | null;
+  /** @nullable */
+  actualProgress: number | null;
+  /** @nullable */
+  deviation: number | null;
 }
 
 export type DeviationTimelineSuspensionsBreakdownItemType =

@@ -25,3 +25,4 @@
 - [Project portfolio boundaries](project-portfolio.md) — organizational two-level hierarchy never inherits permissions or changes schedules, source links, or parent progress.
 - [Shared application footer](application-footer.md) — preserve the user-approved footer consistently across internal pages, with bottom spacing and no duplication.
 - [Report preview asset lifetime](report-preview-lifetime.md) — protected assets stay preview-scoped and must survive loading-document replacement and later printing.
+- [Deviation interpretation](deviation-interpretation.md) — progress gaps are not contractual delay; source date envelopes cannot reconstruct weighted historical plans.
