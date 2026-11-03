@@ -29,15 +29,15 @@ export function Section({ title, kicker, children, aside }: { title: string; kic
 }
 
 export function Metric({
-  label, value, unit, kind, note, tone,
-}: { label: string; value: string; unit?: string; kind: "fact" | "estimate" | "derived"; note?: ReactNode; tone?: string }) {
+  label, value, unit, kind, note, tone, valueDirection = "ltr",
+}: { label: string; value: string; unit?: string; kind: "fact" | "estimate" | "derived"; note?: ReactNode; tone?: string; valueDirection?: "ltr" | "rtl" }) {
   return (
     <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-background p-3.5">
       <div className="flex items-start justify-between gap-2">
         <span className="text-xs font-semibold text-muted-foreground">{label}</span>
         <Kind kind={kind} />
       </div>
-      <div className={`text-2xl font-extrabold tabular-nums ${tone ?? ""}`} dir="ltr" style={{ textAlign: "right" }}>
+      <div className={`text-2xl font-extrabold tabular-nums ${tone ?? ""}`} dir={valueDirection} style={{ textAlign: "right" }}>
         {value}
         {unit && value !== "—" && <span className="ms-1 text-sm font-semibold text-muted-foreground">{unit}</span>}
       </div>

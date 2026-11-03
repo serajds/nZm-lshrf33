@@ -1,11 +1,12 @@
 import type { DeviationAnalysis } from "@workspace/api-client-react";
 import { AlertTriangle, Info } from "lucide-react";
-import { DASH, SCHEDULE_STATUS_TEXT, fmtDate, fmtDays, fmtNum, fmtSigned, statusMeta } from "./format";
+import { DASH, SCHEDULE_STATUS_TEXT, fmtDate, fmtDays, fmtNum, fmtSigned, statusMeta, forecastTiming } from "./format";
 import { Kind, Metric, Section } from "./primitives";
 
 export function ExecutiveSummary({ data }: { data: DeviationAnalysis }) {
   const st = statusMeta(data.status);
   const scheduleOk = data.scheduleStatus === "available";
+  const timing = forecastTiming(data.forecastDelayDays, data.forecastStatus);
   const pd = data.progressDeviation;
   const pdTone = pd == null ? "" : pd < 0 ? "text-red-700 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400";
 
@@ -86,15 +87,18 @@ export function ExecutiveSummary({ data }: { data: DeviationAnalysis }) {
           <Metric label="تجاوز تاريخ النهاية الحالي" value={fmtDays(data.overrunDays)} kind="fact"
             tone={data.overrunDays && data.overrunDays > 0 ? "text-red-700 dark:text-red-400" : ""}
             note={<>أيام مضت بعد تاريخ النهاية المجدول الحالي ({fmtDate(data.currentEndDate)}) مع عدم الاكتمال.</>} />
-          <Metric label="الإكمال المتوقع (مشروط)" value={forecastText} kind="estimate" note={forecastNote} />
-          <Metric label="التأخر المتوقع عن النهاية الحالية" value={data.forecastStatus === "estimated" ? fmtDays(data.forecastDelayDays) : DASH} kind="estimate"
-            note={data.expectedProgressAtEnd != null ? `الإنجاز المتوقع عند تاريخ النهاية الحالي: ${fmtNum(data.expectedProgressAtEnd)}%` : "يعتمد على نفس افتراض استمرار المعدل."} />
+          <Metric label="موعد الإكمال التقديري" value={forecastText} kind="estimate" note={forecastNote} />
+          <Metric label="الإكمال المتوقع مقارنة بالموعد المجدول" value={timing.text} kind="estimate"
+            tone={timing.tone} valueDirection="rtl"
+            note={data.forecastStatus === "estimated" && data.expectedProgressAtEnd != null
+              ? `تقدير الإنجاز عند الموعد المجدول: ${fmtNum(data.expectedProgressAtEnd)}%، بافتراض استمرار نفس المعدل؛ وليس ضمانًا.`
+              : "المقارنة مع موعد النهاية المجدول الحالي، وليست مع تاريخ العقد الأصلي."} />
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Metric label="مكافئ التأخر التقديري فقط" value={fmtDays(data.grossDelayDays)} kind="estimate" />
           <Metric label="صافي التأخر" value={fmtDays(data.netDelayDays)} kind="estimate" note="غير محسوب: الأثر السببي للتوقفات على المسار غير مثبت." />
-          <Metric label="مؤشر SPI" value={data.spi == null ? DASH : fmtNum(data.spi)} kind="derived" note="الفعلي ÷ المخطط للنسب فقط، وليس EVM مالياً." />
-          <Metric label="تاريخ النهاية الحالي" value={fmtDate(data.currentEndDate)} kind="fact" note="تاريخ مجدول حالي، وليس التاريخ التعاقدي الأصلي." />
+          <Metric label="مؤشر SPI" value={data.spi == null ? DASH : fmtNum(data.spi)} kind="derived" note="الفعلي ÷ المخطط: أكبر من 1 متقدم، وأقل من 1 خلف المخطط. ليس مقياسًا ماليًا." />
+          <Metric label="موعد النهاية المجدول الحالي" value={fmtDate(data.currentEndDate)} kind="fact" note="الموعد المسجّل حاليًا، وقد يشمل تمديدات؛ ليس بالضرورة تاريخ العقد الأصلي." />
         </div>
         <div className="mt-4 flex gap-2 rounded-lg bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
