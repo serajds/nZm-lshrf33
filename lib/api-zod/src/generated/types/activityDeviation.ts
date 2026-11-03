@@ -5,17 +5,40 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { ActivityDeviationSourceKind } from "./activityDeviationSourceKind";
+import type { ActivityDeviationSourceStatus } from "./activityDeviationSourceStatus";
+import type { ActivityDeviationStatus } from "./activityDeviationStatus";
+import type { DeviationSourceDetail } from "./deviationSourceDetail";
 
 export interface ActivityDeviation {
+  /** @nullable */
+  groupId: number | null;
+  /** @nullable */
+  groupName: string | null;
+  /** Percentage of target project weight. */
+  effectiveWeight: number;
+  sourceKind: ActivityDeviationSourceKind;
+  sourceStatus: ActivityDeviationSourceStatus;
+  /** Safe filter identifier, not a source access capability. */
+  sourceKey: string;
+  /** @nullable */
+  sourceLabel: string | null;
+  sourceDetails: DeviationSourceDetail[];
+  status: ActivityDeviationStatus;
   activityId: number;
   activityName: string;
-  plannedProgress: number;
+  /** @nullable */
+  plannedProgress: number | null;
   actualProgress: number;
-  deviation: number;
+  /** @nullable */
+  deviation: number | null;
   /** Activity weight used in the project-level weighted average. */
   weight?: number;
-  /** Contribution of this activity's deviation to overall project deviation (= deviation × weight / totalWeight). */
-  weightedImpact?: number;
+  /**
+   * Contribution of this activity's deviation to overall project deviation (= deviation × weight / totalWeight).
+   * @nullable
+   */
+  weightedImpact?: number | null;
   /**
    * Deprecated alias for overrunDays (kept for backward compatibility)
    * @nullable

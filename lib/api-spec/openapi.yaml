@@ -2915,33 +2915,56 @@ components:
     DeviationAnalysis:
       type: object
       properties:
+        asOfDate:
+          type: string
+          format: date
+        scheduleStatus:
+          type: string
+          enum: [available, missing, invalid, no_schedule, incomplete]
+        dataStatus:
+          type: string
+          enum: [live, stale]
+        roundingTolerance:
+          type: number
+          description: Raw contribution reconciliation tolerance in percentage points. Display rounding may accumulate up to rowCount * 0.005.
+        currentEndDate:
+          type: ["string", "null"]
+          format: date
+          description: Current scheduled end, not necessarily the original contractual end.
+        forecastStatus:
+          type: string
+          enum: [estimated, not_started, completed_without_date, unavailable]
+        shiftedSuspensionDays:
+          type: integer
+        unshiftedSuspensionDays:
+          type: integer
+        contractorSuspensionDays:
+          type: integer
         projectId:
           type: integer
         timeDeviation:
-          type: number
+          type: ["number", "null"]
+          description: Signed estimated day equivalent of actual minus planned; not proven delay.
         progressDeviation:
-          type: number
+          type: ["number", "null"]
         plannedProgress:
-          type: number
+          type: ["number", "null"]
           description: Weighted planned progress for the project at today's date.
         actualProgress:
           type: number
           description: Weighted actual progress (overall project progress).
         status:
           type: string
-          enum: [on_track, slightly_delayed, significantly_delayed, ahead]
-        criticalPathStatus:
-          type: string
-          enum: [healthy, at_risk, critical]
-          description: Health of the critical path based on the count of activities deviating > 10%.
+          enum: [on_track, slightly_delayed, significantly_delayed, ahead, unavailable]
         suspensionDays:
           type: integer
         grossDelayDays:
-          type: integer
+          type: ["number", "null"]
         netDelayDays:
-          type: integer
+          type: ["number", "null"]
+          description: Unknown without causal evidence; suspensions are not mechanically deducted.
         overrunDays:
-          type: integer
+          type: ["integer", "null"]
           description: Days passed after expectedEndDate while progress < 100%
         spi:
           type: ["number", "null"]
@@ -2951,13 +2974,15 @@ components:
           format: date
           description: Forecast completion date if the current pace continues.
         expectedProgressAtEnd:
-          type: number
-          description: Expected progress percentage at the contractual end date if the current pace continues.
+          type: ["number", "null"]
+          description: Conditional expected progress at the current scheduled end; unavailable after that date.
         contractEndDate:
           type: ["string", "null"]
           format: date
+          deprecated: true
+          description: Compatibility alias for currentEndDate, not proof of original contractual date.
         forecastDelayDays:
-          type: integer
+          type: ["integer", "null"]
           description: Days between forecastCompletionDate and contractEndDate (positive = late).
         suspensionsBreakdown:
           type: array
@@ -3001,6 +3026,17 @@ components:
           type: boolean
       required:
         - projectId
+        - asOfDate
+        - scheduleStatus
+        - dataStatus
+        - roundingTolerance
+        - actualProgress
+        - plannedProgress
+        - forecastStatus
+        - currentEndDate
+        - shiftedSuspensionDays
+        - unshiftedSuspensionDays
+        - contractorSuspensionDays
         - timeDeviation
         - progressDeviation
         - status
@@ -3009,21 +3045,46 @@ components:
     ActivityDeviation:
       type: object
       properties:
+        groupId:
+          type: ["integer", "null"]
+        groupName:
+          type: ["string", "null"]
+        effectiveWeight:
+          type: number
+          description: Percentage of target project weight.
+        sourceKind:
+          type: string
+          enum: [local, linked]
+        sourceStatus:
+          type: string
+          enum: [local, live, stale, restricted]
+        sourceKey:
+          type: string
+          description: Safe filter identifier, not a source access capability.
+        sourceLabel:
+          type: ["string", "null"]
+        sourceDetails:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviationSourceDetail"
+        status:
+          type: string
+          enum: [on_track, slightly_delayed, significantly_delayed, ahead, unavailable]
         activityId:
           type: integer
         activityName:
           type: string
         plannedProgress:
-          type: number
+          type: ["number", "null"]
         actualProgress:
           type: number
         deviation:
-          type: number
+          type: ["number", "null"]
         weight:
           type: number
           description: Activity weight used in the project-level weighted average.
         weightedImpact:
-          type: number
+          type: ["number", "null"]
           description: Contribution of this activity's deviation to overall project deviation (= deviation × weight / totalWeight).
         delayDays:
           type: ["integer", "null"]
@@ -3037,24 +3098,69 @@ components:
         - plannedProgress
         - actualProgress
         - deviation
+        - effectiveWeight
+        - sourceKind
+        - sourceStatus
+        - sourceKey
+        - sourceLabel
+        - sourceDetails
+        - status
+        - groupId
+        - groupName
+
+    DeviationSourceDetail:
+      type: object
+      properties:
+        activityName:
+          type: string
+        actualProgress:
+          type: number
+        plannedProgress:
+          type: ["number", "null"]
+        deviation:
+          type: ["number", "null"]
+        weightedImpact:
+          type: ["number", "null"]
+        effectiveWeight:
+          type: number
+        sourceStatus:
+          type: string
+          enum: [local, live, stale, restricted]
+        sourceLabel:
+          type: ["string", "null"]
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviationSourceDetail"
+      required: [activityName, actualProgress, plannedProgress, deviation, weightedImpact, effectiveWeight, sourceStatus, sourceLabel, children]
 
     DeviationTimelinePoint:
       type: object
       properties:
+        kind:
+          type: string
+          enum: [report, live]
+        reportId:
+          type: ["integer", "null"]
+        baselineStatus:
+          type: string
         date:
           type: string
           format: date
         plannedProgress:
-          type: number
+          type: ["number", "null"]
         actualProgress:
-          type: number
+          type: ["number", "null"]
         deviation:
-          type: number
+          type: ["number", "null"]
       required:
         - date
         - plannedProgress
         - actualProgress
         - deviation
+        - kind
+        - reportId
+        - baselineStatus
 
     DeviationTimeline:
       type: object
