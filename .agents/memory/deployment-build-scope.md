@@ -13,22 +13,26 @@ deploymentTarget = "autoscale"
 build = ["pnpm", "run", "build"]
 ```
 
-**DO NOT add a `run` key to the root `[deployment]` section.** Adding `run` overrides the multi-artifact orchestrator and makes the deployment start only that one process, causing health checks on `/mobile/` and `/api` to fail and the promote step to fail with "Creating Autoscale service" error.
+**DO NOT add a `run` key to the root `[deployment]` section.** Adding `run` overrides the multi-artifact orchestrator and makes the deployment start only that one process, causing other artifact health checks to fail.
 
 The production services are:
 - `artifacts/api-server` → port 8080, path `/api`, run: `node --enable-source-maps artifacts/api-server/dist/index.mjs`
 - `artifacts/construction-supervision` → static, path `/`, publicDir: `artifacts/construction-supervision/dist/public`
-- `artifacts/mobile` → port 18115, path `/mobile/`, run: `pnpm --filter @workspace/mobile run serve`
 
 ## Build scope rules
 
 - **Keep the web TypeScript check mandatory.** React type packages are aligned through the workspace catalog so third-party declarations resolve one type identity. Do not restore `|| true` or otherwise make web type errors non-blocking.
-- **Exclude `@workspace/mobile` from the root recursive build.** Root `build` must use `pnpm -r --if-present --filter=!@workspace/mobile run build`. The mobile Metro bundler cannot run in the deployment build environment (fails with "Download failed: terminated"); mobile is built separately by its own `artifact.toml` `[services.production]` build command.
-- **Keep mobile React type packages on the shared catalog version.** With Expo 54 / React Native 0.81, `react-native-gesture-handler` 2.28 may lose `children` in JSX under the shared React 19.2 types; use a narrow local `PropsWithChildren` component wrapper rather than pinning mobile to React types 19.1.
+- The mobile artifact was removed. Do not recreate its publishing service to fix an unrelated build failure. If reintroduced, keep Metro out of the root recursive build; it previously failed in the publishing environment.
 
-**Why:** Multiple React type versions in the workspace leaked through hoisted third-party declarations and produced false incompatibilities in the web app. Pinning mobile back to 19.1 fixes one mobile declaration but reintroduces the web failures; alignment plus a local compatibility wrapper keeps both checks sound.
+**Why:** Multiple React type versions in the workspace previously leaked through hoisted third-party declarations and produced false incompatibilities in the web app.
 
 **How to apply:** Keep React and React DOM type packages on the shared catalog version across artifacts, and run the root typecheck after dependency changes.
+
+Force referenced-library declaration generation before application type checks; do not trust restored incremental compiler metadata alone.
+
+**Why:** A task merge retained compiler metadata marking the current API schemas up to date while declaration output still described the older API. Publishing then reported missing deviation fields despite those fields existing in source.
+
+**How to apply:** Keep the forced referenced-library build in the publishing check. Do not suppress web type errors or duplicate missing API types locally to conceal stale declarations.
 
 ## Critical: JWT_SECRET in production
 
