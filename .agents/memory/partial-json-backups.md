@@ -14,3 +14,9 @@ When a project-only restore preserves the existing audit log, compare it with th
 **Why:** A preserved development log represented an older timeline than the restored backup. The backup contained additional progress history, but some shared audit IDs referred to different events; development also contained a legitimate progress change made after the backup.
 
 **How to apply:** Match event identity, activity lifetime, project and timestamps; isolate conflicts and preserve post-backup changes. Treat sparse audit progress as partial evidence, not a complete historical project state: missing initial weights, imports, deletions and linked-source history can prevent a reliable aggregate.
+
+Project restores can fire database-level progress-history triggers even when no application history writer runs. These newly captured snapshots describe the restore time, not the original dates in the imported backup.
+
+**Why:** Importing projects, groups and activities can generate intermediate progress snapshots inside the restore transaction; their existence does not mean the backup contained the earlier tracking history.
+
+**How to apply:** Inspect triggers and verify the latest snapshot per project after a restore. Preserve original report snapshots unchanged, and never present newly generated restore-time history as recovered historical evidence.
