@@ -1,4 +1,5 @@
 /generated-artifacts/
+/.local/dev-db-backups/
 **/.expo/
 **/expo-env.d.ts
 **/static-build/
