@@ -6,7 +6,6 @@ import {
   useGetProject,
   useGetProjectSummary,
   useGenerateOwnerLink,
-  useListActivities,
   useListProjectMembers,
   useGetEligibleUsers,
   fetchWithSession,
@@ -14,7 +13,6 @@ import {
 import { useMyProjectPermissions } from "@/hooks/use-tab-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
-import type { ExecutiveSummaryAI } from "@/lib/report-pdf";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -40,8 +38,8 @@ const SiteGeofenceMap = lazy(() =>
 );
 // PERFORMANCE: jspdf is only needed when the user clicks "تنزيل الملخص"
 // — defer loading until the click handler runs.
-import type { ActivityForReport } from "@/lib/report-pdf";
 import { useAuth } from "@/hooks/use-auth";
+import { loadExecutiveSummaryData } from "@/lib/executive-summary-data";
 
 interface ProjectExtension {
   id: number;
@@ -50,25 +48,6 @@ interface ProjectExtension {
   newEndDate: string;
   reason: string | null;
   documentRef: string | null;
-}
-
-function plannedProgressForReport(activity: any): number {
-  if (typeof activity.plannedProgress === "number" && Number.isFinite(activity.plannedProgress)) {
-    return Math.min(100, Math.max(0, activity.plannedProgress));
-  }
-  if (!activity.plannedStartDate || !activity.plannedEndDate) return 0;
-  const start = new Date(activity.plannedStartDate);
-  const end = new Date(activity.plannedEndDate);
-  const today = new Date();
-  start.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  const duration = end.getTime() - start.getTime();
-  if (duration <= 0) return today >= end ? 100 : 0;
-  const elapsed = today.getTime() - start.getTime();
-  if (elapsed <= 0) return 0;
-  if (elapsed >= duration) return 100;
-  return Math.round((elapsed / duration) * 1000) / 10;
 }
 
 interface SummaryWidget {
@@ -124,7 +103,6 @@ export default function ProjectDetails() {
       staleTime: 1000 * 60 * 5,
     } as any,
   });
-  const { data: activities = [] } = useListActivities(projectId, { query: { enabled: !!projectId } });
 
   // PERFORMANCE: prime the cache for child components (ProjectNav,
   // ProjectMembers, AttendanceQuickActions) at the same instant the page
@@ -242,141 +220,26 @@ export default function ProjectDetails() {
   const handleExecutiveSummary = async () => {
     if (!project) return;
     setIsGeneratingSummary(true);
-
-    let aiSummary: ExecutiveSummaryAI | null = null;
     try {
-      const res = await fetchWithSession(`/api/projects/${projectId}/ai-executive-summary`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.summary && typeof data.summary === "object") {
-          aiSummary = {
-            headline: typeof data.summary.headline === "string" ? data.summary.headline : "المشروع قيد المتابعة وفق البيانات الحالية.",
-            status: typeof data.summary.status === "string" ? data.summary.status : "على المسار",
-            progressNote: typeof data.summary.progressNote === "string" ? data.summary.progressNote : "لا توجد ملاحظة كمية إضافية موثقة.",
-            decisionNote: typeof data.summary.decisionNote === "string" ? data.summary.decisionNote : "لا توجد ملاحظة قرار إضافية؛ يعتمد التقييم على المؤشرات الرقمية المعروضة.",
-            scheduleOutlook: typeof data.summary.scheduleOutlook === "string" ? data.summary.scheduleOutlook : "لا يتوفر توقع زمني موثق.",
-            highlights: Array.isArray(data.summary.highlights) ? data.summary.highlights.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
-            risks: Array.isArray(data.summary.risks) ? data.summary.risks.filter((item: unknown): item is string => typeof item === "string").slice(0, 3) : [],
-            nextActions: Array.isArray(data.summary.nextActions) ? data.summary.nextActions.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
-            managementFocus: Array.isArray(data.summary.managementFocus) ? data.summary.managementFocus.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
-          };
-        } else if (typeof data?.summary === "string" && data.summary.trim()) {
-          aiSummary = {
-            headline: data.summary.trim(),
-            status: "على المسار",
-            progressNote: "",
-            decisionNote: "",
-            scheduleOutlook: "",
-            highlights: [],
-            risks: [],
-            nextActions: [],
-            managementFocus: [],
-          };
-        }
-      }
-    } catch (err) {
-      console.error("AI Summary fetch failed", err);
+      const data = await loadExecutiveSummaryData(projectId);
+      const logos = await fetchWithSession(`/api/projects/${projectId}/company-logos`);
+      if (!logos.ok) throw new Error("تعذر تحميل شعارات الجهات");
+      const { previewExecutiveSummary } = await import("@/lib/report-pdf");
+      previewExecutiveSummary({...data, companyLogos:await logos.json(),apiBase:import.meta.env.BASE_URL.replace(/\/$/, "")});
+    } catch (error) {
+      toast({variant:"destructive",title:"تعذر إنشاء الملخص التنفيذي",description:error instanceof Error?error.message:undefined});
+    } finally {
+      setIsGeneratingSummary(false);
     }
-
-    const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-    let companyLogos: any;
-    try {
-      const r = await fetchWithSession(`${API_BASE}/projects/${projectId}/company-logos`);
-      if (r.ok) companyLogos = await r.json();
-    } catch {}
-    const actList: ActivityForReport[] = (activities as any[]).map((a: any) => ({
-      name: a.name,
-      plannedProgress: plannedProgressForReport(a),
-      actualProgress: Number(a.actualProgress) || 0,
-      status: a.status ?? "not_started",
-      plannedStartDate: a.plannedStartDate ?? null,
-      plannedEndDate: a.plannedEndDate ?? null,
-      actualEndDate: a.actualEndDate ?? null,
-      delayed: Boolean(a.delayed),
-    }));
-    const { previewExecutiveSummary } = await import("@/lib/report-pdf");
-    
-    setIsGeneratingSummary(false);
-    
-    previewExecutiveSummary({
-      projectName: project.name,
-      ownerEntity: project.ownerEntity,
-      contractor: project.contractor,
-      supervisorEntity: project.supervisorEntity,
-      location: project.location,
-      startDate: project.startDate,
-      expectedEndDate: project.expectedEndDate,
-      actualEndDate: (project as any).actualEndDate,
-      status: project.status,
-      overallProgress: summary?.overallProgress ?? 0,
-      plannedProgress: summary?.plannedProgress ?? 0,
-      activities: actList,
-      reportsCount: summary?.reportsCount ?? 0,
-      contractValue: (project as any).contractValue,
-      companyLogos,
-      apiBase: import.meta.env.BASE_URL.replace(/\/$/, ""),
-      suspensionDays: summary?.suspensionDays ?? 0,
-      extensionDays: totalExtDays,
-      noSchedule: Boolean((project as any).noSchedule),
-      aiSummary: aiSummary,
-    });
   };
 
   const handleExecutiveSlides = async () => {
     if (!project) return;
     setIsGeneratingSlides(true);
-    let aiSummary: ExecutiveSummaryAI | null = null;
     try {
-      const res = await fetchWithSession(`/api/projects/${projectId}/ai-executive-summary`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.summary && typeof data.summary === "object") {
-          aiSummary = {
-            headline: typeof data.summary.headline === "string" ? data.summary.headline : "المشروع قيد المتابعة وفق البيانات الحالية.",
-            status: typeof data.summary.status === "string" ? data.summary.status : "على المسار",
-            progressNote: typeof data.summary.progressNote === "string" ? data.summary.progressNote : "لا توجد ملاحظة كمية إضافية موثقة.",
-            decisionNote: typeof data.summary.decisionNote === "string" ? data.summary.decisionNote : "لا توجد ملاحظة قرار إضافية؛ يعتمد التقييم على المؤشرات الرقمية المعروضة.",
-            scheduleOutlook: typeof data.summary.scheduleOutlook === "string" ? data.summary.scheduleOutlook : "لا يتوفر توقع زمني موثق.",
-            highlights: Array.isArray(data.summary.highlights) ? data.summary.highlights.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
-            risks: Array.isArray(data.summary.risks) ? data.summary.risks.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
-            nextActions: Array.isArray(data.summary.nextActions) ? data.summary.nextActions.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
-            managementFocus: Array.isArray(data.summary.managementFocus) ? data.summary.managementFocus.filter((item: unknown): item is string => typeof item === "string").slice(0, 4) : [],
-          };
-        }
-      }
-
-      const actList: ActivityForReport[] = (activities as any[]).map((a: any) => ({
-        name: a.name,
-        plannedProgress: plannedProgressForReport(a),
-        actualProgress: Number(a.actualProgress) || 0,
-        status: a.status ?? "not_started",
-        plannedStartDate: a.plannedStartDate ?? null,
-        plannedEndDate: a.plannedEndDate ?? null,
-        actualEndDate: a.actualEndDate ?? null,
-        delayed: Boolean(a.delayed),
-      }));
+      const data = await loadExecutiveSummaryData(projectId);
       const { previewExecutiveSlides } = await import("@/lib/report-pdf");
-      previewExecutiveSlides({
-        projectName: project.name,
-        ownerEntity: project.ownerEntity,
-        contractor: project.contractor,
-        supervisorEntity: project.supervisorEntity,
-        location: project.location,
-        startDate: project.startDate,
-        expectedEndDate: project.expectedEndDate,
-        actualEndDate: (project as any).actualEndDate,
-        status: project.status,
-        overallProgress: summary?.overallProgress ?? 0,
-        plannedProgress: summary?.plannedProgress ?? 0,
-        activities: actList,
-        reportsCount: summary?.reportsCount ?? 0,
-        contractValue: (project as any).contractValue,
-        apiBase: import.meta.env.BASE_URL.replace(/\/$/, ""),
-        suspensionDays: summary?.suspensionDays ?? 0,
-        extensionDays: totalExtDays,
-        noSchedule: Boolean((project as any).noSchedule),
-        aiSummary,
-      });
+      previewExecutiveSlides({...data,apiBase:import.meta.env.BASE_URL.replace(/\/$/, "")});
     } catch (err) {
       console.error("Executive slides generation failed", err);
       toast({ variant: "destructive", title: "تعذر إنشاء العرض التقديمي" });
@@ -642,7 +505,7 @@ export default function ProjectDetails() {
                 </div>
                 {!summary?.noSchedule && (
                   <div className="text-sm text-muted-foreground">
-                    المخطط: {(summary?.plannedProgress ?? 0).toFixed(1)}%
+                    المخطط: {summary?.plannedProgress==null?"—":`${summary.plannedProgress.toFixed(1)}%`}
                   </div>
                 )}
               </div>
@@ -668,31 +531,31 @@ export default function ProjectDetails() {
               ) : (
                 <div className="mt-3 space-y-1.5">
                   <p className="text-[11px] text-muted-foreground leading-relaxed border-r-2 border-muted pr-2">
-                    «الانحراف عن الخطة» مؤشر إنذار مبكر يقارن التقدم الفعلي بالمخطط، أما «تجاوز المدة التعاقدية» فهو القيمة الفعلية لتجاوز تاريخ الإنهاء التعاقدي.
+                    المكافئ الزمني تقدير لفجوة التقدم، وليس تأخيرًا تعاقديًا أو تحليل مسار حرج. التجاوز يُقاس مقابل النهاية المجدولة الحالية.
                   </p>
                   <p className={`text-sm flex items-center gap-1.5 font-medium ${(summary?.delayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
                     {(summary?.delayDays ?? 0) > 0 ? (
-                      <><AlertTriangle className="h-4 w-4 shrink-0" /> انحراف عن الخطة: {summary!.delayDays} يوم</>
+                      <><AlertTriangle className="h-4 w-4 shrink-0" /> مكافئ فجوة التقدم التقديري: {summary!.delayDays} يوم</>
+                    ) : summary?.delayDays==null ? (
+                      <>مكافئ فجوة التقدم: غير متاح</>
                     ) : (
                       <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا يوجد انحراف عن الخطة</>
                     )}
                   </p>
                   <p className="text-sm text-amber-600 flex items-center gap-1.5 font-medium">
                     <PauseCircle className="h-4 w-4 shrink-0" />
-                    توقفات مشروعة: {summary?.suspensionDays ?? 0} يوم
+                    توقفات مسجلة دون تكرار: {summary?.suspensionDays ?? 0} يوم
                   </p>
-                  <p className={`text-sm flex items-center gap-1.5 font-semibold ${(summary?.netDelayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
-                    {(summary?.netDelayDays ?? 0) > 0 ? (
-                      <><AlertTriangle className="h-4 w-4 shrink-0" /> صافي الانحراف: {summary!.netDelayDays} يوم</>
-                    ) : (
-                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا يوجد انحراف صافٍ</>
-                    )}
+                  <p className="text-xs text-muted-foreground">
+                    صافي التأخر غير محسوب؛ لا يُخصم التوقف تلقائيًا دون إثبات أثره.
                   </p>
                   <p className={`text-sm flex items-center gap-1.5 font-semibold pt-1.5 border-t ${(summary?.overrunDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
                     {(summary?.overrunDays ?? 0) > 0 ? (
-                      <><AlertTriangle className="h-4 w-4 shrink-0" /> تجاوز المدة التعاقدية: {summary!.overrunDays} يوم</>
+                      <><AlertTriangle className="h-4 w-4 shrink-0" /> تجاوز النهاية المجدولة: {summary!.overrunDays} يوم</>
+                    ) : summary?.overrunDays==null ? (
+                      <>تجاوز النهاية المجدولة: غير متاح</>
                     ) : (
-                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> ضمن المدة التعاقدية</>
+                      <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا يوجد تجاوز للنهاية المجدولة</>
                     )}
                   </p>
                 </div>

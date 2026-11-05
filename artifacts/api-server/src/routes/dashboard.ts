@@ -5,7 +5,7 @@ import { eq, count, avg, sql, desc, inArray } from "drizzle-orm";
 import { requireStaffOrContractor, requireProjectAccess } from "../middlewares/auth";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
 import { loadEffectiveTabPermissions } from "../middlewares/tab-access";
-import { getDeviationAnalysis, getDeviationTimeline } from "../lib/deviation-service";
+import { getDeviationAnalysis, getDeviationTimeline, getProjectAnalysisSnapshot } from "../lib/deviation-service";
 import {
   calcPlannedProgressForProject,
   calcActualProgressForProject,
@@ -258,71 +258,43 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
 router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
+  if (req.query.curve != null && req.query.curve !== "linear" && req.query.curve !== "scurve") {
+    res.status(400).json({error:"منحنى التخطيط غير صالح"}); return;
+  }
 
-  // Fan out the 5 reads in parallel — they're fully independent. Serially
-  // each round-trip stacked on top of the prior one, making the summary
-  // endpoint feel sluggish on the project overview page.
-  const [
-    [project],
-    activities,
-    [reportCount],
-    [fileCount],
-    suspensions,
-  ] = await Promise.all([
-    db.select().from(projectsTable).where(eq(projectsTable.id, projectId)),
-    db.select().from(activitiesTable).where(eq(activitiesTable.projectId, projectId)),
-    db.select({ count: count() }).from(reportsTable).where(eq(reportsTable.projectId, projectId)),
-    db.select({ count: count() }).from(projectFilesTable).where(eq(projectFilesTable.projectId, projectId)),
-    db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId)),
-  ]);
-
-  if (!project) {
+  const snapshot = await getProjectAnalysisSnapshot(projectId, req.user!.userId, req.query.curve === "scurve" ? "scurve" : "linear");
+  if (!snapshot) {
     res.status(404).json({ error: "المشروع غير موجود" });
     return;
   }
 
-  const today = utcDay(new Date());
-  const resolvedActivities = await resolveLinkedActivityProgress(activities, today);
-  const isNoSchedule = project.noSchedule === true;
-  const hasSchedule = !isNoSchedule && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
-  const startDate = hasSchedule ? new Date(project.startDate!) : null;
+  const {project,analysis:a,activities} = snapshot;
+  const hasSchedule = !project.noSchedule && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
   const totalDays = hasSchedule ? Math.max(1, utcDayDifference(project.expectedEndDate!, project.startDate!)) : 0;
-  const daysElapsed = hasSchedule ? Math.max(0, utcDayDifference(today, startDate!)) : 0;
+  const daysElapsed = hasSchedule ? Math.max(0, utcDayDifference(a.asOfDate, project.startDate!)) : 0;
   const daysRemaining = hasSchedule ? Math.max(0, totalDays - daysElapsed) : 0;
-  const plannedRaw = hasSchedule
-    ? calcPlannedProgressForProject(resolvedActivities, daysElapsed, totalDays, today)
-    : 0;
-  const actualRaw = resolvedActivities.length > 0
-    ? calcActualProgressForProject(resolvedActivities)
-    : (project.overallProgress ?? 0);
-  const actualProgressForSummary = roundPercent(actualRaw);
-  const delayDays = hasSchedule ? calcDelayDays(plannedRaw, actualRaw, totalDays) : 0;
-  const suspensionDays = hasSchedule
-    ? suspensions.reduce((s, x) => s + (x.type !== "contractor_delay" ? x.calendarDays : 0), 0)
-    : 0;
-  // Net delay is gross delay minus suspension days, but only if gross delay exists.
-  // Also ensuring we don't double count if schedule was already shifted.
-  const netDelayDays = Math.max(0, delayDays - suspensionDays);
-  const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualRaw) : 0;
 
   res.json({
     projectId,
-    noSchedule: isNoSchedule,
-    overallProgress: actualProgressForSummary,
-    plannedProgress: roundPercent(plannedRaw),
-    spi: hasSchedule ? calcSPI(plannedRaw, actualRaw) : null,
-    activitiesTotal: resolvedActivities.length,
-    activitiesCompleted: resolvedActivities.filter(a => a.status === "completed").length,
-    activitiesDelayed: resolvedActivities.filter(a => isActivityDelayed(a, today, !hasSchedule)).length,
+    noSchedule: project.noSchedule,
+    asOfDate:a.asOfDate, curve:a.curve, scheduleStatus:a.scheduleStatus,dataStatus:a.dataStatus,
+    overallProgress: roundPercent(a.actualProgress),
+    plannedProgress: a.plannedProgress==null?null:roundPercent(a.plannedProgress),
+    progressDeviation:a.progressDeviation,spi:a.spi,
+    forecastCompletionDate:a.forecastCompletionDate,forecastStatus:a.forecastStatus,
+    forecastDelayDays:a.forecastDelayDays,
+    activitiesTotal: activities.length,
+    activitiesCompleted: activities.filter(a => a.status === "completed").length,
+    activitiesDelayed: activities.filter(a => a.delayed).length,
     daysElapsed,
     totalDays,
     daysRemaining,
-    delayDays,
-    suspensionDays,
-    netDelayDays,
-    overrunDays,
-    reportsCount: Number(reportCount?.count ?? 0),
-    filesCount: Number(fileCount?.count ?? 0),
+    delayDays:a.grossDelayDays==null?null:Math.round(a.grossDelayDays),
+    suspensionDays:a.suspensionDays,
+    netDelayDays:a.netDelayDays,
+    overrunDays:a.overrunDays,
+    reportsCount: snapshot.reportsCount,
+    filesCount: snapshot.filesCount,
   });
 });
 

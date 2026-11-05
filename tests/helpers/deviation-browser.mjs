@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-class Cdp {
+export class Cdp {
   constructor(url) {
     this.ws = new WebSocket(url); this.id = 0; this.pending = new Map(); this.errors = [];
     this.ws.onmessage = ({ data }) => {
@@ -29,7 +29,7 @@ class Cdp {
     return r.result.value;
   }
 }
-async function until(fn) {
+export async function until(fn) {
   const deadline = Date.now() + 45_000;
   let error;
   while (Date.now() < deadline) {

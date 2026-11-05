@@ -16,7 +16,7 @@ test("deviation authenticated HTTP, source permissions, frozen history and optio
       import("../artifacts/api-server/src/lib/auth.ts"), import("../lib/db/node_modules/drizzle-orm/index.js"),
       import("../lib/api-zod/src/generated/api.ts"),
     ]);
-    const { db, projectsTable, activitiesTable, activityGroupsTable, projectMembersTable, reportsTable, usersTable, projectSuspensionsTable, companiesTable, userCompaniesTable } = schema;
+    const { db, projectsTable, activitiesTable, activityGroupsTable, projectMembersTable, reportsTable, usersTable, projectSuspensionsTable, projectExtensionsTable, companiesTable, userCompaniesTable } = schema;
     pool = schema.pool;
     server = app.listen(0, "127.0.0.1"); await once(server, "listening");
     const origin = `http://127.0.0.1:${server.address().port}`;
@@ -72,6 +72,66 @@ test("deviation authenticated HTTP, source permissions, frozen history and optio
       assert.equal(a.activitiesAnalysis[1].sourceDetails[1].children[0].effectiveWeight, 18.75);
       assert.equal(a.forecastCompletionDate > today, true);
       assert(validators.GetProjectDeviationResponse.parse(a));
+    });
+    await t.test("summary, deviation and executive response share a calculation snapshot; AI cannot substitute numbers", async () => {
+      const aiEndpoint=`/projects/${target.id}/ai-executive-summary`;
+      await get(aiEndpoint,null,401);await get(aiEndpoint,strangerToken,403);
+      await get(`${aiEndpoint}?curve=invalid`,adminToken,400);
+      await get(`/projects/${target.id}/summary?curve=invalid`,adminToken,400);
+      const originalFetch=globalThis.fetch;
+      await db.insert(projectExtensionsTable).values([
+        {projectId:target.id,extensionDate:today,daysAdded:2,newEndDate:offset(7)},
+        {projectId:target.id,extensionDate:today,daysAdded:3,newEndDate:offset(10)},
+        {projectId:unrelatedChild.id,extensionDate:today,daysAdded:999,newEndDate:offset(1004)},
+      ]);
+      let unsupported=false;
+      let rejectNext=false,providerCalls=0;
+      globalThis.fetch=async (url,options)=>{
+        if (String(url).startsWith("https://api.perplexity.ai/")) {
+          providerCalls++;
+          const prompt=JSON.parse(JSON.parse(options.body).messages[1].content);
+          const risk=prompt.evidence.find(f=>f.risk),highlight=prompt.evidence.find(f=>f.highlight);
+          const selection={highlights:highlight?[highlight.id]:[],risks:risk?[risk.id]:[],
+            nextActions:risk?[{evidenceId:risk.id,action:"review_progress"}]:[],managementFocus:risk?[risk.id]:[]};
+          if (unsupported || rejectNext) selection.risks=["fabricated-id"];
+          rejectNext=false;
+          return Response.json({choices:[{message:{content:JSON.stringify({...selection,progressNote:"999%",scheduleOutlook:"2099-01-01"})}}]});
+        }
+        return originalFetch(url,options);
+      };
+      try {
+        for (const curve of ["linear","scurve"]) {
+          const a=await get(`${endpoint}?curve=${curve}`);
+          const s=await get(`/projects/${target.id}/summary?curve=${curve}`);
+          assert(validators.GetProjectSummaryResponse.parse(s));
+          assert.equal(s.overallProgress,Math.round(a.actualProgress*10)/10);
+          assert.equal(s.plannedProgress,Math.round(a.plannedProgress*10)/10);
+          assert.equal(s.spi,a.spi);assert.equal(s.netDelayDays,null);
+          assert.equal(s.forecastCompletionDate,a.forecastCompletionDate);
+          const ai=await get(`${aiEndpoint}?curve=${curve}`);
+          assert.equal(ai.snapshot.analysis.actualProgress,a.actualProgress);
+          assert.equal(ai.snapshot.analysis.plannedProgress,a.plannedProgress);
+          assert.equal(ai.snapshot.analysis.forecastCompletionDate,a.forecastCompletionDate);
+          assert.equal(ai.snapshot.analysis.curve,curve);
+          assert.equal(ai.snapshot.extensionDays,5,"extensions belong only to this project");
+          assert(ai.summary.scheduleOutlook.includes(a.forecastCompletionDate));
+          assert(!JSON.stringify(ai.summary).includes("999"));
+          assert(!JSON.stringify(ai.summary).includes("2099"));
+        }
+        const restricted=await get(aiEndpoint,engineerToken);
+        assert(!JSON.stringify(restricted).includes(source.name));
+        assert(!JSON.stringify(restricted).includes(nested.name));
+        const noSchedule=await get(`/projects/${missing.id}/summary`);
+        assert.equal(noSchedule.plannedProgress,null);assert.equal(noSchedule.delayDays,null);
+        assert(validators.GetProjectSummaryResponse.parse(noSchedule));
+        const unplanned=await get(`/projects/${missing.id}/ai-executive-summary`);
+        assert.equal(unplanned.summary.status,"غير متاح");
+        assert.equal(unplanned.snapshot.extensionDays,0,"a project without extensions cannot inherit another project's days");
+        rejectNext=true;const callsBefore=providerCalls;
+        await get(aiEndpoint);assert.equal(providerCalls-callsBefore,2,"one invalid selection is retried before publication");
+        unsupported=true;await get(aiEndpoint,adminToken,502);
+        assert.deepEqual(await db.select().from(activitiesTable),before,"read-only analysis never mutates source or target values");
+      } finally {globalThis.fetch=originalFetch;}
     });
     await t.test("unauthenticated, no membership, hidden deviation denied and independent source disclosure", async () => {
       await get(endpoint, null, 401); await get(endpoint, strangerToken, 403);
@@ -148,6 +208,12 @@ test("deviation authenticated HTTP, source permissions, frozen history and optio
       const row = a.activitiesAnalysis.find(r => r.activityId === linked.id);
       assert.equal(row.actualProgress, 88); assert.equal(row.plannedProgress, 90);
       assert.equal(row.sourceStatus, "stale"); assert.equal(a.dataStatus, "stale"); assert.equal(a.forecastCompletionDate, null);
+      await db.update(projectsTable).set({expectedEndDate:offset(-1)}).where(eq(projectsTable.id,target.id));
+      const stalePastEnd=await get(endpoint);
+      assert.equal(stalePastEnd.overrunDays,null,"past end plus stale linked progress does not prove overrun");
+      const staleSummary=await get(`/projects/${target.id}/summary`);
+      assert.equal(staleSummary.overrunDays,null);
+      assert.equal(staleSummary.dataStatus,"stale");
     });
   } finally {
     if (server) await new Promise(r => server.close(r));

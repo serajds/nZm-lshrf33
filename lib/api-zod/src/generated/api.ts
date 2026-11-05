@@ -1581,19 +1581,19 @@ export const VerifyOwnerAccessResponse = zod.object({
   summary: zod.object({
     projectId: zod.number(),
     overallProgress: zod.number(),
-    plannedProgress: zod.number(),
+    plannedProgress: zod.number().nullable(),
     activitiesTotal: zod.number(),
     activitiesCompleted: zod.number(),
     activitiesDelayed: zod.number(),
     daysElapsed: zod.number(),
     totalDays: zod.number(),
     daysRemaining: zod.number(),
-    delayDays: zod.number(),
+    delayDays: zod.number().nullable(),
     suspensionDays: zod.number(),
-    netDelayDays: zod.number(),
+    netDelayDays: zod.number().nullable(),
     overrunDays: zod
       .number()
-      .optional()
+      .nullish()
       .describe("Days passed after expectedEndDate while progress < 100%"),
     reportsCount: zod.number(),
     filesCount: zod.number(),
@@ -1753,19 +1753,19 @@ export const GetProjectSummaryParams = zod.object({
 export const GetProjectSummaryResponse = zod.object({
   projectId: zod.number(),
   overallProgress: zod.number(),
-  plannedProgress: zod.number(),
+  plannedProgress: zod.number().nullable(),
   activitiesTotal: zod.number(),
   activitiesCompleted: zod.number(),
   activitiesDelayed: zod.number(),
   daysElapsed: zod.number(),
   totalDays: zod.number(),
   daysRemaining: zod.number(),
-  delayDays: zod.number(),
+  delayDays: zod.number().nullable(),
   suspensionDays: zod.number(),
-  netDelayDays: zod.number(),
+  netDelayDays: zod.number().nullable(),
   overrunDays: zod
     .number()
-    .optional()
+    .nullish()
     .describe("Days passed after expectedEndDate while progress < 100%"),
   reportsCount: zod.number(),
   filesCount: zod.number(),

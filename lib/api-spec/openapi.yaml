@@ -2869,6 +2869,7 @@ components:
           type: number
         plannedProgress:
           type: number
+          nullable: true
         activitiesTotal:
           type: integer
         activitiesCompleted:
@@ -2883,12 +2884,15 @@ components:
           type: integer
         delayDays:
           type: integer
+          nullable: true
         suspensionDays:
           type: integer
         netDelayDays:
           type: integer
+          nullable: true
         overrunDays:
           type: integer
+          nullable: true
           description: Days passed after expectedEndDate while progress < 100%
         reportsCount:
           type: integer
