@@ -318,12 +318,16 @@ export default function OwnerPortal() {
   const totalSuspDays = (suspensions as ProjectSuspension[]).reduce((s: number, x: ProjectSuspension) => s + x.calendarDays, 0);
 
   const sm = summary;
+  const plannedProgress = sm.plannedProgress != null && Number.isFinite(sm.plannedProgress)
+    ? sm.plannedProgress : null;
+  const delayDays = sm.delayDays != null && Number.isFinite(sm.delayDays)
+    ? sm.delayDays : null;
   const scheduleStart = project.startDate ? new Date(project.startDate).getTime() : Number.NaN;
   const scheduleEnd = project.expectedEndDate ? new Date(project.expectedEndDate).getTime() : Number.NaN;
   const hasValidSchedule = !sm.noSchedule && !project.noSchedule
     && Number.isFinite(scheduleStart) && Number.isFinite(scheduleEnd) && scheduleEnd > scheduleStart
-    && Number.isFinite(sm.plannedProgress) && sm.plannedProgress > 0;
-  const progressDiff = hasValidSchedule ? (sm.overallProgress ?? 0) - sm.plannedProgress : null;
+    && plannedProgress != null && plannedProgress > 0;
+  const progressDiff = hasValidSchedule && plannedProgress != null ? (sm.overallProgress ?? 0) - plannedProgress : null;
   const spi = hasValidSchedule ? sm.spi : null;
 
   const ownerJwt = sessionStorage.getItem(`owner_jwt_${token}`) ?? "";
@@ -635,7 +639,7 @@ export default function OwnerPortal() {
               </div>
               {hasValidSchedule && progressDiff != null && (
                 <div className="flex justify-between mt-1.5 text-xs text-muted-foreground">
-                  <span>المخطط: {sm.plannedProgress.toFixed(1)}%</span>
+                  <span>المخطط: {plannedProgress?.toFixed(1)}%</span>
                   <span className={progressDiff >= 0 ? 'text-emerald-600' : 'text-red-500'}>
                     {progressDiff > 0 ? '+' : ''}{progressDiff.toFixed(1)}%
                   </span>
@@ -645,16 +649,18 @@ export default function OwnerPortal() {
           </Card>
 
           <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm relative overflow-hidden">
-            <div className={`absolute top-0 inset-x-0 h-1 ${sm.delayDays > 0 ? 'bg-gradient-to-l from-red-400 to-red-600' : 'bg-gradient-to-l from-blue-400 to-blue-600'}`} />
+            <div className={`absolute top-0 inset-x-0 h-1 ${delayDays != null && delayDays > 0 ? 'bg-gradient-to-l from-red-400 to-red-600' : 'bg-gradient-to-l from-blue-400 to-blue-600'}`} />
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <Timer className="h-4 w-4" />
                 <span className="text-xs font-medium">الجدول الزمني</span>
               </div>
-              {sm.delayDays > 0 ? (
+              {delayDays == null ? (
+                <div className="text-sm text-muted-foreground">الانحراف الزمني غير متاح</div>
+              ) : delayDays > 0 ? (
                 <>
-                  <div className="text-3xl font-black text-red-600">{sm.delayDays} <span className="text-sm font-normal">يوم انحراف</span></div>
-                  {sm.suspensionDays > 0 && (
+                  <div className="text-3xl font-black text-red-600">{delayDays} <span className="text-sm font-normal">يوم انحراف</span></div>
+                  {sm.suspensionDays > 0 && sm.netDelayDays != null && (
                     <p className="text-xs text-muted-foreground mt-1">صافي الانحراف: {sm.netDelayDays} يوم (بعد خصم {sm.suspensionDays} يوم توقف)</p>
                   )}
                   {(sm.overrunDays ?? 0) > 0 && (
@@ -977,7 +983,7 @@ export default function OwnerPortal() {
                 <div className={`grid gap-4 ${hasValidSchedule ? "md:grid-cols-3" : "md:grid-cols-1"}`}>
                   {hasValidSchedule && (
                     <div className="text-center p-4 rounded-lg bg-blue-50 border border-blue-100">
-                      <div className="text-3xl font-black text-blue-600">{sm.plannedProgress.toFixed(1)}%</div>
+                      <div className="text-3xl font-black text-blue-600">{plannedProgress?.toFixed(1)}%</div>
                       <div className="text-sm text-blue-600/80 mt-1">الإنجاز المخطط</div>
                     </div>
                   )}
