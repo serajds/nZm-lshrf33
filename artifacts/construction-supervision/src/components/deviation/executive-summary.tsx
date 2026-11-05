@@ -90,8 +90,12 @@ export function ExecutiveSummary({ data }: { data: DeviationAnalysis }) {
           <Metric label="موعد الإكمال التقديري" value={forecastText} kind="estimate" note={forecastNote} />
           <Metric label="الإكمال المتوقع مقارنة بالموعد المجدول" value={timing.text} kind="estimate"
             tone={timing.tone} valueDirection="rtl"
-            note={data.forecastStatus === "estimated" && data.expectedProgressAtEnd != null
-              ? `تقدير الإنجاز عند الموعد المجدول: ${fmtNum(data.expectedProgressAtEnd)}%، بافتراض استمرار نفس المعدل؛ وليس ضمانًا.`
+            note={data.forecastStatus === "estimated"
+              ? `بافتراض استمرار متوسط الإنجاز الحالي؛ ليس تأخرًا فعليًا أو تعاقديًا. قد لا يعكس معدل البداية وتيرة المراحل اللاحقة.${
+                  data.expectedProgressAtEnd != null
+                    ? ` تقدير الإنجاز عند الموعد المجدول: ${fmtNum(data.expectedProgressAtEnd)}%، وليس ضمانًا.`
+                    : ""
+                }`
               : "المقارنة مع موعد النهاية المجدول الحالي، وليست مع تاريخ العقد الأصلي."} />
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">

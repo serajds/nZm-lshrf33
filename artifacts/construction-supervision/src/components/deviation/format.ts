@@ -8,7 +8,7 @@ export function forecastTiming(days: number | null | undefined, status: string) 
   const count = fmtNum(Math.abs(days), 0);
   return days < 0
     ? { text: `أبكر من الموعد بـ${count} يومًا`, tone: "text-emerald-700 dark:text-emerald-400" }
-    : { text: `متأخر عن الموعد بـ${count} يومًا`, tone: "text-red-700 dark:text-red-400" };
+    : { text: `تجاوز متوقع لنهاية الجدول بـ${count} يومًا`, tone: "text-red-700 dark:text-red-400" };
 }
 
 export function fmtNum(v: number | null | undefined, digits = 2): string {

@@ -15,6 +15,12 @@ Present forecast timing as explicitly early, late, or on the scheduled date, not
 
 **How to apply:** Keep unknown forecasts unknown; do not imply on-time completion from missing data, or describe an estimated 100% as a guarantee.
 
+Describe a positive forecast difference as a conditional expected overrun of the scheduled end, not as an actual delay. Explain that the initial average pace may differ from later phases.
+
+**Why:** The user approved clarifying a large early-stage forecast that looked like an already-incurred delay despite actual progress being ahead of today's plan.
+
+**How to apply:** Keep forecast wording separate from elapsed overrun and contractual delay, without changing the underlying calculation or project data.
+
 Historical snapshots may contain weighted source-group planned percentages that cannot be reconstructed from that group's earliest/latest dates. Do not recalculate a report's historical planned aggregate from current activities or from its date envelope.
 
 **Why:** Source groups can contain children with different schedules and weights; an envelope loses that distribution, while today's source membership cannot establish historical membership.
