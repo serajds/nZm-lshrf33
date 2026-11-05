@@ -786,18 +786,18 @@ export interface OwnerVerifyBody {
 export interface ProjectSummary {
   projectId: number;
   overallProgress: number;
-  plannedProgress: number;
+  plannedProgress: number | null;
   activitiesTotal: number;
   activitiesCompleted: number;
   activitiesDelayed: number;
   daysElapsed: number;
   totalDays: number;
   daysRemaining: number;
-  delayDays: number;
+  delayDays: number | null;
   suspensionDays: number;
-  netDelayDays: number;
+  netDelayDays: number | null;
   /** Days passed after expectedEndDate while progress < 100% */
-  overrunDays?: number;
+  overrunDays?: number | null;
   reportsCount: number;
   filesCount: number;
   noSchedule?: boolean;

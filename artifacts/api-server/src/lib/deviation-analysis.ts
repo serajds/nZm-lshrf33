@@ -5,7 +5,21 @@ export type AnalysisActivity = {
   weight: number; actualProgress: number; plannedProgress: number;
   plannedStartDate: string | null; plannedEndDate: string | null;
   actualEndDate?: string | null; externalSourceGroupId: number | null;
+  status?: string;
 };
+/** Recorded completion without an actual date cannot prove late completion. */
+export function activityTiming(a: AnalysisActivity, actual: number, asOf: Date, enabled: boolean, stale = false) {
+  if (!enabled || stale) return { delayed: false, delayDays: null };
+  if (actual >= 100) {
+    const known = hasValidProjectSchedule(a.plannedEndDate, a.actualEndDate);
+    const days = known ? Math.max(0, utcDayDifference(a.actualEndDate!, a.plannedEndDate!)) : null;
+    return { delayed: days != null && days > 0, delayDays: days };
+  }
+  const reference = actual <= 0 ? a.plannedStartDate : a.plannedEndDate;
+  const days = reference && Number.isFinite(new Date(reference).getTime())
+    ? Math.max(0, utcDayDifference(asOf, reference)) : null;
+  return { delayed: days != null && days > 0, delayDays: days };
+}
 export type AnalysisGroup = { id: number; projectId: number; name: string };
 export type AnalysisProject = {
   id: number; name: string; startDate: string | null; expectedEndDate: string | null; noSchedule: boolean;
@@ -122,7 +136,8 @@ export function analyzeActivities(
       activityId: a.id, activityName: a.name, plannedProgress: rowPlan,
       actualProgress: value.actual, deviation, weight: weightOf(a), effectiveWeight,
       weightedImpact: deviation == null ? null : deviation * effectiveWeight / 100,
-      overrunDays, delayDays: overrunDays,
+      overrunDays,
+      ...activityTiming(a, value.actual, asOf, scheduled(project), value.stale),
       groupId: a.groupId, groupName: group?.projectId === project.id ? group.name : null,
       sourceKind: a.externalSourceGroupId == null ? "local" as const : "linked" as const,
       sourceStatus, sourceKey: a.externalSourceGroupId == null ? "local"

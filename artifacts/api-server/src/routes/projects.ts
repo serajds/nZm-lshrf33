@@ -7,24 +7,10 @@ import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
 import { deleteProjectUnderSourceGraphLock, withSourceGraphLock } from "../lib/external-sources";
 import { normalizeProjectLinkCode } from "../lib/activity-source-rules";
-import { resolveLinkedActivityProgress } from "../lib/external-sources";
-import { buildProjectAiSummaryContext } from "../lib/project-ai-summary-context";
+import { getProjectAnalysisSnapshot } from "../lib/deviation-service";
+import { executivePrompt, composeExecutiveSummary } from "../lib/executive-summary";
 import { projectCategoriesTable } from "@workspace/db";
 import { accessibleProjectIds, portfolioWriteFields, portfolioDatabaseError, safePortfolioProject } from "../lib/project-portfolio";
-import {
-  calcActivityPlannedProgress,
-  calcActualProgressForProject,
-  calcDelayDays,
-  calcForecastCompletionDate,
-  calcPlannedProgressForProject,
-  calcSPI,
-  calcOverrunDays,
-  isActivityDelayed,
-  roundPercent,
-  hasValidProjectSchedule,
-  utcDay,
-  utcDayDifference,
-} from "../lib/progress";
 
 const router: IRouter = Router();
 
@@ -629,131 +615,14 @@ export default router;
 router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
+  if (req.query.curve != null && req.query.curve !== "linear" && req.query.curve !== "scurve") {
+    res.status(400).json({error:"منحنى التخطيط غير صالح"}); return;
+  }
 
   try {
-    const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
-    if (!project) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
-
-    const today = utcDay(new Date());
-    const rawActivities = await db.select().from(activitiesTable)
-      .where(eq(activitiesTable.projectId, projectId))
-      .orderBy(activitiesTable.sortOrder);
-    const activities = await resolveLinkedActivityProgress(rawActivities, today);
-
-    const reportsCountResult = await db.select({ count: sql<number>`count(*)` }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
-    const reportsCount = reportsCountResult[0]?.count ?? 0;
-    const groups = await db.select({
-      id: activityGroupsTable.id,
-      name: activityGroupsTable.name,
-    }).from(activityGroupsTable)
-      .where(eq(activityGroupsTable.projectId, projectId))
-      .orderBy(activityGroupsTable.sortOrder, activityGroupsTable.id);
-
-    const [suspensions] = await Promise.all([
-      db.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId)),
-    ]);
-    const hasSchedule = project.noSchedule !== true && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
-    const startDate = hasSchedule ? new Date(project.startDate!) : today;
-    const endDate = hasSchedule ? new Date(project.expectedEndDate!) : today;
-    const totalDays = hasSchedule ? Math.max(1, utcDayDifference(endDate, startDate)) : 0;
-    const daysElapsed = hasSchedule ? Math.max(0, utcDayDifference(today, startDate)) : 0;
-    const plannedRaw = hasSchedule
-      ? calcPlannedProgressForProject(activities, daysElapsed, totalDays, today)
-      : 0;
-    const actualRaw = activities.length > 0
-      ? calcActualProgressForProject(activities)
-      : (project.overallProgress ?? 0);
-    const plannedProgress = roundPercent(plannedRaw);
-    const actualProgress = roundPercent(actualRaw);
-    const progressDeviation = roundPercent(hasSchedule ? actualRaw - plannedRaw : 0);
-    const grossDelayDays = hasSchedule ? calcDelayDays(plannedRaw, actualRaw, totalDays) : 0;
-    const suspensionDays = suspensions.reduce((sum, item) => sum + (item.type !== "contractor_delay" ? item.calendarDays : 0), 0);
-    const netDelayDays = Math.max(0, grossDelayDays - suspensionDays);
-    const overrunDays = hasSchedule ? calcOverrunDays(today, project.expectedEndDate, actualRaw) : 0;
-    const spi = hasSchedule ? calcSPI(plannedRaw, actualRaw) : null;
-    const forecastCompletion = hasSchedule
-      ? calcForecastCompletionDate(startDate, endDate, today, plannedRaw, actualRaw)
-      : null;
-    const forecastCompletionDate = forecastCompletion ? forecastCompletion.toISOString().slice(0, 10) : null;
-    const forecastDelayDays = forecastCompletion && project.expectedEndDate
-      ? Math.ceil((forecastCompletion.getTime() - endDate.getTime()) / 86400000)
-      : 0;
-    const summaryContext = buildProjectAiSummaryContext(
-      groups,
-      activities.map(activity => {
-        // Group context uses the linked source's resolved planned value;
-        // project-wide Planned/Actual/SPI above retain their existing formulas.
-        const planned = hasSchedule
-          ? (activity.externalSourceGroupId != null
-            ? activity.plannedProgress
-            : calcActivityPlannedProgress(activity, today))
-          : 0;
-        return {
-          id: activity.id,
-          name: activity.name,
-          groupId: activity.groupId,
-          status: activity.status,
-          actualProgress: activity.actualProgress,
-          plannedProgress: planned,
-          weight: activity.weight,
-          variance: hasSchedule ? activity.actualProgress - planned : 0,
-          plannedStartDate: activity.plannedStartDate,
-          plannedEndDate: activity.plannedEndDate,
-          actualEndDate: activity.actualEndDate,
-          delayed: isActivityDelayed(activity, today, !hasSchedule),
-          linkedToSource: activity.externalSourceGroupId != null,
-          generatedByGroup: activity.managedByGroupId != null,
-        };
-      }),
-      { roundPercent, calcSPI },
-    );
-
-    const messages = [
-      {
-        role: "system",
-        content: `أنت مهندس تخطيط وإشراف إنشائي، وتعد ملخصاً تنفيذياً مهنياً موجزاً يستند حصراً إلى سجل المشروع المرفق.
-لا تختلق حقائق أو أسباباً أو قرارات أو اجتماعات أو موارد أو التزامات مالية أو تواريخ. لا تستنتج سبب التأخير من وجود التأخير وحده. ميّز بوضوح بين الحقيقة المسجلة والاستنتاج التحليلي؛ سمِّ الاستنتاج «استنتاجاً» واربطه بالمؤشر الذي يدعمه، ولا تعرضه كحقيقة.
-تعامل مع بيانات الأنشطة والمجموعات بوصفها بيانات تشغيلية حية بعد حل تقدم الأنشطة المرتبطة بمصادرها. أعداد الأنشطة وتوزيع الحالات ومقاييس كل مجموعة تشمل السجل كاملاً. قد تُضغط تفاصيل الأنشطة المستقرة عند تجاوز العتبة المعلنة؛ أعداد المحذوف من التفاصيل موضحة لكل مجموعة وحالة. لا تُضغط أي تفاصيل لبند متأخر أو انحرافه المطلق 5 نقاط مئوية فأكثر. راجع جميع تفاصيل الاستثناءات، ولا تفترض أن غياب التفاصيل يعني غياب النشاط من المشروع. أظهر الحالة كما وردت واستعمل delayed كمؤشر التأخير النهائي، بما في ذلك المكتمل المتأخر. حقلا linkedToSource وgeneratedByGroup يعكسان علامات الربط/الإنشاء المسجلة فقط؛ لا تستنتج منشأً غير موثق.
-ابدأ بأهم مخاطر الموعد وفجوات الإنجاز المدعومة، ثم لخص حالة المجموعات وتوزيع الحالات. لا تضف أسباباً أو توصيات عامة؛ اربط كل إجراء ببند أو مؤشر محدد. إذا غابت البيانات فاكتب «غير متاح في السجل الحالي».
-أخرج JSON صالحاً فقط وبالمفاتيح التالية حصراً:
-{
-  "headline": "عنوان حالة مهني من 8 إلى 16 كلمة، بلا مبالغة",
-  "status": "واحد من: على المسار، متأخر، متقدم، معلق، مكتمل",
-  "progressNote": "فقرة كمية من 20 إلى 32 كلمة تربط الفعلي بالمخطط والانحراف وSPI إن توفر، دون إعادة سرد قائمة البنود",
-  "decisionNote": "فقرة عملية من 18 إلى 30 كلمة تحدد الإجراء أو المتابعة ذات الأولوية، مبنية على رقم أو بند متأخر فقط",
-  "scheduleOutlook": "فقرة من 20 إلى 32 كلمة تشرح أثر الاستثناءات على الموعد المتوقع أو تذكر أن التنبؤ غير متاح",
-  "highlights": ["0 إلى 3 نقاط موثقة عن إنجاز مؤثر أو استقرار قابل للقياس، كل نقطة 6 إلى 14 كلمة"],
-  "risks": ["0 إلى 4 مخاطر موثقة، كل نقطة 6 إلى 16 كلمة، مع الأثر الرقمي إن توفر"],
-  "nextActions": ["1 إلى 4 إجراءات مباشرة، كل إجراء مرتبط باستثناء أو مؤشر محدد"],
-  "managementFocus": ["0 إلى 2 محاور متابعة مرتبطة مباشرة بأعلى استثناءين فقط"]
-}
-القواعد: اكتب بالعربية المهنية المكثفة. لا تكرر اسم البند أو الرقم في أكثر من قسم إلا عند الضرورة. لا تستخدم عبارات إنشائية مثل «تحسين التنسيق» أو «رفع الكفاءة» دون مؤشر محدد. لا تذكر الميزانية أو التكلفة أو العمالة أو الإنتاجية أو أدوار المالك/المقاول/المشرف ما لم ترد بيانات صريحة عنها. يجب أن يكون كل استنتاج قابلاً للتتبع إلى رقم أو حالة أو تاريخ وارد في البيانات.`
-      },
-      {
-        role: "user",
-        content: `حلل مشروع "${project.name}" في ${project.location ?? "موقع غير محدد"}.
-البيانات الأساسية:
-- حالة المشروع: ${project.status ?? "غير محددة"}
-- تاريخ البدء: ${project.startDate ?? "غير محدد"}
-- تاريخ النهاية التعاقدي/الحالي: ${project.expectedEndDate ?? "غير محدد"}
-- الإنجاز الفعلي المحسوب: ${actualProgress}%
-- الإنجاز المخطط المحسوب: ${plannedProgress}%
-- الانحراف عن الخطة: ${progressDeviation}%
-- مؤشر الأداء الزمني SPI: ${spi == null ? "غير متاح" : spi}
-- إجمالي مدة المشروع: ${totalDays || "غير متاحة"} يوم
-- الأيام المنقضية: ${daysElapsed}
-- التأخير الإجمالي التقديري: ${grossDelayDays} يوم
-- التوقفات المعتمدة المخصومة: ${suspensionDays} يوم
-- التأخير الصافي: ${netDelayDays} يوم
-- التجاوز الحالي: ${overrunDays} يوم
-- تاريخ الإكمال المتوقع: ${forecastCompletionDate ?? "غير متاح"}
-- فرق التوقع عن النهاية التعاقدية: ${forecastDelayDays} يوم
-- عدد التقارير: ${reportsCount}
-- ملخص الأنشطة والمجموعات، مع Planned/Actual/SPI وعدّ الحالات الكامل لكل مجموعة. عند ضغط التفاصيل تبقى كل البنود المتأخرة أو ذات انحراف مطلق >= 5 نقاط، وتظهر أعداد تفاصيل البنود المستقرة المحذوفة حسب المجموعة والحالة: ${JSON.stringify(summaryContext)}
-- التوقفات: ${JSON.stringify(suspensions.map(item => ({ type: item.type, calendarDays: item.calendarDays })))}
-أعد JSON المطلوب فقط، واجعل التحليل مفيداً لاتخاذ القرار وليس مجرد إعادة عرض للأرقام.`
-      }
-    ];
+    const snapshot = await getProjectAnalysisSnapshot(projectId, req.user!.userId, req.query.curve === "scurve" ? "scurve" : "linear");
+    if (!snapshot) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
+    const messages = executivePrompt(snapshot);
 
     const aiApiKey = process.env.PERPLEXITY_API_KEY;
     if (!aiApiKey) {
@@ -761,6 +630,8 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
       return;
     }
 
+    // One constrained retry for an invalid selection; never publish unchecked prose.
+    for (let attempt=0;attempt<2;attempt++) {
     const apiBase = "https://api.perplexity.ai";
     const response = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
@@ -772,13 +643,14 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
         model: "sonar",
         messages,
         temperature: 0.2,
-        max_tokens: 700
-      })
+        max_tokens: 1000,
+        disable_search: true,
+      }),
+      signal: AbortSignal.timeout(60000),
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`AI API error: ${error}`);
+      throw new Error(`Executive provider HTTP ${response.status}`);
     }
 
     const result = (await response.json()) as any;
@@ -787,39 +659,17 @@ router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("pr
       throw new Error("AI returned an empty executive summary");
     }
 
-    let summary: unknown;
     try {
-      summary = JSON.parse(rawContent);
+      const summary = composeExecutiveSummary(snapshot, JSON.parse(rawContent));
+      res.json({provider:"Perplexity Sonar",snapshot,summary});
+      return;
     } catch {
-      throw new Error("AI returned invalid executive summary JSON");
+      if(attempt===1) throw new Error("Executive evidence validation failed");
+      messages.push({role:"user",content:"الاختيار السابق لم يجتز التحقق. أعد JSON فقط باستخدام معرفات الأدلة الحالية، والتزم highlight وrisk وallowedActions لكل دليل. لا تختر verify_completion لعنصر غير مكتمل. لا تُسقط المخاطر والإجراءات عند وجود أدلة مخاطر."});
     }
-
-    if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
-      throw new Error("AI returned an invalid executive summary shape");
     }
-
-    const candidate = summary as Record<string, unknown>;
-    const cleanList = (value: unknown) => Array.isArray(value)
-      ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 4)
-      : [];
-    const cleanText = (value: unknown, fallback: string) => typeof value === "string" && value.trim() ? value.trim() : fallback;
-
-    res.json({
-      provider: "Perplexity Sonar",
-      summary: {
-        headline: cleanText(candidate.headline, "المشروع قيد المتابعة وفق البيانات التشغيلية الحالية."),
-        status: cleanText(candidate.status, "على المسار"),
-        progressNote: cleanText(candidate.progressNote, "لا توجد ملاحظة كمية إضافية موثقة في البيانات الحالية."),
-        decisionNote: cleanText(candidate.decisionNote, "لا توجد ملاحظة قرار إضافية؛ يعتمد التقييم على المؤشرات الرقمية المعروضة."),
-        scheduleOutlook: cleanText(candidate.scheduleOutlook, "لا يمكن إصدار توقع زمني موثوق قبل توفر خط أساس زمني وبيانات تقدم كافية."),
-        highlights: cleanList(candidate.highlights),
-        risks: cleanList(candidate.risks),
-        nextActions: cleanList(candidate.nextActions),
-        managementFocus: cleanList(candidate.managementFocus),
-      },
-    });
   } catch (error) {
-    console.error("AI Executive Summary error:", error);
-    res.status(500).json({ error: "فشل الذكاء الاصطناعي في صياغة الملخص" });
+    console.error("Executive summary rejected", { name: error instanceof Error ? error.name : "UnknownError" });
+    res.status(502).json({ error: "تعذر توليد ملخص موثوق؛ أعد المحاولة. لم تُعتمد صياغة غير متحقق منها." });
   }
 });
