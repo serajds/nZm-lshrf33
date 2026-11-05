@@ -31,8 +31,17 @@ test("early completion displays an explicit early message instead of negative de
   assert.match(html, /dir="rtl"/);
 });
 test("late completion and on-time completion have unambiguous wording", () => {
-  assert.match(render({ forecastDelayDays: 12 }), /متأخر عن الموعد بـ12 يومًا/);
+  assert.match(render({ forecastDelayDays: 12 }), /تجاوز متوقع لنهاية الجدول بـ12 يومًا/);
   assert.match(render({ forecastDelayDays: 0 }), /في الموعد المجدول/);
+});
+test("large early-stage forecasts are explicitly conditional, not actual delay", () => {
+  const html = render({ forecastDelayDays: 1661, actualProgress: 0.79, plannedProgress: 0.43 });
+  assert.match(html, /تجاوز متوقع لنهاية الجدول بـ1,661 يومًا/);
+  assert.match(html, /بافتراض استمرار متوسط الإنجاز الحالي/);
+  assert.match(html, /ليس تأخرًا فعليًا أو تعاقديًا/);
+  assert.match(html, /قد لا يعكس معدل البداية وتيرة المراحل اللاحقة/);
+  assert.doesNotMatch(html, /متأخر عن الموعد بـ/);
+  assert.match(render({ forecastDelayDays: 1661, expectedProgressAtEnd: null }), /ليس تأخرًا فعليًا أو تعاقديًا/);
 });
 test("unknown or inapplicable forecasts never imply on-time or early completion", () => {
   for (const patch of [
@@ -40,6 +49,6 @@ test("unknown or inapplicable forecasts never imply on-time or early completion"
     { forecastDelayDays: Infinity }, { forecastStatus: "not_started" },
     { forecastStatus: "completed_without_date" }, { forecastStatus: "unavailable" },
   ]) {
-    assert.doesNotMatch(render(patch), /أبكر من الموعد|متأخر عن الموعد|في الموعد المجدول/);
+    assert.doesNotMatch(render(patch), /أبكر من الموعد|تجاوز متوقع لنهاية الجدول|في الموعد المجدول/);
   }
 });
