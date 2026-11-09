@@ -328,7 +328,7 @@ function SortableActivityRow({ id, children }: { id: number; children: React.Rea
 
   return (
     <SortableRowContext.Provider value={{ dragRef: setActivatorNodeRef, dragListeners: listeners, dragAttributes: attributes }}>
-      <TableRow ref={setNodeRef} style={style}>
+      <TableRow ref={setNodeRef} style={style} data-activity-id={id}>
         {children}
       </TableRow>
     </SortableRowContext.Provider>
@@ -402,6 +402,19 @@ export default function ProjectActivities() {
   const [progressActivity, setProgressActivity] = useState<Activity | null>(null);
   const [weightActivity, setWeightActivity] = useState<Activity | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const activityDialogTrigger = useRef<HTMLElement | null>(null);
+  const activityList = useRef<HTMLDivElement | null>(null);
+  const restoreActivityDialogFocus = (event: Event) => {
+    // The edit dialog also owns the "Add" trigger at the top of the list.
+    // Radix would otherwise focus that trigger, scrolling both list axes.
+    const trigger = activityDialogTrigger.current;
+    if (!trigger) return; // Preserve the normal Add-dialog focus behavior.
+    event.preventDefault();
+    activityDialogTrigger.current = null;
+    const target = trigger.isConnected && !trigger.matches(":disabled") && trigger.getClientRects().length
+      ? trigger : activityList.current; // A changed status filter may have removed the row.
+    target?.focus({ preventScroll: true });
+  };
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -920,7 +933,8 @@ export default function ProjectActivities() {
     }
   };
 
-  const handleEdit = (a: Activity) => {
+  const handleEdit = (a: Activity, trigger: HTMLElement) => {
+    activityDialogTrigger.current = trigger;
     setEditingId(a.id);
     setEditingManagedRow(isActivelyManagedActivity(a, groups));
     const linked = a as Activity & { externalSourceGroupId?: number | null; externalSource?: ExternalSource | null };
@@ -1025,7 +1039,10 @@ export default function ProjectActivities() {
           className={mobile ? "h-10 w-10" : "h-7 w-7"}
           aria-label={`تحديد نسبة إنجاز ${a.name}`}
           disabled={!editable || linked || updatingId !== null}
-          onClick={() => setProgressActivity(a)}
+          onClick={event => {
+            activityDialogTrigger.current = event.currentTarget;
+            setProgressActivity(a);
+          }}
         >
           <Percent className="h-3.5 w-3.5 text-primary" />
         </Button>
@@ -1868,7 +1885,7 @@ export default function ProjectActivities() {
         )}
 
         {effectiveViewMode === "list" && !isContractorBase && (
-        <Card className="surface-card surface-card-hover min-w-0">
+        <Card ref={activityList} tabIndex={-1} className="surface-card surface-card-hover min-w-0">
           <CardHeader className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -2045,15 +2062,16 @@ export default function ProjectActivities() {
             )}
             {!isViewer && (
             <Dialog open={isDialogOpen} onOpenChange={(open) => {
+              if (form.formState.isSubmitting) return;
               setIsDialogOpen(open);
               if (!open) { form.reset(); setEditingId(null); setEditingManagedRow(false); resetExternalSource(); }
             }}>
               <DialogTrigger asChild>
-                <Button size="sm" className="min-h-10 gap-1.5 text-xs sm:text-sm mr-auto" onClick={() => { setEditingId(null); setEditingManagedRow(false); resetExternalSource(); }}>
+                <Button size="sm" className="min-h-10 gap-1.5 text-xs sm:text-sm mr-auto" onClick={() => { activityDialogTrigger.current = null; setEditingId(null); setEditingManagedRow(false); resetExternalSource(); }}>
                   <Plus className="h-4 w-4" /> إضافة بند
                 </Button>
               </DialogTrigger>
-              <DialogContent className="w-[calc(100vw-1.5rem)] min-w-0 sm:max-w-[700px] p-0 overflow-hidden max-h-[90dvh]" dir="rtl">
+              <DialogContent className="w-[calc(100vw-1.5rem)] min-w-0 sm:max-w-[700px] p-0 overflow-hidden max-h-[90dvh]" dir="rtl" onCloseAutoFocus={restoreActivityDialogFocus}>
                 <div className="bg-muted/30 p-6 pb-4 border-b border-border/50">
                   <DialogHeader>
                     <div className="flex items-center gap-3">
@@ -2340,7 +2358,7 @@ export default function ProjectActivities() {
                       </div>
 
                       <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-6 border-t mt-8 sticky bottom-0 bg-background/95 backdrop-blur-xl pb-2 z-10 -mx-2 px-2">
-                        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
+                        <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={form.formState.isSubmitting} onClick={() => setIsDialogOpen(false)}>إلغاء والتراجع</Button>
                         <Button type="submit" className="w-full sm:w-auto shadow-md" disabled={form.formState.isSubmitting}>
                           {form.formState.isSubmitting ? "جاري الحفظ..." : editingId ? "حفظ تعديلات البند" : "تأكيد إضافة البند"}
                         </Button>
@@ -2509,7 +2527,7 @@ export default function ProjectActivities() {
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             )}
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(a)}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`تعديل ${a.name}`} onClick={event => handleEdit(a, event.currentTarget)}>
                               <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
                             </Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(a.id)}>
@@ -2697,7 +2715,7 @@ export default function ProjectActivities() {
                 const managed = isActivelyManagedActivity(a, groups);
                 const source = getLinkedSource(a);
                 return (
-                  <div key={a.id} className={`min-w-0 rounded-lg border p-3 space-y-2.5 ${isBusy ? "opacity-60 pointer-events-none" : ""}`}>
+                  <div key={a.id} data-activity-id={a.id} className={`min-w-0 rounded-lg border p-3 space-y-2.5 ${isBusy ? "opacity-60 pointer-events-none" : ""}`}>
                     <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
                       <span className="min-w-0 flex-1 break-words text-sm font-medium leading-tight">
                         {a.name}
@@ -2742,7 +2760,7 @@ export default function ProjectActivities() {
                           {!source && !managed && <Button variant="outline" size="icon" className="h-10 w-10" title="رفع الإنجاز 5%" aria-label="رفع الإنجاز 5%" onClick={() => quickIncrement(a, 5)} disabled={updatingId !== null || a.actualProgress === 100}>
                             <span className="text-xs font-bold text-primary">+5</span>
                           </Button>}
-                          <Button variant="ghost" size="icon" className="h-10 w-10" aria-label={`تعديل ${a.name}`} onClick={() => handleEdit(a)}>
+                          <Button variant="ghost" size="icon" className="h-10 w-10" aria-label={`تعديل ${a.name}`} onClick={event => handleEdit(a, event.currentTarget)}>
                             <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-10 w-10" aria-label={`حذف ${a.name}`} onClick={() => setDeletingId(a.id)}>
@@ -2865,6 +2883,7 @@ export default function ProjectActivities() {
         activity={progressActivity}
         saving={updatingId !== null}
         onClose={() => setProgressActivity(null)}
+        onCloseAutoFocus={restoreActivityDialogFocus}
         onSave={async progress => {
           if (progressActivity && await setActivityProgress(progressActivity, progress)) {
             setProgressActivity(null);
