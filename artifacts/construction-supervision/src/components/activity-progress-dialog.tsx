@@ -11,10 +11,11 @@ interface ActivityProgressDialogProps {
   activity: ProgressActivity | null;
   saving: boolean;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onSave: (progress: number) => Promise<void>;
 }
 
-export function ActivityProgressDialog({ activity, saving, onClose, onSave }: ActivityProgressDialogProps) {
+export function ActivityProgressDialog({ activity, saving, onClose, onCloseAutoFocus, onSave }: ActivityProgressDialogProps) {
   const inputId = useId();
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
@@ -26,7 +27,7 @@ export function ActivityProgressDialog({ activity, saving, onClose, onSave }: Ac
 
   return (
     <Dialog open={activity !== null} onOpenChange={open => { if (!open && !saving) onClose(); }}>
-      <DialogContent className="w-[calc(100vw-1.5rem)] sm:max-w-sm" dir="rtl">
+      <DialogContent className="w-[calc(100vw-1.5rem)] sm:max-w-sm" dir="rtl" onCloseAutoFocus={onCloseAutoFocus}>
         <DialogHeader>
           <DialogTitle>تحديد نسبة الإنجاز</DialogTitle>
           <DialogDescription className="break-words">

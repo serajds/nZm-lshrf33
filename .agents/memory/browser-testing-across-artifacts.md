@@ -50,3 +50,9 @@ Wait for a new document after CDP reloads and let responsive/entrance transition
 **Why:** Reload can resolve while the previous heading still exists, and viewport changes can briefly report old layout bounds. These produced false footer clipping and page-height failures.
 
 **How to apply:** Compare `performance.timeOrigin` before and after reload, require document readiness, and measure stable bounds after viewport/route transitions rather than immediately.
+
+In a shared create/edit dialog opened programmatically from a row, explicitly return keyboard focus to the actual opener without scrolling; fall back to a stable list when filtering removes that row.
+
+**Why:** Default dialog focus restoration can target the creation trigger above the list, producing a jump that users perceive as a full page refresh even when the document and row never remount.
+
+**How to apply:** Diagnose document loads, internal scrolling, row identity, and focus separately. Preserve normal creation-trigger behavior and continue refreshing live data; do not mask a focus bug by disabling refetches.
