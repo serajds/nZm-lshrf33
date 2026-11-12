@@ -7,6 +7,7 @@ import { activityOrderCase, validActivityOrderItems } from "../lib/activity-orde
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
+import { captureProjectProgressHistory } from "../lib/capture-project-progress-history";
 import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
 import { canReadProject, getGroupSummary, hasLinkedGroupSourceDuplicate, reconcileTargetsLinkedToProject, refreshLinkedSources, withSourceGraphLock, wouldCreateSourceCycle } from "../lib/external-sources";
 import { linkedSourceIdAfterPatch, sourceIsAvailable } from "../lib/activity-source-rules";
@@ -81,6 +82,7 @@ async function syncProjectProgress(projectId: number) {
     .update(projectsTable)
     .set({ overallProgress: computed })
     .where(eq(projectsTable.id, projectId));
+  await captureProjectProgressHistory(projectId);
 }
 
 async function serializeActivityForUser(
@@ -1075,6 +1077,7 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
   // Keep propagation outside the graph lock; refreshLinkedSources acquires it
   // itself and nested acquisition would deadlock.
   if (result.sourceGroupIds.length) await measurePhase("reorder-propagation", () => refreshLinkedSources(result.sourceGroupIds));
+  if ((result.updated ?? 0) > 0) await captureProjectProgressHistory(projectId);
   if ((result.updated ?? 0) > 0) {
     const { logAudit } = await import("../lib/audit");
     await measurePhase("reorder-audit", () => logAudit({

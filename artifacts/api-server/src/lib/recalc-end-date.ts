@@ -1,5 +1,6 @@
 import { db, activitiesTable, projectsTable, projectExtensionsTable } from "@workspace/db";
 import { eq, max, sum } from "drizzle-orm";
+import { captureProjectProgressHistory } from "./capture-project-progress-history";
 
 export async function getActivitiesBaseEndDate(projectId: number): Promise<string | null> {
   const [maxResult] = await db
@@ -39,4 +40,5 @@ export async function recalcExpectedEndDate(projectId: number) {
   await db.update(projectsTable)
     .set({ expectedEndDate: newExpectedEnd })
     .where(eq(projectsTable.id, projectId));
+  await captureProjectProgressHistory(projectId);
 }
