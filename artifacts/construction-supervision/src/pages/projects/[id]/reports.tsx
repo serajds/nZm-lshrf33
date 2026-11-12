@@ -449,6 +449,7 @@ export default function ProjectReports() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const editOpenerRef = useRef<HTMLElement | null>(null);
   const [newReportManual, setNewReportManual] = useState(false);
   const [manualProgressEntered, setManualProgressEntered] = useState(false);
   const [copyingId, setCopyingId] = useState<number | null>(null);
@@ -615,7 +616,8 @@ export default function ProjectReports() {
     if (endDate !== null) form.setValue("periodEnd", endDate);
   }, [watchedType, watchedPeriodStart, editingId]);
 
-  const handleEdit = async (r: Report) => {
+  const handleEdit = async (r: Report, opener?: HTMLElement) => {
+    editOpenerRef.current = opener ?? null;
     setSelectedReportId(null);
     setEditingId(r.id);
     aiDraftSnapshotFingerprint.current = null;
@@ -661,7 +663,7 @@ export default function ProjectReports() {
     }
   };
 
-  const handleDuplicate = async (report: Report) => {
+  const handleDuplicate = async (report: Report, opener?: HTMLElement) => {
     if (copyingId !== null) return;
     setCopyingId(report.id);
     try {
@@ -678,7 +680,7 @@ export default function ProjectReports() {
           : `تم إنشاء نسخة مستقلة برقم ${copy.reportNumber}`,
         description: "حُفظت كمسودة. يمكنك تعديل بياناتها وتواريخها الآن.",
       });
-      await handleEdit(copy);
+      await handleEdit(copy, opener);
     } catch {
       toast({ title: "تعذّر نسخ التقرير", description: "يرجى التحقق من الاتصال والصلاحيات والمحاولة مجدداً.", variant: "destructive" });
     } finally {
@@ -1252,7 +1254,18 @@ export default function ProjectReports() {
               <Plus className="h-4 w-4" /> إضافة تقرير
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[750px] max-h-[90vh] overflow-hidden p-0" dir="rtl">
+          <DialogContent
+            className="sm:max-w-[750px] max-h-[90vh] overflow-hidden p-0"
+            dir="rtl"
+            onCloseAutoFocus={(event) => {
+              const opener = editOpenerRef.current;
+              editOpenerRef.current = null;
+              if (opener?.isConnected) {
+                event.preventDefault();
+                opener.focus({ preventScroll: true });
+              }
+            }}
+          >
             <div className="bg-gradient-to-br from-indigo-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
               <DialogHeader>
                 <div className="flex items-center gap-3">
@@ -1841,10 +1854,10 @@ export default function ProjectReports() {
               )}
               {!isViewer && (
                 <>
-                  <Button variant="outline" size="sm" className={btnClass} onClick={() => handleEdit(report)}>
+                  <Button variant="outline" size="sm" className={btnClass} onClick={(event) => handleEdit(report, event.currentTarget)}>
                     <Edit2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> تعديل
                   </Button>
-                  <Button variant="outline" size="sm" className={btnClass} onClick={() => handleDuplicate(report)} disabled={copyingId !== null} title="إنشاء نسخة مستقلة كمسودة وفتحها للتعديل">
+                  <Button variant="outline" size="sm" className={btnClass} onClick={(event) => handleDuplicate(report, event.currentTarget)} disabled={copyingId !== null} title="إنشاء نسخة مستقلة كمسودة وفتحها للتعديل">
                     {copyingId === report.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />} نسخ التقرير
                   </Button>
                   <Button
