@@ -6,6 +6,7 @@ import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlew
 import { requireTabEdit } from "../middlewares/tab-access";
 import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
 import { refreshLinkedSources } from "../lib/external-sources";
+import { captureProjectProgressHistory } from "../lib/capture-project-progress-history";
 import { suspensionActivityDateShift } from "../lib/activity-source-rules";
 
 const router: IRouter = Router();
@@ -97,6 +98,7 @@ router.post("/projects/:projectId/suspensions", requireProjectAccess("projectId"
         .where(eq(projectsTable.id, projectId));
     }
     if (changedGroups.length) await refreshLinkedSources(changedGroups);
+    await captureProjectProgressHistory(projectId);
   }
 
   (async () => {
@@ -147,6 +149,7 @@ router.delete("/projects/:projectId/suspensions/:id", requireProjectAccess("proj
         .where(eq(projectsTable.id, projectId));
     }
     if (changedGroups.length) await refreshLinkedSources(changedGroups);
+    await captureProjectProgressHistory(projectId);
   }
 
   res.sendStatus(204);

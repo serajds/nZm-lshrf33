@@ -6,6 +6,7 @@ import { requireAuth, requireEngineerOrAdmin, requireProjectAccess, requireAdmin
 import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
 import { deleteProjectUnderSourceGraphLock, withSourceGraphLock } from "../lib/external-sources";
+import { captureProjectProgressHistory } from "../lib/capture-project-progress-history";
 import { normalizeProjectLinkCode } from "../lib/activity-source-rules";
 import { getProjectAnalysisSnapshot } from "../lib/deviation-service";
 import { executivePrompt, composeExecutiveSummary } from "../lib/executive-summary";
@@ -196,6 +197,7 @@ router.post("/projects", requireAdmin, async (req, res): Promise<void> => {
     throw error;
   }
 
+  await captureProjectProgressHistory(project.id);
   const { logAudit } = await import("../lib/audit");
   logAudit({ userId: (req as any).user?.userId, userName: (req as any).user?.phone, action: "create", entityType: "project", entityId: project.id, entityName: project.name, projectId: project.id, projectName: project.name });
 
@@ -413,6 +415,7 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
     return;
   }
 
+  await captureProjectProgressHistory(project.id);
   const { logAudit } = await import("../lib/audit");
   const auditDetails = { ...updateData };
   delete auditDetails.linkCode;

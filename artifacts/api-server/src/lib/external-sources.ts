@@ -3,6 +3,7 @@ import { and, eq, isNotNull, isNull, max, sum, sql } from "drizzle-orm";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { measurePhase } from "@workspace/db";
 import { recalcExpectedEndDate } from "./recalc-end-date";
+import { captureProjectProgressHistory } from "./capture-project-progress-history";
 import { calcActivityPlannedProgress, roundPercent, utcDay, type PlannedCurve } from "./progress";
 import {
   type SourceGroupSummary,
@@ -506,6 +507,7 @@ export async function refreshLinkedSources(sourceGroupIds: number[]) {
         const progress = total ? roundPercent(acts.reduce((s, a) => s + a.actualProgress * (a.weight > 0 ? a.weight : 1), 0) / total) : 0;
         await db.update(projectsTable).set({ overallProgress: progress }).where(eq(projectsTable.id, projectId));
         await recalcExpectedEndDate(projectId);
+        await captureProjectProgressHistory(projectId);
       }
     }
   });

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { pool } from "@workspace/db";
 import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "./progress";
+import { captureProjectProgressHistory } from "./capture-project-progress-history";
 
 export type HistoricalActivity = {
   id: number; name: string; groupId: number | null;
@@ -114,9 +115,18 @@ export function resolveHistoricalActivities(project: HistoricalProject, states: 
 export async function getReportPeriodProgress(projectId: number, day: string, now = new Date()) {
   if (!validReportDay(day)) throw new Error("تاريخ نهاية الفترة غير صالح");
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-  const { rows: starts } = await pool.query<{ started_at: Date | null }>(
+  let { rows: starts } = await pool.query<{ started_at: Date | null }>(
     "SELECT min(captured_at) AS started_at FROM project_progress_history WHERE project_id=$1", [projectId]);
-  const trackingStartedAt = starts[0]?.started_at?.toISOString() ?? null;
+  let trackingStartedAt = starts[0]?.started_at?.toISOString() ?? null;
+  if (!trackingStartedAt && day === today) {
+    // Existing production projects may predate application-side history
+    // capture. A first request for today's report can safely establish a
+    // current baseline; older report dates must remain unavailable.
+    await captureProjectProgressHistory(projectId);
+    ({ rows: starts } = await pool.query<{ started_at: Date | null }>(
+      "SELECT min(captured_at) AS started_at FROM project_progress_history WHERE project_id=$1", [projectId]));
+    trackingStartedAt = starts[0]?.started_at?.toISOString() ?? null;
+  }
   const missing = (reason: string) => ({
     available: false as const, asOfDate: day, overallProgress: null, plannedProgress: null,
     variance: null, spi: null, trackingStartedAt, capturedAt: null, fingerprint: null,

@@ -4,6 +4,7 @@ import { activityGroupsTable, projectsTable } from "@workspace/db";
 import { eq, and, asc, ilike, sql } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
+import { captureProjectProgressHistory } from "../lib/capture-project-progress-history";
 import { canReadProject, createActivityGroupUnderSourceGraphLock, getGroupSummary, normalizeLinkCode, reconcileGroupToSideProject, reconcileTargetsLinkedToProject, refreshLinkedSources, withSourceGraphLock } from "../lib/external-sources";
 import { normalizeProjectLinkCode } from "../lib/activity-source-rules";
 import { groupMatchesSourceQuery, resolveSourceSuggestions } from "../lib/activity-source-rules";
@@ -147,6 +148,7 @@ router.post("/projects/:projectId/activity-groups", requireProjectAccess("projec
     return;
   }
   await reconcileTargetsLinkedToProject(projectId);
+  await captureProjectProgressHistory(projectId);
   await logAudit({
     userId: req.user!.userId,
     action: "create",
@@ -230,6 +232,7 @@ router.put("/projects/:projectId/activity-groups/:id", requireProjectAccess("pro
   // still useful for returning current source metadata to consumers.
   await reconcileTargetsLinkedToProject(projectId);
   await refreshLinkedSources([id]);
+  await captureProjectProgressHistory(projectId);
   await logAudit({
     userId: req.user!.userId,
     action: "update",
@@ -300,6 +303,7 @@ router.put("/projects/:projectId/activity-groups/:id/linked-project", requirePro
     res.status(404).json({ error: "المجموعة غير موجودة" });
     return;
   }
+  await captureProjectProgressHistory(projectId);
   await logAudit({
     userId: req.user!.userId,
     action: "update",
@@ -342,6 +346,7 @@ router.post("/projects/:projectId/activity-groups/:id/sync", requireProjectAcces
     return;
   }
   if (result.group) {
+    await captureProjectProgressHistory(projectId);
     await logAudit({
       userId: req.user!.userId,
       action: "update",
@@ -367,6 +372,7 @@ router.delete("/projects/:projectId/activity-groups/:id", requireProjectAccess("
     res.status(409).json({ error: "لا يمكن حذف المجموعة قبل نقل أو حذف البنود الموجودة داخلها" });
     return;
   }
+  await captureProjectProgressHistory(projectId);
   await logAudit({
     userId: req.user!.userId,
     action: "delete",
