@@ -57,6 +57,20 @@ test("does not use the planned start or guess a completed item's missing end", (
   assert.ok(preview.warnings.some(message => message.includes("لن يُخمن النظام نهايته")));
 });
 
+test("automatic estimate reaches today's completion without inventing an actual end date", () => {
+  const completedWithoutEnd = { ...activities[0], actualEndDate: null };
+  const preview = previewHistoricalProgress(project, [completedWithoutEnd], [], {
+    periodStart: "2026-01-01",
+    realityDate: "2026-04-01",
+    realityProgress: 100,
+    automatic: true,
+  });
+  assert.equal(preview.valid, true);
+  assert.equal(preview.unavailableActivities, 0);
+  assert.equal(preview.snapshots.at(-1).activities[0].actualProgress, 100);
+  assert.equal(preview.snapshots.at(-1).activities[0].actualEndDate, null);
+});
+
 test("linked items without a dated source remain unverified", () => {
   const linked = { ...activities[3], hasHistoricalSource: false };
   const preview = previewHistoricalProgress(project, [linked], [], {

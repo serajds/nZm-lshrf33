@@ -31,6 +31,7 @@ export type BackfillInput = {
   }>;
   referencePoints?: Array<{ date: string; progress: number }>;
   verifiedProjectPoints?: Array<{ date: string; progress: number }>;
+  automatic?: boolean;
 };
 
 export type BackfillDay = {
@@ -60,7 +61,7 @@ export type BackfillPreview = {
 
 const DAY_MS = 86_400_000;
 const MAX_DAYS = 3_660;
-const METHOD = "activity-linear-between-confirmed-dated-points-v1";
+const METHOD = "activity-linear-between-confirmed-dated-points-v2";
 
 export function validBackfillDay(day: unknown): day is string {
   if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
@@ -80,10 +81,13 @@ function clamp(value: number): number {
   return Math.min(100, Math.max(0, value));
 }
 
-function weightedProgress(activities: Array<{ actualProgress: number; weight: number }>) {
-  const valid = activities.filter(activity => Number.isFinite(activity.weight) && activity.weight > 0);
-  const total = valid.reduce((sum, activity) => sum + activity.weight, 0);
-  return total ? Math.round(valid.reduce((sum, activity) => sum + activity.actualProgress * activity.weight, 0) / total * 10) / 10 : 0;
+export function weightedProgress(activities: Array<{ actualProgress: number; weight: number }>) {
+  const weightOf = (activity: { weight: number }) =>
+    Number.isFinite(activity.weight) && activity.weight > 0 ? activity.weight : 1;
+  const total = activities.reduce((sum, activity) => sum + weightOf(activity), 0);
+  return total
+    ? Math.round(activities.reduce((sum, activity) => sum + activity.actualProgress * weightOf(activity), 0) / total * 10) / 10
+    : 0;
 }
 
 function interpolate(points: Array<{ day: number; progress: number }>, day: number): number {
@@ -234,7 +238,7 @@ export function previewHistoricalProgress(
       unavailable = true;
       warnings.push(`البند المرتبط «${activity.name}»: لا يمكن إعادة بنائه دون تاريخ موثق للمشروع المصدر.`);
     } else if (!linked && (activity.status === "completed" || target >= 100)) {
-      if (!end) {
+      if (!end && !input.automatic) {
         unavailable = true;
         warnings.push(`البند المكتمل «${activity.name}»: أدخل تاريخ الإكمال الفعلي؛ لن يُخمن النظام نهايته.`);
       }

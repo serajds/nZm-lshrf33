@@ -8,7 +8,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { requireProjectAccess, requireProjectManager } from "../middlewares/auth";
 import { buildProjectProgressSnapshot } from "../lib/capture-project-progress-history";
 import {
-  historicalBackfillMethodology, previewHistoricalProgress, validBackfillDay,
+  historicalBackfillMethodology, previewHistoricalProgress, validBackfillDay, weightedProgress,
   type BackfillActivity, type BackfillInput, type BackfillSuspension,
 } from "../lib/historical-progress-backfill";
 
@@ -63,6 +63,7 @@ function asBackfillInput(raw: unknown): BackfillInput | null {
     periodStart: body.periodStart,
     realityDate: body.realityDate,
     realityProgress: Number(body.realityProgress),
+    ...(body.automatic === true ? { automatic: true } : {}),
     activityInputs,
     referencePoints,
   };
@@ -257,6 +258,91 @@ function makePreview(state: NonNullable<Awaited<ReturnType<typeof readBackfillSt
   const token = hash({ fingerprint: state.fingerprint, input: merged, methodology: result.methodology });
   return { result, token, merged };
 }
+
+function makeAutomaticInput(state: NonNullable<Awaited<ReturnType<typeof readBackfillState>>>) {
+  const realityDate = tripoliDay(new Date());
+  const recordedProgress = new Set<number>();
+  for (const input of state.normalizedActivityInputs) {
+    if (input.points.some(point => point.date <= realityDate && point.progress > 0)) {
+      recordedProgress.add(input.activityId);
+    }
+  }
+  for (const row of state.history) {
+    if (tripoliDay(row.capturedAt) > realityDate || !row.snapshot || typeof row.snapshot !== "object") continue;
+    const snapshotActivities = (row.snapshot as {
+      activities?: Array<{ id?: number; actualProgress?: number }>;
+    }).activities ?? [];
+    for (const activity of snapshotActivities) {
+      if (typeof activity.id === "number" && Number(activity.actualProgress) > 0) {
+        recordedProgress.add(activity.id);
+      }
+    }
+  }
+
+  const candidates = state.activities.filter(activity =>
+    Number.isFinite(activity.actualProgress) && activity.actualProgress > 0 && !recordedProgress.has(activity.id),
+  );
+  if (!candidates.length) {
+    return { error: "لا توجد بنود ذات تقدم حالي بلا سجل تقدم مؤرخ." } as const;
+  }
+
+  const candidatesWithStart = candidates.filter(activity =>
+    validBackfillDay(activity.actualStartDate) && activity.actualStartDate <= realityDate,
+  );
+  if (!candidatesWithStart.length) {
+    return { error: "لا يمكن إنشاء تقدير: البنود المتقدمة بلا تاريخ بداية فعلي صالح." } as const;
+  }
+
+  const periodStart = candidatesWithStart
+    .map(activity => activity.actualStartDate!)
+    .sort((a, b) => a.localeCompare(b))[0];
+  const input: BackfillInput = {
+    periodStart,
+    realityDate,
+    realityProgress: weightedProgress(state.activities.map(activity => ({
+      actualProgress: activity.actualProgress,
+      weight: activity.weight,
+    }))),
+    automatic: true,
+    referencePoints: [],
+  };
+  return {
+    input,
+    candidates,
+    candidatesWithStart,
+    missingStartDateCount: candidates.length - candidatesWithStart.length,
+  } as const;
+}
+
+router.post("/projects/:projectId/progress-history-backfill/automatic-preview", requireProjectAccess("projectId"), requireProjectManager("projectId"), async (req, res): Promise<void> => {
+  const projectId = Number(req.params.projectId);
+  const state = await readBackfillState(projectId);
+  if (!state) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
+  const plan = makeAutomaticInput(state);
+  if ("error" in plan) { res.status(409).json({ error: plan.error }); return; }
+
+  const { result, token } = makePreview(state, plan.input);
+  const occupiedDays = new Set(state.history.map(row => tripoliDay(row.capturedAt)));
+  const snapshotsToSkip = result.snapshots.filter(snapshot => occupiedDays.has(snapshot.date)).length;
+  const latestActivities = result.snapshots.at(-1)?.activities ?? [];
+  const estimatedCandidateActivities = plan.candidates.filter(candidate =>
+    latestActivities.find(activity => activity.id === candidate.id)?.actualHistoricalUnverified !== true,
+  ).length;
+  const { snapshots: _snapshots, ...summary } = result;
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({
+    ...summary,
+    input: plan.input,
+    previewToken: token,
+    sourceFingerprint: state.fingerprint,
+    candidateActivities: plan.candidates.length,
+    candidatesWithStartDate: plan.candidatesWithStart.length,
+    candidatesMissingStartDate: plan.missingStartDateCount,
+    estimatedCandidateActivities,
+    snapshotsToAdd: Math.max(0, result.snapshots.length - snapshotsToSkip),
+    snapshotsToSkip,
+  });
+});
 
 router.get("/projects/:projectId/progress-history-backfill", requireProjectAccess("projectId"), requireProjectManager("projectId"), async (req, res): Promise<void> => {
   const projectId = Number(req.params.projectId);

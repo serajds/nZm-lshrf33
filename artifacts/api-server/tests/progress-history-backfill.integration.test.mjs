@@ -287,6 +287,71 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
     originalActivityValues.map(row => row.id === active.id ? { ...row, actualProgress: 50 } : row));
     assert.equal((await db.select().from(projectProgressHistoryBatchesTable)
       .where(eq(projectProgressHistoryBatchesTable.id, batchId)))[0].revertedAt instanceof Date, true);
+
+    const noMissingHistoryResponse = await fetch(
+      `${base}/projects/${project.id}/progress-history-backfill/automatic-preview`,
+      { method: "POST", headers: headers(adminToken), body: "{}" },
+    );
+    assert.equal(noMissingHistoryResponse.status, 409,
+      "the automatic action does not recreate activities that already have dated progress");
+
+    const [automaticProject] = await db.insert(projectsTable).values({
+      name: "Automatic backfill fixture", location: "fixture", ownerEntity: "fixture",
+      supervisorEntity: "fixture", contractor: "fixture", startDate: "2026-01-01",
+      expectedEndDate: "2026-12-31",
+    }).returning();
+    const [automaticActive] = await db.insert(activitiesTable).values({
+      projectId: automaticProject.id, name: "Progress without dated history",
+      status: "in_progress", actualStartDate: "2026-02-01", actualProgress: 35, weight: 1,
+    }).returning();
+    const [automaticCompleted] = await db.insert(activitiesTable).values({
+      projectId: automaticProject.id, name: "Completed without dated history",
+      status: "completed", actualStartDate: "2026-03-01", actualProgress: 100, weight: 1,
+    }).returning();
+    const automaticPreviewResponse = await fetch(
+      `${base}/projects/${automaticProject.id}/progress-history-backfill/automatic-preview`,
+      { method: "POST", headers: headers(adminToken), body: "{}" },
+    );
+    const automaticPreview = await automaticPreviewResponse.json();
+    assert.equal(automaticPreviewResponse.status, 200, JSON.stringify(automaticPreview));
+    assert.equal(automaticPreview.candidateActivities, 2);
+    assert.equal(automaticPreview.estimatedCandidateActivities, 2);
+    assert.equal(automaticPreview.input.periodStart, "2026-02-01");
+    assert.equal(automaticPreview.input.automatic, true);
+    assert.equal(automaticPreview.input.realityDate, automaticPreview.realityDate);
+    assert.equal(automaticPreview.input.realityProgress, 67.5);
+    assert.equal(automaticPreview.snapshotsToAdd, automaticPreview.days);
+    assert.equal(await db.select().from(projectProgressHistoryTable)
+      .where(eq(projectProgressHistoryTable.projectId, automaticProject.id)).then(rows => rows.length), 0,
+    "previewing automatic estimates does not write history");
+
+    const automaticCommitResponse = await fetch(
+      `${base}/projects/${automaticProject.id}/progress-history-backfill/commit`,
+      {
+        method: "POST", headers: headers(adminToken),
+        body: JSON.stringify({ input: automaticPreview.input, previewToken: automaticPreview.previewToken }),
+      },
+    );
+    const automaticCommit = await automaticCommitResponse.json();
+    assert.equal(automaticCommitResponse.status, 201, JSON.stringify(automaticCommit));
+    assert.equal(automaticCommit.inserted, automaticPreview.snapshotsToAdd);
+    const automaticSnapshots = await db.select().from(projectProgressHistoryTable)
+      .where(eq(projectProgressHistoryTable.importBatchId, automaticCommit.batch.id));
+    assert.ok(automaticSnapshots.every(row => row.source === "estimated"));
+    const latestAutomaticSnapshot = automaticSnapshots.find(row =>
+      row.capturedAt.toISOString() === new Date(`${automaticPreview.realityDate}T00:00:00+02:00`).toISOString());
+    assert.ok(latestAutomaticSnapshot, "the estimate reaches the current progress at Libya midnight");
+    assert.equal(latestAutomaticSnapshot.snapshot.activities.find(row => row.id === automaticActive.id).actualProgress, 35);
+    const completedEstimate = latestAutomaticSnapshot.snapshot.activities.find(row => row.id === automaticCompleted.id);
+    assert.equal(completedEstimate.actualProgress, 100);
+    assert.equal(completedEstimate.actualEndDate, null, "automatic estimation does not invent an actual completion date");
+    const liveAutomaticActivities = await db.select({
+      id: activitiesTable.id, actualProgress: activitiesTable.actualProgress,
+    }).from(activitiesTable).where(eq(activitiesTable.projectId, automaticProject.id));
+    assert.deepEqual(liveAutomaticActivities, [
+      { id: automaticActive.id, actualProgress: 35 },
+      { id: automaticCompleted.id, actualProgress: 100 },
+    ]);
     assert.equal(await pool.query("SELECT 1").then(result => result.rowCount), 1);
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));

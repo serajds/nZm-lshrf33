@@ -21,13 +21,40 @@ type StatePayload = {
   batches: Array<{ id: number; createdAt: string; methodology: string; revertedAt: string | null }>;
 };
 type Point = { date: string; progress: string };
+type BackfillInput = {
+  periodStart: string;
+  realityDate: string;
+  realityProgress: number;
+  automatic?: boolean;
+  activityInputs?: Array<{ activityId: number; startDate?: string; completionDate?: string }>;
+  referencePoints?: Array<{ date: string; progress: number }>;
+};
 type Preview = {
   valid: boolean; days: number; excludedDays: string[]; assumptions: string[];
   warnings: string[]; conflicts: string[]; estimatedActivities: number; unavailableActivities: number;
   realityProgress: number; calculatedRealityProgress: number; realityDifference: number;
   samples: Array<{ date: string; progress: number }>; previewToken: string;
   snapshotsToAdd: number; snapshotsToSkip: number;
+  input?: BackfillInput;
+  periodStart?: string; realityDate?: string;
+  candidateActivities?: number; candidatesWithStartDate?: number;
+  candidatesMissingStartDate?: number; estimatedCandidateActivities?: number;
 };
+
+async function responseJson<T>(response: Response): Promise<T> {
+  const body = await response.text();
+  let result: T & { error?: unknown };
+  try {
+    result = JSON.parse(body) as T & { error?: unknown };
+  } catch {
+    throw new Error(`استجابة الخادم غير صالحة (HTTP ${response.status})`);
+  }
+  if (!response.ok) {
+    const message = typeof result.error === "string" ? result.error : `تعذّر إكمال الطلب (HTTP ${response.status})`;
+    throw new Error(message);
+  }
+  return result as T;
+}
 
 function tripoliToday() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -44,6 +71,7 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
   const queryClient = useQueryClient();
   const canManage = user?.role === "admin" || permissions.data?.projectRole === "project_manager";
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"automatic" | "manual">("automatic");
   const [periodStart, setPeriodStart] = useState("");
   const [realityDate, setRealityDate] = useState(tripoliToday());
   const [realityProgress, setRealityProgress] = useState("");
@@ -51,14 +79,14 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
   const [points, setPoints] = useState<Point[]>([]);
   const [newPoint, setNewPoint] = useState<Point>({ date: "", progress: "" });
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [previewInput, setPreviewInput] = useState<BackfillInput | null>(null);
   const [busy, setBusy] = useState(false);
 
   const stateQuery = useQuery<StatePayload>({
     queryKey: [`/api/projects/${projectId}/progress-history-backfill`],
     queryFn: async () => {
       const response = await fetchWithSession(`/api/projects/${projectId}/progress-history-backfill`);
-      if (!response.ok) throw new Error("تعذّر تحميل بيانات السجل التاريخي");
-      return response.json();
+      return responseJson<StatePayload>(response);
     },
     enabled: !!projectId && !!canManage,
   });
@@ -91,25 +119,43 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
       const response = await fetchWithSession(`/api/projects/${projectId}/progress-history-backfill/preview`, {
         method: "POST", body: JSON.stringify(requestBody),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "تعذّر إنشاء المعاينة");
+      const result = await responseJson<Preview>(response);
       setPreview(result);
+      setPreviewInput(requestBody);
     } catch (error) {
       toast({ variant: "destructive", title: error instanceof Error ? error.message : "تعذّر إنشاء المعاينة" });
     } finally { setBusy(false); }
   };
 
+  const runAutomaticPreview = async () => {
+    setBusy(true);
+    try {
+      const response = await fetchWithSession(`/api/projects/${projectId}/progress-history-backfill/automatic-preview`, {
+        method: "POST", body: JSON.stringify({}),
+      });
+      const result = await responseJson<Preview>(response);
+      if (!result.input) throw new Error("لم تُنشأ بيانات المعاينة تلقائيًا");
+      setMode("automatic");
+      setPreview(result);
+      setPreviewInput(result.input);
+      setOpen(true);
+    } catch (error) {
+      toast({ variant: "destructive", title: error instanceof Error ? error.message : "تعذّر إعداد السجل تلقائيًا" });
+    } finally { setBusy(false); }
+  };
+
   const createHistory = async () => {
-    if (!preview?.valid) return;
+    if (!preview?.valid || !previewInput) return;
     setBusy(true);
     try {
       const response = await fetchWithSession(`/api/projects/${projectId}/progress-history-backfill/commit`, {
-        method: "POST", body: JSON.stringify({ input: requestBody, previewToken: preview.previewToken }),
+        method: "POST", body: JSON.stringify({ input: previewInput, previewToken: preview.previewToken }),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "تعذّر إنشاء السجل التاريخي");
+      const result = await responseJson<{ inserted: number; skippedActual: number; skippedExisting: number }>(response);
       toast({ title: `أُنشئت ${result.inserted} لقطة، وتُركت ${result.skippedActual} لقطة فعلية دون تغيير` });
       setPreview(null);
+      setPreviewInput(null);
+      setOpen(false);
       await queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/progress-history-backfill`] });
       await queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/reports`] });
     } catch (error) {
@@ -123,8 +169,7 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
     setBusy(true);
     try {
       const response = await fetchWithSession(`/api/projects/${projectId}/progress-history-backfill/batches/${batchId}/revert`, { method: "POST" });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "تعذّر التراجع عن الدفعة");
+      const result = await responseJson<{ removed: number }>(response);
       toast({ title: `تم التراجع عن الدفعة وحذف ${result.removed} لقطة تقديرية` });
       setPreview(null);
       await queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/progress-history-backfill`] });
@@ -146,14 +191,30 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
       <Card className="surface-card">
         <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
           <CardTitle className="flex items-center gap-2 text-base"><History className="h-4 w-4" /> إعدادات السجل التاريخي</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => { setPreview(null); setOpen(true); }}>
-            معاينة التهيئة
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => void runAutomaticPreview()} disabled={busy || stateQuery.isLoading || !payload}>
+              {busy ? "جارٍ الفحص..." : "تهيئة تلقائية"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => {
+              setMode("manual");
+              setPreview(null);
+              setPreviewInput(null);
+              setOpen(true);
+            }} disabled={busy || stateQuery.isLoading || !payload}>
+              إعداد يدوي
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            أنشئ لقطات تقديرية للفترة السابقة بعد مراجعة تواريخ البنود ونقطة واقع الحال. لا يتغير أي بند أو تقرير محفوظ.
+            يفحص البنود ذات التقدم الحالي التي لا تملك سجلًا مؤرخًا، ويجهز لقطات يومية تقديرية للتأكيد. لا يتغير أي بند أو تقرير محفوظ.
           </p>
+          {stateQuery.isError && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+              <span>{stateQuery.error instanceof Error ? stateQuery.error.message : "تعذّر تحميل السجل التاريخي"}</span>
+              <Button size="sm" variant="outline" onClick={() => void stateQuery.refetch()}>إعادة المحاولة</Button>
+            </div>
+          )}
           <div className="space-y-2">
             {(payload?.batches ?? []).map(batch => (
               <div key={batch.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
@@ -169,18 +230,43 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
         </CardContent>
       </Card>
 
-      <Dialog open={open} onOpenChange={value => { setOpen(value); if (!value) setPreview(null); }}>
+      <Dialog open={open} onOpenChange={value => {
+        setOpen(value);
+        if (!value) { setPreview(null); setPreviewInput(null); }
+      }}>
         <DialogContent className="max-w-4xl" dir="rtl">
-          <DialogHeader><DialogTitle>تهيئة السجل التاريخي — {payload?.project.name ?? ""}</DialogTitle></DialogHeader>
-          {stateQuery.isLoading ? <p className="py-8 text-center text-sm text-muted-foreground">جاري تحميل البنود...</p> : (
+          <DialogHeader><DialogTitle>
+            {mode === "automatic" ? "تأكيد التهيئة التلقائية" : "إعداد السجل التاريخي يدويًا"} — {payload?.project.name ?? ""}
+          </DialogTitle></DialogHeader>
+          {stateQuery.isLoading ? <p className="py-8 text-center text-sm text-muted-foreground">جاري تحميل البنود...</p> : stateQuery.isError ? (
+            <p className="py-8 text-center text-sm text-destructive">
+              {stateQuery.error instanceof Error ? stateQuery.error.message : "تعذّر تحميل بيانات السجل"}
+            </p>
+          ) : (
             <div className="space-y-5">
-              <div className="grid gap-3 sm:grid-cols-3">
+              {mode === "automatic" && preview && (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    سيُنشأ تقدير يومي من {preview.periodStart} إلى {preview.realityDate}. القيم تقريبية وليست سجلًا فعليًا لكل يوم.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 rounded-md border p-3 text-sm sm:grid-cols-3">
+                    <p>بنود متقدمة بلا سجل: {preview.candidateActivities ?? 0}</p>
+                    <p>بنود قابلة للتقدير: {preview.estimatedCandidateActivities ?? 0}</p>
+                    <p>بلا بداية فعلية: {preview.candidatesMissingStartDate ?? 0}</p>
+                    <p>لقطات ستضاف: {preview.snapshotsToAdd}</p>
+                    <p>تواريخ محفوظة ستُحترم: {preview.snapshotsToSkip}</p>
+                    <p>نسبة الإنجاز الحالية: {preview.realityProgress}%</p>
+                  </div>
+                </div>
+              )}
+
+              {mode === "manual" && <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1"><Label>بداية الفترة التقديرية</Label><Input type="date" value={periodStart} onChange={event => { setPeriodStart(event.target.value); setPreview(null); }} /></div>
                 <div className="space-y-1"><Label>تاريخ واقع الحال</Label><Input type="date" value={realityDate} onChange={event => { setRealityDate(event.target.value); setPreview(null); }} /></div>
                 <div className="space-y-1"><Label>نسبة واقع الحال الكلية (%)</Label><Input type="number" min="0" max="100" step="0.1" value={realityProgress} onChange={event => { setRealityProgress(event.target.value); setPreview(null); }} /></div>
-              </div>
+              </div>}
 
-              <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
+              {mode === "manual" && <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
                 <p className="text-sm font-semibold">تواريخ البنود التي تحتاج تأكيدًا</p>
                 {(payload?.activities ?? []).map(activity => {
                   const dates = activityDates[activity.id] ?? { startDate: "", completionDate: "" };
@@ -209,9 +295,9 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
                     </div>
                   );
                 })}
-              </div>
+              </div>}
 
-              <div className="space-y-2 rounded-md border p-3">
+              {mode === "manual" && <div className="space-y-2 rounded-md border p-3">
                 <p className="text-sm font-semibold">نقاط مرجعية للمشروع</p>
                 <p className="text-xs text-muted-foreground">أضف نسبًا موثقة من تقارير أو محاضر سابقة؛ تبقى هذه النقاط ثابتة في المنحنى.</p>
                 <div className="flex flex-wrap items-end gap-2">
@@ -227,27 +313,35 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
                   <span>{point.date} — {point.progress}%</span>
                   <Button variant="ghost" size="sm" onClick={() => { setPoints(items => items.filter((_, i) => i !== index)); setPreview(null); }}>إزالة</Button>
                 </div>)}
-              </div>
+              </div>}
 
-              <div className="flex flex-wrap justify-end gap-2">
+              {mode === "manual" && <div className="flex flex-wrap justify-end gap-2">
                 <Button variant="outline" onClick={() => setOpen(false)}>إغلاق</Button>
                 <Button onClick={() => void runPreview()} disabled={busy || !periodStart || !realityDate || realityProgress === ""}>
                   {busy ? "جارٍ التحضير..." : "إنشاء المعاينة"}
                 </Button>
-              </div>
+              </div>}
 
               {preview && (
                 <div className="max-h-[42vh] space-y-4 overflow-y-auto border-t pt-4">
-                  <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-                    <p>الفترة: {preview.days} يوم</p>
-                    <p>لقطات ستُضاف: {preview.snapshotsToAdd}</p>
-                    <p>لقطات فعلية ستُتجاوز: {preview.snapshotsToSkip}</p>
-                    <p>بنود قابلة للتقدير: {preview.estimatedActivities} / {payload?.activities.length ?? 0}</p>
-                    <p>أيام مستبعدة: {preview.excludedDays.length}</p>
-                    <p>واقع الحال: {preview.realityProgress}%</p>
-                    <p>محسوب من البنود: {preview.calculatedRealityProgress}%</p>
-                    <p>الفرق: {preview.realityDifference} نقطة</p>
-                  </div>
+                  {mode === "manual" ? (
+                    <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                      <p>الفترة: {preview.days} يوم</p>
+                      <p>لقطات ستُضاف: {preview.snapshotsToAdd}</p>
+                      <p>لقطات فعلية ستُتجاوز: {preview.snapshotsToSkip}</p>
+                      <p>بنود قابلة للتقدير: {preview.estimatedActivities} / {payload?.activities.length ?? 0}</p>
+                      <p>أيام مستبعدة: {preview.excludedDays.length}</p>
+                      <p>واقع الحال: {preview.realityProgress}%</p>
+                      <p>محسوب من البنود: {preview.calculatedRealityProgress}%</p>
+                      <p>الفرق: {preview.realityDifference} نقطة</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-muted/40 p-3 text-sm">
+                      <p>مدة السجل: {preview.days} يوم</p>
+                      <p>حُسبت النسبة من البنود: {preview.calculatedRealityProgress}%</p>
+                      <p>الفرق عن النسبة المحسوبة: {preview.realityDifference} نقطة</p>
+                    </div>
+                  )}
                   {preview.excludedDays.length > 0 && (
                     <details className="rounded-md border p-3 text-sm">
                       <summary className="cursor-pointer font-medium">عرض الأيام المستبعدة ({preview.excludedDays.length})</summary>
@@ -284,8 +378,9 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
                   </div>}
                   {preview.assumptions.map((item, index) => <p key={index} className="text-xs text-muted-foreground">• {item}</p>)}
                   <div className="flex justify-end">
-                    <Button onClick={() => void createHistory()} disabled={!preview.valid || busy}>
-                      اعتماد وإنشاء السجل التاريخي
+                    <Button onClick={() => void createHistory()} disabled={!preview.valid || busy
+                      || (mode === "automatic" && (!(preview.estimatedCandidateActivities ?? 0) || !preview.snapshotsToAdd))}>
+                      {mode === "automatic" ? "تأكيد وحفظ اللقطات التقديرية" : "اعتماد وإنشاء السجل التاريخي"}
                     </Button>
                   </div>
                 </div>
