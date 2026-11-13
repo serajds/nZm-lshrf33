@@ -20,3 +20,9 @@ Project restores can fire database-level progress-history triggers even when no 
 **Why:** Importing projects, groups and activities can generate intermediate progress snapshots inside the restore transaction; their existence does not mean the backup contained the earlier tracking history.
 
 **How to apply:** Inspect triggers and verify the latest snapshot per project after a restore. Preserve original report snapshots unchanged, and never present newly generated restore-time history as recovered historical evidence.
+
+A same-day history sequence that begins with an empty activity list and grows cumulatively to the full restored project is a restore baseline, not proof of earlier daily progress. Preserve those rows, but do not let that sequence alone block a previewed estimate for missing dates. Keep multi-date history, linked-source history, and saved report snapshots authoritative.
+
+**Why:** Restoring project rows can create many `actual` snapshots in seconds through database triggers; their timestamp records the import, not when earlier work occurred.
+
+**How to apply:** Classify only a complete, cumulative, same-day restore sequence this way. Keep its date intact and require explicit preview confirmation before inserting estimates for other days.
