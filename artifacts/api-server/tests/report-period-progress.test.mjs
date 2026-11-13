@@ -12,7 +12,24 @@ const compiled = await build({
     setup(b) {
       b.onResolve({ filter: /^@workspace\/db$/ }, () => ({ path: "db", namespace: "fixture" }));
       b.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({
-        contents: "export const pool = { query: (...args) => globalThis.historyTestQuery(...args) };",
+        contents: `const table = (name, columns) => Object.assign({ tableName: name },
+                     Object.fromEntries(columns.map(column => [column, { tableName: name, column }])));
+                   export const pool = { query: (...args) => globalThis.historyTestQuery(...args) };
+                   export const activitiesTable = table("activities", [
+                     "id", "name", "groupId", "plannedStartDate", "plannedEndDate",
+                     "actualStartDate", "actualEndDate", "actualProgress", "plannedProgress",
+                     "externalSourceGroupId", "weight", "status", "sortOrder"
+                   ]);
+                   export const activityGroupsTable = table("activityGroups", ["id", "name"]);
+                   export const projectProgressHistoryTable = table("history", [
+                     "id", "projectId", "capturedAt", "snapshot"
+                   ]);
+                   export const projectsTable = table("projects", [
+                     "id", "noSchedule", "startDate", "expectedEndDate"
+                   ]);
+                   export const db = { transaction: async () => {
+                     throw new Error("Unexpected history capture in this fixture");
+                   } };`,
       }));
     },
   }],

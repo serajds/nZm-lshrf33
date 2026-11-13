@@ -7,7 +7,7 @@ import { activityOrderCase, validActivityOrderItems } from "../lib/activity-orde
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
-import { captureProjectProgressHistory } from "../lib/capture-project-progress-history";
+import { captureProjectProgressHistory, type HistoryTransaction } from "../lib/capture-project-progress-history";
 import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
 import { canReadProject, getGroupSummary, hasLinkedGroupSourceDuplicate, reconcileTargetsLinkedToProject, refreshLinkedSources, withSourceGraphLock, wouldCreateSourceCycle } from "../lib/external-sources";
 import { linkedSourceIdAfterPatch, sourceIsAvailable } from "../lib/activity-source-rules";
@@ -61,8 +61,8 @@ function isValidActualProgress(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
 }
 
-async function syncProjectProgress(projectId: number) {
-  const acts = await db
+async function syncProjectProgress(projectId: number, tx: HistoryTransaction) {
+  const acts = await tx
     .select({ actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight })
     .from(activitiesTable)
     .where(eq(activitiesTable.projectId, projectId));
@@ -78,11 +78,10 @@ async function syncProjectProgress(projectId: number) {
     ? roundPercent(weightedSum / totalWeight)
     : 0;
 
-  await db
+  await tx
     .update(projectsTable)
     .set({ overallProgress: computed })
     .where(eq(projectsTable.id, projectId));
-  await captureProjectProgressHistory(projectId);
 }
 
 async function serializeActivityForUser(
@@ -287,6 +286,8 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
       } : {}),
     };
     const [created] = await tx.insert(activitiesTable).values(lockedValues).returning();
+    await syncProjectProgress(projectId, tx);
+    await recalcExpectedEndDate(projectId, tx);
     return { invalidGroup: false, cycle: false, duplicate: false, invalidSource: false, activity: created };
   }));
   if (result.invalidGroup) {
@@ -311,8 +312,6 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
     return;
   }
 
-  await syncProjectProgress(projectId);
-  await recalcExpectedEndDate(projectId);
   if (groupId != null) await refreshLinkedSources([Number(groupId)]);
 
   const { logAudit } = await import("../lib/audit");
@@ -520,6 +519,10 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
       .set(updateData)
       .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)))
       .returning();
+    if (updated) {
+      await syncProjectProgress(projectId, tx);
+      await recalcExpectedEndDate(projectId, tx);
+    }
     return { invalidGroup: false, cycle: false, duplicate: false, managedLocked: false, invalidSource: false, changed: false, activity: updated };
   }));
   if (result.invalidGroup) {
@@ -553,8 +556,6 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
     return;
   }
 
-  await syncProjectProgress(projectId);
-  await recalcExpectedEndDate(projectId);
   const affectedSourceGroups = new Set<number>();
   if (existing.groupId != null) affectedSourceGroups.add(existing.groupId);
   if (activity.groupId != null) affectedSourceGroups.add(activity.groupId);
@@ -737,6 +738,8 @@ router.post("/projects/:projectId/activities/import/confirm", requireProjectAcce
         groupId: preview.mode === "existing" ? preview.targetGroupId
           : row.groupRow != null ? groupIds.get(row.groupRow) ?? null : null,
       }))).returning();
+      await syncProjectProgress(projectId, tx);
+      await recalcExpectedEndDate(projectId, tx);
       return { inserted, groupsCreated, usedIds: [...usedIds], affectedGroupIds: [...new Set(inserted.map(row => row.groupId).filter((id): id is number => id != null))] };
     }));
     const completed = {
@@ -755,8 +758,6 @@ router.post("/projects/:projectId/activities/import/confirm", requireProjectAcce
         completed.warnings.push(`حُفظت البنود، لكن تعذر ${label}. راجع حالة المشروع قبل إعادة الاستيراد.`);
       }
     };
-    await afterCommit("تحديث تقدم المشروع", () => syncProjectProgress(projectId));
-    await afterCommit("تحديث موعد نهاية المشروع", () => recalcExpectedEndDate(projectId));
     if (result.groupsCreated) await afterCommit("مزامنة المشاريع المرتبطة", () => reconcileTargetsLinkedToProject(projectId));
     if (result.affectedGroupIds.length) await afterCommit("تحديث مصادر المجموعات", () => refreshLinkedSources(result.affectedGroupIds));
     await afterCommit("تسجيل العملية", async () => {
@@ -865,21 +866,23 @@ router.post("/projects/:projectId/activities/import", requireProjectAccess("proj
       return;
     }
 
-    const inserted = await db.insert(activitiesTable).values(
-      activities.map(a => ({
-        projectId,
-        name: a.name,
-        plannedStartDate: a.plannedStartDate,
-        plannedEndDate: a.plannedEndDate,
-        sortOrder: a.sortOrder,
-        plannedProgress: 0,
-        actualProgress: 0,
-        status: "not_started" as const,
-      }))
-    ).returning();
-
-    await syncProjectProgress(projectId);
-    await recalcExpectedEndDate(projectId);
+    const inserted = await db.transaction(async tx => {
+      const rows = await tx.insert(activitiesTable).values(
+        activities.map(a => ({
+          projectId,
+          name: a.name,
+          plannedStartDate: a.plannedStartDate,
+          plannedEndDate: a.plannedEndDate,
+          sortOrder: a.sortOrder,
+          plannedProgress: 0,
+          actualProgress: 0,
+          status: "not_started" as const,
+        }))
+      ).returning();
+      await syncProjectProgress(projectId, tx);
+      await recalcExpectedEndDate(projectId, tx);
+      return rows;
+    });
 
     if (inserted.length > 0) {
       const { logAudit } = await import("../lib/audit");
@@ -956,6 +959,8 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
     }
     await tx.delete(activitiesTable)
       .where(and(eq(activitiesTable.id, id), eq(activitiesTable.projectId, projectId)));
+    await syncProjectProgress(projectId, tx);
+    await recalcExpectedEndDate(projectId, tx);
     return { kind: "deleted" as const, activity };
   }));
   if (deletion.kind === "not_found") {
@@ -972,8 +977,6 @@ router.delete("/projects/:projectId/activities/:id", requireProjectAccess("proje
   }
   const activity = deletion.activity;
 
-  await syncProjectProgress(projectId);
-  await recalcExpectedEndDate(projectId);
   if (activity.groupId != null) await refreshLinkedSources([activity.groupId]);
 
   const { logAudit } = await import("../lib/audit");
@@ -1056,6 +1059,7 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
     const updated = new Set((items as any[])
       .filter(item => currentById.has(item.id))
       .map(item => item.id)).size;
+    if (updated > 0) await captureProjectProgressHistory(projectId, tx);
     return { invalidGroup: false, managedLocked: false, duplicate: false, sourceGroupIds, updated };
   })));
   if ("invalidItems" in result && result.invalidItems) {
@@ -1077,7 +1081,6 @@ router.put("/projects/:projectId/activities/reorder", requireProjectAccess("proj
   // Keep propagation outside the graph lock; refreshLinkedSources acquires it
   // itself and nested acquisition would deadlock.
   if (result.sourceGroupIds.length) await measurePhase("reorder-propagation", () => refreshLinkedSources(result.sourceGroupIds));
-  if ((result.updated ?? 0) > 0) await captureProjectProgressHistory(projectId);
   if ((result.updated ?? 0) > 0) {
     const { logAudit } = await import("../lib/audit");
     await measurePhase("reorder-audit", () => logAudit({
