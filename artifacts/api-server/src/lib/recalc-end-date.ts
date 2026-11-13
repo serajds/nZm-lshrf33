@@ -1,6 +1,6 @@
 import { db, activitiesTable, projectsTable, projectExtensionsTable } from "@workspace/db";
 import { eq, max, sum } from "drizzle-orm";
-import { captureProjectProgressHistory } from "./capture-project-progress-history";
+import { captureProjectProgressHistory, type HistoryTransaction } from "./capture-project-progress-history";
 
 export async function getActivitiesBaseEndDate(projectId: number): Promise<string | null> {
   const [maxResult] = await db
@@ -18,27 +18,36 @@ function addDaysToDateStr(dateStr: string, days: number): string {
   return d.toISOString().split("T")[0];
 }
 
-export async function recalcExpectedEndDate(projectId: number) {
-  const [project] = await db.select({ noSchedule: projectsTable.noSchedule }).from(projectsTable).where(eq(projectsTable.id, projectId));
-  if (project?.noSchedule) return;
+async function recalcWithinTransaction(projectId: number, tx: HistoryTransaction): Promise<void> {
+  const [project] = await tx.select({ noSchedule: projectsTable.noSchedule }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!project?.noSchedule) {
+    const [maxResult] = await tx
+      .select({ maxEnd: max(activitiesTable.plannedEndDate) })
+      .from(activitiesTable)
+      .where(eq(activitiesTable.projectId, projectId));
 
-  const baseEnd = await getActivitiesBaseEndDate(projectId);
+    const baseEnd = maxResult?.maxEnd ?? null;
 
-  // Keep an explicitly contracted expected end date when there are no dated
-  // activities to derive a replacement from.
-  if (!baseEnd) return;
+    // Keep an explicitly contracted expected end date when there are no dated
+    // activities to derive a replacement from.
+    if (baseEnd) {
+      const [extResult] = await tx
+        .select({ totalDays: sum(projectExtensionsTable.daysAdded) })
+        .from(projectExtensionsTable)
+        .where(eq(projectExtensionsTable.projectId, projectId));
 
-  const [extResult] = await db
-    .select({ totalDays: sum(projectExtensionsTable.daysAdded) })
-    .from(projectExtensionsTable)
-    .where(eq(projectExtensionsTable.projectId, projectId));
+      const extensionDays = extResult?.totalDays ? Number(extResult.totalDays) : 0;
+      const newExpectedEnd = extensionDays > 0 ? addDaysToDateStr(baseEnd, extensionDays) : baseEnd;
 
-  const extensionDays = extResult?.totalDays ? Number(extResult.totalDays) : 0;
+      await tx.update(projectsTable)
+        .set({ expectedEndDate: newExpectedEnd })
+        .where(eq(projectsTable.id, projectId));
+    }
+  }
+  await captureProjectProgressHistory(projectId, tx);
+}
 
-  const newExpectedEnd = extensionDays > 0 ? addDaysToDateStr(baseEnd, extensionDays) : baseEnd;
-
-  await db.update(projectsTable)
-    .set({ expectedEndDate: newExpectedEnd })
-    .where(eq(projectsTable.id, projectId));
-  await captureProjectProgressHistory(projectId);
+export async function recalcExpectedEndDate(projectId: number, transaction?: HistoryTransaction): Promise<void> {
+  if (transaction) return recalcWithinTransaction(projectId, transaction);
+  await db.transaction(tx => recalcWithinTransaction(projectId, tx));
 }
