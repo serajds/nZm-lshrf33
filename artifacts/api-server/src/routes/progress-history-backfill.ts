@@ -227,7 +227,7 @@ async function readBackfillState(projectId: number) {
   });
   return {
     project, activities: activities as BackfillActivity[], suspensions: suspensions as BackfillSuspension[],
-    batches, history, normalizedActivityInputs, fingerprint,
+    batches, history, normalizedActivityInputs, reportAnchors, fingerprint,
     verifiedProjectPoints,
   };
 }
@@ -259,15 +259,47 @@ function makePreview(state: NonNullable<Awaited<ReturnType<typeof readBackfillSt
   return { result, token, merged };
 }
 
+function isSingleRestoreBurst(
+  history: Array<{ capturedAt: Date; snapshot: unknown; source: string }>,
+  activities: Array<{ id: number }>,
+): boolean {
+  if (history.length < 2 || activities.length === 0 || history.some(row => row.source !== "actual")) return false;
+  const ordered = [...history].sort((a, b) => a.capturedAt.getTime() - b.capturedAt.getTime());
+  if (new Set(ordered.map(row => tripoliDay(row.capturedAt))).size !== 1) return false;
+  const currentIds = new Set(activities.map(activity => activity.id));
+  let previousIds = new Set<number>();
+  for (let index = 0; index < ordered.length; index++) {
+    const snapshot = ordered[index].snapshot;
+    if (!snapshot || typeof snapshot !== "object") return false;
+    const rows = (snapshot as { activities?: unknown }).activities;
+    if (!Array.isArray(rows)) return false;
+    const ids = new Set(rows.flatMap((row: unknown) => {
+      if (!row || typeof row !== "object") return [];
+      const id = (row as { id?: unknown }).id;
+      return typeof id === "number" && Number.isSafeInteger(id) ? [id] : [];
+    }));
+    if (ids.size !== rows.length || [...ids].some(id => !currentIds.has(id))) return false;
+    if (index === 0 && ids.size !== 0) return false;
+    if ([...previousIds].some(id => !ids.has(id))) return false;
+    previousIds = ids;
+  }
+  return previousIds.size === currentIds.size && [...currentIds].every(id => previousIds.has(id));
+}
+
 function makeAutomaticInput(state: NonNullable<Awaited<ReturnType<typeof readBackfillState>>>) {
   const realityDate = tripoliDay(new Date());
+  const restoreBurstDetected = state.reportAnchors.length === 0
+    && state.activities.every(activity => activity.externalSourceGroupId == null)
+    && isSingleRestoreBurst(state.history, state.activities);
   const recordedProgress = new Set<number>();
-  for (const input of state.normalizedActivityInputs) {
-    if (input.points.some(point => point.date <= realityDate && point.progress > 0)) {
-      recordedProgress.add(input.activityId);
+  if (!restoreBurstDetected) {
+    for (const input of state.normalizedActivityInputs) {
+      if (input.points.some(point => point.date <= realityDate && point.progress > 0)) {
+        recordedProgress.add(input.activityId);
+      }
     }
   }
-  for (const row of state.history) {
+  for (const row of restoreBurstDetected ? [] : state.history) {
     if (tripoliDay(row.capturedAt) > realityDate || !row.snapshot || typeof row.snapshot !== "object") continue;
     const snapshotActivities = (row.snapshot as {
       activities?: Array<{ id?: number; actualProgress?: number }>;
@@ -283,7 +315,14 @@ function makeAutomaticInput(state: NonNullable<Awaited<ReturnType<typeof readBac
     Number.isFinite(activity.actualProgress) && activity.actualProgress > 0 && !recordedProgress.has(activity.id),
   );
   if (!candidates.length) {
-    return { error: "لا توجد بنود ذات تقدم حالي بلا سجل تقدم مؤرخ." } as const;
+    const hasCurrentProgress = state.activities.some(activity =>
+      Number.isFinite(activity.actualProgress) && activity.actualProgress > 0,
+    );
+    return {
+      error: hasCurrentProgress
+        ? "كل البنود ذات التقدم الحالي لديها سجل تقدم مؤرخ؛ لن تُنشأ تقديرات مكررة."
+        : "لا توجد بنود ذات تقدم حالي لتهيئتها.",
+    } as const;
   }
 
   const candidatesWithStart = candidates.filter(activity =>
@@ -311,6 +350,7 @@ function makeAutomaticInput(state: NonNullable<Awaited<ReturnType<typeof readBac
     candidates,
     candidatesWithStart,
     missingStartDateCount: candidates.length - candidatesWithStart.length,
+    restoreBurstDetected,
   } as const;
 }
 
@@ -339,6 +379,7 @@ router.post("/projects/:projectId/progress-history-backfill/automatic-preview", 
     candidatesWithStartDate: plan.candidatesWithStart.length,
     candidatesMissingStartDate: plan.missingStartDateCount,
     estimatedCandidateActivities,
+    restoreBurstDetected: plan.restoreBurstDetected,
     snapshotsToAdd: Math.max(0, result.snapshots.length - snapshotsToSkip),
     snapshotsToSkip,
   });

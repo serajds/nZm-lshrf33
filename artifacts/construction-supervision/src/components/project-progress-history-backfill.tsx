@@ -39,6 +39,7 @@ type Preview = {
   periodStart?: string; realityDate?: string;
   candidateActivities?: number; candidatesWithStartDate?: number;
   candidatesMissingStartDate?: number; estimatedCandidateActivities?: number;
+  restoreBurstDetected?: boolean;
 };
 
 async function responseJson<T>(response: Response): Promise<T> {
@@ -257,6 +258,11 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
                     <p>تواريخ محفوظة ستُحترم: {preview.snapshotsToSkip}</p>
                     <p>نسبة الإنجاز الحالية: {preview.realityProgress}%</p>
                   </div>
+                  {preview.restoreBurstDetected && (
+                    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                      رُصد سجل لقطات متتابع في يوم واحد بدأ بلا بنود ثم اكتمل أثناء الاستيراد؛ سيبقى محفوظًا ولن يمنع تقدير الأيام الأخرى.
+                    </div>
+                  )}
                 </div>
               )}
 

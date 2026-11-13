@@ -325,6 +325,90 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
       .where(eq(projectProgressHistoryTable.projectId, automaticProject.id)).then(rows => rows.length), 0,
     "previewing automatic estimates does not write history");
 
+    const [restoreProject] = await db.insert(projectsTable).values({
+      name: "Imported project restore fixture", location: "fixture", ownerEntity: "fixture",
+      supervisorEntity: "fixture", contractor: "fixture", startDate: "2026-01-01",
+      expectedEndDate: "2026-12-31",
+    }).returning();
+    const [restoreActivityA] = await db.insert(activitiesTable).values({
+      projectId: restoreProject.id, name: "Imported activity A", status: "in_progress",
+      actualStartDate: "2026-02-01", actualProgress: 30, weight: 1,
+    }).returning();
+    const [restoreActivityB] = await db.insert(activitiesTable).values({
+      projectId: restoreProject.id, name: "Imported activity B", status: "in_progress",
+      actualStartDate: "2026-03-01", actualProgress: 50, weight: 1,
+    }).returning();
+    const restoreNow = Date.now();
+    const restoreSnapshot = rows => historicalSnapshot(restoreProject.id, rows.map(activity => ({
+      id: activity.id, name: activity.name, actualProgress: activity.actualProgress,
+      plannedProgress: 0, weight: 1, status: "in_progress", groupId: null, externalSourceGroupId: null,
+    })));
+    await db.insert(projectProgressHistoryTable).values([
+      { projectId: restoreProject.id, capturedAt: new Date(restoreNow - 2_000), snapshot: restoreSnapshot([]) },
+      { projectId: restoreProject.id, capturedAt: new Date(restoreNow - 1_000), snapshot: restoreSnapshot([restoreActivityA]) },
+      { projectId: restoreProject.id, capturedAt: new Date(restoreNow), snapshot: restoreSnapshot([restoreActivityA, restoreActivityB]) },
+    ]);
+    const restorePreviewResponse = await fetch(
+      `${base}/projects/${restoreProject.id}/progress-history-backfill/automatic-preview`,
+      { method: "POST", headers: headers(adminToken), body: "{}" },
+    );
+    const restorePreview = await restorePreviewResponse.json();
+    assert.equal(restorePreviewResponse.status, 200, JSON.stringify(restorePreview));
+    assert.equal(restorePreview.restoreBurstDetected, true,
+      "a same-day cumulative import burst is not treated as complete progress-history coverage");
+    assert.equal(restorePreview.candidateActivities, 2);
+    assert.equal(restorePreview.estimatedCandidateActivities, 2);
+    assert.equal(restorePreview.snapshotsToSkip, 1,
+      "the existing restore-day snapshot is retained instead of overwritten");
+    assert.equal(await db.select().from(projectProgressHistoryTable)
+      .where(eq(projectProgressHistoryTable.projectId, restoreProject.id)).then(rows => rows.length), 3,
+    "preview leaves every imported snapshot unchanged");
+
+    const todayParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(new Date());
+    const today = `${todayParts.find(part => part.type === "year").value}-${todayParts.find(part => part.type === "month").value}-${todayParts.find(part => part.type === "day").value}`;
+    await db.insert(reportsTable).values({
+      projectId: restoreProject.id, reportNumber: 1, type: "period", reportDate: today,
+      periodStart: "2026-01-01", periodEnd: today, workDescription: "Saved report anchor",
+      progressPercentage: 40, progressSource: "history", progressAsOfDate: today,
+      activitiesSnapshot: [
+        { id: restoreActivityA.id, actualProgress: 30, actualHistoricalUnverified: false },
+        { id: restoreActivityB.id, actualProgress: 50, actualHistoricalUnverified: false },
+      ],
+    });
+    const anchoredRestoreResponse = await fetch(
+      `${base}/projects/${restoreProject.id}/progress-history-backfill/automatic-preview`,
+      { method: "POST", headers: headers(adminToken), body: "{}" },
+    );
+    assert.equal(anchoredRestoreResponse.status, 409,
+      "a saved report snapshot remains authoritative even beside a restore burst");
+
+    const [linkedRestoreProject] = await db.insert(projectsTable).values({
+      name: "Linked restore fixture", location: "fixture", ownerEntity: "fixture",
+      supervisorEntity: "fixture", contractor: "fixture", startDate: "2026-01-01",
+      expectedEndDate: "2026-12-31",
+    }).returning();
+    const [linkedRestoreActivity] = await db.insert(activitiesTable).values({
+      projectId: linkedRestoreProject.id, name: "Linked imported activity", status: "in_progress",
+      actualProgress: 30, weight: 1, externalSourceGroupId: sourceGroup.id,
+    }).returning();
+    const linkedRestoreSnapshot = rows => historicalSnapshot(linkedRestoreProject.id, rows);
+    await db.insert(projectProgressHistoryTable).values([
+      { projectId: linkedRestoreProject.id, capturedAt: new Date(restoreNow - 2_000), snapshot: linkedRestoreSnapshot([]) },
+      { projectId: linkedRestoreProject.id, capturedAt: new Date(restoreNow), snapshot: linkedRestoreSnapshot([
+        { id: linkedRestoreActivity.id, name: linkedRestoreActivity.name, actualProgress: 30,
+          plannedProgress: 0, weight: 1, status: "in_progress", groupId: null,
+          externalSourceGroupId: sourceGroup.id },
+      ]) },
+    ]);
+    const linkedRestoreResponse = await fetch(
+      `${base}/projects/${linkedRestoreProject.id}/progress-history-backfill/automatic-preview`,
+      { method: "POST", headers: headers(adminToken), body: "{}" },
+    );
+    assert.equal(linkedRestoreResponse.status, 409,
+      "linked-source history is not ignored by restore-burst detection");
+
     const automaticCommitResponse = await fetch(
       `${base}/projects/${automaticProject.id}/progress-history-backfill/commit`,
       {
