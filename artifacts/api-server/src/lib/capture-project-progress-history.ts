@@ -24,17 +24,25 @@ function stableJson(value: unknown): string {
  * application layer. Production schema publishing does not install the
  * custom PostgreSQL triggers, so API writes must also maintain this history.
  */
-async function captureWithTransaction(projectId: number, tx: HistoryTransaction): Promise<void> {
-  // Match the lock used by migration 0008 and serialize duplicate captures.
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(84620, 1)`);
+export type HistorySnapshotMetadata = {
+  source?: "actual" | "estimated";
+  importBatchId?: number | null;
+  createdById?: number | null;
+  methodology?: string | null;
+  capturedAt?: Date;
+};
 
+export async function buildProjectProgressSnapshot(
+  projectId: number,
+  tx: HistoryTransaction,
+): Promise<Record<string, unknown> | null> {
   const [project] = await tx.select({
     id: projectsTable.id,
     noSchedule: projectsTable.noSchedule,
     startDate: projectsTable.startDate,
     expectedEndDate: projectsTable.expectedEndDate,
   }).from(projectsTable).where(eq(projectsTable.id, projectId));
-  if (!project) return;
+  if (!project) return null;
 
   const activities = await tx.select({
     id: activitiesTable.id,
@@ -61,7 +69,19 @@ async function captureWithTransaction(projectId: number, tx: HistoryTransaction)
     .where(eq(activityGroupsTable.projectId, projectId))
     .orderBy(asc(activityGroupsTable.id));
 
-  const snapshot = { ...project, activities, groups };
+  return { ...project, activities, groups };
+}
+
+async function captureWithTransaction(
+  projectId: number,
+  tx: HistoryTransaction,
+  metadata: HistorySnapshotMetadata = {},
+): Promise<void> {
+  // Match the lock used by migration 0008 and serialize duplicate captures.
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(84620, 1)`);
+
+  const snapshot = await buildProjectProgressSnapshot(projectId, tx);
+  if (!snapshot) return;
   const [latest] = await tx.select({
     snapshot: projectProgressHistoryTable.snapshot,
   }).from(projectProgressHistoryTable)
@@ -75,15 +95,20 @@ async function captureWithTransaction(projectId: number, tx: HistoryTransaction)
 
   await tx.insert(projectProgressHistoryTable).values({
     projectId,
-    capturedAt: sql`clock_timestamp()`,
+    capturedAt: metadata.capturedAt ?? sql`clock_timestamp()`,
     snapshot,
+    source: metadata.source ?? "actual",
+    importBatchId: metadata.importBatchId ?? null,
+    createdById: metadata.createdById ?? null,
+    methodology: metadata.methodology ?? null,
   });
 }
 
 export async function captureProjectProgressHistory(
   projectId: number,
   transaction?: HistoryTransaction,
+  metadata: HistorySnapshotMetadata = {},
 ): Promise<void> {
-  if (transaction) return captureWithTransaction(projectId, transaction);
-  await db.transaction(tx => captureWithTransaction(projectId, tx));
+  if (transaction) return captureWithTransaction(projectId, transaction, metadata);
+  await db.transaction(tx => captureWithTransaction(projectId, tx, metadata));
 }

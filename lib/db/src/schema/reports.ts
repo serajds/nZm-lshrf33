@@ -22,6 +22,8 @@ export const reportsTable = pgTable("reports", {
   progressSource: text("progress_source", { enum: ["history", "manual"] }),
   progressAsOfDate: date("progress_as_of_date"),
   progressHistoryCapturedAt: timestamp("progress_history_captured_at", { withTimezone: true }),
+  progressStartPercentage: real("progress_start_percentage"),
+  progressHistorySource: text("progress_history_source", { enum: ["actual", "estimated"] }),
   status: text("status", { enum: ["draft", "approved"] }).notNull().default("draft"),
   approvedAt: timestamp("approved_at", { withTimezone: true }),
   approvedById: integer("approved_by_id"),

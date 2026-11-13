@@ -17,13 +17,16 @@ export interface ReportPeriodProgress {
   fingerprint: string | null;
   reason: string | null;
   activitiesCount: number;
+  periodStartProgress: number | null;
+  periodIncrease: number | null;
+  historySource: "actual" | "estimated" | null;
 }
 
-export function useReportPeriodProgress(projectId: number, periodEnd: string, enabled: boolean) {
+export function useReportPeriodProgress(projectId: number, periodEnd: string, enabled: boolean, periodStart?: string) {
   return useQuery({
-    queryKey: [`/api/projects/${projectId}/reports/progress-as-of`, periodEnd],
+    queryKey: [`/api/projects/${projectId}/reports/progress-as-of`, periodEnd, periodStart],
     queryFn: () => customFetch<ReportPeriodProgress>(
-      `/api/projects/${projectId}/reports/progress-as-of?periodEnd=${encodeURIComponent(periodEnd)}`,
+      `/api/projects/${projectId}/reports/progress-as-of?periodEnd=${encodeURIComponent(periodEnd)}${periodStart ? `&periodStart=${encodeURIComponent(periodStart)}` : ""}`,
       { method: "GET", cache: "no-store" },
     ),
     enabled: enabled && /^\d{4}-\d{2}-\d{2}$/.test(periodEnd),
@@ -33,6 +36,7 @@ export function useReportPeriodProgress(projectId: number, periodEnd: string, en
 }
 
 interface Props {
+  periodStart: string;
   periodEnd: string;
   data?: ReportPeriodProgress;
   loading: boolean;
@@ -43,7 +47,7 @@ interface Props {
   onManualChange: () => void;
 }
 
-export function NewReportProgressField({ periodEnd, data, loading, failed, manual, value, onChange, onManualChange }: Props) {
+export function NewReportProgressField({ periodStart, periodEnd, data, loading, failed, manual, value, onChange, onManualChange }: Props) {
   return (
     <FormItem className="sm:col-span-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -71,9 +75,15 @@ export function NewReportProgressField({ periodEnd, data, loading, failed, manua
             <>
               <p>{manual ? "نسبة موثّقة مدخلة يدوياً" : "محتسب من سجل جميع البنود وأوزانها"}
                 {" "}حتى نهاية {periodEnd} بتوقيت ليبيا، وليس تاريخ إصدار التقرير.</p>
+              {!manual && data.historySource === "estimated" && (
+                <p className="font-medium text-amber-700">المصدر: سجل تاريخي تقديري تمت مراجعته.</p>
+              )}
               {data.plannedProgress !== null && Number.isFinite(Number(value)) && (
                 <p>المخطط: {formatDisplayPercent(data.plannedProgress)} — الفارق: {formatDisplayPercent(Number(value) - data.plannedProgress, true)}
                   {" "}— SPI: {data.plannedProgress > 0 ? (Number(value) / data.plannedProgress).toFixed(2) : "غير متاح"}</p>
+              )}
+              {periodStart && data.periodStartProgress !== null && data.periodIncrease !== null && (
+                <p>بداية الفترة: {formatDisplayPercent(data.periodStartProgress)} — التغير خلال الفترة: {formatDisplayPercent(data.periodIncrease, true)} نقطة مئوية.</p>
               )}
             </>
           ) : <p className="text-amber-700 dark:text-amber-400">{data?.reason}</p>}

@@ -562,7 +562,7 @@ export default function ProjectReports() {
   const watchedType = form.watch("type");
   const watchedPeriodStart = form.watch("periodStart");
   const watchedPeriodEnd = form.watch("periodEnd");
-  const periodProgress = useReportPeriodProgress(projectId, watchedPeriodEnd, isDialogOpen && !editingId);
+  const periodProgress = useReportPeriodProgress(projectId, watchedPeriodEnd, isDialogOpen && !editingId, watchedPeriodStart);
   useEffect(() => {
     if (editingId) return;
     setNewReportManual(false);
@@ -1352,6 +1352,7 @@ export default function ProjectReports() {
                     render={({ field }) => {
                       if (!editingId) return (
                         <NewReportProgressField
+                          periodStart={watchedPeriodStart}
                           periodEnd={watchedPeriodEnd}
                           data={periodProgress.data}
                           loading={periodProgress.isFetching}
@@ -1915,6 +1916,17 @@ export default function ProjectReports() {
                 <div>
                   <div className="text-xs text-muted-foreground mb-0.5">الإنجاز التراكمي</div>
                   <Badge className="bg-primary text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>
+                  {(report as any).progressHistorySource && (
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      المصدر: {(report as any).progressHistorySource === "estimated" ? "سجل تقديري مراجع" : "سجل فعلي"}
+                    </p>
+                  )}
+                  {typeof (report as any).progressStartPercentage === "number" && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      التغير خلال الفترة: {((report.progressPercentage - (report as any).progressStartPercentage) >= 0 ? "+" : "")}
+                      {(report.progressPercentage - (report as any).progressStartPercentage).toFixed(1)} نقطة مئوية
+                    </p>
+                  )}
                 </div>
                 <div className="col-span-2 sm:col-span-4">
                   <div className="text-xs text-muted-foreground mb-0.5">الفترة</div>
@@ -2072,6 +2084,15 @@ export default function ProjectReports() {
                               </td>
                               <td className="px-3 py-2.5 whitespace-nowrap">
                                 <Badge className="bg-primary text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>
+                                {(report as any).progressHistorySource === "estimated" && (
+                                  <p className="mt-1 text-[10px] text-amber-700">سجل تقديري</p>
+                                )}
+                                {typeof (report as any).progressStartPercentage === "number" && (
+                                  <p className="mt-1 text-[10px] text-muted-foreground">
+                                    تغير الفترة {((report.progressPercentage - (report as any).progressStartPercentage) >= 0 ? "+" : "")}
+                                    {(report.progressPercentage - (report as any).progressStartPercentage).toFixed(1)}%
+                                  </p>
+                                )}
                               </td>
                               <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
                                 <span className="inline-flex items-center gap-1">
@@ -2129,7 +2150,18 @@ export default function ProjectReports() {
                                 <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 text-xs">معتمد</Badge>
                               )}
                             </div>
-                            <Badge className="bg-primary shrink-0 text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>
+                            <div className="shrink-0 text-left">
+                              <Badge className="bg-primary text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>
+                              {(report as any).progressHistorySource === "estimated" && (
+                                <p className="mt-1 text-[10px] text-amber-700">سجل تقديري</p>
+                              )}
+                              {typeof (report as any).progressStartPercentage === "number" && (
+                                <p className="mt-1 text-[10px] text-muted-foreground">
+                                  تغير {((report.progressPercentage - (report as any).progressStartPercentage) >= 0 ? "+" : "")}
+                                  {(report.progressPercentage - (report as any).progressStartPercentage).toFixed(1)}%
+                                </p>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <span className="font-mono">{fmtDate(report.reportDate)}</span>
