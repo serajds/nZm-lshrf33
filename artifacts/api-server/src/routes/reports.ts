@@ -139,7 +139,14 @@ router.get("/projects/:projectId/reports/progress-as-of", requireProjectAccess("
     res.status(400).json({ error: "تاريخ نهاية الفترة غير صالح" });
     return;
   }
-  const progress = await getReportPeriodProgress(Number(req.params.projectId), req.query.periodEnd);
+  if (req.query.periodStart !== undefined && !validReportDay(req.query.periodStart)) {
+    res.status(400).json({ error: "تاريخ بداية الفترة غير صالح" });
+    return;
+  }
+  const progress = await getReportPeriodProgress(
+    Number(req.params.projectId), req.query.periodEnd, new Date(),
+    typeof req.query.periodStart === "string" ? req.query.periodStart : undefined,
+  );
   const { activities, ...summary } = progress;
   res.setHeader("Cache-Control", "private, no-store");
   res.json({ ...summary, activitiesCount: activities?.length ?? 0 });
@@ -458,6 +465,8 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), re
     progressSource: reportsTable.progressSource,
     progressAsOfDate: reportsTable.progressAsOfDate,
     progressHistoryCapturedAt: reportsTable.progressHistoryCapturedAt,
+    progressStartPercentage: reportsTable.progressStartPercentage,
+    progressHistorySource: reportsTable.progressHistorySource,
     status: reportsTable.status,
     approvedAt: reportsTable.approvedAt,
     approvedById: reportsTable.approvedById,
@@ -498,7 +507,7 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
     res.status(400).json({ error: "تواريخ فترة التقرير غير صالحة" });
     return;
   }
-  const progress = await getReportPeriodProgress(projectId, periodEnd);
+  const progress = await getReportPeriodProgress(projectId, periodEnd, new Date(), periodStart);
   const manual = req.body.progressSource === "manual";
   if (req.body.progressSource !== undefined && req.body.progressSource !== "manual" && req.body.progressSource !== "history") {
     res.status(400).json({ error: "مصدر نسبة الإنجاز غير صالح" });
@@ -551,6 +560,8 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
     progressSource: manual ? "manual" : "history",
     progressAsOfDate: periodEnd,
     progressHistoryCapturedAt: progress.capturedAt ? new Date(progress.capturedAt) : null,
+    progressStartPercentage: progress.periodStartProgress,
+    progressHistorySource: progress.historySource,
     technicalNotes: technicalNotes ?? null,
     recommendations: recommendations ?? null,
     imageUrls: finalImageUrls,
@@ -597,6 +608,8 @@ router.post("/projects/:projectId/reports/:id/duplicate", requireProjectAccess("
       progressSource: source.progressSource,
       progressAsOfDate: source.progressAsOfDate,
       progressHistoryCapturedAt: source.progressHistoryCapturedAt,
+      progressStartPercentage: source.progressStartPercentage,
+      progressHistorySource: source.progressHistorySource,
       status: "draft",
       createdById: req.user?.userId ?? null,
     }).returning();

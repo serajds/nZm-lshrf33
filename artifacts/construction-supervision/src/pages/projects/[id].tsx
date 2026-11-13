@@ -29,6 +29,7 @@ import { ProjectNav } from "@/components/project-nav";
 import { ProjectMembers } from "@/components/project-members";
 import { ProjectQuickViewDialog } from "@/components/project-quick-view-dialog";
 import { AttendanceQuickActions } from "@/components/attendance-quick-actions";
+import { ProjectProgressHistoryBackfill } from "@/components/project-progress-history-backfill";
 // PERFORMANCE (dev): leaflet + react-leaflet pull a large dependency tree
 // that Vite must transform on first navigation, blocking the project page
 // for several seconds. The map is rendered well below the fold and isn't
@@ -489,6 +490,8 @@ export default function ProjectDetails() {
           siteRadiusMeters: project.siteRadiusMeters,
         }}
       />
+
+      <ProjectProgressHistoryBackfill projectId={project.id} />
 
       {/* ── Summary Content ── */}
       <div className="space-y-5">

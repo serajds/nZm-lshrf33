@@ -161,10 +161,12 @@ test("corrupt source cycles cannot recurse forever or read live sources", () => 
   assert.equal(resolveHistoricalActivities(p, [p], "2026-10-20")[0].actualProgress, 30);
 });
 
-test("missing historical source keeps last actual values but does not invent planned variance", async () => {
+test("missing historical source is unavailable instead of using its last live value", async () => {
   history([row(project(1, [activity(1, 30, 1, { externalSourceGroupId: 999 })]), "2026-10-20T10:00:00Z")]);
   const result = await getReportPeriodProgress(1, "2026-10-20", now);
-  assert.equal(result.overallProgress, 30);
+  assert.equal(result.available, false);
+  assert.equal(result.overallProgress, null);
   assert.equal(result.plannedProgress, null);
   assert.equal(result.spi, null);
+  assert.equal(result.activities[0].actualHistoricalUnverified, true);
 });
