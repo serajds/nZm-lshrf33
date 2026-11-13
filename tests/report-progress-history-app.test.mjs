@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { execFileSync } from "node:child_process";
 import { isolatedPostgres } from "./helpers/isolated-postgres.mjs";
 
 test("report progress history works without PostgreSQL triggers", { timeout: 120_000 }, async () => {
@@ -12,23 +11,22 @@ test("report progress history works without PostgreSQL triggers", { timeout: 120
   process.env.DATABASE_URL = "postgresql://blocked:blocked@127.0.0.1:1/not-used";
   const postgres = await isolatedPostgres();
   let server;
-  let dbModule;
+  let schema;
   try {
     // The schema push creates the history table but intentionally does not run
     // migration 0008's custom trigger/function SQL.
-    dbModule = await import("../lib/db/src/index.ts");
-    const triggerCheck = await dbModule.pool.query(
-      "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE '%history%'",
-    );
-    assert.equal(triggerCheck.rows.length, 0, "isolated database has no history triggers");
-
-    const [{ default: app }, { signToken }, schema, { eq }] = await Promise.all([
+    const [{ default: app }, { signToken }, dbSchema, { eq }] = await Promise.all([
       import("../artifacts/api-server/src/app.ts"),
       import("../artifacts/api-server/src/lib/auth.ts"),
       import("../lib/db/src/index.ts"),
       import("../lib/db/node_modules/drizzle-orm/index.js"),
     ]);
-    const { db, usersTable, projectsTable, activitiesTable, projectProgressHistoryTable } = schema;
+    schema = dbSchema;
+    const { db, pool, usersTable, projectsTable, activitiesTable, projectProgressHistoryTable } = dbSchema;
+    const triggerCheck = await pool.query(
+      "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE '%history%'",
+    );
+    assert.equal(triggerCheck.rows.length, 0, "isolated database has no history triggers");
     const [user] = await db.insert(usersTable).values({
       phone: `report-history-test-${Date.now()}`,
       passwordHash: "unused",
@@ -75,8 +73,16 @@ test("report progress history works without PostgreSQL triggers", { timeout: 120
       return payload;
     };
     const initial = await readProgress();
-    assert.equal(initial.available, true, "today-only baseline is recorded for an existing project");
+    assert.equal(initial.available, true, `today-only baseline is recorded for an existing project: ${JSON.stringify(initial)}`);
     assert.equal(initial.overallProgress, 35);
+    const yesterday = new Date(Date.parse(`${today}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+    const olderResponse = await fetch(
+      `${base}/projects/${project.id}/reports/progress-as-of?periodEnd=${yesterday}`,
+      { headers },
+    );
+    const older = await olderResponse.json();
+    assert.equal(older.available, false, "today's baseline is never presented as a historical value");
+    assert.equal(older.overallProgress, null);
 
     const updateResponse = await fetch(`${base}/projects/${project.id}/activities/${activity.id}`, {
       method: "PATCH",
@@ -110,7 +116,7 @@ test("report progress history works without PostgreSQL triggers", { timeout: 120
     assert.equal(report.progressAsOfDate, today);
   } finally {
     if (server) await new Promise(resolvePromise => server.close(resolvePromise));
-    if (dbModule?.pool) await dbModule.pool.end();
+    if (schema?.pool) await schema.pool.end();
     await postgres.stop();
     if (previousJwtSecret === undefined) delete process.env.JWT_SECRET;
     else process.env.JWT_SECRET = previousJwtSecret;

@@ -115,6 +115,7 @@ export function resolveHistoricalActivities(project: HistoricalProject, states: 
 export async function getReportPeriodProgress(projectId: number, day: string, now = new Date()) {
   if (!validReportDay(day)) throw new Error("تاريخ نهاية الفترة غير صالح");
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  let queryNow = now;
   let { rows: starts } = await pool.query<{ started_at: Date | null }>(
     "SELECT min(captured_at) AS started_at FROM project_progress_history WHERE project_id=$1", [projectId]);
   let trackingStartedAt = starts[0]?.started_at?.toISOString() ?? null;
@@ -126,6 +127,7 @@ export async function getReportPeriodProgress(projectId: number, day: string, no
     ({ rows: starts } = await pool.query<{ started_at: Date | null }>(
       "SELECT min(captured_at) AS started_at FROM project_progress_history WHERE project_id=$1", [projectId]));
     trackingStartedAt = starts[0]?.started_at?.toISOString() ?? null;
+    queryNow = new Date();
   }
   const missing = (reason: string) => ({
     available: false as const, asOfDate: day, overallProgress: null, plannedProgress: null,
@@ -133,7 +135,7 @@ export async function getReportPeriodProgress(projectId: number, day: string, no
     reason, activities: null,
   });
   if (day > today) return missing("نهاية الفترة في المستقبل؛ لا تتوفر نسبة إنجاز فعلية لتاريخ لم يأتِ بعد.");
-  const cutoff = new Date(Math.min(periodCutoff(day).getTime(), now.getTime() + 1));
+  const cutoff = new Date(Math.min(periodCutoff(day).getTime(), queryNow.getTime() + 1));
   const { rows } = await pool.query<HistoryRow>(
     `SELECT DISTINCT ON (project_id) project_id, captured_at, snapshot
      FROM project_progress_history WHERE captured_at < $1
