@@ -477,14 +477,9 @@ export default function OwnerPortal() {
     const verification = getSnapshotVerification(report);
     const snapshotRows = (snapshotActivities ?? []) as OwnerReportSnapshotActivity[];
     const activityList: ActivityForReport[] = snapshotRows.map((a) => {
-      const actualRecordedAt = a.actualRecordedAt ?? report.createdAt;
-      const actualUnverified = report.status === "approved" && isAfterReportDate(actualRecordedAt, report.reportDate);
       const plannedUnverified = a.plannedHistoricalUnverified === true;
-      const actualProvenance = actualUnverified
-        ? ` — فعلي غير متحقق لتاريخ التقرير (سُجل ${fmtDate(actualRecordedAt)})`
-        : "";
       return {
-      name: `${a.name ?? ""}${actualProvenance}`,
+      name: a.name ?? "",
       plannedProgress: a.plannedProgress ?? 0,
       actualProgress: a.actualProgress ?? 0,
       status: (a.status as ActivityForReport["status"]) ?? "not_started",
@@ -1064,12 +1059,6 @@ export default function OwnerPortal() {
                         )}
                       </div>
 
-                      {getSnapshotVerification(report).plannedUnverified && (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
-                          بعض قيم الخطة محفوظة لتواريخ مرجعية مختلفة عن تاريخ التقرير؛ ستظهر مرجعية كل بند بجوار قيمته، ولا يمكن اعتماد هذه الخطة كتقدم مخطط لهذا التاريخ.
-                        </div>
-                      )}
-
                       {report.workDescription && (
                         <div>
                           <h4 className="text-sm font-semibold mb-1.5 flex items-center gap-1.5">
@@ -1096,7 +1085,6 @@ export default function OwnerPortal() {
                           ...act,
                           plannedProgress: act.plannedProgress ?? 0,
                         })) as OwnerReportSnapshotActivity[];
-                        const verification = getSnapshotVerification(report);
                         if (reportActivities.length === 0) return null;
                         return (
                           <div className="pt-3 border-t">
@@ -1108,34 +1096,21 @@ export default function OwnerPortal() {
                                 <TableHeader>
                                   <TableRow className="bg-muted/40">
                                     <TableHead className="text-right text-xs py-2">البند</TableHead>
-                                    <TableHead className="text-center text-xs py-2 w-24">{verification.plannedUnverified ? "مخطط غير متحقق" : "المخطط %"}</TableHead>
-                                    <TableHead className="text-center text-xs py-2 w-24">{verification.actualUnverified ? "فعلي غير متحقق" : "الفعلي %"}</TableHead>
-                                    <TableHead className="text-center text-xs py-2 w-28">{verification.actualUnverified ? "الحالة عند التسجيل" : "الحالة"}</TableHead>
+                                    <TableHead className="text-center text-xs py-2 w-24">المخطط %</TableHead>
+                                    <TableHead className="text-center text-xs py-2 w-24">الفعلي %</TableHead>
+                                    <TableHead className="text-center text-xs py-2 w-28">الحالة</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                   {reportActivities.map((act) => {
-                                    const actualRecordedAt = act.actualRecordedAt ?? report.createdAt;
-                                    const actualUnverified = report.status === "approved" && isAfterReportDate(actualRecordedAt, report.reportDate);
-                                    const plannedUnverified = act.plannedHistoricalUnverified === true;
                                     return (
                                     <TableRow key={act.id}>
                                       <TableCell className="text-sm py-1.5">{act.name}</TableCell>
                                       <TableCell className="text-center text-sm py-1.5 tabular-nums">
                                         {act.plannedProgress}%
-                                        {plannedUnverified && (
-                                          <span className="block text-[10px] leading-tight text-amber-700 dark:text-amber-400">
-                                            غير متحقق{act.plannedAsOfDate ? ` · ${fmtDate(act.plannedAsOfDate)}` : ""}
-                                          </span>
-                                        )}
                                       </TableCell>
                                       <TableCell className="text-center text-sm py-1.5 tabular-nums font-medium">
                                         {act.actualProgress}%
-                                        {actualUnverified && (
-                                          <span className="block text-[10px] leading-tight text-amber-700 dark:text-amber-400">
-                                            غير متحقق · سُجل {fmtDate(actualRecordedAt)}
-                                          </span>
-                                        )}
                                       </TableCell>
                                       <TableCell className="text-center py-1.5">
                                         {act.status === "completed" ? (
