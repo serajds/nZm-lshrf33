@@ -4,17 +4,65 @@ import {
   activitiesTable, activityGroupsTable, db, projectProgressHistoryBatchesTable,
   projectProgressHistoryTable, projectSuspensionsTable, projectsTable, reportsTable,
 } from "@workspace/db";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { requireProjectAccess, requireProjectManager } from "../middlewares/auth";
 import { buildProjectProgressSnapshot } from "../lib/capture-project-progress-history";
 import {
-  historicalBackfillMethodology, previewHistoricalProgress, validBackfillDay, weightedProgress,
+  historicalBackfillMethodology, isBackfillActivityDayWorkSafe, previewHistoricalProgress, validBackfillDay, weightedProgress,
   type BackfillActivity, type BackfillInput, type BackfillSuspension,
 } from "../lib/historical-progress-backfill";
 
 const router: IRouter = Router();
 const lockSql = sql`SELECT pg_advisory_xact_lock(84620, 1)`;
 const MAX_BODY_POINTS = 500;
+const MAX_BACKFILL_HISTORY_CELLS = 500_000;
+const HISTORY_TOO_LARGE_ERROR = "سجل المشروع ومصادره أكبر من حد الفحص الآمن في طلب واحد؛ لم تُغيّر أي بيانات.";
+const PREVIEW_TOO_LARGE_ERROR = "الفترة مع عدد البنود تتجاوز حد المعاينة الآمن؛ قلّص الفترة ثم أعد المحاولة. لم تُغيّر أي بيانات.";
+
+function periodDayCount(periodStart: string, realityDate: string): number {
+  const start = Date.parse(`${periodStart}T00:00:00.000Z`);
+  const end = Date.parse(`${realityDate}T00:00:00.000Z`);
+  return Math.floor((end - start) / 86_400_000) + 1;
+}
+
+async function estimateBackfillHistoryCells(projectId: number) {
+  const [activityRows, [historyCount], [reportCount]] = await Promise.all([
+    db.select({ externalSourceGroupId: activitiesTable.externalSourceGroupId })
+      .from(activitiesTable).where(eq(activitiesTable.projectId, projectId)),
+    db.select({ value: count() }).from(projectProgressHistoryTable)
+      .where(eq(projectProgressHistoryTable.projectId, projectId)),
+    db.select({ value: count() }).from(reportsTable).where(and(
+      eq(reportsTable.projectId, projectId), eq(reportsTable.progressSource, "history"),
+    )),
+  ]);
+  const linkedGroupIds = [...new Set(activityRows.map(row => row.externalSourceGroupId)
+    .filter((id): id is number => id != null))];
+  let sourceCells = 0;
+  if (linkedGroupIds.length) {
+    const sourceGroups = await db.select({ id: activityGroupsTable.id, projectId: activityGroupsTable.projectId })
+      .from(activityGroupsTable).where(inArray(activityGroupsTable.id, linkedGroupIds));
+    const sourceProjectIds = [...new Set(sourceGroups.map(group => group.projectId))];
+    if (sourceProjectIds.length) {
+      const [sourceHistoryCounts, sourceActivityCounts] = await Promise.all([
+        db.select({ projectId: projectProgressHistoryTable.projectId, value: count() })
+          .from(projectProgressHistoryTable)
+          .where(inArray(projectProgressHistoryTable.projectId, sourceProjectIds))
+          .groupBy(projectProgressHistoryTable.projectId),
+        db.select({ projectId: activitiesTable.projectId, value: count() })
+          .from(activitiesTable)
+          .where(inArray(activitiesTable.projectId, sourceProjectIds))
+          .groupBy(activitiesTable.projectId),
+      ]);
+      const sourceActivityCountByProject = new Map(sourceActivityCounts.map(row => [row.projectId, row.value]));
+      sourceCells = sourceHistoryCounts.reduce((total, row) =>
+        total + row.value * (sourceActivityCountByProject.get(row.projectId) ?? 0), 0);
+    }
+  }
+  return {
+    activityCount: activityRows.length,
+    historyCells: activityRows.length * (historyCount.value + reportCount.value) + sourceCells,
+  };
+}
 
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
@@ -34,6 +82,16 @@ function tripoliDay(value: Date | string): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(date);
+}
+
+function latestPointOnOrBefore(points: Array<{ date: string; progress: number }>, date: string) {
+  let low = 0, high = points.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (points[middle].date <= date) low = middle + 1;
+    else high = middle;
+  }
+  return low > 0 ? points[low - 1] : undefined;
 }
 
 function asBackfillInput(raw: unknown): BackfillInput | null {
@@ -134,6 +192,7 @@ async function readBackfillState(projectId: number) {
 
   const activityInputs = new Map<number, { activityId: number; points: Array<{ date: string; progress: number }> }>();
   for (const activity of activities) activityInputs.set(activity.id, { activityId: activity.id, points: [] });
+  const externalSourceGroupByActivity = new Map(activities.map(activity => [activity.id, activity.externalSourceGroupId]));
   const addHistoricalPoint = (id: number, date: string, progress: unknown) => {
     const input = activityInputs.get(id);
     if (!input || !validBackfillDay(date) || !Number.isFinite(progress)
@@ -146,7 +205,7 @@ async function readBackfillState(projectId: number) {
     if (!row.snapshot || typeof row.snapshot !== "object") continue;
     const snapshotActivities = (row.snapshot as { activities?: Array<{ id: number; actualProgress: number }> }).activities;
     for (const activity of snapshotActivities ?? []) {
-      if (activities.find(item => item.id === activity.id)?.externalSourceGroupId == null) {
+      if (externalSourceGroupByActivity.get(activity.id) == null) {
         addHistoricalPoint(activity.id, date, activity.actualProgress);
       }
     }
@@ -162,24 +221,41 @@ async function readBackfillState(projectId: number) {
     }
   }
   const sourceProjectByGroup = new Map(sourceGroups.map(group => [group.id, group.projectId]));
-  for (const activity of activities.filter(item => item.externalSourceGroupId != null)) {
-    const groupId = activity.externalSourceGroupId!;
-    const sourceProjectId = sourceProjectByGroup.get(groupId);
-    if (sourceProjectId == null) continue;
-    for (const row of sourceHistory) {
-      if (row.projectId !== sourceProjectId || !row.snapshot || typeof row.snapshot !== "object") continue;
-      const snapshot = row.snapshot as {
-        groups?: Array<{ id: number }>;
-        activities?: Array<{ groupId: number | null; actualProgress: number; weight: number }>;
-      };
-      if (!(snapshot.groups ?? []).some(group => group.id === groupId)) continue;
-      const children = (snapshot.activities ?? []).filter(child => child.groupId === groupId);
+  const linkedActivitiesByGroup = new Map<number, number[]>();
+  for (const activity of activities) {
+    if (activity.externalSourceGroupId == null) continue;
+    const linked = linkedActivitiesByGroup.get(activity.externalSourceGroupId) ?? [];
+    linked.push(activity.id);
+    linkedActivitiesByGroup.set(activity.externalSourceGroupId, linked);
+  }
+  for (const row of sourceHistory) {
+    if (!row.snapshot || typeof row.snapshot !== "object") continue;
+    const snapshot = row.snapshot as {
+      groups?: Array<{ id: number }>;
+      activities?: Array<{ groupId: number | null; actualProgress: number; weight: number }>;
+    };
+    const relevantGroups = new Set((snapshot.groups ?? [])
+      .map(group => group.id)
+      .filter(groupId => sourceProjectByGroup.get(groupId) === row.projectId && linkedActivitiesByGroup.has(groupId)));
+    if (!relevantGroups.size) continue;
+    const childrenByGroup = new Map<number, Array<{ actualProgress: number; weight: number }>>();
+    for (const child of snapshot.activities ?? []) {
+      if (child.groupId == null || !relevantGroups.has(child.groupId)) continue;
+      const children = childrenByGroup.get(child.groupId) ?? [];
+      children.push(child);
+      childrenByGroup.set(child.groupId, children);
+    }
+    const date = tripoliDay(row.capturedAt);
+    for (const groupId of relevantGroups) {
+      const children = childrenByGroup.get(groupId) ?? [];
       const totalWeight = children.reduce((sum, child) =>
         sum + (Number.isFinite(child.weight) && child.weight > 0 ? child.weight : 1), 0);
       if (!children.length || !totalWeight) continue;
       const value = children.reduce((sum, child) => sum
         + child.actualProgress * (Number.isFinite(child.weight) && child.weight > 0 ? child.weight : 1), 0) / totalWeight;
-      addHistoricalPoint(activity.id, tripoliDay(row.capturedAt), value);
+      for (const activityId of linkedActivitiesByGroup.get(groupId) ?? []) {
+        addHistoricalPoint(activityId, date, value);
+      }
     }
   }
 
@@ -201,8 +277,9 @@ async function readBackfillState(projectId: number) {
     for (const activity of snapshotActivities) {
       let progress = activity.actualProgress;
       if (activity.externalSourceGroupId != null) {
-        const sourcePoint = inputByActivity.get(activity.id)?.points
-          .filter(point => point.date <= tripoliDay(row.capturedAt)).at(-1);
+        const sourcePoint = latestPointOnOrBefore(
+          inputByActivity.get(activity.id)?.points ?? [], tripoliDay(row.capturedAt),
+        );
         if (!sourcePoint) { complete = false; break; }
         progress = sourcePoint.progress;
       }
@@ -232,7 +309,11 @@ async function readBackfillState(projectId: number) {
   };
 }
 
-function makePreview(state: NonNullable<Awaited<ReturnType<typeof readBackfillState>>>, input: BackfillInput) {
+function makePreview(
+  state: NonNullable<Awaited<ReturnType<typeof readBackfillState>>>,
+  input: BackfillInput,
+  options: { includeSnapshots?: boolean } = {},
+) {
   const inputs = new Map((input.activityInputs ?? []).map(row => [row.activityId, row]));
   const stateInputs = new Map(state.normalizedActivityInputs.map(row => [row.activityId, row]));
   const activities = state.activities.map(activity => {
@@ -254,7 +335,7 @@ function makePreview(state: NonNullable<Awaited<ReturnType<typeof readBackfillSt
     })),
     verifiedProjectPoints: state.verifiedProjectPoints,
   };
-  const result = previewHistoricalProgress(state.project, activities, state.suspensions, merged);
+  const result = previewHistoricalProgress(state.project, activities, state.suspensions, merged, options);
   const token = hash({ fingerprint: state.fingerprint, input: merged, methodology: result.methodology });
   return { result, token, merged };
 }
@@ -356,19 +437,27 @@ function makeAutomaticInput(state: NonNullable<Awaited<ReturnType<typeof readBac
 
 router.post("/projects/:projectId/progress-history-backfill/automatic-preview", requireProjectAccess("projectId"), requireProjectManager("projectId"), async (req, res): Promise<void> => {
   const projectId = Number(req.params.projectId);
+  const workEstimate = await estimateBackfillHistoryCells(projectId);
+  if (workEstimate.historyCells > MAX_BACKFILL_HISTORY_CELLS) {
+    res.status(413).json({ error: HISTORY_TOO_LARGE_ERROR }); return;
+  }
   const state = await readBackfillState(projectId);
   if (!state) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
   const plan = makeAutomaticInput(state);
   if ("error" in plan) { res.status(409).json({ error: plan.error }); return; }
+  if (!isBackfillActivityDayWorkSafe(state.activities.length, periodDayCount(plan.input.periodStart, plan.input.realityDate))) {
+    res.status(413).json({ error: PREVIEW_TOO_LARGE_ERROR }); return;
+  }
 
-  const { result, token } = makePreview(state, plan.input);
+  const { result, token } = makePreview(state, plan.input, { includeSnapshots: false });
   const occupiedDays = new Set(state.history.map(row => tripoliDay(row.capturedAt)));
-  const snapshotsToSkip = result.snapshots.filter(snapshot => occupiedDays.has(snapshot.date)).length;
-  const latestActivities = result.snapshots.at(-1)?.activities ?? [];
+  const snapshotsToSkip = [...occupiedDays].filter(date =>
+    date >= plan.input.periodStart && date <= plan.input.realityDate).length;
+  const availableActivityIds = new Set(result.availableActivityIds);
   const estimatedCandidateActivities = plan.candidates.filter(candidate =>
-    latestActivities.find(activity => activity.id === candidate.id)?.actualHistoricalUnverified !== true,
+    availableActivityIds.has(candidate.id),
   ).length;
-  const { snapshots: _snapshots, ...summary } = result;
+  const { snapshots: _snapshots, availableActivityIds: _availableActivityIds, ...summary } = result;
   res.setHeader("Cache-Control", "private, no-store");
   res.json({
     ...summary,
@@ -380,38 +469,59 @@ router.post("/projects/:projectId/progress-history-backfill/automatic-preview", 
     candidatesMissingStartDate: plan.missingStartDateCount,
     estimatedCandidateActivities,
     restoreBurstDetected: plan.restoreBurstDetected,
-    snapshotsToAdd: Math.max(0, result.snapshots.length - snapshotsToSkip),
+    snapshotsToAdd: Math.max(0, result.days - snapshotsToSkip),
     snapshotsToSkip,
   });
 });
 
 router.get("/projects/:projectId/progress-history-backfill", requireProjectAccess("projectId"), requireProjectManager("projectId"), async (req, res): Promise<void> => {
   const projectId = Number(req.params.projectId);
-  const state = await readBackfillState(projectId);
-  if (!state) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
+  const [project] = await db.select({
+    name: projectsTable.name, startDate: projectsTable.startDate,
+  }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!project) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
+  const [activities, batches] = await Promise.all([
+    db.select({
+      id: activitiesTable.id, name: activitiesTable.name, status: activitiesTable.status,
+      actualProgress: activitiesTable.actualProgress, weight: activitiesTable.weight,
+      actualStartDate: activitiesTable.actualStartDate, actualEndDate: activitiesTable.actualEndDate,
+      externalSourceGroupId: activitiesTable.externalSourceGroupId,
+    }).from(activitiesTable).where(eq(activitiesTable.projectId, projectId))
+      .orderBy(asc(activitiesTable.sortOrder), asc(activitiesTable.id)),
+    db.select({
+      id: projectProgressHistoryBatchesTable.id,
+      createdAt: projectProgressHistoryBatchesTable.createdAt,
+      methodology: projectProgressHistoryBatchesTable.methodology,
+      revertedAt: projectProgressHistoryBatchesTable.revertedAt,
+    }).from(projectProgressHistoryBatchesTable)
+      .where(eq(projectProgressHistoryBatchesTable.projectId, projectId))
+      .orderBy(desc(projectProgressHistoryBatchesTable.createdAt)),
+  ]);
   res.setHeader("Cache-Control", "private, no-store");
-  res.json({
-    project: state.project,
-    activities: state.activities,
-    batches: state.batches,
-    fingerprint: state.fingerprint,
-  });
+  res.json({ project, activities, batches });
 });
 
 router.post("/projects/:projectId/progress-history-backfill/preview", requireProjectAccess("projectId"), requireProjectManager("projectId"), async (req, res): Promise<void> => {
   const projectId = Number(req.params.projectId);
   const input = asBackfillInput(req.body);
   if (!input) { res.status(400).json({ error: "مدخلات الفترة أو واقع الحال غير صالحة." }); return; }
+  const workEstimate = await estimateBackfillHistoryCells(projectId);
+  if (workEstimate.historyCells > MAX_BACKFILL_HISTORY_CELLS) {
+    res.status(413).json({ error: HISTORY_TOO_LARGE_ERROR }); return;
+  }
+  if (!isBackfillActivityDayWorkSafe(workEstimate.activityCount, periodDayCount(input.periodStart, input.realityDate))) {
+    res.status(413).json({ error: PREVIEW_TOO_LARGE_ERROR }); return;
+  }
   const state = await readBackfillState(projectId);
   if (!state) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
-  const { result, token } = makePreview(state, input);
+  const { result, token } = makePreview(state, input, { includeSnapshots: false });
   const occupiedDays = new Set(state.history.map(row => tripoliDay(row.capturedAt)));
-  const snapshotsToSkip = result.snapshots.filter(snapshot => occupiedDays.has(snapshot.date)).length;
-  const { snapshots: _snapshots, ...summary } = result;
+  const snapshotsToSkip = [...occupiedDays].filter(date => date >= input.periodStart && date <= input.realityDate).length;
+  const { snapshots: _snapshots, availableActivityIds: _availableActivityIds, ...summary } = result;
   res.setHeader("Cache-Control", "private, no-store");
   res.json({
     ...summary, previewToken: token, sourceFingerprint: state.fingerprint,
-    snapshotsToAdd: Math.max(0, result.snapshots.length - snapshotsToSkip),
+    snapshotsToAdd: Math.max(0, result.days - snapshotsToSkip),
     snapshotsToSkip,
   });
 });
@@ -423,12 +533,22 @@ router.post("/projects/:projectId/progress-history-backfill/commit", requireProj
   if (!input || typeof previewToken !== "string") {
     res.status(400).json({ error: "أعد المعاينة قبل الاعتماد." }); return;
   }
+  const workEstimate = await estimateBackfillHistoryCells(projectId);
+  if (workEstimate.historyCells > MAX_BACKFILL_HISTORY_CELLS) {
+    res.status(413).json({ error: HISTORY_TOO_LARGE_ERROR }); return;
+  }
+  if (!isBackfillActivityDayWorkSafe(workEstimate.activityCount, periodDayCount(input.periodStart, input.realityDate))) {
+    res.status(413).json({ error: PREVIEW_TOO_LARGE_ERROR }); return;
+  }
   const result = await db.transaction(async tx => {
     // Match automatic capture's lock to avoid importing over a concurrent actual snapshot.
     await tx.execute(lockSql);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(84621, ${projectId})`);
     const state = await readBackfillState(projectId);
     if (!state) return { kind: "missing" as const };
+    if (!isBackfillActivityDayWorkSafe(state.activities.length, periodDayCount(input.periodStart, input.realityDate))) {
+      return { kind: "too_large" as const };
+    }
     const preview = makePreview(state, input);
     if (preview.token !== previewToken) return { kind: "changed" as const };
     if (!preview.result.valid) return { kind: "invalid" as const, conflicts: preview.result.conflicts };
@@ -483,6 +603,7 @@ router.post("/projects/:projectId/progress-history-backfill/commit", requireProj
     return { kind: "created" as const, batch, inserted, skippedActual, skippedExisting };
   });
   if (result.kind === "missing") { res.status(404).json({ error: "المشروع غير موجود" }); return; }
+  if (result.kind === "too_large") { res.status(413).json({ error: PREVIEW_TOO_LARGE_ERROR }); return; }
   if (result.kind === "changed") { res.status(409).json({ error: "تغيرت بيانات المشروع بعد المعاينة؛ أعد المعاينة." }); return; }
   if (result.kind === "invalid") { res.status(400).json({ error: result.conflicts.join(" ") }); return; }
   if (result.kind === "duplicate") { res.status(409).json({ error: "سبق إنشاء دفعة بهذه المدخلات؛ لا يمكن تكرارها." }); return; }

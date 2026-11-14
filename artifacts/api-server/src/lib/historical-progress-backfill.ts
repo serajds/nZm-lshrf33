@@ -57,10 +57,18 @@ export type BackfillPreview = {
   realityDifference: number;
   samples: Array<{ date: string; progress: number }>;
   snapshots: BackfillDay[];
+  availableActivityIds: number[];
 };
 
 const DAY_MS = 86_400_000;
 const MAX_DAYS = 3_660;
+export const MAX_BACKFILL_ACTIVITY_DAY_CELLS = 250_000;
+
+export function isBackfillActivityDayWorkSafe(activityCount: number, dayCount: number): boolean {
+  return Number.isSafeInteger(activityCount) && activityCount >= 0
+    && Number.isSafeInteger(dayCount) && dayCount > 0
+    && activityCount * dayCount <= MAX_BACKFILL_ACTIVITY_DAY_CELLS;
+}
 const METHOD = "activity-linear-between-confirmed-dated-points-v2";
 
 export function validBackfillDay(day: unknown): day is string {
@@ -104,24 +112,30 @@ function interpolate(points: Array<{ day: number; progress: number }>, day: numb
   return points.at(-1)!.progress;
 }
 
+function upperBound(values: number[], target: number): number {
+  let low = 0, high = values.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (values[middle] <= target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
 function progressAtWorkingDay(
   start: number,
   end: number,
   day: number,
   startProgress: number,
   endProgress: number,
-  excluded: Set<number>,
+  excludedDays: number[],
 ): number {
   if (day <= start) return startProgress;
   if (day >= end) return endProgress;
-  let total = 0;
-  let elapsed = 0;
-  for (let cursor = start + 1; cursor <= end; cursor++) {
-    if (!excluded.has(cursor)) {
-      total++;
-      if (cursor <= day) elapsed++;
-    }
-  }
+  const excludedBetween = (fromExclusive: number, toInclusive: number) =>
+    upperBound(excludedDays, toInclusive) - upperBound(excludedDays, fromExclusive);
+  const total = end - start - excludedBetween(start, end);
+  const elapsed = day - start - excludedBetween(start, day);
   if (total === 0) return day >= end ? endProgress : startProgress;
   return startProgress + (endProgress - startProgress) * elapsed / total;
 }
@@ -132,7 +146,9 @@ export function previewHistoricalProgress(
   activities: BackfillActivity[],
   suspensions: BackfillSuspension[],
   input: BackfillInput,
+  options: { includeSnapshots?: boolean } = {},
 ): BackfillPreview {
+  const includeSnapshots = options.includeSnapshots !== false;
   const warnings: string[] = [];
   const conflicts: string[] = [];
   const assumptions = [
@@ -149,6 +165,7 @@ export function previewHistoricalProgress(
     days: 0, excludedDays: [], assumptions, warnings: [], conflicts: [], estimatedActivities: 0,
     unavailableActivities: 0, realityProgress: input.realityProgress, calculatedRealityProgress: 0,
     realityDifference: 0, samples: [], snapshots: [],
+    availableActivityIds: [],
   };
   if (invalid) {
     empty.conflicts.push("حدود الفترة أو نقطة واقع الحال غير صالحة.");
@@ -176,7 +193,8 @@ export function previewHistoricalProgress(
     const to = Math.min(reality, dayNumber(suspension.endDate));
     for (let day = from; day <= to; day++) excluded.add(day);
   }
-  const excludedDays = [...excluded].sort((a, b) => a - b).map(dayString);
+  const excludedDayNumbers = [...excluded].sort((a, b) => a - b);
+  const excludedDays = excludedDayNumbers.map(dayString);
   const overrides = new Map((input.activityInputs ?? []).map(item => [item.activityId, item]));
   const referencePoints = (input.referencePoints ?? []).filter(point =>
     validBackfillDay(point.date) && point.date >= input.periodStart && point.date <= input.realityDate
@@ -291,7 +309,7 @@ export function previewHistoricalProgress(
       if (activity.status === "completed" && day >= baseEnd) return 100;
       const points = uniquePoints.filter(point => point.day <= reality);
       if (points.length > 1) return clamp(interpolate(points, day));
-      return clamp(progressAtWorkingDay(baseStart, reality, day, 0, target, excluded));
+      return clamp(progressAtWorkingDay(baseStart, reality, day, 0, target, excludedDayNumbers));
     };
     return {
       activity, unavailable, value,
@@ -321,8 +339,12 @@ export function previewHistoricalProgress(
     }))),
   }));
   const snapshots: BackfillDay[] = [];
+  const dayCount = reality - first + 1;
+  const sampleStride = Math.max(1, Math.ceil(dayCount / 12));
+  const samples: Array<{ date: string; progress: number }> = [];
   const neverStartedIds = new Set(activities.filter(activity => activity.status === "not_started"
     && activity.actualProgress <= 0).map(activity => activity.id));
+  let dayIndex = 0;
   for (let day = first; day <= reality; day++) {
     const rawItems = perActivity.map(({ activity, value, unavailable, historyStartDate, historyEndDate }) => {
       const actualProgress = day === reality ? clamp(activity.actualProgress) : clamp(value(day));
@@ -368,11 +390,11 @@ export function previewHistoricalProgress(
     if (Math.abs(remaining) > 0.2 && projectAnchors.some(anchor => anchor.day === day)) {
       conflicts.push(`لا يمكن توزيع نقطة ${dayString(day)} دون تجاوز القيم الموثقة أو بدء بند غير مبدوء.`);
     }
-    snapshots.push({
-      date: dayString(day),
-      progress: weightedProgress(items.filter(item => !item.actualHistoricalUnverified)),
-      activities: items,
-    });
+    const date = dayString(day);
+    const progress = weightedProgress(items.filter(item => !item.actualHistoricalUnverified));
+    if (includeSnapshots) snapshots.push({ date, progress, activities: items });
+    if (dayIndex % sampleStride === 0 || dayIndex === dayCount - 1) samples.push({ date, progress });
+    dayIndex++;
   }
 
   const realityDifference = Math.round((input.realityProgress - calculatedRealityProgress) * 10) / 10;
@@ -385,15 +407,12 @@ export function previewHistoricalProgress(
   }
   if (unavailableActivities) warnings.push("بعض البنود غير متاحة تاريخيًا؛ التقارير ستوضح ذلك بدل اعتماد قيمها الحالية.");
 
-  const sampleStride = Math.max(1, Math.ceil(snapshots.length / 12));
-  const samples = snapshots.filter((_, index) => index % sampleStride === 0 || index === snapshots.length - 1)
-    .map(({ date, progress }) => ({ date, progress }));
   return {
     valid: conflicts.length === 0,
     methodology: METHOD,
     periodStart: input.periodStart,
     realityDate: input.realityDate,
-    days: snapshots.length,
+    days: dayCount,
     excludedDays,
     assumptions,
     warnings: [...new Set(warnings)],
@@ -405,6 +424,7 @@ export function previewHistoricalProgress(
     realityDifference,
     samples,
     snapshots,
+    availableActivityIds: perActivity.filter(item => !item.unavailable).map(item => item.activity.id),
   };
 }
 
