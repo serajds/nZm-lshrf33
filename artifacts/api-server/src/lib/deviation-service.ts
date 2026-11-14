@@ -1,7 +1,6 @@
 import { db, projectsTable, activitiesTable, activityGroupsTable, projectSuspensionsTable, reportsTable, projectFilesTable, projectExtensionsTable } from "@workspace/db";
 import { asc, eq, inArray, count, sum } from "drizzle-orm";
-import { canReadProject } from "./external-sources";
-import { loadEffectiveTabPermissions } from "../middlewares/tab-access";
+import { loadEffectiveTabPermissions, loadProjectVisibilityForUser } from "../middlewares/tab-access";
 import { analyzeActivities, analyzeSuspensions, analyzeTime, deviationStatus, type AnalysisGraph } from "./deviation-analysis";
 import { buildDeviationHistory } from "./deviation-history";
 import { utcDay, type PlannedCurve } from "./progress";
@@ -46,13 +45,10 @@ export async function getProjectAnalysisSnapshot(projectId: number, userId: numb
   const project = graph.projects.find(p => p.id === projectId);
   if (!project) return null;
   const asOf = utcDay(new Date());
-  const readable = new Set<number>();
-  await Promise.all(graph.projects.map(async p => {
-    if (await canReadProject(userId, p.id)) {
-      const access = await loadEffectiveTabPermissions(userId, p.id);
-      if (access && access.effective.activities !== "hidden") readable.add(p.id);
-    }
-  }));
+   const visibility = await loadProjectVisibilityForUser(userId, graph.projects.map(p => p.id));
+   const readable = new Set(graph.projects
+     .filter(project => visibility.get(project.id)?.activitiesVisible)
+     .map(project => project.id));
   const result = analyzeActivities(project, graph, readable, asOf, curve);
   const suspensions = await tx.select().from(projectSuspensionsTable).where(eq(projectSuspensionsTable.projectId, projectId));
   const suspensionMetrics = analyzeSuspensions(suspensions,
