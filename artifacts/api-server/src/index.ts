@@ -1,9 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seed } from "./seed";
-import { migrateExistingUploads } from "./lib/fileStorage";
-import { normalizeAbsoluteUrls } from "./migrations/normalize-urls";
-import path from "path";
 
 const rawPort = process.env["PORT"];
 
@@ -28,13 +25,4 @@ app.listen(port, async (err) => {
   logger.info({ port }, "Server listening");
 
   await seed();
-  
-  const uploadsDir = path.join(process.cwd(), "uploads");
-  migrateExistingUploads(uploadsDir).catch((err) => {
-    logger.error({ err }, "Failed to migrate existing uploads");
-  });
-
-  normalizeAbsoluteUrls().catch((err) => {
-    logger.error({ err }, "Failed to normalize absolute URLs");
-  });
 });

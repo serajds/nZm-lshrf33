@@ -10,7 +10,7 @@ import { logger } from "./lib/logger";
 import { verifyToken } from "./lib/auth";
 import { diagnoseRejectedToken } from "./lib/auth";
 import { canViewAttendancePhoto, verifyAndMaybeRenewToken } from "./middlewares/auth";
-import { streamFromCloud, migrateExistingUploads, cloudReportImageSource } from "./lib/fileStorage";
+import { streamFromCloud, cloudReportImageSource } from "./lib/fileStorage";
 import { reportImageVariant } from "./lib/reportImageVariants";
 import { db, requestMetrics, newRequestMetrics } from "@workspace/db";
 import { usersTable, userCompaniesTable, projectMembersTable, projectsTable, projectFilesTable, attendanceRecordsTable } from "@workspace/db";

@@ -71,14 +71,23 @@ export async function cloudReportImageSource(filename: string): Promise<{
   }
 }
 
-export async function migrateExistingUploads(uploadsDir: string): Promise<void> {
-  if (!BUCKET_ID) return;
-  if (!fs.existsSync(uploadsDir)) return;
+export async function migrateExistingUploads(uploadsDir: string): Promise<{
+  scanned: number;
+  migrated: number;
+  failed: number;
+  skipped: boolean;
+}> {
+  if (!BUCKET_ID || !fs.existsSync(uploadsDir)) {
+    return { scanned: 0, migrated: 0, failed: 0, skipped: true };
+  }
   const files = fs.readdirSync(uploadsDir);
-  if (files.length === 0) return;
+  if (files.length === 0) {
+    return { scanned: 0, migrated: 0, failed: 0, skipped: false };
+  }
 
   console.log(`Migrating ${files.length} existing uploads to cloud storage...`);
   let migrated = 0;
+  let failed = 0;
   for (const filename of files) {
     const filePath = path.join(uploadsDir, filename);
     if (!fs.statSync(filePath).isFile()) continue;
@@ -90,8 +99,10 @@ export async function migrateExistingUploads(uploadsDir: string): Promise<void> 
         migrated++;
       }
     } catch (err) {
+      failed++;
       console.error(`Failed to migrate ${filename}:`, err);
     }
   }
-  console.log(`Migration complete: ${migrated} files uploaded to cloud storage`);
+  console.log(`Migration complete: ${migrated} files uploaded, ${failed} failed`);
+  return { scanned: files.length, migrated, failed, skipped: false };
 }

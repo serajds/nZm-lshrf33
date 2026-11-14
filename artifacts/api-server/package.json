@@ -7,6 +7,7 @@
     "dev": "NODE_ENV=development pnpm run build && NODE_ENV=development pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
+    "migrate:legacy-data": "pnpm run build && node --enable-source-maps ./dist/migrate-legacy-data.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
