@@ -5,6 +5,7 @@ import { eq, and, count, desc } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
 import jwt from "jsonwebtoken";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
+import { getReportPeriodProgress, periodCutoff, validReportDay } from "../lib/report-period-progress";
 import {
   calcPlannedProgressForProject,
   calcActualProgressForProject,
@@ -20,6 +21,25 @@ import {
 
 const router: IRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
+
+type OwnerReportHistoryReference = {
+  id: number | null;
+  actualProgress: number | null;
+  plannedProgress: number | null;
+  status: string | null;
+  actualVerified: boolean;
+  plannedVerified: boolean;
+};
+
+type SnapshotActivityForHistoryCheck = {
+  id?: number;
+  actualRecordedAt?: string | null;
+  actualAsOfDate?: string | null;
+  actualHistoricalUnverified?: boolean;
+  actualManuallyApproved?: boolean;
+  plannedAsOfDate?: string | null;
+  plannedHistoricalUnverified?: boolean;
+};
 
 async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect) {
   const rawActivities = await db.select().from(activitiesTable)
@@ -37,6 +57,90 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
   const reports = await db.select().from(reportsTable)
     .where(and(eq(reportsTable.projectId, project.id), eq(reportsTable.status, "approved")))
     .orderBy(desc(reportsTable.reportDate));
+
+  // Older reports may have been created after their reporting period, before
+  // per-activity history was attached to the report snapshot. Reconstruct
+  // only those rows from the read-only period history; never write project or
+  // report data while rendering the owner portal.
+  const todayInTripoli = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Tripoli",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const historyByPeriodEnd = new Map<string, ReturnType<typeof getReportPeriodProgress>>();
+  const reportsWithHistoryReferences = await Promise.all(reports.map(async (report) => {
+    const snapshot = Array.isArray(report.activitiesSnapshot)
+      ? report.activitiesSnapshot as SnapshotActivityForHistoryCheck[]
+      : null;
+    if (!snapshot?.length) return report;
+
+    const periodEnd = String(report.periodEnd).slice(0, 10);
+    if (!validReportDay(periodEnd) || periodEnd >= todayInTripoli) return report;
+
+    const cutoff = periodCutoff(periodEnd).getTime();
+    const createdAt = new Date(report.createdAt).getTime();
+    const needsHistoryReference = snapshot.some((activity) => {
+      const actualRecordedAt = activity.actualRecordedAt
+        ? new Date(activity.actualRecordedAt).getTime()
+        : null;
+      const actualAsOfDate = activity.actualAsOfDate?.slice(0, 10);
+      const hasPeriodActual = actualAsOfDate
+        ? actualAsOfDate === periodEnd
+        : actualRecordedAt !== null && Number.isFinite(actualRecordedAt) && actualRecordedAt < cutoff;
+      const actualRecordedAfterPeriod = actualRecordedAt !== null
+        && Number.isFinite(actualRecordedAt)
+        && actualRecordedAt >= cutoff;
+      const actualNeedsHistory = activity.actualManuallyApproved !== true
+        && (
+          activity.actualHistoricalUnverified === true
+          || (actualAsOfDate != null && actualAsOfDate !== periodEnd)
+          || actualRecordedAfterPeriod
+          || (!hasPeriodActual && createdAt >= cutoff)
+        );
+      const plannedNeedsHistory = activity.plannedHistoricalUnverified === true
+        || (typeof activity.plannedAsOfDate === "string" && activity.plannedAsOfDate.slice(0, 10) !== periodEnd);
+      return actualNeedsHistory || plannedNeedsHistory;
+    });
+    if (!needsHistoryReference) return report;
+
+    let historyRequest = historyByPeriodEnd.get(periodEnd);
+    if (!historyRequest) {
+      historyRequest = getReportPeriodProgress(project.id, periodEnd);
+      historyByPeriodEnd.set(periodEnd, historyRequest);
+    }
+
+    let activityHistoryReference: OwnerReportHistoryReference[] | null = null;
+    try {
+      const periodProgress = await historyRequest;
+      if (Array.isArray(periodProgress.activities)) {
+        const historicalById = new Map(periodProgress.activities.map((activity) => [activity.id, activity]));
+        activityHistoryReference = snapshot.map((activity) => {
+          const historical = typeof activity.id === "number" ? historicalById.get(activity.id) : undefined;
+          const historicalWithFlags = historical as (typeof historical & {
+            plannedHistoricalUnverified?: boolean;
+            referenceOnly?: boolean;
+          }) | undefined;
+          return {
+            id: typeof activity.id === "number" ? activity.id : null,
+            actualProgress: historical?.actualProgress ?? null,
+            plannedProgress: historical?.plannedProgress ?? null,
+            status: historical?.status ?? null,
+            actualVerified: Boolean(historical)
+              && historical?.actualHistoricalUnverified !== true
+              && historicalWithFlags?.referenceOnly !== true,
+            plannedVerified: Boolean(historical)
+              && historicalWithFlags?.plannedHistoricalUnverified !== true
+              && historicalWithFlags?.referenceOnly !== true,
+          };
+        });
+      }
+    } catch (error) {
+      console.error(`[owner] Could not load report-period activity history for project ${project.id}, report ${report.id}`, error);
+    }
+
+    return { ...report, activityHistoryReference };
+  }));
 
   const extensions = await db.select().from(projectExtensionsTable)
     .where(eq(projectExtensionsTable.projectId, project.id))
@@ -150,7 +254,7 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
   const { ownerAccessPassword: _, linkCode: _linkCode, parentProjectId: _parent, categoryId: _category, ...safeProject } = project;
   const safeActivities = activities.map(({ externalSourceGroupId: _sourceGroupId, managedSourceProjectId: _sourceProjectId, ...activity }) => activity);
 
-  return { project: safeProject, activities: safeActivities, reports, extensions, suspensions, summary, companyLogos };
+  return { project: safeProject, activities: safeActivities, reports: reportsWithHistoryReferences, extensions, suspensions, summary, companyLogos };
 }
 
 router.get("/owner/access/:token", async (req, res): Promise<void> => {
