@@ -783,6 +783,13 @@ export interface OwnerVerifyBody {
   password?: string;
 }
 
+export interface OwnerActivityGroup {
+  id: number;
+  name: string;
+  color: string;
+  sortOrder: number;
+}
+
 export interface ProjectSummary {
   projectId: number;
   overallProgress: number;
@@ -806,6 +813,8 @@ export interface ProjectSummary {
 export interface OwnerProjectView {
   project: Project;
   activities: Activity[];
+  /** Display-only groups belonging to this project, ordered for the owner portal. */
+  groups: OwnerActivityGroup[];
   reports: Report[];
   summary: ProjectSummary;
 }

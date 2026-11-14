@@ -1526,6 +1526,18 @@ export const VerifyOwnerAccessResponse = zod.object({
       createdAt: zod.coerce.date(),
     }),
   ),
+  groups: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        name: zod.string(),
+        color: zod.string(),
+        sortOrder: zod.number(),
+      }),
+    )
+    .describe(
+      "Display-only groups belonging to this project, ordered for the owner portal.",
+    ),
   reports: zod.array(
     zod.object({
       id: zod.number(),

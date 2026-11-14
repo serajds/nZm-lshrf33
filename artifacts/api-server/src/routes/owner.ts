@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projectExtensionsTable, projectSuspensionsTable, companiesTable } from "@workspace/db";
-import { eq, and, count, desc } from "drizzle-orm";
+import { projectsTable, activitiesTable, activityGroupsTable, reportsTable, projectFilesTable, projectExtensionsTable, projectSuspensionsTable, companiesTable } from "@workspace/db";
+import { eq, and, count, desc, asc } from "drizzle-orm";
 import { comparePassword } from "../lib/auth";
 import jwt from "jsonwebtoken";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
@@ -44,9 +44,17 @@ type SnapshotActivityForHistoryCheck = {
 async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect) {
   const rawActivities = await db.select().from(activitiesTable)
     .where(eq(activitiesTable.projectId, project.id))
-    .orderBy(activitiesTable.sortOrder);
+    .orderBy(activitiesTable.sortOrder, activitiesTable.id);
   const today = utcDay(new Date());
   const activities = await resolveLinkedActivityProgress(rawActivities, today);
+  const groups = await db.select({
+    id: activityGroupsTable.id,
+    name: activityGroupsTable.name,
+    color: activityGroupsTable.color,
+    sortOrder: activityGroupsTable.sortOrder,
+  }).from(activityGroupsTable)
+    .where(eq(activityGroupsTable.projectId, project.id))
+    .orderBy(asc(activityGroupsTable.sortOrder), asc(activityGroupsTable.id));
 
   // The owner portal renders each report's activities table inline (and on
   // its print preview), so we MUST include `activitiesSnapshot` on every
@@ -252,9 +260,14 @@ async function buildOwnerProjectData(project: typeof projectsTable.$inferSelect)
   }
 
   const { ownerAccessPassword: _, linkCode: _linkCode, parentProjectId: _parent, categoryId: _category, ...safeProject } = project;
-  const safeActivities = activities.map(({ externalSourceGroupId: _sourceGroupId, managedSourceProjectId: _sourceProjectId, ...activity }) => activity);
+  const safeActivities = activities.map(({
+    externalSourceGroupId: _sourceGroupId,
+    managedByGroupId: _managedByGroupId,
+    managedSourceProjectId: _sourceProjectId,
+    ...activity
+  }) => activity);
 
-  return { project: safeProject, activities: safeActivities, reports: reportsWithHistoryReferences, extensions, suspensions, summary, companyLogos };
+  return { project: safeProject, activities: safeActivities, groups, reports: reportsWithHistoryReferences, extensions, suspensions, summary, companyLogos };
 }
 
 router.get("/owner/access/:token", async (req, res): Promise<void> => {
