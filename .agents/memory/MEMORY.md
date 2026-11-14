@@ -29,3 +29,4 @@
 - [Deviation interpretation](deviation-interpretation.md) — progress gaps are not contractual delay; source date envelopes cannot reconstruct weighted historical plans.
 - [Legacy startup maintenance](legacy-startup-maintenance.md) — keep upload backfills and URL normalization out of repeated API startup; run them explicitly when needed.
 - [Linked timeline query batching](linked-timeline-query-batching.md) — batch linked-group resolution and visibility checks per request to avoid saturating the database pool.
+- [Historical progress loading](historical-progress-loading.md) — load backfill state only when its manual settings are opened; project-page visits should not scan historical snapshots.
