@@ -33,8 +33,32 @@ const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
 type OwnerReportSnapshotActivity = ReportActivitiesSnapshotItem & {
   actualRecordedAt?: string | null;
+  actualAsOfDate?: string | null;
+  actualHistoricalUnverified?: boolean;
+  actualManuallyApproved?: boolean;
   plannedAsOfDate?: string | null;
   plannedHistoricalUnverified?: boolean;
+};
+
+type OwnerReportHistoryReference = {
+  id: number | null;
+  actualProgress: number | null;
+  plannedProgress: number | null;
+  status: string | null;
+  actualVerified: boolean;
+  plannedVerified: boolean;
+};
+
+type OwnerReportWithHistoryReference = Report & {
+  activityHistoryReference?: OwnerReportHistoryReference[] | null;
+};
+
+type OwnerReportActivityDisplay = Omit<OwnerReportSnapshotActivity, "actualProgress" | "plannedProgress" | "status"> & {
+  actualProgress: number | null;
+  plannedProgress: number | null;
+  status: string | null;
+  actualValueMissing: boolean;
+  plannedValueMissing: boolean;
 };
 
 function isAfterReportDate(timestamp: string | null | undefined, reportDate: string): boolean {
@@ -45,17 +69,69 @@ function isAfterReportDate(timestamp: string | null | undefined, reportDate: str
   return valueDate.toISOString().slice(0, 10) > reportDateValue.toISOString().slice(0, 10);
 }
 
-function getSnapshotVerification(report: Report) {
-  const snapshots = (report.activitiesSnapshot ?? []) as OwnerReportSnapshotActivity[];
+function getReportActivityDisplay(
+  report: OwnerReportWithHistoryReference,
+  activity: OwnerReportSnapshotActivity,
+): OwnerReportActivityDisplay {
+  const historyWasChecked = Object.prototype.hasOwnProperty.call(report, "activityHistoryReference");
+  const historical = report.activityHistoryReference?.find((entry) => entry.id === activity.id);
+  const manuallyApprovedActual = activity.actualManuallyApproved === true;
+  const actualSnapshotUnverified = activity.actualHistoricalUnverified === true
+    || (activity.actualAsOfDate
+      ? activity.actualAsOfDate.slice(0, 10) !== report.periodEnd
+      : isAfterReportDate(activity.actualRecordedAt ?? report.createdAt, report.periodEnd));
+  const plannedSnapshotUnverified = activity.plannedHistoricalUnverified === true
+    || (activity.plannedAsOfDate
+      ? activity.plannedAsOfDate.slice(0, 10) !== report.periodEnd
+      : isAfterReportDate(report.createdAt, report.periodEnd));
+
+  const actualProgress = manuallyApprovedActual
+    ? activity.actualProgress ?? null
+    : historyWasChecked
+      ? historical?.actualVerified && typeof historical.actualProgress === "number"
+        ? historical.actualProgress
+        : null
+      : actualSnapshotUnverified
+        ? null
+        : activity.actualProgress ?? null;
+  const plannedProgress = historyWasChecked
+    ? historical?.plannedVerified && typeof historical.plannedProgress === "number"
+      ? historical.plannedProgress
+      : null
+    : plannedSnapshotUnverified
+      ? null
+      : activity.plannedProgress ?? null;
+  const actualValueMissing = typeof actualProgress !== "number" || !Number.isFinite(actualProgress);
+  const plannedValueMissing = typeof plannedProgress !== "number" || !Number.isFinite(plannedProgress);
+
   return {
-    actualUnverified: report.status === "approved" && report.activitiesSnapshot != null && snapshots.some((activity) =>
-      isAfterReportDate(activity.actualRecordedAt ?? report.createdAt, report.reportDate)
-    ),
-    plannedUnverified: report.activitiesSnapshot != null && snapshots.some((activity) => activity.plannedHistoricalUnverified === true),
+    ...activity,
+    actualProgress,
+    plannedProgress,
+    status: actualValueMissing
+      ? null
+      : manuallyApprovedActual || !historyWasChecked
+        ? activity.status ?? null
+        : historical?.status ?? null,
+    actualValueMissing,
+    plannedValueMissing,
   };
 }
 
-type OwnerProjectViewWithSpi = Omit<OwnerProjectView, "summary"> & {
+function getSnapshotVerification(report: OwnerReportWithHistoryReference) {
+  const snapshots = (report.activitiesSnapshot ?? []) as OwnerReportSnapshotActivity[];
+  return {
+    actualUnverified: report.status === "approved" && report.activitiesSnapshot != null && snapshots.some((activity) =>
+      getReportActivityDisplay(report, activity).actualValueMissing
+    ),
+    plannedUnverified: report.activitiesSnapshot != null && snapshots.some((activity) =>
+      getReportActivityDisplay(report, activity).plannedValueMissing
+    ),
+  };
+}
+
+type OwnerProjectViewWithSpi = Omit<OwnerProjectView, "summary" | "reports"> & {
+  reports: OwnerReportWithHistoryReference[];
   summary: OwnerProjectView["summary"] & { spi?: number | null };
 };
 
@@ -468,7 +544,7 @@ export default function OwnerPortal() {
     return <File className="h-5 w-5 text-gray-500" />;
   };
 
-  const handlePreview = (report: Report) => {
+  const handlePreview = (report: OwnerReportWithHistoryReference) => {
     const apiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
     const imageUrls = (report.imageUrls ?? []).map((url) =>
       url.includes("?") ? url : `${url}?token=${ownerJwt}`
@@ -476,25 +552,28 @@ export default function OwnerPortal() {
     const snapshotActivities = report.activitiesSnapshot;
     const verification = getSnapshotVerification(report);
     const snapshotRows = (snapshotActivities ?? []) as OwnerReportSnapshotActivity[];
-    const activityList: ActivityForReport[] = snapshotRows.map((a) => {
-      const plannedUnverified = a.plannedHistoricalUnverified === true;
+    const displayRows = snapshotRows.map((activity) => getReportActivityDisplay(report, activity));
+    const activityList: ActivityForReport[] = displayRows.map((display) => {
       return {
-      name: a.name ?? "",
-      plannedProgress: a.plannedProgress ?? 0,
-      actualProgress: a.actualProgress ?? 0,
-      status: (a.status as ActivityForReport["status"]) ?? "not_started",
-      plannedHistoricalUnverified: plannedUnverified,
-      plannedAsOfDate: a.plannedAsOfDate ?? undefined,
+      name: display.name ?? "",
+      plannedProgress: display.plannedProgress ?? 0,
+      actualProgress: display.actualProgress ?? 0,
+      status: (display.status as ActivityForReport["status"]) ?? "not_started",
+      plannedHistoricalUnverified: display.plannedValueMissing,
+      actualHistoricalUnverified: display.actualValueMissing,
+      actualValueMissing: display.actualValueMissing,
+      plannedValueMissing: display.plannedValueMissing,
+      plannedAsOfDate: display.plannedAsOfDate ?? undefined,
       };
     });
     const snapshotWeight = (activity: OwnerReportSnapshotActivity) =>
       activity.weight != null && activity.weight > 0 ? activity.weight : 1;
     const totalWeight = snapshotRows.reduce((sum, activity) => sum + snapshotWeight(activity), 0);
-    const actualProgress = totalWeight > 0
-      ? snapshotRows.reduce((sum, activity) => sum + (activity.actualProgress ?? 0) * snapshotWeight(activity), 0) / totalWeight
+    const actualProgress = totalWeight > 0 && displayRows.every((activity) => !activity.actualValueMissing)
+      ? displayRows.reduce((sum, activity, index) => sum + (activity.actualProgress ?? 0) * snapshotWeight(snapshotRows[index]), 0) / totalWeight
       : null;
-    const plannedProgress = totalWeight > 0
-      ? snapshotRows.reduce((sum, activity) => sum + (activity.plannedProgress ?? 0) * snapshotWeight(activity), 0) / totalWeight
+    const plannedProgress = totalWeight > 0 && displayRows.every((activity) => !activity.plannedValueMissing)
+      ? displayRows.reduce((sum, activity, index) => sum + (activity.plannedProgress ?? 0) * snapshotWeight(snapshotRows[index]), 0) / totalWeight
       : null;
     const spi = !verification.actualUnverified && !verification.plannedUnverified && plannedProgress != null && plannedProgress > 0 && actualProgress != null
       ? actualProgress / plannedProgress
@@ -1081,10 +1160,9 @@ export default function OwnerPortal() {
                             </div>
                           );
                         }
-                        const reportActivities = report.activitiesSnapshot.map((act) => ({
-                          ...act,
-                          plannedProgress: act.plannedProgress ?? 0,
-                        })) as OwnerReportSnapshotActivity[];
+                        const reportActivities = report.activitiesSnapshot.map((act) =>
+                          getReportActivityDisplay(report, act as OwnerReportSnapshotActivity)
+                        );
                         if (reportActivities.length === 0) return null;
                         return (
                           <div className="pt-3 border-t">
@@ -1107,13 +1185,15 @@ export default function OwnerPortal() {
                                     <TableRow key={act.id}>
                                       <TableCell className="text-sm py-1.5">{act.name}</TableCell>
                                       <TableCell className="text-center text-sm py-1.5 tabular-nums">
-                                        {act.plannedProgress}%
+                                        {act.plannedValueMissing ? "—" : `${act.plannedProgress}%`}
                                       </TableCell>
                                       <TableCell className="text-center text-sm py-1.5 tabular-nums font-medium">
-                                        {act.actualProgress}%
+                                        {act.actualValueMissing ? "—" : `${act.actualProgress}%`}
                                       </TableCell>
                                       <TableCell className="text-center py-1.5">
-                                        {act.status === "completed" ? (
+                                        {act.actualValueMissing ? (
+                                          <span className="text-muted-foreground">—</span>
+                                        ) : act.status === "completed" ? (
                                           <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] px-1.5">مكتمل</Badge>
                                         ) : act.status === "in_progress" ? (
                                           <Badge className="bg-blue-100 text-blue-700 border border-blue-300 text-[10px] px-1.5">قيد التنفيذ</Badge>
