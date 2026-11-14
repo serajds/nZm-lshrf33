@@ -89,7 +89,7 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
       const response = await fetchWithSession(`/api/projects/${projectId}/progress-history-backfill`);
       return responseJson<StatePayload>(response);
     },
-    enabled: !!projectId && !!canManage,
+    enabled: !!projectId && !!canManage && open && mode === "manual",
   });
   const payload = stateQuery.data;
 
@@ -157,7 +157,7 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
       setPreview(null);
       setPreviewInput(null);
       setOpen(false);
-      await queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/progress-history-backfill`] });
+      await stateQuery.refetch();
       await queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/reports`] });
     } catch (error) {
       toast({ variant: "destructive", title: error instanceof Error ? error.message : "تعذّر إنشاء السجل التاريخي" });
@@ -173,7 +173,7 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
       const result = await responseJson<{ removed: number }>(response);
       toast({ title: `تم التراجع عن الدفعة وحذف ${result.removed} لقطة تقديرية` });
       setPreview(null);
-      await queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/progress-history-backfill`] });
+      await stateQuery.refetch();
     } catch (error) {
       toast({ variant: "destructive", title: error instanceof Error ? error.message : "تعذّر التراجع" });
     } finally { setBusy(false); }
@@ -193,7 +193,7 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
         <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
           <CardTitle className="flex items-center gap-2 text-base"><History className="h-4 w-4" /> إعدادات السجل التاريخي</CardTitle>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => void runAutomaticPreview()} disabled={busy || stateQuery.isLoading || !payload}>
+            <Button size="sm" onClick={() => void runAutomaticPreview()} disabled={busy}>
               {busy ? "جارٍ الفحص..." : "تهيئة تلقائية"}
             </Button>
             <Button variant="outline" size="sm" onClick={() => {
@@ -201,7 +201,7 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
               setPreview(null);
               setPreviewInput(null);
               setOpen(true);
-            }} disabled={busy || stateQuery.isLoading || !payload}>
+            }} disabled={busy}>
               إعداد يدوي
             </Button>
           </div>
@@ -217,6 +217,9 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
             </div>
           )}
           <div className="space-y-2">
+            {!payload && !stateQuery.isError && (
+              <p className="text-sm text-muted-foreground">تُحمّل الدفعات عند فتح الإعداد اليدوي للسجل.</p>
+            )}
             {(payload?.batches ?? []).map(batch => (
               <div key={batch.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
                 <span>دفعة #{batch.id} · {new Date(batch.createdAt).toLocaleString("ar-LY")} · {batch.revertedAt ? "تم التراجع" : "فعّالة"}</span>
@@ -237,7 +240,8 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
       }}>
         <DialogContent className="max-w-4xl" dir="rtl">
           <DialogHeader><DialogTitle>
-            {mode === "automatic" ? "تأكيد التهيئة التلقائية" : "إعداد السجل التاريخي يدويًا"} — {payload?.project.name ?? ""}
+            {mode === "automatic" ? "تأكيد التهيئة التلقائية" : "إعداد السجل التاريخي يدويًا"}
+            {payload?.project.name ? ` — ${payload.project.name}` : ""}
           </DialogTitle></DialogHeader>
           {stateQuery.isLoading ? <p className="py-8 text-center text-sm text-muted-foreground">جاري تحميل البنود...</p> : stateQuery.isError ? (
             <p className="py-8 text-center text-sm text-destructive">
