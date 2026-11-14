@@ -31,6 +31,9 @@ function fixtureFor(url) {
   if (path === "/api/projects/1/activities") return activities;
   if (path === "/api/projects/1/activity-groups") return groups;
   if (path === "/api/projects/1/my-permissions") return { canEditAll: true, isViewer: false, projectRole: "admin" };
+  if (path === "/api/projects/1/progress-history-backfill") {
+    return { project, activities: [], batches: [], fingerprint: "visual-test" };
+  }
   if (path === "/api/projects") return [project];
   if (path === "/api/projects/1/suspensions" || path === "/api/companies" || path === "/api/notifications") return [];
   if (path === "/api/attendance/my-status") return [{ projectId: 1, currentlyCheckedIn: false }];
