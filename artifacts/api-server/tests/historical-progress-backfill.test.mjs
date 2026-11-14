@@ -7,7 +7,12 @@ const compiled = await build({
   entryPoints: [fileURLToPath(new URL("../src/lib/historical-progress-backfill.ts", import.meta.url))],
   bundle: true, write: false, platform: "node", format: "esm",
 });
-const { previewHistoricalProgress, validBackfillDay } = await import(
+const {
+  MAX_BACKFILL_ACTIVITY_DAY_CELLS,
+  isBackfillActivityDayWorkSafe,
+  previewHistoricalProgress,
+  validBackfillDay,
+} = await import(
   `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`,
 );
 
@@ -44,6 +49,23 @@ test("reconstructs completed, active, not-started and historically linked items"
   assert.ok(Math.abs(day.progress - 35) < 0.2, "reviewed project anchor is respected");
   assert.deepEqual(preview.excludedDays, ["2026-02-10", "2026-02-11", "2026-02-12"]);
   assert.equal(preview.snapshots.at(-1).progress, 41);
+});
+
+test("keeps preview summaries bounded without retaining daily snapshots", () => {
+  const full = previewHistoricalProgress(project, activities, [], input);
+  const summary = previewHistoricalProgress(project, activities, [], input, { includeSnapshots: false });
+  assert.equal(summary.snapshots.length, 0);
+  assert.equal(summary.days, full.days);
+  assert.equal(summary.valid, full.valid);
+  assert.deepEqual(summary.samples, full.samples);
+  assert.deepEqual(summary.availableActivityIds, full.availableActivityIds);
+});
+
+test("rejects only previews exceeding the activity-day work budget", () => {
+  assert.equal(MAX_BACKFILL_ACTIVITY_DAY_CELLS, 250_000);
+  assert.equal(isBackfillActivityDayWorkSafe(560, 318), true);
+  assert.equal(isBackfillActivityDayWorkSafe(560, 500), false);
+  assert.equal(isBackfillActivityDayWorkSafe(10, 0), false);
 });
 
 test("does not use the planned start or guess a completed item's missing end", () => {

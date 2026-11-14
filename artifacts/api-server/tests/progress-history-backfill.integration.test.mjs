@@ -167,7 +167,13 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
     const managerState = await fetch(`${base}/projects/${project.id}/progress-history-backfill`, {
       headers: headers(managerToken),
     });
-    assert.equal(managerState.status, 200, `the assigned project manager can open the tool: ${await managerState.text()}`);
+    const managerStatePayload = await managerState.json();
+    assert.equal(managerState.status, 200, `the assigned project manager can open the tool: ${JSON.stringify(managerStatePayload)}`);
+    assert.equal(managerStatePayload.project.name, "Safe historical fixture");
+    assert.equal(managerStatePayload.activities.length, 4);
+    assert.ok(Array.isArray(managerStatePayload.batches));
+    assert.equal("history" in managerStatePayload, false, "opening settings does not return full historical snapshots");
+    assert.equal("fingerprint" in managerStatePayload, false, "opening settings does not compute a history fingerprint");
 
     const previewResponse = await fetch(`${base}/projects/${project.id}/progress-history-backfill/preview`, {
       method: "POST", headers: headers(adminToken), body: JSON.stringify(input),
@@ -436,6 +442,23 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
       { id: automaticActive.id, actualProgress: 35 },
       { id: automaticCompleted.id, actualProgress: 100 },
     ]);
+
+    await db.insert(activitiesTable).values(Array.from({ length: 90 }, (_, index) => ({
+      projectId: project.id, name: `Large-range item ${index + 1}`,
+      status: "not_started", actualProgress: 0, weight: 1,
+    })));
+    const oversizedPreviewResponse = await fetch(
+      `${base}/projects/${project.id}/progress-history-backfill/preview`,
+      {
+        method: "POST", headers: headers(adminToken),
+        body: JSON.stringify({
+          periodStart: "2017-01-01", realityDate: "2026-12-31", realityProgress: 42,
+        }),
+      },
+    );
+    const oversizedPreview = await oversizedPreviewResponse.json();
+    assert.equal(oversizedPreviewResponse.status, 413, JSON.stringify(oversizedPreview));
+    assert.match(oversizedPreview.error, /حد المعاينة الآمن/);
     assert.equal(await pool.query("SELECT 1").then(result => result.rowCount), 1);
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
