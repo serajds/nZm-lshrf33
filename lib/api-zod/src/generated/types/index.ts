@@ -94,6 +94,7 @@ export * from "./messageResponse";
 export * from "./myAttendanceHistoryItem";
 export * from "./myAttendanceHistoryItemType";
 export * from "./myAttendanceProjectStatus";
+export * from "./ownerActivityGroup";
 export * from "./ownerLinkResponse";
 export * from "./ownerProjectView";
 export * from "./ownerVerifyBody";

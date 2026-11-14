@@ -3,7 +3,7 @@ import { useParams } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { reportTypeLabel } from "@/lib/report-types";
 import { useVerifyOwnerAccess } from "@workspace/api-client-react";
-import type { OwnerProjectView, Activity, Report, ProjectExtension, ProjectSuspension, ReportActivitiesSnapshotItem } from "@workspace/api-client-react";
+import type { OwnerProjectView, OwnerActivityGroup, Activity, Report, ProjectExtension, ProjectSuspension, ReportActivitiesSnapshotItem } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { fmtDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import {
   Folder, FolderOpen, ArrowUp
 } from "lucide-react";
 import { previewReport, type ActivityForReport } from "@/lib/report-pdf";
+import { buildOwnerActivitySections, buildOwnerGroupProgressData } from "@/lib/owner-activity-groups";
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
@@ -389,6 +390,9 @@ export default function OwnerPortal() {
   }
 
   const { project, activities, reports, extensions = [], suspensions = [], summary } = ownerData;
+  const activityGroups = (ownerData.groups ?? []) as OwnerActivityGroup[];
+  const ownerActivitySections = buildOwnerActivitySections(activityGroups, activities);
+  const groupProgressData = buildOwnerGroupProgressData(ownerActivitySections);
   const totalExtDays = extensions.reduce((s: number, e: ProjectExtension) => s + e.daysAdded, 0);
   const latestExt = extensions.length > 0 ? extensions[extensions.length - 1] : null;
   const totalSuspDays = (suspensions as ProjectSuspension[]).reduce((s: number, x: ProjectSuspension) => s + x.calendarDays, 0);
@@ -620,13 +624,6 @@ export default function OwnerPortal() {
       default: return <Badge variant="outline">{status}</Badge>;
     }
   };
-
-  const ganttData = activities.map((a: Activity) => ({
-    name: a.name.length > 18 ? a.name.substring(0, 16) + '...' : a.name,
-    fullName: a.name,
-    planned: a.plannedProgress,
-    actual: a.actualProgress,
-  }));
 
   const statusCounts = {
     in_progress: activities.filter((a: Activity) => a.status === "in_progress").length,
@@ -986,25 +983,36 @@ export default function OwnerPortal() {
                       <span className="w-3 h-3 rounded-sm bg-emerald-500 inline-block" /> الفعلي
                     </span>
                   </div>
-                  <div className="h-[350px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={ganttData} margin={{ top: 10, right: 10, left: 10, bottom: 60 }} barCategoryGap="20%">
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                        <XAxis dataKey="name" angle={-40} textAnchor="end" height={80} interval={0} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} reversed />
-                        <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} orientation="right" />
-                        <Tooltip
-                          contentStyle={{ textAlign: 'right', direction: 'rtl', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', fontSize: '12px' }}
-                          formatter={(v: number, name: string) => [`${v}%`, name === 'planned' ? 'المخطط' : 'الفعلي']}
-                          labelFormatter={(label: string) => {
-                            const item = ganttData.find((c: any) => c.name === label);
-                            return item?.fullName || label;
-                          }}
-                        />
-                        <Bar dataKey="planned" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} name="planned" />
-                        <Bar dataKey="actual" fill="hsl(160, 84%, 39%)" radius={[4, 4, 0, 0]} name="actual" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {groupProgressData.length > 0 ? (
+                    <div className="max-h-[380px] overflow-y-auto">
+                      <div style={{ height: Math.max(240, groupProgressData.length * 44) }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={groupProgressData} layout="vertical" margin={{ top: 8, right: 12, left: 8, bottom: 8 }} barCategoryGap="28%">
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                            <XAxis type="number" domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} fontSize={11} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                            <YAxis type="category" dataKey="name" width={145} interval={0} tickFormatter={(name: string) => name.length > 20 ? `${name.slice(0, 18)}…` : name} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} orientation="right" />
+                            <Tooltip
+                              contentStyle={{ textAlign: 'right', direction: 'rtl', borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', fontSize: '12px' }}
+                              formatter={(v: number, name: string) => [`${Number(v).toFixed(1)}%`, name === 'planned' ? 'المخطط' : 'الفعلي']}
+                              labelFormatter={(label: string) => label}
+                            />
+                            <Bar dataKey="planned" radius={[0, 4, 4, 0]} name="planned">
+                              {groupProgressData.map((entry) => (
+                                <Cell key={entry.id} fill={entry.color} fillOpacity={0.4} />
+                              ))}
+                            </Bar>
+                            <Bar dataKey="actual" radius={[0, 4, 4, 0]} name="actual">
+                              {groupProgressData.map((entry) => (
+                                <Cell key={entry.id} fill={entry.color} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="py-10 text-center text-sm text-muted-foreground">لا توجد مجموعات أو بنود أعمال لعرضها</div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1485,18 +1493,11 @@ export default function OwnerPortal() {
                     return dates;
                   }).filter(Number.isFinite);
 
-                  if (allDates.length === 0) {
-                    return (
-                      <div className="py-16 text-center">
-                        <GanttChart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                        <h3 className="text-lg font-semibold mb-1">لا توجد بيانات صالحة</h3>
-                        <p className="text-sm text-muted-foreground">التواريخ المسجلة لبنود الأعمال غير صالحة للعرض</p>
-                      </div>
-                    );
-                  }
-
-                  const minMs = Math.min(...allDates);
-                  const maxMs = Math.max(...allDates);
+                  const hasTimelineDates = allDates.length > 0;
+                  const fallbackDate = new Date();
+                  fallbackDate.setHours(0, 0, 0, 0);
+                  const minMs = hasTimelineDates ? Math.min(...allDates) : fallbackDate.getTime();
+                  const maxMs = hasTimelineDates ? Math.max(...allDates) : minMs + 86400000;
                   const rangeMs = Math.max(maxMs - minMs, 86400000);
                   const minDate = new Date(minMs);
                   const maxDate = new Date(minMs + rangeMs);
@@ -1527,6 +1528,7 @@ export default function OwnerPortal() {
                     const width = ((e - s) / rangeMs) * 100;
                     return { right: `${Math.max(0, right)}%`, width: `${Math.max(0.5, width)}%` };
                   };
+                  let timelineActivityNumber = 0;
 
                   return (
                     <div className="space-y-3">
@@ -1542,6 +1544,7 @@ export default function OwnerPortal() {
                             <span className="w-0.5 h-3 bg-red-500 inline-block" /> اليوم
                           </span>
                         )}
+                        {!hasTimelineDates && <span className="text-amber-600">لا تتوفر تواريخ لعرض الأشرطة الزمنية</span>}
                       </div>
 
                       <div className="overflow-x-auto">
@@ -1559,7 +1562,16 @@ export default function OwnerPortal() {
                           </div>
 
                           <div className="space-y-0">
-                            {activitiesAll.map((a: Activity, i: number) => {
+                            {ownerActivitySections.map((section) => (
+                              <React.Fragment key={section.id}>
+                                <div className="flex min-h-9 items-center gap-2 border-y border-border/60 bg-muted/50 px-2 text-xs font-bold" style={{ borderInlineStart: `4px solid ${section.color}` }}>
+                                  <span className="truncate" style={{ color: section.color }} title={section.name}>{section.name}</span>
+                                  <span className="text-muted-foreground font-normal">({section.activities.length})</span>
+                                </div>
+                                {section.activities.length === 0 ? (
+                                  <div className="border-b border-border/30 px-3 py-2 text-xs text-muted-foreground">لا توجد بنود ضمن هذه المجموعة</div>
+                                ) : section.activities.map((a: Activity) => {
+                              const i = timelineActivityNumber++;
                               const hasPlanned = !!(a.plannedStartDate && a.plannedEndDate);
                               const hasAnyStart = !!(a.actualStartDate || a.plannedStartDate);
                               const hasActualSignal = (a.actualProgress > 0 || !!a.actualStartDate) && hasAnyStart;
@@ -1726,7 +1738,9 @@ export default function OwnerPortal() {
                                   </div>
                                 </div>
                               );
-                            })}
+                                })}
+                              </React.Fragment>
+                            ))}
                           </div>
 
                           <div className="flex justify-between text-[10px] text-muted-foreground mt-1 px-1">
@@ -1777,37 +1791,61 @@ export default function OwnerPortal() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {activitiesAll.map((a: Activity, i: number) => {
-                              const dur = Math.ceil((new Date(a.plannedEndDate!).getTime() - new Date(a.plannedStartDate!).getTime()) / (1000 * 60 * 60 * 24));
-                              return (
-                                <TableRow key={a.id} className="hover:bg-muted/50">
-                                  <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
-                                  <TableCell className="font-medium text-sm">{a.name}</TableCell>
-                                  <TableCell className="text-center text-sm tabular-nums" dir="ltr">{fmtDate(a.plannedStartDate!)}</TableCell>
-                                  <TableCell className="text-center text-sm tabular-nums" dir="ltr">{fmtDate(a.plannedEndDate!)}</TableCell>
-                                  <TableCell className="text-center text-sm tabular-nums">{dur}</TableCell>
-                                  <TableCell className="text-center">
-                                    <div className="flex items-center gap-1.5 justify-center">
-                                      <div className="h-2 w-16 rounded-full bg-muted overflow-hidden" dir="ltr">
-                                        <div className={`h-full rounded-full transition-all ${a.status === "delayed" ? "bg-red-500" : a.status === "completed" ? "bg-emerald-500" : "bg-blue-500"}`} style={{ width: `${Math.min(100, a.actualProgress)}%` }} />
+                            {(() => {
+                              let activityNumber = 0;
+                              return ownerActivitySections.map((section) => (
+                                <React.Fragment key={section.id}>
+                                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                                    <TableCell colSpan={7} className="py-2 font-bold" style={{ borderInlineStart: `4px solid ${section.color}` }}>
+                                      <div className="flex items-center gap-2">
+                                        <span style={{ color: section.color }}>{section.name}</span>
+                                        <span className="text-xs font-normal text-muted-foreground">({section.activities.length})</span>
                                       </div>
-                                      <span className="text-xs tabular-nums font-medium">{a.actualProgress}%</span>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="text-center">
-                                    {a.status === "completed" ? (
-                                      <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">مكتمل</Badge>
-                                    ) : a.status === "in_progress" ? (
-                                      <Badge className="bg-blue-100 text-blue-700 text-[10px]">قيد التنفيذ</Badge>
-                                    ) : a.status === "delayed" ? (
-                                      <Badge className="bg-red-100 text-red-700 text-[10px]">متأخر</Badge>
-                                    ) : (
-                                      <Badge variant="outline" className="text-[10px]">لم يبدأ</Badge>
-                                    )}
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
+                                    </TableCell>
+                                  </TableRow>
+                                  {section.activities.length === 0 ? (
+                                    <TableRow key={`${section.id}-empty`}>
+                                      <TableCell colSpan={7} className="py-2 text-sm text-muted-foreground">لا توجد بنود ضمن هذه المجموعة</TableCell>
+                                    </TableRow>
+                                  ) : section.activities.map((a: Activity) => {
+                                    const rowNumber = ++activityNumber;
+                                    const startDate = a.plannedStartDate ? new Date(a.plannedStartDate).getTime() : Number.NaN;
+                                    const endDate = a.plannedEndDate ? new Date(a.plannedEndDate).getTime() : Number.NaN;
+                                    const duration = Number.isFinite(startDate) && Number.isFinite(endDate)
+                                      ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
+                                      : null;
+                                    return (
+                                      <TableRow key={a.id} className="hover:bg-muted/50">
+                                        <TableCell className="text-muted-foreground text-sm">{rowNumber}</TableCell>
+                                        <TableCell className="font-medium text-sm">{a.name}</TableCell>
+                                        <TableCell className="text-center text-sm tabular-nums" dir="ltr">{a.plannedStartDate ? fmtDate(a.plannedStartDate) : "—"}</TableCell>
+                                        <TableCell className="text-center text-sm tabular-nums" dir="ltr">{a.plannedEndDate ? fmtDate(a.plannedEndDate) : "—"}</TableCell>
+                                        <TableCell className="text-center text-sm tabular-nums">{duration ?? "—"}</TableCell>
+                                        <TableCell className="text-center">
+                                          <div className="flex items-center gap-1.5 justify-center">
+                                            <div className="h-2 w-16 rounded-full bg-muted overflow-hidden" dir="ltr">
+                                              <div className={`h-full rounded-full transition-all ${a.status === "delayed" ? "bg-red-500" : a.status === "completed" ? "bg-emerald-500" : "bg-blue-500"}`} style={{ width: `${Math.min(100, a.actualProgress)}%` }} />
+                                            </div>
+                                            <span className="text-xs tabular-nums font-medium">{a.actualProgress}%</span>
+                                          </div>
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                          {a.status === "completed" ? (
+                                            <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">مكتمل</Badge>
+                                          ) : a.status === "in_progress" ? (
+                                            <Badge className="bg-blue-100 text-blue-700 text-[10px]">قيد التنفيذ</Badge>
+                                          ) : a.status === "delayed" ? (
+                                            <Badge className="bg-red-100 text-red-700 text-[10px]">متأخر</Badge>
+                                          ) : (
+                                            <Badge variant="outline" className="text-[10px]">لم يبدأ</Badge>
+                                          )}
+                                        </TableCell>
+                                      </TableRow>
+                                    );
+                                  })}
+                                </React.Fragment>
+                              ));
+                            })()}
                           </TableBody>
                         </Table>
                       </div>

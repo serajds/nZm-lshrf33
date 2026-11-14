@@ -2720,6 +2720,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Activity"
+        groups:
+          type: array
+          description: Display-only groups belonging to this project, ordered for the owner portal.
+          items:
+            $ref: "#/components/schemas/OwnerActivityGroup"
         reports:
           type: array
           items:
@@ -2729,8 +2734,26 @@ components:
       required:
         - project
         - activities
+        - groups
         - reports
         - summary
+
+    OwnerActivityGroup:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        color:
+          type: string
+        sortOrder:
+          type: integer
+      required:
+        - id
+        - name
+        - color
+        - sortOrder
 
     GenerateOwnerLinkBody:
       type: object

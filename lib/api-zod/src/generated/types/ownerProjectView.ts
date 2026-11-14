@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Activity } from "./activity";
+import type { OwnerActivityGroup } from "./ownerActivityGroup";
 import type { Project } from "./project";
 import type { ProjectSummary } from "./projectSummary";
 import type { Report } from "./report";
@@ -13,6 +14,8 @@ import type { Report } from "./report";
 export interface OwnerProjectView {
   project: Project;
   activities: Activity[];
+  /** Display-only groups belonging to this project, ordered for the owner portal. */
+  groups: OwnerActivityGroup[];
   reports: Report[];
   summary: ProjectSummary;
 }
