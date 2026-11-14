@@ -3,6 +3,7 @@
 - [Edge-safe upload transport](edge-safe-upload-transport.md) — file uploads must be base64 over text/plain JSON, not multipart; Replit Autoscale edge CSRF intermittently blocks header-stripped multipart with HTML 403.
 - [Project snapshot replace](project-snapshot-replace.md) — overwriting the repl with a GitHub export of itself: cp source dirs, preserve .git/.local/.cache/.config/node_modules/.agents/attached_assets; no rsync; .replit protected.
 - [Deployment build scope](deployment-build-scope.md) — root build excludes the mobile bundle, while web TypeScript remains mandatory; multi-artifact production uses each artifact’s service config.
+- [API readiness path](api-readiness-path.md) — compare production probe logs with artifact config; the API mount root may be probed separately from `/api/healthz`.
 - [Prod write-401 logout bug](prod-write-401.md) — eliminated causes (edge, Origin, bundle, SW); authDiag 401 logging + probe-before-logout shipped; check deployment logs after republish.
 - [Vite workspace export cache](vite-workspace-export-cache.md) — after adding exports to an optimized workspace package, clear the web artifact’s Vite cache before restarting.
 - [Route import recovery](route-import-recovery.md) — a guarded reload must not also throw into React; persistent fetch failures need manual retry, not a reload loop.
