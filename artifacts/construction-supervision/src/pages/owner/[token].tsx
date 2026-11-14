@@ -1064,11 +1064,6 @@ export default function OwnerPortal() {
                         )}
                       </div>
 
-                      {getSnapshotVerification(report).actualUnverified && (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
-                          بعض قيم الإنجاز الفعلي سُجلت بعد تاريخ التقرير؛ ستظهر مواعيد التسجيل بجوار البنود. هذه القيم غير متحققة كتقدم فعلي في تاريخ التقرير. نسبة الإنجاز أعلاه هي النسبة اليدوية المسجلة في التقرير.
-                        </div>
-                      )}
                       {getSnapshotVerification(report).plannedUnverified && (
                         <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
                           بعض قيم الخطة محفوظة لتواريخ مرجعية مختلفة عن تاريخ التقرير؛ ستظهر مرجعية كل بند بجوار قيمته، ولا يمكن اعتماد هذه الخطة كتقدم مخطط لهذا التاريخ.
