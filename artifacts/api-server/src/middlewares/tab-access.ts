@@ -1,8 +1,83 @@
 import { Request, Response, NextFunction } from "express";
 import { db } from "@workspace/db";
 import { projectMembersTable, usersTable, userCompaniesTable, projectsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { resolveTabPermissions, type TabKey } from "../lib/tab-permissions";
+import { currentRoleCanReadProject } from "../lib/activity-source-rules";
+
+export type ProjectVisibility = {
+  canRead: boolean;
+  activitiesVisible: boolean;
+};
+
+/** Load project access and activity-tab visibility for many source projects at once. */
+export async function loadProjectVisibilityForUser(
+  userId: number,
+  projectIds: readonly number[],
+): Promise<Map<number, ProjectVisibility>> {
+  const ids = [...new Set(projectIds.filter(id => Number.isInteger(id) && id > 0))];
+  const result = new Map(ids.map(id => [id, { canRead: false, activitiesVisible: false }]));
+  if (!ids.length || !Number.isInteger(userId) || userId <= 0) return result;
+
+  const [user] = await db.select({ role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) return result;
+  if (user.role === "admin") {
+    const activitiesVisible = resolveTabPermissions("admin", null).activities !== "hidden";
+    for (const id of ids) result.set(id, { canRead: true, activitiesVisible });
+    return result;
+  }
+
+  const [companies, memberships, projects] = await Promise.all([
+    user.role === "project_manager"
+      ? Promise.resolve([])
+      : db.select({ companyId: userCompaniesTable.companyId })
+          .from(userCompaniesTable).where(eq(userCompaniesTable.userId, userId)),
+    db.select({
+      projectId: projectMembersTable.projectId,
+      role: projectMembersTable.role,
+      tabPermissions: projectMembersTable.tabPermissions,
+    }).from(projectMembersTable)
+      .where(and(
+        eq(projectMembersTable.userId, userId),
+        inArray(projectMembersTable.projectId, ids),
+      )),
+    db.select({
+      id: projectsTable.id,
+      contractorCompanyId: projectsTable.contractorCompanyId,
+    }).from(projectsTable).where(inArray(projectsTable.id, ids)),
+  ]);
+  const companyIds = companies.map(company => company.companyId);
+  const membershipsByProject = new Map(memberships.map(membership => [membership.projectId, membership]));
+  const projectsById = new Map(projects.map(project => [project.id, project]));
+
+  for (const id of ids) {
+    const membership = membershipsByProject.get(id);
+    const contractorCompanyId = projectsById.get(id)?.contractorCompanyId ?? null;
+    const canRead = currentRoleCanReadProject(
+      user.role,
+      membership != null,
+      contractorCompanyId,
+      companyIds,
+    );
+    const isContractorOnProject = user.role !== "project_manager"
+      && contractorCompanyId != null
+      && companyIds.includes(contractorCompanyId);
+    const tabRole = user.role === "contractor" || isContractorOnProject || membership?.role === "contractor"
+      ? "contractor"
+      : membership?.role;
+    const effective = tabRole
+      ? resolveTabPermissions(tabRole as any, tabRole === "contractor" ? null : membership?.tabPermissions ?? null)
+      : user.role === "owner"
+        ? resolveTabPermissions("owner", null)
+        : null;
+    result.set(id, {
+      canRead,
+      activitiesVisible: canRead && effective != null && effective.activities !== "hidden",
+    });
+  }
+  return result;
+}
 
 /**
  * Compute the effective tab permissions for the authenticated user on a project,

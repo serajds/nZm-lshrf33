@@ -51,6 +51,7 @@ test("measured activities, source sharing, reorder isolation, report payload and
     const compression = requireApi("compression");
     const current = (await import("../artifacts/api-server/src/routes/activities.ts")).default;
     const reports = (await import("../artifacts/api-server/src/routes/reports.ts")).default;
+    const dashboard = (await import("../artifacts/api-server/src/routes/dashboard.ts")).default;
     const { db, usersTable, projectsTable, activitiesTable, activityGroupsTable, reportsTable,
       requestMetrics, newRequestMetrics } = schema;
     pool = schema.pool;
@@ -98,7 +99,7 @@ test("measured activities, source sharing, reorder isolation, report payload and
       });
       app.use(compression({ threshold: 1024 }));
       app.use(express.json());
-      app.use("/api", router, reports);
+      app.use("/api", router, reports, dashboard);
       const server = app.listen(0, "127.0.0.1");
       servers.push(server);
       await once(server, "listening");
@@ -207,6 +208,49 @@ test("measured activities, source sharing, reorder isolation, report payload and
       await db.update(activitiesTable).set({ actualProgress: 60 }).where(eq(activitiesTable.groupId, sourceGroup.id));
       const updated = await request(`${url}/activities`);
       assert.ok(updated.data.filter(row => row.externalSourceGroupId === sourceGroup.id).every(row => row.actualProgress === 60));
+    });
+    await t.test("many distinct imported groups resolve with bounded query count", async () => {
+      const manyGroups = await db.insert(activityGroupsTable).values(
+        Array.from({ length: 60 }, (_, index) => ({
+          projectId: source.id, name: `batch source ${index}`, sortOrder: index,
+        })),
+      ).returning();
+      await db.insert(activitiesTable).values(manyGroups.map((group, index) => ({
+        projectId: source.id, groupId: group.id, name: `batch child ${index}`,
+        actualProgress: 40, plannedStartDate: "2026-01-01", plannedEndDate: "2026-12-31",
+      })));
+      const [manyTarget] = await db.insert(projectsTable).values({
+        name: "many linked groups target", location: "isolated", ownerEntity: "fixture",
+        supervisorEntity: "fixture", contractor: "fixture",
+        startDate: "2026-01-01", expectedEndDate: "2026-12-31",
+      }).returning();
+      await db.insert(activitiesTable).values(manyGroups.map((group, index) => ({
+        projectId: manyTarget.id, name: `batch linked ${index}`,
+        externalSourceGroupId: group.id, actualProgress: 1, sortOrder: index,
+      })));
+
+      const list = await request(`/projects/${manyTarget.id}/activities`);
+      assert.equal(list.status, 200);
+      assert.equal(list.data.length, 60);
+      assert.ok(list.data.every(row => row.actualProgress === 40 && row.externalSource.available));
+      assert.ok(list.queries < 20, `distinct source groups required ${list.queries} queries`);
+      results.push({ label: "after", operation: "list-60-distinct-source-groups",
+        queries: list.queries, queryMs: list.queryMs, poolWaitMs: list.poolWaitMs, totalMs: list.totalMs });
+
+      const summary = await request(`/projects/${manyTarget.id}/summary`);
+      assert.equal(summary.status, 200);
+      assert.equal(summary.data.activitiesTotal, 60);
+      assert.equal(summary.data.overallProgress, 40);
+      assert.ok(summary.queries < 25, `linked project summary required ${summary.queries} queries`);
+      results.push({ label: "after", operation: "summary-60-distinct-source-groups",
+        queries: summary.queries, queryMs: summary.queryMs, poolWaitMs: summary.poolWaitMs, totalMs: summary.totalMs });
+
+      const dashboardSummary = await request("/dashboard/summary");
+      assert.equal(dashboardSummary.status, 200);
+      assert.ok(dashboardSummary.queries < 35, `dashboard linked progress required ${dashboardSummary.queries} queries`);
+      results.push({ label: "after", operation: "dashboard-summary-linked-projects",
+        queries: dashboardSummary.queries, queryMs: dashboardSummary.queryMs,
+        poolWaitMs: dashboardSummary.poolWaitMs, totalMs: dashboardSummary.totalMs });
     });
     await t.test("all idle connections expire and the next query reconnects", async () => {
       await new Promise(resolve => setTimeout(resolve, 21000));

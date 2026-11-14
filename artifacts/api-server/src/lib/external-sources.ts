@@ -1,5 +1,5 @@
 import { db, pool, activitiesTable, activityGroupsTable, projectsTable, projectExtensionsTable, projectMembersTable, projectFilesTable, reportsTable, userCompaniesTable, usersTable } from "@workspace/db";
-import { and, eq, isNotNull, isNull, max, sum, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, max, sum, sql } from "drizzle-orm";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { measurePhase } from "@workspace/db";
 import { recalcExpectedEndDate } from "./recalc-end-date";
@@ -375,6 +375,117 @@ export async function getGroupSummary(
   return resolve(groupId, new Set<number>());
 }
 
+/**
+ * Resolve a set of linked groups using breadth-first batched reads rather than
+ * one group/project/activities query chain per imported activity.
+ */
+export async function getGroupSummaries(
+  groupIds: readonly number[],
+  asOf: Date = new Date(),
+  curve: PlannedCurve = "linear",
+): Promise<Map<number, SourceGroupSummary | null>> {
+  type ChildRow = {
+    groupId: number | null;
+    actualProgress: number | null;
+    weight: number | null;
+    plannedStartDate: string | null;
+    plannedEndDate: string | null;
+    plannedProgress: number | null;
+    externalSourceGroupId: number | null;
+  };
+  type GroupNode = {
+    id: number;
+    projectId: number;
+    groupName: string;
+    projectName: string | null;
+    linkCode: string | null;
+    children: ChildRow[];
+  };
+
+  const roots = [...new Set(groupIds.filter(id => Number.isInteger(id) && id > 0))];
+  const nodes = new Map<number, GroupNode>();
+  const loaded = new Set<number>();
+  let pending = roots;
+
+  while (pending.length > 0) {
+    const ids = pending.filter(id => !loaded.has(id));
+    pending = [];
+    if (!ids.length) continue;
+    for (const id of ids) loaded.add(id);
+
+    const groups = await db.select({
+      id: activityGroupsTable.id,
+      projectId: activityGroupsTable.projectId,
+      groupName: activityGroupsTable.name,
+      projectName: projectsTable.name,
+      linkCode: activityGroupsTable.linkCode,
+    }).from(activityGroupsTable)
+      .leftJoin(projectsTable, eq(activityGroupsTable.projectId, projectsTable.id))
+      .where(inArray(activityGroupsTable.id, ids));
+
+    if (!groups.length) continue;
+    for (const group of groups) {
+      nodes.set(group.id, { ...group, children: [] });
+    }
+
+    const children = await db.select({
+      groupId: activitiesTable.groupId,
+      actualProgress: activitiesTable.actualProgress,
+      weight: activitiesTable.weight,
+      plannedStartDate: activitiesTable.plannedStartDate,
+      plannedEndDate: activitiesTable.plannedEndDate,
+      plannedProgress: activitiesTable.plannedProgress,
+      externalSourceGroupId: activitiesTable.externalSourceGroupId,
+    }).from(activitiesTable)
+      .where(inArray(activitiesTable.groupId, groups.map(group => group.id)));
+
+    for (const child of children) {
+      if (child.groupId == null) continue;
+      nodes.get(child.groupId)?.children.push(child);
+      if (child.externalSourceGroupId != null) pending.push(child.externalSourceGroupId);
+    }
+  }
+
+  const summaries = new Map<number, SourceGroupSummary | null>();
+  const visiting = new Set<number>();
+  const resolve = (id: number): SourceGroupSummary | null => {
+    if (summaries.has(id)) return summaries.get(id) ?? null;
+    const node = nodes.get(id);
+    if (!node || node.projectName == null) {
+      summaries.set(id, null);
+      return null;
+    }
+    if (visiting.has(id)) return null;
+
+    visiting.add(id);
+    const resolvedChildren = node.children.map(child => {
+      if (child.externalSourceGroupId == null) {
+        return { ...child, plannedProgress: calcActivityPlannedProgress(child, asOf, curve) };
+      }
+      const source = resolve(child.externalSourceGroupId);
+      return {
+        ...child,
+        plannedProgress: source?.plannedProgress ?? child.plannedProgress,
+        actualProgress: source?.actualProgress ?? child.actualProgress,
+      };
+    });
+    visiting.delete(id);
+
+    const summary = summarizeSourceChildren(resolvedChildren, {
+      groupId: node.id,
+      projectId: node.projectId,
+      projectName: node.projectName,
+      groupName: node.groupName,
+      linkCode: node.linkCode,
+    });
+    summaries.set(id, summary);
+    return summary;
+  };
+
+  for (const id of roots) resolve(id);
+  return summaries;
+}
+
 /** Resolve linked rows to the live source-group values without mutating input rows. */
 export async function resolveLinkedActivityProgress<
   T extends {
@@ -383,14 +494,18 @@ export async function resolveLinkedActivityProgress<
     actualProgress: number;
   },
 >(activities: readonly T[], asOf: Date = new Date(), curve: PlannedCurve = "linear"): Promise<T[]> {
-  const memo: GroupSummaryMemo = new Map();
-  return Promise.all(activities.map(async activity => {
+  const summaries = await getGroupSummaries(
+    activities.flatMap(activity => activity.externalSourceGroupId == null ? [] : [activity.externalSourceGroupId]),
+    asOf,
+    curve,
+  );
+  return activities.map(activity => {
     if (activity.externalSourceGroupId == null) return { ...activity };
-    const summary = await getGroupSummary(activity.externalSourceGroupId, asOf, memo, curve);
+    const summary = summaries.get(activity.externalSourceGroupId) ?? null;
     return summary
       ? { ...activity, plannedProgress: summary.plannedProgress, actualProgress: summary.actualProgress }
       : { ...activity };
-  }));
+  });
 }
 
 /** The dependency graph is target project -> source project. Adding an edge is safe only if source cannot already reach target. */

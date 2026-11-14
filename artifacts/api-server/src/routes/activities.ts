@@ -5,11 +5,11 @@ import { activitiesTable, projectsTable, activityGroupsTable, projectMembersTabl
 import { eq, and, avg, max, inArray } from "drizzle-orm";
 import { activityOrderCase, validActivityOrderItems } from "../lib/activity-order";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { requireTabEdit } from "../middlewares/tab-access";
+import { loadProjectVisibilityForUser, requireTabEdit } from "../middlewares/tab-access";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
 import { captureProjectProgressHistory, type HistoryTransaction } from "../lib/capture-project-progress-history";
 import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
-import { canReadProject, getGroupSummary, hasLinkedGroupSourceDuplicate, reconcileTargetsLinkedToProject, refreshLinkedSources, withSourceGraphLock, wouldCreateSourceCycle } from "../lib/external-sources";
+import { canReadProject, getGroupSummary, getGroupSummaries, hasLinkedGroupSourceDuplicate, reconcileTargetsLinkedToProject, refreshLinkedSources, withSourceGraphLock, wouldCreateSourceCycle } from "../lib/external-sources";
 import { linkedSourceIdAfterPatch, sourceIsAvailable } from "../lib/activity-source-rules";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -84,19 +84,16 @@ async function syncProjectProgress(projectId: number, tx: HistoryTransaction) {
     .where(eq(projectsTable.id, projectId));
 }
 
-async function serializeActivityForUser(
+function serializeActivityForUser(
   activity: typeof activitiesTable.$inferSelect,
-  userId: number | undefined,
   asOf: Date = new Date(),
   hasSchedule = true,
-  context = {
-    summaries: new Map() as import("../lib/external-sources").GroupSummaryMemo,
-    access: new Map<number, Promise<boolean>>(),
-  },
+  summaries: Map<number, Awaited<ReturnType<typeof getGroupSummary>>>,
+  sourceAccess: ReadonlyMap<number, { canRead: boolean }>,
 ) {
   const source = activity.externalSourceGroupId == null
     ? null
-    : await getGroupSummary(activity.externalSourceGroupId, asOf, context.summaries);
+    : summaries.get(activity.externalSourceGroupId) ?? null;
   const plannedProgress = hasSchedule
     ? source?.plannedProgress
       ?? (activity.externalSourceGroupId == null
@@ -109,10 +106,7 @@ async function serializeActivityForUser(
     plannedProgress: roundPercent(plannedProgress),
   };
   const sourceProjectId = source?.projectId ?? activity.managedSourceProjectId ?? undefined;
-  if (sourceProjectId !== undefined && userId !== undefined && !context.access.has(sourceProjectId)) {
-    context.access.set(sourceProjectId, canReadProject(userId, sourceProjectId));
-  }
-  const canReadSource = sourceProjectId !== undefined && await context.access.get(sourceProjectId);
+  const canReadSource = sourceProjectId !== undefined && sourceAccess.get(sourceProjectId)?.canRead === true;
   if (activity.externalSourceGroupId == null) {
     if (canReadSource || activity.managedSourceProjectId == null) return liveActivity;
     const { managedSourceProjectId: _sourceProjectId, ...safeActivity } = liveActivity;
@@ -141,6 +135,26 @@ async function serializeActivityForUser(
   };
 }
 
+async function serializeSingleActivityForUser(
+  activity: typeof activitiesTable.$inferSelect,
+  userId: number | undefined,
+  asOf = new Date(),
+  hasSchedule = true,
+) {
+  const summaries = await getGroupSummaries(
+    activity.externalSourceGroupId == null ? [] : [activity.externalSourceGroupId],
+    asOf,
+  );
+  const source = activity.externalSourceGroupId == null
+    ? null
+    : summaries.get(activity.externalSourceGroupId) ?? null;
+  const sourceProjectId = source?.projectId ?? activity.managedSourceProjectId;
+  const sourceAccess = userId != null && sourceProjectId != null
+    ? await loadProjectVisibilityForUser(userId, [sourceProjectId])
+    : new Map<number, { canRead: boolean; activitiesVisible: boolean }>();
+  return serializeActivityForUser(activity, asOf, hasSchedule, summaries, sourceAccess);
+}
+
 router.get("/projects/:projectId/activities", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
@@ -158,15 +172,19 @@ router.get("/projects/:projectId/activities", requireProjectAccess("projectId"),
     .orderBy(activitiesTable.sortOrder, activitiesTable.id);
 
   const asOf = new Date();
-  const context = {
-    summaries: new Map() as import("../lib/external-sources").GroupSummaryMemo,
-    access: new Map<number, Promise<boolean>>(),
-  };
-  // Keep independent sources concurrent; the shared summary resolver detects
-  // cycles across pending branches as well as local ancestor cycles.
-  const response = await Promise.all(activities.map(activity =>
-    serializeActivityForUser(activity, req.user?.userId, asOf, hasSchedule, context),
-  ));
+  const summaries = await getGroupSummaries(
+    activities.flatMap(activity => activity.externalSourceGroupId == null ? [] : [activity.externalSourceGroupId]),
+    asOf,
+  );
+  const sourceProjectIds = activities
+    .map(activity => summaries.get(activity.externalSourceGroupId ?? -1)?.projectId ?? activity.managedSourceProjectId)
+    .filter((id): id is number => id != null);
+  const sourceAccess = req.user?.userId == null
+    ? new Map<number, { canRead: boolean; activitiesVisible: boolean }>()
+    : await loadProjectVisibilityForUser(req.user.userId, sourceProjectIds);
+  const response = activities.map(activity =>
+    serializeActivityForUser(activity, asOf, hasSchedule, summaries, sourceAccess),
+  );
   res.json(response);
 });
 
@@ -317,7 +335,7 @@ router.post("/projects/:projectId/activities", requireProjectAccess("projectId")
   const { logAudit } = await import("../lib/audit");
   await logAudit({ userId: (req as any).user?.userId, action: "create", entityType: "activity", entityId: activity.id, entityName: `بند #${activity.id}`, projectId, details: { actualProgress: activity.actualProgress, plannedProgress: activity.plannedProgress, groupId: activity.groupId, externalSourceGroupId: activity.externalSourceGroupId } });
 
-  res.status(201).json(await serializeActivityForUser(activity, req.user?.userId));
+  res.status(201).json(await serializeSingleActivityForUser(activity, req.user?.userId));
 });
 
 router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
@@ -566,7 +584,7 @@ router.patch("/projects/:projectId/activities/:id", requireProjectAccess("projec
   const { logAudit } = await import("../lib/audit");
   await logAudit({ userId: (req as any).user?.userId, action: "update", entityType: "activity", entityId: activity.id, entityName: `بند #${activity.id}`, projectId, details: { ...updateData, actualProgressBefore: existing.actualProgress, actualProgressAfter: activity.actualProgress, externalSourceGroupIdBefore: existing.externalSourceGroupId, externalSourceGroupIdAfter: activity.externalSourceGroupId, changedFields: Object.keys(updateData) } });
 
-  res.json(await serializeActivityForUser(activity, req.user?.userId));
+  res.json(await serializeSingleActivityForUser(activity, req.user?.userId));
 });
 
 router.post("/projects/:projectId/activities/import/preview", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("activities"), async (req, res): Promise<void> => {
