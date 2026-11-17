@@ -16,7 +16,7 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
   let server;
   let schema;
   try {
-    const [{ default: app }, { signToken }, dbSchema, { eq }] = await Promise.all([
+    const [{ default: app }, { signToken }, dbSchema, { eq, count }] = await Promise.all([
       import("../src/app.ts"),
       import("../src/lib/auth.ts"),
       import("../../../lib/db/src/index.ts"),
@@ -457,9 +457,90 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
       },
     );
     const oversizedPreview = await oversizedPreviewResponse.json();
-    assert.equal(oversizedPreviewResponse.status, 413, JSON.stringify(oversizedPreview));
-    assert.match(oversizedPreview.error, /حد المعاينة الآمن/);
+    assert.equal(oversizedPreviewResponse.status, 200, JSON.stringify(oversizedPreview));
+    assert.equal(oversizedPreview.days, 3652);
+    assert.equal("snapshots" in oversizedPreview, false, "the API returns a bounded summary, not daily snapshots");
     assert.equal(await pool.query("SELECT 1").then(result => result.rowCount), 1);
+
+    const [largeHistoryProject] = await db.insert(projectsTable).values({
+      name: "Large history fixture", location: "fixture", ownerEntity: "fixture",
+      supervisorEntity: "fixture", contractor: "fixture", startDate: "2026-04-01",
+      expectedEndDate: "2026-12-31",
+    }).returning();
+    const largeActivities = await db.insert(activitiesTable).values(Array.from({ length: 1001 }, (_, index) => ({
+      projectId: largeHistoryProject.id, name: `Large history activity ${index + 1}`,
+      status: "not_started", actualProgress: 0, weight: 1,
+    }))).returning({ id: activitiesTable.id });
+    await db.insert(projectProgressHistoryTable).values(Array.from({ length: 501 }, (_, index) => ({
+      projectId: largeHistoryProject.id,
+      capturedAt: new Date(Date.UTC(2020, 0, 1 + index, 10)),
+      snapshot: historicalSnapshot(largeHistoryProject.id, []),
+      source: "actual",
+    })));
+    assert.ok(largeActivities.length * 501 > 500_000,
+      "the fixture exceeds the former history-cell cutoff");
+    const largeHistoryInput = {
+      periodStart: "2026-04-01", realityDate: "2026-04-02", realityProgress: 0,
+    };
+    const largeHistoryPreviewResponse = await fetch(
+      `${base}/projects/${largeHistoryProject.id}/progress-history-backfill/preview`,
+      {
+        method: "POST", headers: headers(adminToken), body: JSON.stringify(largeHistoryInput),
+      },
+    );
+    const largeHistoryPreview = await largeHistoryPreviewResponse.json();
+    assert.equal(largeHistoryPreviewResponse.status, 200, JSON.stringify(largeHistoryPreview));
+    assert.equal(largeHistoryPreview.valid, true);
+    assert.equal(largeHistoryPreview.snapshotsToAdd, 2);
+    const largeHistoryCommitResponse = await fetch(
+      `${base}/projects/${largeHistoryProject.id}/progress-history-backfill/commit`,
+      {
+        method: "POST", headers: headers(adminToken),
+        body: JSON.stringify({
+          input: largeHistoryInput, previewToken: largeHistoryPreview.previewToken,
+        }),
+      },
+    );
+    const largeHistoryCommit = await largeHistoryCommitResponse.json();
+    assert.equal(largeHistoryCommitResponse.status, 201, JSON.stringify(largeHistoryCommit));
+    assert.equal(largeHistoryCommit.inserted, 2);
+    assert.equal((await db.select({ value: count() }).from(projectProgressHistoryTable)
+      .where(eq(projectProgressHistoryTable.importBatchId, largeHistoryCommit.batch.id)))[0].value, 2);
+    assert.equal((await db.select({ value: count() }).from(activitiesTable)
+      .where(eq(activitiesTable.projectId, largeHistoryProject.id)))[0].value, 1001,
+    "committing estimates leaves live project activities unchanged");
+
+    const beforeRejectedImport = (await db.select({ value: count() }).from(projectProgressHistoryTable)
+      .where(eq(projectProgressHistoryTable.projectId, largeHistoryProject.id)))[0].value;
+    const invalidLargeInput = {
+      ...largeHistoryInput,
+      referencePoints: [
+        { date: "2026-04-01", progress: 30 },
+        { date: "2026-04-02", progress: 10 },
+      ],
+    };
+    const invalidLargePreviewResponse = await fetch(
+      `${base}/projects/${largeHistoryProject.id}/progress-history-backfill/preview`,
+      {
+        method: "POST", headers: headers(adminToken), body: JSON.stringify(invalidLargeInput),
+      },
+    );
+    const invalidLargePreview = await invalidLargePreviewResponse.json();
+    assert.equal(invalidLargePreviewResponse.status, 200);
+    assert.equal(invalidLargePreview.valid, false);
+    const rejectedLargeCommit = await fetch(
+      `${base}/projects/${largeHistoryProject.id}/progress-history-backfill/commit`,
+      {
+        method: "POST", headers: headers(adminToken),
+        body: JSON.stringify({
+          input: invalidLargeInput, previewToken: invalidLargePreview.previewToken,
+        }),
+      },
+    );
+    assert.equal(rejectedLargeCommit.status, 400);
+    assert.equal((await db.select({ value: count() }).from(projectProgressHistoryTable)
+      .where(eq(projectProgressHistoryTable.projectId, largeHistoryProject.id)))[0].value,
+    beforeRejectedImport, "a rejected reconstruction rolls back every inserted batch row");
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     if (schema?.pool) await schema.pool.end();
