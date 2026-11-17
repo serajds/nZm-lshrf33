@@ -62,13 +62,6 @@ export type BackfillPreview = {
 
 const DAY_MS = 86_400_000;
 const MAX_DAYS = 3_660;
-export const MAX_BACKFILL_ACTIVITY_DAY_CELLS = 250_000;
-
-export function isBackfillActivityDayWorkSafe(activityCount: number, dayCount: number): boolean {
-  return Number.isSafeInteger(activityCount) && activityCount >= 0
-    && Number.isSafeInteger(dayCount) && dayCount > 0
-    && activityCount * dayCount <= MAX_BACKFILL_ACTIVITY_DAY_CELLS;
-}
 const METHOD = "activity-linear-between-confirmed-dated-points-v2";
 
 export function validBackfillDay(day: unknown): day is string {
@@ -146,8 +139,24 @@ export function previewHistoricalProgress(
   activities: BackfillActivity[],
   suspensions: BackfillSuspension[],
   input: BackfillInput,
-  options: { includeSnapshots?: boolean } = {},
-): BackfillPreview {
+  options: {
+    includeSnapshots?: boolean;
+    onSnapshot?: (snapshot: BackfillDay) => Promise<void>;
+  } = {},
+): Promise<BackfillPreview> {
+  return previewHistoricalProgressAsync(project, activities, suspensions, input, options);
+}
+
+async function previewHistoricalProgressAsync(
+  project: { startDate: string | null; noSchedule: boolean },
+  activities: BackfillActivity[],
+  suspensions: BackfillSuspension[],
+  input: BackfillInput,
+  options: {
+    includeSnapshots?: boolean;
+    onSnapshot?: (snapshot: BackfillDay) => Promise<void>;
+  },
+): Promise<BackfillPreview> {
   const includeSnapshots = options.includeSnapshots !== false;
   const warnings: string[] = [];
   const conflicts: string[] = [];
@@ -392,7 +401,9 @@ export function previewHistoricalProgress(
     }
     const date = dayString(day);
     const progress = weightedProgress(items.filter(item => !item.actualHistoricalUnverified));
-    if (includeSnapshots) snapshots.push({ date, progress, activities: items });
+    const snapshot = { date, progress, activities: items };
+    if (includeSnapshots) snapshots.push(snapshot);
+    if (options.onSnapshot) await options.onSnapshot(snapshot);
     if (dayIndex % sampleStride === 0 || dayIndex === dayCount - 1) samples.push({ date, progress });
     dayIndex++;
   }

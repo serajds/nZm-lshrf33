@@ -8,8 +8,6 @@ const compiled = await build({
   bundle: true, write: false, platform: "node", format: "esm",
 });
 const {
-  MAX_BACKFILL_ACTIVITY_DAY_CELLS,
-  isBackfillActivityDayWorkSafe,
   previewHistoricalProgress,
   validBackfillDay,
 } = await import(
@@ -37,8 +35,8 @@ const input = {
   referencePoints: [{ date: "2026-03-01", progress: 35 }],
 };
 
-test("reconstructs completed, active, not-started and historically linked items", () => {
-  const preview = previewHistoricalProgress(project, activities, [{
+test("reconstructs completed, active, not-started and historically linked items", async () => {
+  const preview = await previewHistoricalProgress(project, activities, [{
     type: "official_holiday", startDate: "2026-02-10", endDate: "2026-02-12", approvedBy: "مدير المشروع",
   }], input);
   assert.equal(preview.valid, true);
@@ -51,9 +49,9 @@ test("reconstructs completed, active, not-started and historically linked items"
   assert.equal(preview.snapshots.at(-1).progress, 41);
 });
 
-test("keeps preview summaries bounded without retaining daily snapshots", () => {
-  const full = previewHistoricalProgress(project, activities, [], input);
-  const summary = previewHistoricalProgress(project, activities, [], input, { includeSnapshots: false });
+test("keeps preview summaries bounded without retaining daily snapshots", async () => {
+  const full = await previewHistoricalProgress(project, activities, [], input);
+  const summary = await previewHistoricalProgress(project, activities, [], input, { includeSnapshots: false });
   assert.equal(summary.snapshots.length, 0);
   assert.equal(summary.days, full.days);
   assert.equal(summary.valid, full.valid);
@@ -61,17 +59,31 @@ test("keeps preview summaries bounded without retaining daily snapshots", () => 
   assert.deepEqual(summary.availableActivityIds, full.availableActivityIds);
 });
 
-test("rejects only previews exceeding the activity-day work budget", () => {
-  assert.equal(MAX_BACKFILL_ACTIVITY_DAY_CELLS, 250_000);
-  assert.equal(isBackfillActivityDayWorkSafe(560, 318), true);
-  assert.equal(isBackfillActivityDayWorkSafe(560, 500), false);
-  assert.equal(isBackfillActivityDayWorkSafe(10, 0), false);
+test("streams summaries when reconstruction exceeds the former activity-day budget", async () => {
+  const manyActivities = Array.from({ length: 560 }, (_, index) => ({
+    id: index + 1, name: `بند ${index + 1}`, status: "not_started", actualProgress: 0,
+    weight: 1, actualStartDate: null, actualEndDate: null, externalSourceGroupId: null,
+  }));
+  let streamedDays = 0;
+  const summary = await previewHistoricalProgress(
+    project, manyActivities, [], {
+      periodStart: "2025-01-01", realityDate: "2026-05-15", realityProgress: 0,
+    }, {
+      includeSnapshots: false,
+      onSnapshot: async () => { streamedDays++; },
+    },
+  );
+  assert.equal(summary.valid, true);
+  assert.equal(summary.days, 500);
+  assert.equal(manyActivities.length * summary.days > 250_000, true);
+  assert.equal(summary.snapshots.length, 0);
+  assert.equal(streamedDays, summary.days);
 });
 
-test("does not use the planned start or guess a completed item's missing end", () => {
+test("does not use the planned start or guess a completed item's missing end", async () => {
   const missingStart = { ...activities[1], actualStartDate: null };
   const missingEnd = { ...activities[0], actualEndDate: null };
-  const preview = previewHistoricalProgress(project, [missingStart, missingEnd], [], {
+  const preview = await previewHistoricalProgress(project, [missingStart, missingEnd], [], {
     periodStart: "2026-01-01", realityDate: "2026-04-01", realityProgress: 70,
   });
   assert.equal(preview.unavailableActivities, 2);
@@ -79,9 +91,9 @@ test("does not use the planned start or guess a completed item's missing end", (
   assert.ok(preview.warnings.some(message => message.includes("لن يُخمن النظام نهايته")));
 });
 
-test("automatic estimate reaches today's completion without inventing an actual end date", () => {
+test("automatic estimate reaches today's completion without inventing an actual end date", async () => {
   const completedWithoutEnd = { ...activities[0], actualEndDate: null };
-  const preview = previewHistoricalProgress(project, [completedWithoutEnd], [], {
+  const preview = await previewHistoricalProgress(project, [completedWithoutEnd], [], {
     periodStart: "2026-01-01",
     realityDate: "2026-04-01",
     realityProgress: 100,
@@ -93,27 +105,27 @@ test("automatic estimate reaches today's completion without inventing an actual 
   assert.equal(preview.snapshots.at(-1).activities[0].actualEndDate, null);
 });
 
-test("linked items without a dated source remain unverified", () => {
+test("linked items without a dated source remain unverified", async () => {
   const linked = { ...activities[3], hasHistoricalSource: false };
-  const preview = previewHistoricalProgress(project, [linked], [], {
+  const preview = await previewHistoricalProgress(project, [linked], [], {
     periodStart: "2026-01-01", realityDate: "2026-04-01", realityProgress: 25,
   });
   assert.equal(preview.unavailableActivities, 1);
   assert.equal(preview.snapshots.at(-1).activities[0].actualHistoricalUnverified, true);
 });
 
-test("accepts a one-day range and rejects invalid calendar boundaries", () => {
+test("accepts a one-day range and rejects invalid calendar boundaries", async () => {
   assert.equal(validBackfillDay("2026-02-28"), true);
   assert.equal(validBackfillDay("2026-02-29"), false);
-  const oneDay = previewHistoricalProgress(project, [activities[2]], [], {
+  const oneDay = await previewHistoricalProgress(project, [activities[2]], [], {
     periodStart: "2026-04-01", realityDate: "2026-04-01", realityProgress: 0,
   });
   assert.equal(oneDay.valid, true);
   assert.equal(oneDay.days, 1);
 });
 
-test("invalid or contradictory reference points block approval", () => {
-  const preview = previewHistoricalProgress(project, activities, [], {
+test("invalid or contradictory reference points block approval", async () => {
+  const preview = await previewHistoricalProgress(project, activities, [], {
     ...input,
     referencePoints: [
       { date: "2026-03-15", progress: 60 },
@@ -122,7 +134,7 @@ test("invalid or contradictory reference points block approval", () => {
   });
   assert.equal(preview.valid, false);
   assert.ok(preview.conflicts.length > 0);
-  const conflictsWithVerifiedPoint = previewHistoricalProgress(project, activities, [], {
+  const conflictsWithVerifiedPoint = await previewHistoricalProgress(project, activities, [], {
     ...input,
     referencePoints: [{ date: "2026-03-01", progress: 35 }],
     verifiedProjectPoints: [{ date: "2026-03-01", progress: 30 }],
