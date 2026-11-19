@@ -49,13 +49,21 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, AlertCircle, Star, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2, Settings2, GripVertical } from "lucide-react";
+import { Copy, Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, AlertCircle, Star, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2, Settings2, GripVertical, MoreHorizontal } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
@@ -1806,69 +1814,97 @@ export default function ProjectReports() {
         };
 
         const renderActions = (report: Report, size: "row" | "panel" = "row") => {
-          const btnClass = size === "panel"
-            ? "gap-1.5 h-9 text-sm"
-            : "gap-1 h-8 text-xs sm:text-sm sm:gap-1.5";
+          const rowMode = size === "row";
+          const buttonSize = rowMode ? "h-9 px-2.5 text-xs sm:px-3 sm:text-sm" : "h-10 px-3 text-sm";
+          const actionLayout = rowMode
+            ? "grid w-full grid-cols-2 gap-1.5 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:gap-2"
+            : "grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center";
           return (
             <div
-              className="flex flex-wrap gap-1.5 sm:gap-2"
+              className={actionLayout}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
             >
               <Button
                 variant="outline"
                 size="sm"
-                className={`text-violet-600 hover:bg-violet-50 hover:text-violet-700 border-violet-200 ${btnClass}`}
+                className={`col-span-2 w-full border-primary bg-primary font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 hover:text-primary-foreground sm:col-span-1 sm:w-auto ${buttonSize}`}
                 onClick={() => handlePreview(report)}
                 disabled={previewLoadingId === report.id}
                 title="معاينة وحفظ PDF"
               >
                 {previewLoadingId === report.id ? (
-                  <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                )}{" "}
-                <span className="hidden sm:inline">معاينة و</span>طباعة
+                  <Printer className="h-4 w-4" />
+                )}
+                معاينة وطباعة
               </Button>
-              {canApprove && (
-                report.status === "draft" ? (
-                  <Button
-                    variant="outline" size="sm"
-                    className={`text-emerald-700 border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 ${btnClass}`}
-                    onClick={() => handleApprove(report.id, "approved")}
-                    disabled={updateReportStatus.isPending}
-                    title="اعتماد التقرير وإظهاره في تقارير المالك"
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> اعتماد
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline" size="sm"
-                    className={`text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800 ${btnClass}`}
-                    onClick={() => handleApprove(report.id, "draft")}
-                    disabled={updateReportStatus.isPending}
-                    title="إرجاع التقرير إلى المسودة (يُخفى من تقارير المالك)"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> إرجاع لمسودة
-                  </Button>
-                )
+              {canApprove && report.status === "draft" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`w-full border-emerald-200 bg-emerald-50 font-semibold text-emerald-800 shadow-none hover:bg-emerald-100 hover:text-emerald-900 sm:w-auto ${buttonSize}`}
+                  onClick={() => handleApprove(report.id, "approved")}
+                  disabled={updateReportStatus.isPending}
+                  title="اعتماد التقرير وإظهاره في تقارير المالك"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> اعتماد
+                </Button>
               )}
               {!isViewer && (
-                <>
-                  <Button variant="outline" size="sm" className={btnClass} onClick={(event) => handleEdit(report, event.currentTarget)}>
-                    <Edit2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> تعديل
-                  </Button>
-                  <Button variant="outline" size="sm" className={btnClass} onClick={(event) => handleDuplicate(report, event.currentTarget)} disabled={copyingId !== null} title="إنشاء نسخة مستقلة كمسودة وفتحها للتعديل">
-                    {copyingId === report.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />} نسخ التقرير
-                  </Button>
-                  <Button
-                    variant="outline" size="sm"
-                    className={`text-destructive hover:bg-destructive hover:text-white ${btnClass}`}
-                    onClick={() => setDeletingId(report.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> حذف
-                  </Button>
-                </>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`w-full rounded-lg border-border bg-background font-medium shadow-sm hover:bg-muted sm:w-auto ${buttonSize}`}
+                      aria-label={periodOnly
+                        ? `إجراءات تقرير الفترة من ${fmtDate(report.periodStart)} إلى ${fmtDate(report.periodEnd)}`
+                        : `إجراءات التقرير ${report.reportNumber}`}
+                      title="إجراءات التقرير"
+                      onClick={(event) => { editOpenerRef.current = event.currentTarget; }}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                      إجراءات
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" style={{ direction: "rtl" }} className="min-w-48 rounded-xl p-1.5 shadow-lg">
+                    <DropdownMenuLabel className="px-2.5 pb-1 text-xs text-muted-foreground">إجراءات التقرير</DropdownMenuLabel>
+                    {canApprove && report.status === "approved" && (
+                      <DropdownMenuItem
+                        className="gap-2 rounded-lg py-2 text-amber-700 focus:text-amber-800"
+                        onClick={() => handleApprove(report.id, "draft")}
+                        disabled={updateReportStatus.isPending}
+                      >
+                        <RotateCcw className="h-4 w-4" /> إرجاع إلى المسودة
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem
+                      className="gap-2 rounded-lg py-2"
+                        onClick={() => handleEdit(report, editOpenerRef.current ?? undefined)}
+                    >
+                      <Edit2 className="h-4 w-4" /> تعديل التقرير
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="gap-2 rounded-lg py-2"
+                        onClick={() => handleDuplicate(report, editOpenerRef.current ?? undefined)}
+                      disabled={copyingId !== null}
+                    >
+                      {copyingId === report.id
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <Copy className="h-4 w-4" />}
+                      نسخ كمسودة
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="my-1.5" />
+                    <DropdownMenuItem
+                      className="gap-2 rounded-lg py-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
+                      onClick={() => setDeletingId(report.id)}
+                    >
+                      <Trash2 className="h-4 w-4" /> حذف التقرير
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
           );

@@ -1,0 +1,127 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap");
+
+@font-face {
+  font-family: "Latin Digits";
+  src: local("Arial"), local("Helvetica Neue"), local("sans-serif");
+  unicode-range: U+0030-0039, U+002E, U+002C, U+0025, U+002B, U+002D;
+}
+
+:root {
+  --button-outline: rgba(0,0,0, .05);
+  --badge-outline: rgba(0,0,0, .05);
+  --opaque-button-border-intensity: -6;
+  --elevate-1: rgba(0,0,0, .03);
+  --elevate-2: rgba(0,0,0, .06);
+  --background: 220 27% 97%;
+  --foreground: 222 38% 13%;
+  --border: 216 24% 88%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 38% 13%;
+  --card-border: 216 24% 88%;
+  --sidebar: 224 42% 12%;
+  --sidebar-foreground: 216 28% 82%;
+  --sidebar-border: 224 28% 20%;
+  --sidebar-primary: 188 86% 48%;
+  --sidebar-primary-foreground: 224 42% 10%;
+  --sidebar-accent: 224 31% 19%;
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-ring: 188 86% 48%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --popover-border: 214 32% 91%;
+  --primary: 193 83% 36%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 38 92% 54%;
+  --accent-foreground: 222 38% 13%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --input: 214.3 31.8% 88.4%;
+  --ring: 193 83% 44%;
+  --chart-1: 221 83% 40%;
+  --chart-2: 43 96% 56%;
+  --chart-3: 158 52% 42%;
+  --chart-4: 270 42% 52%;
+  --chart-5: 0 58% 50%;
+  --app-font-sans: "Noto Kufi Arabic", "IBM Plex Sans Arabic", "Segoe UI", sans-serif;
+  --font-sans: "Noto Kufi Arabic", "IBM Plex Sans Arabic", "Segoe UI", sans-serif;
+  --app-font-serif: Georgia, serif;
+  --app-font-mono: "IBM Plex Mono", Menlo, monospace;
+  --radius: 0.9rem;
+  --shadow-2xs: 0 1px 2px 0 rgba(0,0,0,0.04);
+  --shadow-xs: 0 1px 2px 0 rgba(0,0,0,0.06);
+  --shadow-sm: 0 1px 3px 0 rgba(0,0,0,0.08), 0 1px 2px -1px rgba(0,0,0,0.05);
+  --shadow: 0 1px 3px 0 rgba(0,0,0,0.08), 0 1px 2px -1px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.05);
+  --shadow-2xl: 0 25px 50px -12px rgba(0,0,0,0.12);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+  --sidebar-primary-border: hsl(var(--sidebar-primary));
+  --sidebar-accent-border: hsl(var(--sidebar-accent));
+  --primary-border: hsl(var(--primary));
+  --secondary-border: hsl(var(--secondary));
+  --muted-border: hsl(var(--muted));
+  --accent-border: hsl(var(--accent));
+  --destructive-border: hsl(var(--destructive));
+}
+
+.dark {
+  --button-outline: rgba(255,255,255, .10);
+  --badge-outline: rgba(255,255,255, .05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .09);
+  --background: 222 47% 7%;
+  --foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --card: 222 47% 9%;
+  --card-foreground: 210 40% 98%;
+  --card-border: 217.2 32.6% 17.5%;
+  --sidebar: 222 47% 7%;
+  --sidebar-foreground: 216 28% 82%;
+  --sidebar-border: 224 28% 20%;
+  --sidebar-primary: 221 83% 53.3%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 217.2 32.6% 17.5%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-ring: 221 83% 53.3%;
+  --popover: 222 47% 9%;
+  --popover-foreground: 210 40% 98%;
+  --popover-border: 217.2 32.6% 17.5%;
+  --primary: 221 83% 53.3%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 43 96% 56%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 221 83% 53.3%;
+  --chart-1: 221 83% 53.3%;
+  --chart-2: 43 96% 56%;
+  --chart-3: 158 52% 42%;
+  --chart-4: 270 42% 56%;
+  --chart-5: 0 58% 54%;
+  --shadow-2xs: 0 1px 2px 0 rgba(0,0,0,0.2);
+  --shadow-xs: 0 1px 2px 0 rgba(0,0,0,0.25);
+  --shadow-sm: 0 1px 3px 0 rgba(0,0,0,0.3), 0 1px 2px -1px rgba(0,0,0,0.2);
+  --shadow: 0 1px 3px 0 rgba(0,0,0,0.3), 0 1px 2px -1px rgba(0,0,0,0.25);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.3), 0 2px 4px -2px rgba(0,0,0,0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.3), 0 4px 6px -4px rgba(0,0,0,0.2);
+  --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.3), 0 8px 10px -6px rgba(0,0,0,0.2);
+  --shadow-2xl: 0 25px 50px -12px rgba(0,0,0,0.4);
+}
+
+html,
+body,
+* {
+  font-family: "Latin Digits", "Noto Kufi Arabic", "Noto Sans Arabic", sans-serif;
+}
