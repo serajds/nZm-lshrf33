@@ -419,7 +419,9 @@ function makeAutomaticInput(state: NonNullable<Awaited<ReturnType<typeof readBac
           && !hasCurrentReportAnchor
           && validBackfillDay(activity.actualStartDate)
           && firstDatedProgressByActivity.has(activity.id)
-          && activity.actualStartDate < firstDatedProgressByActivity.get(activity.id)!)),
+          && (activity.actualStartDate < firstDatedProgressByActivity.get(activity.id)!
+            || (activity.actualStartDate > realityDate
+              && firstDatedProgressByActivity.get(activity.id)! <= realityDate)))),
   );
   if (!candidates.length) {
     const hasCurrentProgress = state.activities.some(activity =>

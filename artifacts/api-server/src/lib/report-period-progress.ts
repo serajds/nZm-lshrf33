@@ -10,6 +10,7 @@ export type HistoricalActivity = {
   actualProgress: number; plannedProgress: number; weight: number;
   status: string; sortOrder: number; externalSourceGroupId: number | null;
   actualHistoricalUnverified?: boolean;
+  actualHistoryEstimated?: boolean;
 };
 export type HistoricalProject = {
   projectId: number; noSchedule: boolean; startDate: string | null; expectedEndDate: string | null;
@@ -86,7 +87,12 @@ export function weightedHistoryProgress(rows: { actualProgress: number; weight: 
 }
 
 /** Resolve linked groups exclusively from historical states, never today's DB rows. */
-export function resolveHistoricalActivities(project: HistoricalProject, states: HistoricalProject[], day: string) {
+export function resolveHistoricalActivities(
+  project: HistoricalProject,
+  states: HistoricalProject[],
+  day: string,
+  estimatedProjectIds: Set<number> = new Set(),
+) {
   const owners = new Map(states.flatMap(p => p.groups.map(g => [g.id, p] as const)));
   const asOf = new Date(`${day}T00:00:00Z`);
   const resolve = (activity: HistoricalActivity, ancestors: Set<number>): HistoricalActivity & { plannedHistoricalUnverified?: boolean } => {
@@ -99,12 +105,14 @@ export function resolveHistoricalActivities(project: HistoricalProject, states: 
     }
     const next = new Set(ancestors).add(sourceId);
     const children = owner.activities.filter(a => a.groupId === sourceId).map(a => resolve(a, next));
+    const sourceHistoryEstimated = estimatedProjectIds.has(owner.projectId);
     return {
       ...activity,
       actualProgress: weightedHistoryProgress(children),
       actualHistoricalUnverified: children.some(a => a.actualHistoricalUnverified),
+      actualHistoryEstimated: sourceHistoryEstimated || children.some(a => a.actualHistoryEstimated),
       plannedProgress: weightedHistoryProgress(children.map(a => ({ ...a, actualProgress: a.plannedProgress }))),
-      plannedHistoricalUnverified: children.some(a => a.plannedHistoricalUnverified),
+      plannedHistoricalUnverified: sourceHistoryEstimated || children.some(a => a.plannedHistoricalUnverified),
     };
   };
   const hasSchedule = !project.noSchedule && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
@@ -160,18 +168,23 @@ export async function getReportPeriodProgress(
     ...missing("اعتمد نسبة التقرير يدوياً؛ تُعرض نسب البنود الموثقة في السجل والجدول الحالي كمرجع."),
     activities: await getLegacyReportActivities(projectId, day),
   };
-  const activities = resolveHistoricalActivities(root.snapshot, rows.map(r => r.snapshot), day)
+  const estimatedProjectIds = new Set(rows.filter(row => row.source === "estimated").map(row => row.project_id));
+  const activities = resolveHistoricalActivities(root.snapshot, rows.map(r => r.snapshot), day, estimatedProjectIds)
     .map(a => ({
       ...a,
+      actualHistoryEstimated: root.source === "estimated" || a.actualHistoryEstimated === true,
       actualRecordedAt: root.captured_at.toISOString(),
       plannedHistoricalUnverified: a.plannedHistoricalUnverified === true || root.source === "estimated",
     }));
+  const historySource: "actual" | "estimated" =
+    root.source === "estimated" || activities.some(activity => activity.actualHistoryEstimated)
+    ? "estimated" : "actual";
   if (activities.some(activity => activity.actualHistoricalUnverified)) {
     return {
       ...missing("لا تتوفر نقاط تاريخية موثوقة لبعض البنود المرتبطة؛ لا تُستخدم نسبتها الحالية في إجمالي الفترة."),
       activities,
       capturedAt: root.captured_at.toISOString(),
-      historySource: root.source ?? "actual",
+      historySource,
       fingerprint: createHash("sha256").update(JSON.stringify({ day, activities })).digest("hex"),
     };
   }
@@ -200,7 +213,7 @@ export async function getReportPeriodProgress(
     spi: plannedProgress === null || plannedProgress === 0 ? null : Math.round(overallProgress / plannedProgress * 100) / 100,
     periodStartProgress,
     periodIncrease: periodStartProgress === null ? null : roundPercent(overallProgress - periodStartProgress),
-    historySource: root.source ?? "actual",
+    historySource,
     trackingStartedAt, capturedAt: root.captured_at.toISOString(), reason: null, activities,
     fingerprint: createHash("sha256").update(JSON.stringify({ day, periodStart, periodStartProgress, activities })).digest("hex"),
   };

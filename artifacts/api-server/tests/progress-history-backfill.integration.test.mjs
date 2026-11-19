@@ -269,6 +269,46 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
     assert.equal(savedReport.progressStartPercentage, 20);
     assert.equal(savedReport.progressHistorySource, "estimated");
 
+    const [provenanceProject] = await db.insert(projectsTable).values({
+      name: "Linked estimate provenance fixture", location: "fixture", ownerEntity: "fixture",
+      supervisorEntity: "fixture", contractor: "fixture", startDate: "2026-01-01",
+      expectedEndDate: "2026-12-31",
+    }).returning();
+    const [provenanceActivity] = await db.insert(activitiesTable).values({
+      projectId: provenanceProject.id, name: "Linked estimated source activity", status: "in_progress",
+      actualProgress: 45, weight: 1, externalSourceGroupId: sourceGroup.id,
+    }).returning();
+    await db.insert(projectProgressHistoryTable).values([
+      {
+        projectId: sourceProject.id, capturedAt: dated("2026-05-01"),
+        snapshot: historicalSnapshot(sourceProject.id, [{
+          ...sourceChild, actualProgress: 45, status: "in_progress",
+        }], [{ id: sourceGroup.id, name: "Source group" }]),
+        source: "estimated",
+      },
+      {
+        projectId: provenanceProject.id, capturedAt: dated("2026-05-01"),
+        snapshot: historicalSnapshot(provenanceProject.id, [{
+          id: provenanceActivity.id, name: provenanceActivity.name, actualProgress: 45,
+          plannedProgress: 20, weight: 1, status: "in_progress", groupId: null,
+          externalSourceGroupId: sourceGroup.id,
+        }]),
+        source: "actual",
+      },
+    ]);
+    const linkedEstimateResponse = await fetch(
+      `${base}/projects/${provenanceProject.id}/reports/progress-as-of?periodEnd=2026-05-02`,
+      { headers: headers(adminToken) },
+    );
+    const linkedEstimate = await linkedEstimateResponse.json();
+    assert.equal(linkedEstimateResponse.status, 200, JSON.stringify(linkedEstimate));
+    assert.equal(linkedEstimate.available, true);
+    assert.equal(linkedEstimate.overallProgress, 45);
+    assert.equal(linkedEstimate.historySource, "estimated",
+      "estimated linked-source snapshots propagate to the report's provenance");
+    assert.equal(linkedEstimate.plannedProgress, null,
+      "estimated linked-source history cannot be presented as historical SPI input");
+
     await db.update(activitiesTable).set({ actualProgress: 50 }).where(eq(activitiesTable.id, active.id));
     const { captureProjectProgressHistory } = await import("../src/lib/capture-project-progress-history.ts");
     await captureProjectProgressHistory(project.id);
@@ -372,6 +412,48 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
     assert.equal(await db.select().from(projectProgressHistoryTable)
       .where(eq(projectProgressHistoryTable.projectId, gapProject.id)).then(rows => rows.length), 1,
     "gap preview remains non-mutating until commit");
+
+    const [futureStartProject] = await db.insert(projectsTable).values({
+      name: "Future actual start fixture", location: "fixture", ownerEntity: "fixture",
+      supervisorEntity: "fixture", contractor: "fixture", startDate: "2026-01-01",
+      expectedEndDate: "2026-12-31",
+    }).returning();
+    const [futureStartAnchor] = await db.insert(activitiesTable).values({
+      projectId: futureStartProject.id, name: "Earlier dated start",
+      status: "in_progress", actualStartDate: "2026-06-01", actualProgress: 20, weight: 1,
+    }).returning();
+    const [futureStartedProgress] = await db.insert(activitiesTable).values({
+      projectId: futureStartProject.id, name: "Progress recorded before future start",
+      status: "in_progress", actualStartDate: "2026-12-07", actualProgress: 50, weight: 1,
+    }).returning();
+    await db.insert(projectProgressHistoryTable).values({
+      projectId: futureStartProject.id, capturedAt: new Date("2026-11-14T10:00:00Z"),
+      snapshot: historicalSnapshot(futureStartProject.id, [
+        { id: futureStartAnchor.id, name: futureStartAnchor.name, actualProgress: 20,
+          plannedProgress: 0, weight: 1, status: "in_progress", groupId: null, externalSourceGroupId: null,
+          actualStartDate: "2026-06-01" },
+        { id: futureStartedProgress.id, name: futureStartedProgress.name, actualProgress: 50,
+          plannedProgress: 0, weight: 1, status: "in_progress", groupId: null, externalSourceGroupId: null,
+          actualStartDate: "2026-12-07" },
+      ]),
+    });
+    const futureStartPreviewResponse = await fetch(
+      `${base}/projects/${futureStartProject.id}/progress-history-backfill/automatic-preview`,
+      { method: "POST", headers: headers(adminToken), body: "{}" },
+    );
+    const futureStartPreview = await futureStartPreviewResponse.json();
+    assert.equal(futureStartPreviewResponse.status, 200, JSON.stringify(futureStartPreview));
+    assert.equal(futureStartPreview.valid, true, JSON.stringify(futureStartPreview.conflicts));
+    assert.equal(futureStartPreview.candidateActivities, 2,
+      "automatic mode includes dated progress that conflicts with a future start date");
+    assert.equal(futureStartPreview.input.periodStart, "2026-06-01");
+    assert.ok(futureStartPreview.warnings.some(message => message.includes("تاريخ البداية الفعلية بعد تاريخ واقع الحال")),
+      "the preview discloses that the future actual start was ignored");
+    assert.equal(futureStartPreview.snapshotsToSkip, 1,
+      "the dated actual capture remains untouched");
+    assert.equal(await db.select().from(projectProgressHistoryTable)
+      .where(eq(projectProgressHistoryTable.projectId, futureStartProject.id)).then(rows => rows.length), 1,
+    "future-start preview is non-mutating until commit");
 
     const [restoreProject] = await db.insert(projectsTable).values({
       name: "Imported project restore fixture", location: "fixture", ownerEntity: "fixture",
