@@ -343,12 +343,12 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
     }).returning();
     const [gapActivity] = await db.insert(activitiesTable).values({
       projectId: gapProject.id, name: "Progress first recorded after its start",
-      status: "in_progress", actualStartDate: "2026-06-01", actualProgress: 40, weight: 1,
+      status: "in_progress", actualStartDate: "2026-06-01", actualProgress: 14.02, weight: 1,
     }).returning();
     await db.insert(projectProgressHistoryTable).values({
       projectId: gapProject.id, capturedAt: new Date("2026-11-14T10:00:00Z"),
       snapshot: historicalSnapshot(gapProject.id, [{
-        id: gapActivity.id, name: gapActivity.name, actualProgress: 35, plannedProgress: 0,
+        id: gapActivity.id, name: gapActivity.name, actualProgress: 14.02, plannedProgress: 0,
         weight: 1, status: "in_progress", groupId: null, externalSourceGroupId: null,
         actualStartDate: "2026-06-01",
       }]),
@@ -362,6 +362,11 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
     assert.equal(gapPreview.candidateActivities, 1,
       "a dated point after the activity start does not hide the earlier gap");
     assert.equal(gapPreview.input.periodStart, "2026-06-01");
+    assert.equal(gapPreview.input.realityProgress, 14,
+      "automatic progress is rounded to tenths");
+    assert.equal(gapPreview.valid, true, JSON.stringify(gapPreview.conflicts));
+    assert.equal(gapPreview.conflicts.length, 0,
+      "a 0.02-point precision difference is not a real historical conflict");
     assert.equal(gapPreview.snapshotsToSkip, 1,
       "the real November snapshot remains untouched");
     assert.equal(await db.select().from(projectProgressHistoryTable)
