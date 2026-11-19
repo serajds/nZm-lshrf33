@@ -241,7 +241,10 @@ async function previewHistoricalProgressAsync(
       break;
     }
   }
-  if (reviewedProjectPoints.length && reviewedProjectPoints.at(-1)!.progress > input.realityProgress) {
+  const lastVerifiedProgress = reviewedProjectPoints.at(-1)?.progress;
+  const roundedToReportedPrecision = (progress: number) => Math.round((progress + Number.EPSILON) * 10) / 10;
+  if (lastVerifiedProgress !== undefined
+    && roundedToReportedPrecision(lastVerifiedProgress) > roundedToReportedPrecision(input.realityProgress)) {
     conflicts.push("آخر نقطة تاريخية أعلى من واقع الحال؛ لا يجوز خفض قيمة موثقة لإكمال المنحنى.");
   }
 
