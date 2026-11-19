@@ -298,8 +298,13 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
       `${base}/projects/${project.id}/progress-history-backfill/automatic-preview`,
       { method: "POST", headers: headers(adminToken), body: "{}" },
     );
-    assert.equal(noMissingHistoryResponse.status, 409,
-      "the automatic action does not recreate activities that already have dated progress");
+    const earlierCoveragePreview = await noMissingHistoryResponse.json();
+    assert.equal(noMissingHistoryResponse.status, 200, JSON.stringify(earlierCoveragePreview));
+    assert.equal(earlierCoveragePreview.candidateActivities, 1,
+      "positive progress without an earlier report anchor still needs estimated coverage");
+    assert.equal(earlierCoveragePreview.input.periodStart, "2026-01-01");
+    assert.equal(earlierCoveragePreview.snapshotsToSkip, 2,
+      "both existing actual capture days remain protected");
 
     const [automaticProject] = await db.insert(projectsTable).values({
       name: "Automatic backfill fixture", location: "fixture", ownerEntity: "fixture",
@@ -330,6 +335,38 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
     assert.equal(await db.select().from(projectProgressHistoryTable)
       .where(eq(projectProgressHistoryTable.projectId, automaticProject.id)).then(rows => rows.length), 0,
     "previewing automatic estimates does not write history");
+
+    const [gapProject] = await db.insert(projectsTable).values({
+      name: "Dated history gap fixture", location: "fixture", ownerEntity: "fixture",
+      supervisorEntity: "fixture", contractor: "fixture", startDate: "2026-01-01",
+      expectedEndDate: "2026-12-31",
+    }).returning();
+    const [gapActivity] = await db.insert(activitiesTable).values({
+      projectId: gapProject.id, name: "Progress first recorded after its start",
+      status: "in_progress", actualStartDate: "2026-06-01", actualProgress: 40, weight: 1,
+    }).returning();
+    await db.insert(projectProgressHistoryTable).values({
+      projectId: gapProject.id, capturedAt: new Date("2026-11-14T10:00:00Z"),
+      snapshot: historicalSnapshot(gapProject.id, [{
+        id: gapActivity.id, name: gapActivity.name, actualProgress: 35, plannedProgress: 0,
+        weight: 1, status: "in_progress", groupId: null, externalSourceGroupId: null,
+        actualStartDate: "2026-06-01",
+      }]),
+    });
+    const gapPreviewResponse = await fetch(
+      `${base}/projects/${gapProject.id}/progress-history-backfill/automatic-preview`,
+      { method: "POST", headers: headers(adminToken), body: "{}" },
+    );
+    const gapPreview = await gapPreviewResponse.json();
+    assert.equal(gapPreviewResponse.status, 200, JSON.stringify(gapPreview));
+    assert.equal(gapPreview.candidateActivities, 1,
+      "a dated point after the activity start does not hide the earlier gap");
+    assert.equal(gapPreview.input.periodStart, "2026-06-01");
+    assert.equal(gapPreview.snapshotsToSkip, 1,
+      "the real November snapshot remains untouched");
+    assert.equal(await db.select().from(projectProgressHistoryTable)
+      .where(eq(projectProgressHistoryTable.projectId, gapProject.id)).then(rows => rows.length), 1,
+    "gap preview remains non-mutating until commit");
 
     const [restoreProject] = await db.insert(projectsTable).values({
       name: "Imported project restore fixture", location: "fixture", ownerEntity: "fixture",
