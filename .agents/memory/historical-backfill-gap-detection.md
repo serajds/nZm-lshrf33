@@ -13,4 +13,4 @@ In automatic mode, a future actual-start date conflicts with progress already re
 
 **Why:** Development data can contain positive progress captured before a future actual-start date; strict date ordering made automatic setup impossible, while silently treating linked estimates as actual would misstate report certainty.
 
-**How to apply:** Keep manual mode strict. In automatic previews, preserve actual snapshots, report the future-date fallback as a warning, and label any parent aggregate using estimated sources as estimated with planned comparisons unavailable.
+**How to apply:** Keep manual mode strict. Automatic previews may interpolate downward between verified points or toward current reality, but must preserve all actual snapshots and disclose each fallback as a warning. Label parent aggregates using estimated sources as estimated and disable planned comparisons.

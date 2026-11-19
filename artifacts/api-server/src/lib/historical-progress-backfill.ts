@@ -62,7 +62,7 @@ export type BackfillPreview = {
 
 const DAY_MS = 86_400_000;
 const MAX_DAYS = 3_660;
-const METHOD = "activity-linear-between-confirmed-dated-points-v2";
+const METHOD = "activity-linear-between-confirmed-dated-points-v3";
 
 export function validBackfillDay(day: unknown): day is string {
   if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
@@ -237,7 +237,11 @@ async function previewHistoricalProgressAsync(
   const reviewedProjectPoints = [...pointByDay.values()].sort((a, b) => a.day - b.day);
   for (let index = 1; index < reviewedProjectPoints.length; index++) {
     if (reviewedProjectPoints[index].progress < reviewedProjectPoints[index - 1].progress) {
-      conflicts.push("تتراجع القيم التاريخية الموثقة؛ لا يمكن استيفاء منحنى أحادي دون تغييرها.");
+      if (input.automatic) {
+        warnings.push("توجد نقاط مشروع موثقة متراجعة؛ حُفظت كما هي واستُكمل التقدير بينها صعودًا أو هبوطًا دون تعديلها.");
+      } else {
+        conflicts.push("تتراجع القيم التاريخية الموثقة؛ لا يمكن استيفاء منحنى أحادي دون تغييرها.");
+      }
       break;
     }
   }
@@ -245,7 +249,11 @@ async function previewHistoricalProgressAsync(
   const roundedToReportedPrecision = (progress: number) => Math.round((progress + Number.EPSILON) * 10) / 10;
   if (lastVerifiedProgress !== undefined
     && roundedToReportedPrecision(lastVerifiedProgress) > roundedToReportedPrecision(input.realityProgress)) {
-    conflicts.push("آخر نقطة تاريخية أعلى من واقع الحال؛ لا يجوز خفض قيمة موثقة لإكمال المنحنى.");
+    if (input.automatic) {
+      warnings.push("آخر نقطة تاريخية أعلى من واقع الحال؛ حُفظت النقطة واستُكمل التقدير هبوطًا حتى النسبة الحالية دون تعديل السجل.");
+    } else {
+      conflicts.push("آخر نقطة تاريخية أعلى من واقع الحال؛ لا يجوز خفض قيمة موثقة لإكمال المنحنى.");
+    }
   }
 
   const perActivity = activities.map(activity => {
@@ -263,8 +271,14 @@ async function previewHistoricalProgressAsync(
     const futureStartContradictsProgress = input.automatic === true
       && startDate != null && validBackfillDay(startDate) && startDate > input.realityDate
       && target > 0;
+    const firstDatedSourcePoint = sourcePoints
+      .filter(point => validBackfillDay(point.date) && point.date <= input.realityDate
+        && Number.isFinite(point.progress) && point.progress >= 0 && point.progress <= 100)
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
+    const addFutureStartZeroBaseline = futureStartContradictsProgress
+      && (!firstDatedSourcePoint || input.periodStart < firstDatedSourcePoint.date);
     if (futureStartContradictsProgress) {
-      warnings.push(`البند «${activity.name}»: تاريخ البداية الفعلية بعد تاريخ واقع الحال رغم وجود تقدم؛ تم تجاهل التاريخ المستقبلي، واستخدام بداية فترة التقدير كنقطة صفر تقريبية.`);
+      warnings.push(`البند «${activity.name}»: تاريخ البداية الفعلية بعد تاريخ واقع الحال رغم وجود تقدم؛ تم تجاهل التاريخ المستقبلي، واستخدام نقطة صفر عند بداية فترة التقدير فقط إذا سبقت أول نقطة تقدم موثقة.`);
       startDate = null;
     }
     let unavailable = false;
@@ -284,7 +298,7 @@ async function previewHistoricalProgressAsync(
         warnings.push(`البند المكتمل «${activity.name}»: تاريخ بدايته الفعلية غير متاح.`);
       }
     } else if (!linked && (activity.status === "in_progress" || target > 0)) {
-      if (!start && !hasItemAnchor) {
+      if (!start && !hasItemAnchor && !futureStartContradictsProgress) {
         unavailable = true;
         warnings.push(`البند الجاري «${activity.name}»: أدخل تاريخ بداية تقديريًا؛ لن تُستخدم البداية المخططة تلقائيًا.`);
       }
@@ -300,7 +314,7 @@ async function previewHistoricalProgressAsync(
 
     const itemPoints = [
       ...(start != null ? [{ day: start, progress: 0 }] : []),
-      ...(futureStartContradictsProgress ? [{ day: first, progress: 0 }] : []),
+      ...(addFutureStartZeroBaseline ? [{ day: first, progress: 0 }] : []),
       ...(override?.points ?? []).filter(point => validBackfillDay(point.date)
         && point.date <= input.realityDate
         && Number.isFinite(point.progress) && point.progress >= 0 && point.progress <= 100)
@@ -314,8 +328,12 @@ async function previewHistoricalProgressAsync(
       index > 0 && point.progress < uniquePoints[index - 1].progress,
     );
     if (invalidPoints) {
-      conflicts.push(`النقاط المرجعية تتجاوز أو تتعارض مع النسبة الحالية في «${activity.name}».`);
-      unavailable = true;
+      if (input.automatic) {
+        warnings.push(`البند «${activity.name}»: تعارضت النقاط المرجعية مع النسبة الحالية؛ حُفظت النقاط كما هي واستُكمل التقدير تلقائيًا باتجاه النسبة الحالية دون تعديل أي سجل فعلي.`);
+      } else {
+        conflicts.push(`النقاط المرجعية تتجاوز أو تتعارض مع النسبة الحالية في «${activity.name}».`);
+        unavailable = true;
+      }
     }
     if (activity.status === "not_started" && target === 0) {
       return { activity, unavailable, value: (day: number) => day >= reality ? target : 0 };
@@ -346,7 +364,11 @@ async function previewHistoricalProgressAsync(
   })));
   const finalAnchor = pointByDay.get(reality);
   if (finalAnchor && Math.abs(finalAnchor.progress - calculatedRealityProgress) > 0.1) {
-    conflicts.push("نقطة واقع الحال تتعارض مع قيمة موثقة في التاريخ نفسه.");
+    if (input.automatic) {
+      warnings.push("تختلف نقطة موثقة في تاريخ واقع الحال عن النسبة الحالية؛ حُفظت اللقطة ولم تُعدّل، واستُخدمت النسبة الحالية لنهاية التقدير.");
+    } else {
+      conflicts.push("نقطة واقع الحال تتعارض مع قيمة موثقة في التاريخ نفسه.");
+    }
   }
   pointByDay.set(reality, { day: reality, progress: calculatedRealityProgress });
   const projectAnchors = [

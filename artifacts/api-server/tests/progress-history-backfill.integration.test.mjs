@@ -420,7 +420,7 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
     }).returning();
     const [futureStartAnchor] = await db.insert(activitiesTable).values({
       projectId: futureStartProject.id, name: "Earlier dated start",
-      status: "in_progress", actualStartDate: "2026-06-01", actualProgress: 20, weight: 1,
+      status: "in_progress", actualStartDate: "2026-11-18", actualProgress: 20, weight: 1,
     }).returning();
     const [futureStartedProgress] = await db.insert(activitiesTable).values({
       projectId: futureStartProject.id, name: "Progress recorded before future start",
@@ -429,13 +429,25 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
     await db.insert(projectProgressHistoryTable).values({
       projectId: futureStartProject.id, capturedAt: new Date("2026-11-14T10:00:00Z"),
       snapshot: historicalSnapshot(futureStartProject.id, [
-        { id: futureStartAnchor.id, name: futureStartAnchor.name, actualProgress: 20,
-          plannedProgress: 0, weight: 1, status: "in_progress", groupId: null, externalSourceGroupId: null,
-          actualStartDate: "2026-06-01" },
+        { id: futureStartAnchor.id, name: futureStartAnchor.name, actualProgress: 0,
+          plannedProgress: 0, weight: 1, status: "not_started", groupId: null, externalSourceGroupId: null,
+          actualStartDate: "2026-11-18" },
         { id: futureStartedProgress.id, name: futureStartedProgress.name, actualProgress: 50,
           plannedProgress: 0, weight: 1, status: "in_progress", groupId: null, externalSourceGroupId: null,
           actualStartDate: "2026-12-07" },
       ]),
+    });
+    await db.insert(projectProgressHistoryTable).values({
+      projectId: futureStartProject.id, capturedAt: dated("2026-11-18"),
+      snapshot: historicalSnapshot(futureStartProject.id, [
+        { id: futureStartAnchor.id, name: futureStartAnchor.name, actualProgress: 0,
+          plannedProgress: 0, weight: 1, status: "not_started", groupId: null, externalSourceGroupId: null,
+          actualStartDate: "2026-11-18" },
+        { id: futureStartedProgress.id, name: futureStartedProgress.name, actualProgress: 50,
+          plannedProgress: 0, weight: 1, status: "in_progress", groupId: null, externalSourceGroupId: null,
+          actualStartDate: "2026-12-07" },
+      ]),
+      source: "estimated",
     });
     const futureStartPreviewResponse = await fetch(
       `${base}/projects/${futureStartProject.id}/progress-history-backfill/automatic-preview`,
@@ -446,14 +458,56 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
     assert.equal(futureStartPreview.valid, true, JSON.stringify(futureStartPreview.conflicts));
     assert.equal(futureStartPreview.candidateActivities, 2,
       "automatic mode includes dated progress that conflicts with a future start date");
-    assert.equal(futureStartPreview.input.periodStart, "2026-06-01");
+    assert.equal(futureStartPreview.input.periodStart, "2026-11-18",
+      "when first evidence predates the estimate period, no zero anchor is inserted after it");
     assert.ok(futureStartPreview.warnings.some(message => message.includes("تاريخ البداية الفعلية بعد تاريخ واقع الحال")),
       "the preview discloses that the future actual start was ignored");
     assert.equal(futureStartPreview.snapshotsToSkip, 1,
-      "the dated actual capture remains untouched");
+      "the existing estimate is skipped while the dated actual capture remains untouched");
     assert.equal(await db.select().from(projectProgressHistoryTable)
-      .where(eq(projectProgressHistoryTable.projectId, futureStartProject.id)).then(rows => rows.length), 1,
+      .where(eq(projectProgressHistoryTable.projectId, futureStartProject.id)).then(rows => rows.length), 2,
     "future-start preview is non-mutating until commit");
+
+    const [descendingProject] = await db.insert(projectsTable).values({
+      name: "Automatic descending estimate fixture", location: "fixture", ownerEntity: "fixture",
+      supervisorEntity: "fixture", contractor: "fixture", startDate: "2026-01-01",
+      expectedEndDate: "2026-12-31",
+    }).returning();
+    const [descendingActivity] = await db.insert(activitiesTable).values({
+      projectId: descendingProject.id, name: "Progress corrected downward",
+      status: "in_progress", actualStartDate: "2026-01-01", actualProgress: 20, weight: 1,
+    }).returning();
+    await db.insert(projectProgressHistoryTable).values({
+      projectId: descendingProject.id, capturedAt: new Date("2026-11-14T10:00:00Z"),
+      snapshot: historicalSnapshot(descendingProject.id, [{
+        id: descendingActivity.id, name: descendingActivity.name, actualProgress: 50,
+        plannedProgress: 0, weight: 1, status: "in_progress", groupId: null,
+        externalSourceGroupId: null, actualStartDate: "2026-01-01",
+      }]),
+    });
+    const descendingAutoResponse = await fetch(
+      `${base}/projects/${descendingProject.id}/progress-history-backfill/automatic-preview`,
+      { method: "POST", headers: headers(adminToken), body: "{}" },
+    );
+    const descendingAuto = await descendingAutoResponse.json();
+    assert.equal(descendingAutoResponse.status, 200, JSON.stringify(descendingAuto));
+    assert.equal(descendingAuto.valid, true, JSON.stringify(descendingAuto.conflicts));
+    assert.ok(descendingAuto.warnings.some(message => message.includes("حُفظت النقطة واستُكمل التقدير هبوطًا")),
+      "automatic mode discloses a downward estimate while preserving the verified point");
+    const descendingManualResponse = await fetch(
+      `${base}/projects/${descendingProject.id}/progress-history-backfill/preview`,
+      {
+        method: "POST", headers: headers(adminToken),
+        body: JSON.stringify({
+          periodStart: "2026-01-01", realityDate: descendingAuto.realityDate, realityProgress: 20,
+          activityInputs: [], referencePoints: [],
+        }),
+      },
+    );
+    const descendingManual = await descendingManualResponse.json();
+    assert.equal(descendingManual.valid, false);
+    assert.ok(descendingManual.conflicts.some(message => message.includes(descendingActivity.name)),
+      "manual mode still requires the user to resolve contradictory anchors");
 
     const [restoreProject] = await db.insert(projectsTable).values({
       name: "Imported project restore fixture", location: "fixture", ownerEntity: "fixture",
