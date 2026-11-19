@@ -337,7 +337,7 @@ async function readBackfillState(projectId: number) {
   return {
     project, activities: activities as BackfillActivity[], suspensions: suspensions as BackfillSuspension[],
     batches, historyDays, actualHistoryDays, historyCount, recordedProgressDates, restoreBurstDetected,
-    normalizedActivityInputs, reportAnchorCount, fingerprint,
+    normalizedActivityInputs, reportAnchorCount, reportPoints, fingerprint,
     verifiedProjectPoints,
   };
 }
@@ -388,9 +388,16 @@ async function makePreview(
 
 function makeAutomaticInput(state: NonNullable<Awaited<ReturnType<typeof readBackfillState>>>) {
   const realityDate = tripoliDay(new Date());
+  const firstDatedProgressByActivity = new Map(
+    state.normalizedActivityInputs.flatMap(input => {
+      const firstPoint = input.points.find(point => point.date <= realityDate);
+      return firstPoint ? [[input.activityId, firstPoint.date] as const] : [];
+    }),
+  );
   const restoreBurstDetected = state.reportAnchorCount === 0
     && state.activities.every(activity => activity.externalSourceGroupId == null)
     && state.restoreBurstDetected;
+  const hasCurrentReportAnchor = state.reportPoints.some(point => point.date === realityDate);
   const recordedProgress = new Set<number>();
   if (!restoreBurstDetected) {
     for (const input of state.normalizedActivityInputs) {
@@ -406,7 +413,13 @@ function makeAutomaticInput(state: NonNullable<Awaited<ReturnType<typeof readBac
   }
 
   const candidates = state.activities.filter(activity =>
-    Number.isFinite(activity.actualProgress) && activity.actualProgress > 0 && !recordedProgress.has(activity.id),
+    Number.isFinite(activity.actualProgress) && activity.actualProgress > 0
+      && (!recordedProgress.has(activity.id)
+        || (activity.externalSourceGroupId == null
+          && !hasCurrentReportAnchor
+          && validBackfillDay(activity.actualStartDate)
+          && firstDatedProgressByActivity.has(activity.id)
+          && activity.actualStartDate < firstDatedProgressByActivity.get(activity.id)!)),
   );
   if (!candidates.length) {
     const hasCurrentProgress = state.activities.some(activity =>
@@ -414,7 +427,7 @@ function makeAutomaticInput(state: NonNullable<Awaited<ReturnType<typeof readBac
     );
     return {
       error: hasCurrentProgress
-        ? "كل البنود ذات التقدم الحالي لديها سجل تقدم مؤرخ؛ لن تُنشأ تقديرات مكررة."
+        ? "لا توجد فجوة تقديرية قبل أول نقطة تقدم مؤرخة؛ لن تُنشأ تقديرات مكررة."
         : "لا توجد بنود ذات تقدم حالي لتهيئتها.",
     } as const;
   }
