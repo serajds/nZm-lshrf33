@@ -25,6 +25,7 @@ import backupRouter from "./backup";
 import attendanceRouter from "./attendance";
 import pushRouter from "./push";
 import progressHistoryBackfillRouter from "./progress-history-backfill";
+import linkedSourceHistoryRepairRouter from "./linked-source-history-repair";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(backupRouter);
 router.use(attendanceRouter);
 router.use(pushRouter);
 router.use(progressHistoryBackfillRouter);
+router.use(linkedSourceHistoryRepairRouter);
 
 export default router;

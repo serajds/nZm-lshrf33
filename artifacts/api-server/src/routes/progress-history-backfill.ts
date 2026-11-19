@@ -81,7 +81,7 @@ function asBackfillInput(raw: unknown): BackfillInput | null {
   };
 }
 
-async function readBackfillState(projectId: number) {
+export async function readBackfillState(projectId: number) {
   const [project] = await db.select({
     id: projectsTable.id, name: projectsTable.name, noSchedule: projectsTable.noSchedule,
     startDate: projectsTable.startDate, expectedEndDate: projectsTable.expectedEndDate,
@@ -138,6 +138,11 @@ async function readBackfillState(projectId: number) {
   };
   const historyDays = new Set<string>();
   const actualHistoryDays = new Set<string>();
+  const unverifiedEstimatedDaysByActivityId = new Map<number, Set<string>>();
+  const latestSnapshotByDay = new Map<string, {
+    capturedAt: Date; source: "actual" | "estimated"; groupIds: Set<number>;
+    activityIds: Set<number>; unverifiedActivityIds: Set<number>;
+  }>();
   const recordedProgressDates = new Map<number, string>();
   let historyCount = 0;
   let restoreBurstCandidate = true;
@@ -193,8 +198,28 @@ async function readBackfillState(projectId: number) {
     historyDays.add(date);
     if (row.source === "actual") actualHistoryDays.add(date);
     const snapshot = row.snapshot && typeof row.snapshot === "object"
-      ? row.snapshot as { activities?: Array<{ id?: number; actualProgress?: number }> }
+      ? row.snapshot as {
+        groups?: Array<{ id?: number }>;
+        activities?: Array<{ id?: number; actualProgress?: number; actualHistoricalUnverified?: boolean }>;
+      }
       : null;
+    const unverifiedActivityIds = new Set<number>();
+    for (const activity of snapshot?.activities ?? []) {
+      if (typeof activity.id === "number" && activity.actualHistoricalUnverified === true) {
+        unverifiedActivityIds.add(activity.id);
+      }
+    }
+    latestSnapshotByDay.set(date, {
+      capturedAt: row.capturedAt,
+      source: row.source === "actual" ? "actual" : "estimated",
+      groupIds: new Set((snapshot?.groups ?? [])
+        .map(group => group.id)
+        .filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id))),
+      activityIds: new Set((snapshot?.activities ?? [])
+        .map(activity => activity.id)
+        .filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id))),
+      unverifiedActivityIds,
+    });
     const snapshotActivities = snapshot?.activities;
     if (!Array.isArray(snapshotActivities)) {
       restoreBurstCandidate = false;
@@ -210,6 +235,11 @@ async function readBackfillState(projectId: number) {
       if (Number(activity.actualProgress) > 0
         && (!recordedProgressDates.has(activity.id) || date < recordedProgressDates.get(activity.id)!)) {
         recordedProgressDates.set(activity.id, date);
+      }
+      if (row.source === "estimated" && activity.actualHistoricalUnverified === true) {
+        const dates = unverifiedEstimatedDaysByActivityId.get(activity.id) ?? new Set<string>();
+        dates.add(date);
+        unverifiedEstimatedDaysByActivityId.set(activity.id, dates);
       }
       if (row.source === "actual" && externalSourceGroupByActivity.get(activity.id) == null) {
         addHistoricalPoint(activity.id, date, activity.actualProgress);
@@ -336,13 +366,14 @@ async function readBackfillState(projectId: number) {
   const fingerprint = fingerprintHash.digest("hex");
   return {
     project, activities: activities as BackfillActivity[], suspensions: suspensions as BackfillSuspension[],
-    batches, historyDays, actualHistoryDays, historyCount, recordedProgressDates, restoreBurstDetected,
+    batches, historyDays, actualHistoryDays, unverifiedEstimatedDaysByActivityId, latestSnapshotByDay,
+    historyCount, recordedProgressDates, restoreBurstDetected,
     normalizedActivityInputs, reportAnchorCount, reportPoints, fingerprint,
     verifiedProjectPoints,
   };
 }
 
-function preparePreview(
+export function preparePreview(
   state: NonNullable<Awaited<ReturnType<typeof readBackfillState>>>,
   input: BackfillInput,
 ) {
@@ -371,7 +402,7 @@ function preparePreview(
   return { activities, merged, token };
 }
 
-async function makePreview(
+export async function makePreview(
   state: NonNullable<Awaited<ReturnType<typeof readBackfillState>>>,
   input: BackfillInput,
   options: {
@@ -386,7 +417,7 @@ async function makePreview(
   return { ...prepared, result };
 }
 
-function makeAutomaticInput(state: NonNullable<Awaited<ReturnType<typeof readBackfillState>>>) {
+export function makeAutomaticInput(state: NonNullable<Awaited<ReturnType<typeof readBackfillState>>>) {
   const realityDate = tripoliDay(new Date());
   const firstDatedProgressByActivity = new Map(
     state.normalizedActivityInputs.flatMap(input => {
@@ -662,14 +693,17 @@ router.post("/projects/:projectId/progress-history-backfill/batches/:batchId/rev
       importBatchId: projectProgressHistoryTable.importBatchId,
     }).from(projectProgressHistoryTable)
       .where(eq(projectProgressHistoryTable.importBatchId, batchId));
-    if (owned.some(row => row.projectId !== projectId || row.source !== "estimated" || row.importBatchId !== batchId)) {
+    const isLinkedRepair = batch.methodology.startsWith("linked-source-repair-v1:");
+    if (owned.some(row => (!isLinkedRepair && row.projectId !== projectId)
+      || row.source !== "estimated" || row.importBatchId !== batchId)) {
       return { kind: "ownership" as const };
     }
-    await tx.delete(projectProgressHistoryTable).where(and(
-      eq(projectProgressHistoryTable.importBatchId, batchId),
-      eq(projectProgressHistoryTable.projectId, projectId),
-      eq(projectProgressHistoryTable.source, "estimated"),
-    ));
+    await tx.delete(projectProgressHistoryTable).where(isLinkedRepair
+      ? and(eq(projectProgressHistoryTable.importBatchId, batchId),
+        eq(projectProgressHistoryTable.source, "estimated"))
+      : and(eq(projectProgressHistoryTable.importBatchId, batchId),
+        eq(projectProgressHistoryTable.projectId, projectId),
+        eq(projectProgressHistoryTable.source, "estimated")));
     await tx.update(projectProgressHistoryBatchesTable).set({ revertedAt: new Date() })
       .where(and(eq(projectProgressHistoryBatchesTable.id, batchId),
         eq(projectProgressHistoryBatchesTable.projectId, projectId)));

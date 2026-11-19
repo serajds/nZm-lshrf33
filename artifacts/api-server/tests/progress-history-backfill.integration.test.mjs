@@ -16,7 +16,7 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
   let server;
   let schema;
   try {
-    const [{ default: app }, { signToken }, dbSchema, { eq, count }] = await Promise.all([
+    const [{ default: app }, { signToken }, dbSchema, { eq, count, and, inArray }] = await Promise.all([
       import("../src/app.ts"),
       import("../src/lib/auth.ts"),
       import("../../../lib/db/src/index.ts"),
@@ -719,6 +719,218 @@ test("historical backfill is previewed, atomic, idempotent, reportable and rever
     assert.equal((await db.select({ value: count() }).from(projectProgressHistoryTable)
       .where(eq(projectProgressHistoryTable.projectId, largeHistoryProject.id)))[0].value,
     beforeRejectedImport, "a rejected reconstruction rolls back every inserted batch row");
+
+    const shiftDay = (day, amount) => {
+      const value = new Date(`${day}T00:00:00Z`);
+      value.setUTCDate(value.getUTCDate() + amount);
+      return value.toISOString().slice(0, 10);
+    };
+    const tripoliParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(new Date());
+    const tripoliNow = `${tripoliParts.find(part => part.type === "year").value}-${tripoliParts.find(part => part.type === "month").value}-${tripoliParts.find(part => part.type === "day").value}`;
+    const repairPeriodEnd = shiftDay(tripoliNow, -30);
+    const repairPeriodStart = shiftDay(repairPeriodEnd, -10);
+    const repairActivityStart = shiftDay(tripoliNow, -120);
+    const repairActualDay = shiftDay(tripoliNow, -1);
+    const repairExpectedEnd = shiftDay(tripoliNow, 365);
+    const [repairParent] = await db.insert(projectsTable).values({
+      name: "Linked repair parent fixture", location: "fixture", ownerEntity: "fixture",
+      supervisorEntity: "fixture", contractor: "fixture", startDate: repairActivityStart,
+      expectedEndDate: repairExpectedEnd,
+    }).returning();
+    await db.insert(projectMembersTable).values({
+      projectId: repairParent.id, userId: manager.id, role: "project_manager",
+    });
+    const [missingSource] = await db.insert(projectsTable).values({
+      name: "Missing-history source fixture", location: "fixture", ownerEntity: "fixture",
+      supervisorEntity: "fixture", contractor: "fixture", startDate: repairActivityStart,
+      expectedEndDate: repairExpectedEnd,
+    }).returning();
+    const [staleSource] = await db.insert(projectsTable).values({
+      name: "Stale-estimate source fixture", location: "fixture", ownerEntity: "fixture",
+      supervisorEntity: "fixture", contractor: "fixture", startDate: repairActivityStart,
+      expectedEndDate: repairExpectedEnd,
+    }).returning();
+    const [missingGroup] = await db.insert(activityGroupsTable).values({
+      projectId: missingSource.id, name: "Missing history group",
+    }).returning();
+    const [staleGroup] = await db.insert(activityGroupsTable).values({
+      projectId: staleSource.id, name: "Stale estimate group",
+    }).returning();
+    const [missingChild] = await db.insert(activitiesTable).values({
+      projectId: missingSource.id, groupId: missingGroup.id, name: "Missing source activity",
+      status: "in_progress", actualProgress: 60, weight: 1, actualStartDate: repairActivityStart,
+      plannedStartDate: repairActivityStart, plannedEndDate: repairExpectedEnd,
+    }).returning();
+    const [staleChild] = await db.insert(activitiesTable).values({
+      projectId: staleSource.id, groupId: staleGroup.id, name: "Stale source activity",
+      status: "in_progress", actualProgress: 40, weight: 1, actualStartDate: repairActivityStart,
+      plannedStartDate: repairActivityStart, plannedEndDate: repairExpectedEnd,
+    }).returning();
+    const [parentMissingActivity] = await db.insert(activitiesTable).values({
+      projectId: repairParent.id, name: "Linked missing source", status: "in_progress",
+      actualProgress: 60, weight: 1, externalSourceGroupId: missingGroup.id,
+      actualStartDate: repairActivityStart, plannedStartDate: repairActivityStart, plannedEndDate: repairExpectedEnd,
+    }).returning();
+    const [parentStaleActivity] = await db.insert(activitiesTable).values({
+      projectId: repairParent.id, name: "Linked stale source", status: "in_progress",
+      actualProgress: 40, weight: 1, externalSourceGroupId: staleGroup.id,
+      actualStartDate: repairActivityStart, plannedStartDate: repairActivityStart, plannedEndDate: repairExpectedEnd,
+    }).returning();
+    const sourceSnapshot = (projectId, group, activity, progress, unverified = false) =>
+      historicalSnapshot(projectId, [{
+        id: activity.id, name: activity.name, groupId: group.id, actualProgress: progress,
+        plannedProgress: progress, weight: 1, status: "in_progress", sortOrder: 0,
+        externalSourceGroupId: null, plannedStartDate: repairActivityStart, plannedEndDate: repairExpectedEnd,
+        actualStartDate: repairActivityStart, actualEndDate: null,
+        ...(unverified ? { actualHistoricalUnverified: true } : {}),
+      }], [{ id: group.id, name: group.name }]);
+    const rootSnapshot = historicalSnapshot(repairParent.id, [
+      { id: parentMissingActivity.id, name: parentMissingActivity.name, actualProgress: 60, plannedProgress: 20,
+        weight: 1, status: "in_progress", groupId: null, externalSourceGroupId: missingGroup.id },
+      { id: parentStaleActivity.id, name: parentStaleActivity.name, actualProgress: 40, plannedProgress: 20,
+        weight: 1, status: "in_progress", groupId: null, externalSourceGroupId: staleGroup.id },
+    ]);
+    const staleEstimate = await db.insert(projectProgressHistoryTable).values({
+      projectId: staleSource.id, capturedAt: dated(repairPeriodEnd), source: "estimated",
+      methodology: "old-unverified-estimate",
+      snapshot: sourceSnapshot(staleSource.id, staleGroup, staleChild, 25, true),
+    }).returning();
+    await db.insert(projectProgressHistoryTable).values([
+      {
+        projectId: missingSource.id, capturedAt: dated(repairActualDay), source: "actual",
+        snapshot: sourceSnapshot(missingSource.id, missingGroup, missingChild, 60),
+      },
+      {
+        projectId: staleSource.id, capturedAt: dated(repairActualDay), source: "actual",
+        snapshot: sourceSnapshot(staleSource.id, staleGroup, staleChild, 40),
+      },
+      { projectId: repairParent.id, capturedAt: dated(repairPeriodEnd), source: "actual", snapshot: rootSnapshot },
+    ]);
+    const savedReportSnapshot = [
+      { id: parentMissingActivity.id, actualProgress: 55, weight: 1, actualHistoricalUnverified: false },
+      { id: parentStaleActivity.id, actualProgress: 35, weight: 1, actualHistoricalUnverified: false },
+    ];
+    const [savedLinkedReport] = await db.insert(reportsTable).values({
+      projectId: repairParent.id, reportNumber: 1, type: "period", reportDate: repairPeriodEnd,
+      periodStart: repairPeriodStart, periodEnd: repairPeriodEnd,
+      workDescription: "Existing saved report", progressPercentage: 45,
+      progressSource: "history", progressAsOfDate: repairPeriodEnd,
+      activitiesSnapshot: savedReportSnapshot,
+    }).returning();
+    const linkedRepairHistoryBefore = await db.select().from(projectProgressHistoryTable)
+      .where(inArray(projectProgressHistoryTable.projectId, [missingSource.id, staleSource.id]));
+    const sourceActivityValuesBefore = await db.select({
+      id: activitiesTable.id, actualProgress: activitiesTable.actualProgress, status: activitiesTable.status,
+    }).from(activitiesTable).where(inArray(activitiesTable.projectId, [missingSource.id, staleSource.id]));
+
+    const linkedRepairPreviewResponse = await fetch(
+      `${base}/projects/${repairParent.id}/progress-history-backfill/linked-sources/preview`,
+      {
+        method: "POST", headers: headers(managerToken),
+        body: JSON.stringify({ periodEnd: repairPeriodEnd }),
+      },
+    );
+    const linkedRepairPreview = await linkedRepairPreviewResponse.json();
+    assert.equal(linkedRepairPreviewResponse.status, 200, JSON.stringify(linkedRepairPreview));
+    assert.equal(linkedRepairPreview.valid, true, "both linked sources have a safe repair plan");
+    assert.equal(linkedRepairPreview.sources.length, 2);
+    assert.ok(linkedRepairPreview.sources.some(row => row.projectId === missingSource.id
+      && row.status === "repair" && row.snapshotsToAdd > 0));
+    assert.ok(linkedRepairPreview.sources.some(row => row.projectId === staleSource.id
+      && row.status === "repair" && row.snapshotsToReplace > 0));
+    assert.deepEqual(await db.select().from(projectProgressHistoryTable)
+      .where(inArray(projectProgressHistoryTable.projectId, [missingSource.id, staleSource.id])),
+    linkedRepairHistoryBefore, "previewing linked sources does not write or replace history");
+
+    const unauthorizedLinkedRepairPreview = await fetch(
+      `${base}/projects/${repairParent.id}/progress-history-backfill/linked-sources/preview`,
+      {
+        method: "POST", headers: headers(engineerToken),
+        body: JSON.stringify({ periodEnd: repairPeriodEnd }),
+      },
+    );
+    assert.equal(unauthorizedLinkedRepairPreview.status, 403,
+      "only a project manager or administrator may preview linked-source repairs");
+
+    const linkedRepairCommitResponse = await fetch(
+      `${base}/projects/${repairParent.id}/progress-history-backfill/linked-sources/commit`,
+      {
+        method: "POST", headers: headers(managerToken),
+        body: JSON.stringify({ periodEnd: repairPeriodEnd, previewToken: linkedRepairPreview.previewToken }),
+      },
+    );
+    const linkedRepairCommit = await linkedRepairCommitResponse.json();
+    assert.equal(linkedRepairCommitResponse.status, 201, JSON.stringify(linkedRepairCommit));
+    assert.ok(linkedRepairCommit.batchId);
+    assert.ok(linkedRepairCommit.inserted > 0);
+    assert.ok(linkedRepairCommit.replaced > 0);
+    assert.equal(linkedRepairCommit.sources.length, 2);
+    assert.deepEqual(await db.select({
+      id: activitiesTable.id, actualProgress: activitiesTable.actualProgress, status: activitiesTable.status,
+    }).from(activitiesTable).where(inArray(activitiesTable.projectId, [missingSource.id, staleSource.id])),
+    sourceActivityValuesBefore, "estimation never changes the live source activities");
+    const [savedReportAfterCommit] = await db.select().from(reportsTable)
+      .where(eq(reportsTable.id, savedLinkedReport.id));
+    assert.equal(savedReportAfterCommit.progressPercentage, 45);
+    assert.deepEqual(savedReportAfterCommit.activitiesSnapshot, savedReportSnapshot,
+      "the repair never edits frozen report snapshots");
+    assert.ok((await db.select().from(projectProgressHistoryTable)
+      .where(and(
+        eq(projectProgressHistoryTable.projectId, staleSource.id),
+        eq(projectProgressHistoryTable.capturedAt, staleEstimate[0].capturedAt),
+        eq(projectProgressHistoryTable.importBatchId, linkedRepairCommit.batchId),
+      ))).length === 1, "a corrected estimate shadows the stale row at its exact timestamp without deleting it");
+
+    const linkedReportResponse = await fetch(
+      `${base}/projects/${repairParent.id}/reports/progress-as-of?periodEnd=${repairPeriodEnd}&periodStart=${repairPeriodStart}`,
+      { headers: headers(adminToken) },
+    );
+    const linkedReport = await linkedReportResponse.json();
+    assert.equal(linkedReportResponse.status, 200, JSON.stringify(linkedReport));
+    assert.equal(linkedReport.available, true, JSON.stringify(linkedReport));
+    assert.equal(linkedReport.historySource, "estimated", JSON.stringify(linkedReport));
+    assert.equal(linkedReport.plannedProgress, null,
+      "estimated linked history must not produce historical planned progress or SPI");
+
+    const coveredAgainResponse = await fetch(
+      `${base}/projects/${repairParent.id}/progress-history-backfill/linked-sources/preview`,
+      {
+        method: "POST", headers: headers(managerToken),
+        body: JSON.stringify({ periodEnd: repairPeriodEnd }),
+      },
+    );
+    const coveredAgain = await coveredAgainResponse.json();
+    assert.equal(coveredAgainResponse.status, 200, JSON.stringify(coveredAgain));
+    assert.equal(coveredAgain.snapshotsToAdd, 0);
+    assert.equal(coveredAgain.snapshotsToReplace, 0);
+    assert.equal(coveredAgain.blockedSources, 0, "a completed repair is idempotent");
+
+    const linkedRepairRevertResponse = await fetch(
+      `${base}/projects/${repairParent.id}/progress-history-backfill/batches/${linkedRepairCommit.batchId}/revert`,
+      { method: "POST", headers: headers(managerToken) },
+    );
+    const linkedRepairRevert = await linkedRepairRevertResponse.json();
+    assert.equal(linkedRepairRevertResponse.status, 200, JSON.stringify(linkedRepairRevert));
+    assert.equal(linkedRepairRevert.removed, linkedRepairCommit.inserted + linkedRepairCommit.replaced);
+    assert.deepEqual((await db.select({ id: projectProgressHistoryTable.id })
+      .from(projectProgressHistoryTable).where(and(
+        eq(projectProgressHistoryTable.projectId, staleSource.id),
+        eq(projectProgressHistoryTable.id, staleEstimate[0].id),
+      ))).map(row => row.id), [staleEstimate[0].id], "revert preserves the old history row");
+    assert.equal((await db.select({ value: count() }).from(projectProgressHistoryTable)
+      .where(eq(projectProgressHistoryTable.importBatchId, linkedRepairCommit.batchId)))[0].value, 0,
+    "one parent batch reverses its estimated rows across every linked source");
+    const actualRowsAfterRevert = await db.select({ id: projectProgressHistoryTable.id })
+      .from(projectProgressHistoryTable).where(and(
+        inArray(projectProgressHistoryTable.projectId, [missingSource.id, staleSource.id]),
+        eq(projectProgressHistoryTable.source, "actual"),
+      ));
+    const actualRowsBeforeRevert = linkedRepairHistoryBefore
+      .filter(row => row.source === "actual").map(row => row.id).sort((a, b) => a - b);
+    assert.deepEqual(actualRowsAfterRevert.map(row => row.id).sort((a, b) => a - b), actualRowsBeforeRevert,
+      "revert preserves every original actual snapshot");
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     if (schema?.pool) await schema.pool.end();
