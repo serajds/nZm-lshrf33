@@ -260,6 +260,13 @@ async function previewHistoricalProgressAsync(
     const targetValue = linked && activity.historicalSourceProgress !== undefined
       ? activity.historicalSourceProgress : activity.actualProgress;
     const target = clamp(Number.isFinite(targetValue) ? targetValue : 0);
+    const futureStartContradictsProgress = input.automatic === true
+      && startDate != null && validBackfillDay(startDate) && startDate > input.realityDate
+      && target > 0;
+    if (futureStartContradictsProgress) {
+      warnings.push(`البند «${activity.name}»: تاريخ البداية الفعلية بعد تاريخ واقع الحال رغم وجود تقدم؛ تم تجاهل التاريخ المستقبلي، واستخدام بداية فترة التقدير كنقطة صفر تقريبية.`);
+      startDate = null;
+    }
     let unavailable = false;
     let start = startDate && validBackfillDay(startDate) ? dayNumber(startDate) : null;
     let end = endDate && validBackfillDay(endDate) ? dayNumber(endDate) : null;
@@ -293,6 +300,7 @@ async function previewHistoricalProgressAsync(
 
     const itemPoints = [
       ...(start != null ? [{ day: start, progress: 0 }] : []),
+      ...(futureStartContradictsProgress ? [{ day: first, progress: 0 }] : []),
       ...(override?.points ?? []).filter(point => validBackfillDay(point.date)
         && point.date <= input.realityDate
         && Number.isFinite(point.progress) && point.progress >= 0 && point.progress <= 100)
@@ -314,7 +322,7 @@ async function previewHistoricalProgressAsync(
     }
     if (unavailable) return { activity, unavailable, value: (_day: number) => target };
 
-    const baseStart = start ?? uniquePoints[0]?.day ?? first;
+    const baseStart = start ?? (futureStartContradictsProgress ? first : uniquePoints[0]?.day ?? first);
     const baseEnd = activity.status === "completed" || target >= 100 ? end ?? reality : reality;
     const value = (day: number) => {
       if (day >= reality) return target;
