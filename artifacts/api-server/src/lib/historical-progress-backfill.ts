@@ -6,6 +6,7 @@ export type BackfillActivity = {
   weight: number;
   actualStartDate: string | null;
   actualEndDate: string | null;
+  groupId?: number | null;
   externalSourceGroupId: number | null;
   hasHistoricalSource?: boolean;
   historicalSourceProgress?: number;

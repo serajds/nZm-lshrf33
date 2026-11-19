@@ -106,6 +106,27 @@ test("linked progress resolves from the source's historical group including zero
   assert.equal(past.activities[0].externalSourceGroupId, 40);
 });
 
+test("linked estimate provenance uses the database project id when a captured snapshot only has id", async () => {
+  const parent = project(20, [activity(1, 5, 1, { externalSourceGroupId: 40 })]);
+  const sourceSnapshot = {
+    id: 21, noSchedule: false, startDate: "2026-10-01", expectedEndDate: "2026-10-31",
+    activities: [activity(2, 35, 1, { groupId: 40 })],
+    groups: [{ id: 40, name: "source group" }],
+  };
+  history([
+    row(parent, "2026-10-20T10:00:00Z"),
+    {
+      project_id: 21, snapshot: sourceSnapshot, captured_at: new Date("2026-10-20T11:00:00Z"),
+      source: "estimated",
+    },
+  ]);
+  const result = await getReportPeriodProgress(20, "2026-10-20", now);
+  assert.equal(result.available, true);
+  assert.equal(result.overallProgress, 35);
+  assert.equal(result.historySource, "estimated");
+  assert.equal(result.plannedProgress, null);
+});
+
 test("no history and future periods return unavailable, never today's progress or synthetic zero", async () => {
   history([row(project(1, [activity(1, 75)]), "2026-10-24T10:00:00Z")]);
   for (const day of ["2026-10-01", "2026-10-25"]) {

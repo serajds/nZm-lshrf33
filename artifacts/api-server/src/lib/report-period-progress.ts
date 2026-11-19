@@ -168,8 +168,13 @@ export async function getReportPeriodProgress(
     ...missing("اعتمد نسبة التقرير يدوياً؛ تُعرض نسب البنود الموثقة في السجل والجدول الحالي كمرجع."),
     activities: await getLegacyReportActivities(projectId, day),
   };
+  // The database row owns the project identity. Some application-captured
+  // snapshots store it as `id`, while older/imported snapshots use
+  // `projectId`; normalize before resolving linked sources and provenance.
+  const states = rows.map(row => ({ ...row.snapshot, projectId: row.project_id }));
+  const rootSnapshot = states.find(snapshot => snapshot.projectId === projectId)!;
   const estimatedProjectIds = new Set(rows.filter(row => row.source === "estimated").map(row => row.project_id));
-  const activities = resolveHistoricalActivities(root.snapshot, rows.map(r => r.snapshot), day, estimatedProjectIds)
+  const activities = resolveHistoricalActivities(rootSnapshot, states, day, estimatedProjectIds)
     .map(a => ({
       ...a,
       actualHistoryEstimated: root.source === "estimated" || a.actualHistoryEstimated === true,
@@ -189,7 +194,7 @@ export async function getReportPeriodProgress(
     };
   }
   const overallProgress = weightedHistoryProgress(activities);
-  const hasSchedule = !root.snapshot.noSchedule && hasValidProjectSchedule(root.snapshot.startDate, root.snapshot.expectedEndDate);
+  const hasSchedule = !rootSnapshot.noSchedule && hasValidProjectSchedule(rootSnapshot.startDate, rootSnapshot.expectedEndDate);
   const plannedProgress = hasSchedule && !activities.some(a => a.plannedHistoricalUnverified)
     ? weightedHistoryProgress(activities.map(a => ({ ...a, actualProgress: a.plannedProgress }))) : null;
   let periodStartProgress: number | null = null;
@@ -201,7 +206,11 @@ export async function getReportPeriodProgress(
        ORDER BY project_id, captured_at DESC, id DESC`, [new Date(startCutoff)]);
     const startRoot = startRows.find(row => row.project_id === projectId);
     if (startRoot) {
-      const startActivities = resolveHistoricalActivities(startRoot.snapshot, startRows.map(row => row.snapshot), periodStart);
+      const startStates = startRows.map(row => ({ ...row.snapshot, projectId: row.project_id }));
+      const startSnapshot = startStates.find(snapshot => snapshot.projectId === projectId);
+      const startActivities = startSnapshot
+        ? resolveHistoricalActivities(startSnapshot, startStates, periodStart)
+        : [];
       if (!startActivities.some(activity => activity.actualHistoricalUnverified)) {
         periodStartProgress = weightedHistoryProgress(startActivities);
       }

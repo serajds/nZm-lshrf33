@@ -50,3 +50,9 @@ Manual item progress approved for a report's period may feed its AI narrative wi
 **Why:** The user approved editing old report items and regenerating the narrative, while rejecting internal provenance labels in the issued document.
 
 **How to apply:** Scope the approval to the report period; distinguish manual approval internally from historical observations. Do not silently recompute the report aggregate or modify other reports.
+
+When resolving linked history, use the database row's `project_id` as the authoritative project identity, not only an ID embedded in the JSON snapshot. Some application-captured snapshots store `id` rather than `projectId`; without normalization, estimated-source provenance can be lost and historical SPI can appear supported when it is not.
+
+**Why:** The linked estimate test exposed a mismatch between the database identity and snapshot shape that silently classified estimated values as actual.
+
+**How to apply:** Normalize each loaded snapshot with its row's `project_id` before building linked-group ownership or estimated-project sets. Do not rewrite stored snapshots to solve a read-time identity mismatch.
