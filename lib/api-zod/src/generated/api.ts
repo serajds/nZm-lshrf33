@@ -675,8 +675,12 @@ export const ListReportsResponseItem = zod.object({
   imageGroups: zod
     .array(
       zod.object({
+        id: zod.string().optional(),
         category: zod.string(),
         urls: zod.array(zod.string()),
+        shareStatus: zod.enum(["pending", "uploading", "completed"]).optional(),
+        shareExpiresAt: zod.coerce.date().optional(),
+        shareId: zod.number().optional(),
       }),
     )
     .nullish(),
@@ -731,6 +735,7 @@ export const CreateReportBody = zod.object({
   imageGroups: zod
     .array(
       zod.object({
+        id: zod.string().optional(),
         category: zod.string(),
         urls: zod.array(zod.string()),
       }),
@@ -762,8 +767,12 @@ export const GetReportResponse = zod.object({
   imageGroups: zod
     .array(
       zod.object({
+        id: zod.string().optional(),
         category: zod.string(),
         urls: zod.array(zod.string()),
+        shareStatus: zod.enum(["pending", "uploading", "completed"]).optional(),
+        shareExpiresAt: zod.coerce.date().optional(),
+        shareId: zod.number().optional(),
       }),
     )
     .nullish(),
@@ -825,6 +834,7 @@ export const UpdateReportBody = zod.object({
   imageGroups: zod
     .array(
       zod.object({
+        id: zod.string().optional(),
         category: zod.string(),
         urls: zod.array(zod.string()),
       }),
@@ -860,8 +870,12 @@ export const UpdateReportResponse = zod.object({
   imageGroups: zod
     .array(
       zod.object({
+        id: zod.string().optional(),
         category: zod.string(),
         urls: zod.array(zod.string()),
+        shareStatus: zod.enum(["pending", "uploading", "completed"]).optional(),
+        shareExpiresAt: zod.coerce.date().optional(),
+        shareId: zod.number().optional(),
       }),
     )
     .nullish(),
@@ -904,6 +918,39 @@ export const DeleteReportParams = zod.object({
 });
 
 /**
+ * @summary Create a limited-time upload link for one saved report image group
+ */
+export const CreateReportImageGroupShareParams = zod.object({
+  projectId: zod.coerce.number(),
+  reportId: zod.coerce.number(),
+  groupIndex: zod.coerce.number(),
+});
+
+/**
+ * @summary Cancel active upload links for one report image group
+ */
+export const CancelReportImageGroupShareParams = zod.object({
+  projectId: zod.coerce.number(),
+  reportId: zod.coerce.number(),
+  groupIndex: zod.coerce.number(),
+});
+
+/**
+ * @summary Validate a public upload link and return limited section and report-period information
+ */
+export const GetPublicReportImageShareQueryParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+export const GetPublicReportImageShareResponse = zod.object({
+  category: zod.string(),
+  expiresAt: zod.coerce.date(),
+  status: zod.enum(["pending", "uploading"]),
+  periodStart: zod.coerce.date(),
+  periodEnd: zod.coerce.date(),
+});
+
+/**
  * @summary Approve or revert a report (project_manager / admin)
  */
 export const UpdateReportStatusParams = zod.object({
@@ -931,8 +978,12 @@ export const UpdateReportStatusResponse = zod.object({
   imageGroups: zod
     .array(
       zod.object({
+        id: zod.string().optional(),
         category: zod.string(),
         urls: zod.array(zod.string()),
+        shareStatus: zod.enum(["pending", "uploading", "completed"]).optional(),
+        shareExpiresAt: zod.coerce.date().optional(),
+        shareId: zod.number().optional(),
       }),
     )
     .nullish(),
@@ -1555,8 +1606,14 @@ export const VerifyOwnerAccessResponse = zod.object({
       imageGroups: zod
         .array(
           zod.object({
+            id: zod.string().optional(),
             category: zod.string(),
             urls: zod.array(zod.string()),
+            shareStatus: zod
+              .enum(["pending", "uploading", "completed"])
+              .optional(),
+            shareExpiresAt: zod.coerce.date().optional(),
+            shareId: zod.number().optional(),
           }),
         )
         .nullish(),

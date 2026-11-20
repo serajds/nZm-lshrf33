@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "build": "pnpm run typecheck && pnpm -r --if-present --filter=!@workspace/mobile run build",
+    "build": "pnpm run typecheck && pnpm -r --if-present --filter=!@workspace/attendance-mobile run build",
     "test:session-cache": "node --test --experimental-strip-types tests/*.test.mjs",
     "test:activity-sources": "node --test --experimental-strip-types tests/activity-source-rules.test.mjs",
     "test:deviation": "node --test tests/deviation-analysis.test.mjs",
@@ -13,8 +13,9 @@
     "test:excel-import:http": "NODE_ENV=development EXCEL_IMPORT_HTTP_TESTS=1 LOG_LEVEL=silent node --import ./scripts/node_modules/tsx/dist/loader.mjs --test tests/excel-import-http.integration.test.mjs",
     "test:session-cache:browser": "node --test tests/browser-session-cache.test.mjs",
     "typecheck:libs": "tsc --build --force",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --filter \"!@workspace/mockup-sandbox\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --filter \"!@workspace/mockup-sandbox\" --filter \"!@workspace/attendance-mobile\" --if-present run typecheck"
   },
+  "packageManager": "pnpm@10.26.1",
   "private": true,
   "devDependencies": {
     "prettier": "^3.8.1",

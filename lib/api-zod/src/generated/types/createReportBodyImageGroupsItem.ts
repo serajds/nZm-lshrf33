@@ -7,6 +7,7 @@
  */
 
 export type CreateReportBodyImageGroupsItem = {
+  id?: string;
   category: string;
   urls: string[];
 };

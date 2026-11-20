@@ -1,7 +1,11 @@
 import { prepareReportLogos, type ReportLogo } from "./report-logos";
 import { reportPreviewScreenHtml } from "./report-preview-screen";
 
-type ImageGroup = { category: string; urls: string[] };
+type ImageGroup = {
+  category: string;
+  urls: string[];
+  shareStatus?: "pending" | "uploading" | "completed";
+};
 type ReportImages = { imageUrls?: string[] | null; imageGroups?: unknown };
 
 /** All asset reuse is confined to this preview, never shared across sessions. */
@@ -52,6 +56,7 @@ export async function loadReportPreview<T extends ReportImages>(options: {
       ? await Promise.all(groups.map(async group => ({
           category: group.category,
           urls: await Promise.all((group.urls ?? []).map(url => load(url))),
+          shareStatus: group.shareStatus,
         })))
       : null;
     const imageUrls = imageGroups ? [] : await Promise.all((report.imageUrls ?? []).map(url => load(url)));

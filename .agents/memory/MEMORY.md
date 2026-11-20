@@ -32,3 +32,4 @@
 - [Historical progress loading](historical-progress-loading.md) — load backfill state only when its manual settings are opened; project-page visits should not scan historical snapshots.
 - [Sequence ownership in Publish diffs](sequence-ownership-publish-diff.md) — a nextval default without OWNED BY can make a development sequence look new and trigger a duplicate CREATE SEQUENCE.
 - [Historical backfill gap detection](historical-backfill-gap-detection.md) — a progress point recorded after an activity started does not prove earlier report dates are covered.
+- [Expo types in shared workspaces](expo-workspace-types.md) — newer Expo React types can leak through pnpm peers; isolate shared peer resolution and verify after a clean install.

@@ -47,3 +47,6 @@ packages = ["freetype", "gumbo", "harfbuzz", "jbig2dec", "libjpeg_turbo", "mupdf
 
 [objectStorage]
 defaultBucketID = "replit-objstore-00882a2c-029a-43e4-a48b-d11f747e167a"
+
+[workflows]
+runButton = "Project"

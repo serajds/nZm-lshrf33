@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { db, reportImageSharesTable } from "@workspace/db";
 import { reportsTable, activitiesTable, projectsTable, activityGroupsTable } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectManager } from "../middlewares/auth";
 import { requireTabEdit } from "../middlewares/tab-access";
 import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
@@ -11,7 +12,14 @@ import { buildReportAiPrompt, reportEditorInstruction } from "../lib/report-ai-p
 import { approvedReportFingerprint, buildApprovedReportPrompt, parseApprovedReportDraft, validApprovedProgress } from "../lib/report-approved-inputs";
 import { buildReportActivityAnalysis } from "../lib/report-activity-analysis";
 
-type ImageGroup = { category: string; urls: string[] };
+type ImageGroup = {
+  id?: string;
+  category: string;
+  urls: string[];
+  shareStatus?: "pending" | "uploading" | "completed";
+  shareExpiresAt?: string;
+  shareId?: number;
+};
 
 type SnapshotRow = {
   id?: number;
@@ -113,14 +121,21 @@ function mergeSnapshot(
 const normalizeImageGroups = (groups: unknown): ImageGroup[] | null => {
   if (!Array.isArray(groups)) return null;
   const cleaned: ImageGroup[] = [];
+  const ids = new Set<string>();
   for (const g of groups) {
     if (!g || typeof g !== "object") continue;
     const obj = g as Record<string, unknown>;
     const category = typeof obj.category === "string" ? obj.category.trim() : "";
     const rawUrls = obj.urls;
-    if (!category || !Array.isArray(rawUrls)) continue;
-    const urls = rawUrls.filter((u: unknown): u is string => typeof u === "string" && u.length > 0);
-    cleaned.push({ category, urls });
+    if (!category) continue;
+    const urls = Array.isArray(rawUrls)
+      ? rawUrls.filter((u: unknown): u is string => typeof u === "string" && u.length > 0)
+      : [];
+    const submittedId = typeof obj.id === "string" && /^[A-Za-z0-9_-]{8,80}$/.test(obj.id)
+      ? obj.id : undefined;
+    const id = submittedId && !ids.has(submittedId) ? submittedId : randomUUID();
+    ids.add(id);
+    cleaned.push({ id, category, urls });
   }
   return cleaned;
 };
@@ -131,6 +146,42 @@ const flattenImageGroups = (groups: ImageGroup[]): string[] => {
   for (const g of groups) for (const u of g.urls) if (!seen.has(u)) { seen.add(u); out.push(u); }
   return out;
 };
+
+const shareTokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
+const SHARE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function attachImageShareStatus<T extends { id: number; imageGroups: unknown }>(
+  reports: T[],
+): Promise<T[]> {
+  if (reports.length === 0) return reports;
+  const rows = await db.select().from(reportImageSharesTable)
+    .where(inArray(reportImageSharesTable.reportId, reports.map(report => report.id)))
+    .orderBy(desc(reportImageSharesTable.createdAt), desc(reportImageSharesTable.id));
+  const latest = new Map<string, typeof rows[number]>();
+  for (const row of rows) {
+    const key = `${row.reportId}:${row.groupId}`;
+    if (!latest.has(key)) latest.set(key, row);
+  }
+  return reports.map(report => {
+    const groups = Array.isArray(report.imageGroups) ? report.imageGroups as ImageGroup[] : null;
+    if (!groups) return report;
+    return {
+      ...report,
+      imageGroups: groups.map(group => {
+        if (!group?.id) return group;
+        const share = latest.get(`${report.id}:${group.id}`);
+        if (!share || share.status === "cancelled") return group;
+        return {
+          ...group,
+          shareStatus: share.status === "completed" ? "completed" as const
+            : share.status === "uploading" ? "uploading" as const : "pending" as const,
+          shareExpiresAt: share.expiresAt.toISOString(),
+          shareId: share.id,
+        };
+      }),
+    };
+  });
+}
 
 const router: IRouter = Router();
 
@@ -482,7 +533,167 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), re
     // order and "newest" felt broken to users.
     .orderBy(desc(reportsTable.reportDate), desc(reportsTable.createdAt), desc(reportsTable.id));
 
-  res.json(reports);
+  res.json(await attachImageShareStatus(reports));
+});
+
+router.post(
+  "/projects/:projectId/reports/:reportId/image-groups/:groupIndex/share",
+  requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"),
+  async (req, res): Promise<void> => {
+    const projectId = Number(req.params.projectId);
+    const reportId = Number(req.params.reportId);
+    const groupIndex = Number(req.params.groupIndex);
+    if (![projectId, reportId, groupIndex].every(Number.isSafeInteger) || groupIndex < 0) {
+      res.status(400).json({ error: "بيانات القسم غير صالحة" });
+      return;
+    }
+
+    const rawToken = randomBytes(32).toString("base64url");
+    const tokenHash = shareTokenHash(rawToken);
+    const expiresAt = new Date(Date.now() + SHARE_EXPIRY_MS);
+    const created = await db.transaction(async (tx) => {
+      const [report] = await tx.select().from(reportsTable)
+        .where(and(eq(reportsTable.id, reportId), eq(reportsTable.projectId, projectId)))
+        .for("update");
+      if (!report) return null;
+
+      let groups = Array.isArray(report.imageGroups)
+        ? (report.imageGroups as ImageGroup[]).map(group => ({
+            id: group.id || randomUUID(),
+            category: group.category,
+            urls: Array.isArray(group.urls) ? group.urls : [],
+          }))
+        : [{ id: randomUUID(), category: "صور الموقع", urls: report.imageUrls ?? [] }];
+      if (groupIndex >= groups.length) return { invalidGroup: true as const };
+      const group = groups[groupIndex];
+
+      await tx.update(reportsTable).set({
+        imageGroups: groups,
+        imageUrls: flattenImageGroups(groups),
+      }).where(eq(reportsTable.id, reportId));
+
+      await tx.update(reportImageSharesTable).set({ status: "cancelled" })
+        .where(and(
+          eq(reportImageSharesTable.reportId, reportId),
+          eq(reportImageSharesTable.groupId, group.id),
+          inArray(reportImageSharesTable.status, ["pending", "uploading"]),
+        ));
+      const [share] = await tx.insert(reportImageSharesTable).values({
+        projectId,
+        reportId,
+        groupId: group.id,
+        tokenHash,
+        status: "pending",
+        expiresAt,
+        createdById: req.user?.userId ?? null,
+      }).returning({ id: reportImageSharesTable.id });
+      return { id: share.id, category: group.category };
+    });
+
+    if (!created) {
+      res.status(404).json({ error: "التقرير غير موجود" });
+      return;
+    }
+    if ("invalidGroup" in created) {
+      res.status(404).json({ error: "القسم غير موجود في التقرير؛ احفظ التقرير ثم أعد المحاولة" });
+      return;
+    }
+    res.status(201).json({
+      shareId: created.id,
+      publicToken: rawToken,
+      expiresAt: expiresAt.toISOString(),
+      category: created.category,
+    });
+  },
+);
+
+router.delete(
+  "/projects/:projectId/reports/:reportId/image-groups/:groupIndex/share",
+  requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"),
+  async (req, res): Promise<void> => {
+    const projectId = Number(req.params.projectId);
+    const reportId = Number(req.params.reportId);
+    const groupIndex = Number(req.params.groupIndex);
+    const [report] = await db.select({
+      imageGroups: reportsTable.imageGroups,
+    }).from(reportsTable)
+      .where(and(eq(reportsTable.id, reportId), eq(reportsTable.projectId, projectId)));
+    if (!report) { res.status(404).json({ error: "التقرير غير موجود" }); return; }
+    let groups = Array.isArray(report.imageGroups) ? report.imageGroups as ImageGroup[] : [];
+    if (groups.length === 0) groups = [{ id: "", category: "صور الموقع", urls: [] }];
+    if (!Number.isSafeInteger(groupIndex) || groupIndex < 0 || !groups[groupIndex]?.id) {
+      res.status(404).json({ error: "القسم غير موجود" }); return;
+    }
+    await db.update(reportImageSharesTable).set({ status: "cancelled" })
+      .where(and(
+        eq(reportImageSharesTable.reportId, reportId),
+        eq(reportImageSharesTable.groupId, groups[groupIndex].id!),
+        inArray(reportImageSharesTable.status, ["pending", "uploading"]),
+      ));
+    res.sendStatus(204);
+  },
+);
+
+function readShareToken(value: unknown): string | null {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{40,100}$/.test(value) ? value : null;
+}
+
+async function getActiveShare(token: unknown) {
+  const validToken = readShareToken(token);
+  if (!validToken) return null;
+  const [share] = await db.select().from(reportImageSharesTable)
+    .where(eq(reportImageSharesTable.tokenHash, shareTokenHash(validToken)))
+    .limit(1);
+  if (!share || share.status === "completed" || share.status === "cancelled" || share.expiresAt <= new Date()) {
+    return null;
+  }
+  const [report] = await db.select({
+    imageGroups: reportsTable.imageGroups,
+    periodStart: reportsTable.periodStart,
+    periodEnd: reportsTable.periodEnd,
+  }).from(reportsTable)
+    .where(and(eq(reportsTable.id, share.reportId), eq(reportsTable.projectId, share.projectId)));
+  const group = Array.isArray(report?.imageGroups)
+    ? (report.imageGroups as ImageGroup[]).find(item => item.id === share.groupId)
+    : undefined;
+  return group && report
+    ? { share, category: group.category, periodStart: report.periodStart, periodEnd: report.periodEnd }
+    : null;
+}
+
+router.get("/public/report-image-shares", async (req, res): Promise<void> => {
+  const active = await getActiveShare(req.query.token);
+  res.setHeader("Cache-Control", "no-store");
+  if (!active) {
+    res.status(410).json({ error: "انتهت صلاحية الرابط أو تم إلغاؤه أو إكمال الرفع" });
+    return;
+  }
+  res.json({
+    category: active.category,
+    expiresAt: active.share.expiresAt.toISOString(),
+    status: active.share.status,
+    periodStart: active.periodStart,
+    periodEnd: active.periodEnd,
+  });
+});
+
+router.post("/public/report-image-shares/complete", async (req, res): Promise<void> => {
+  const active = await getActiveShare(req.body?.token);
+  if (!active) {
+    res.status(410).json({ error: "انتهت صلاحية الرابط أو تم إلغاؤه أو إكمال الرفع" });
+    return;
+  }
+  const [completed] = await db.update(reportImageSharesTable).set({ status: "completed" })
+    .where(and(
+      eq(reportImageSharesTable.id, active.share.id),
+      inArray(reportImageSharesTable.status, ["pending", "uploading"]),
+      sql`${reportImageSharesTable.expiresAt} > now()`,
+    )).returning({ id: reportImageSharesTable.id });
+  if (!completed) {
+    res.status(410).json({ error: "انتهت صلاحية الرابط أو تم إلغاؤه أو إكمال الرفع" });
+    return;
+  }
+  res.json({ status: "completed" });
 });
 
 router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res): Promise<void> => {
@@ -642,7 +853,8 @@ router.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId")
     ? (await getReportPeriodProgress(projectId, report.periodEnd)).activities ?? []
     : undefined;
   res.setHeader("Cache-Control", "private, no-store");
-  res.json({ ...report, referenceActivities });
+  const [withShareStatus] = await attachImageShareStatus([report]);
+  res.json({ ...withShareStatus, referenceActivities });
 });
 
 router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res): Promise<void> => {

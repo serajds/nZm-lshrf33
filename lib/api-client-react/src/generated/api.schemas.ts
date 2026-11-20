@@ -572,9 +572,22 @@ export const ReportType = {
   period: "period",
 } as const;
 
+export type ReportImageGroupsItemShareStatus =
+  (typeof ReportImageGroupsItemShareStatus)[keyof typeof ReportImageGroupsItemShareStatus];
+
+export const ReportImageGroupsItemShareStatus = {
+  pending: "pending",
+  uploading: "uploading",
+  completed: "completed",
+} as const;
+
 export type ReportImageGroupsItem = {
+  id?: string;
   category: string;
   urls: string[];
+  shareStatus?: ReportImageGroupsItemShareStatus;
+  shareExpiresAt?: string;
+  shareId?: number;
 };
 
 export type ReportActivitiesSnapshotItem = {
@@ -641,6 +654,7 @@ export const CreateReportBodyType = {
 } as const;
 
 export type CreateReportBodyImageGroupsItem = {
+  id?: string;
   category: string;
   urls: string[];
 };
@@ -710,6 +724,7 @@ export const UpdateReportBodyType = {
 } as const;
 
 export type UpdateReportBodyImageGroupsItem = {
+  id?: string;
   category: string;
   urls: string[];
 };
@@ -1459,6 +1474,37 @@ export type ListReportsParams = {
    * @nullable
    */
   dateTo?: string | null;
+};
+
+export type CreateReportImageGroupShare201 = {
+  shareId: number;
+  publicToken: string;
+  expiresAt: string;
+  category: string;
+};
+
+export type GetPublicReportImageShareParams = {
+  token: string;
+};
+
+export type GetPublicReportImageShare200Status =
+  (typeof GetPublicReportImageShare200Status)[keyof typeof GetPublicReportImageShare200Status];
+
+export const GetPublicReportImageShare200Status = {
+  pending: "pending",
+  uploading: "uploading",
+} as const;
+
+export type GetPublicReportImageShare200 = {
+  category: string;
+  expiresAt: string;
+  status: GetPublicReportImageShare200Status;
+  periodStart: string;
+  periodEnd: string;
+};
+
+export type UploadPublicReportImage201 = {
+  uploaded?: boolean;
 };
 
 export type ListFilesParams = {

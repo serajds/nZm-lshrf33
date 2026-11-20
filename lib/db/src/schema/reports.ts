@@ -2,7 +2,7 @@ import { pgTable, text, serial, timestamp, real, integer, date, jsonb, index } f
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export type ReportImageGroup = { category: string; urls: string[] };
+export type ReportImageGroup = { id?: string; category: string; urls: string[] };
 
 export const reportsTable = pgTable("reports", {
   id: serial("id").primaryKey(),
@@ -32,6 +32,22 @@ export const reportsTable = pgTable("reports", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [
   index("reports_project_date_idx").on(t.projectId, t.reportDate),
+]);
+
+export const reportImageSharesTable = pgTable("report_image_shares", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull(),
+  reportId: integer("report_id").notNull().references(() => reportsTable.id, { onDelete: "cascade" }),
+  groupId: text("group_id").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  status: text("status", { enum: ["pending", "uploading", "completed", "cancelled"] }).notNull().default("pending"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdById: integer("created_by_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  index("report_image_shares_report_group_idx").on(t.reportId, t.groupId, t.createdAt),
+  index("report_image_shares_expiry_idx").on(t.expiresAt),
 ]);
 
 export const insertReportSchema = createInsertSchema(reportsTable).omit({ id: true, createdAt: true, updatedAt: true });

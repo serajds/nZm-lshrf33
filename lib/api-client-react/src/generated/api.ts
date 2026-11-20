@@ -29,6 +29,7 @@ import type {
   CreateBackup200,
   CreateProjectBody,
   CreateReportBody,
+  CreateReportImageGroupShare201,
   CreateUserBody,
   DashboardSummary,
   DeleteAttendanceRecordBody,
@@ -45,6 +46,8 @@ import type {
   GetOwnerProjectByToken200,
   GetProjectDeviationParams,
   GetProjectDeviationTimelineParams,
+  GetPublicReportImageShare200,
+  GetPublicReportImageShareParams,
   HealthStatus,
   ImportActivities400,
   ImportActivitiesBody,
@@ -87,6 +90,7 @@ import type {
   UpdateReportStatusBody,
   UpdateUserBody,
   UploadFileBody,
+  UploadPublicReportImage201,
   User,
 } from "./api.schemas";
 
@@ -2547,6 +2551,487 @@ export const useDeleteReport = <
   TContext
 > => {
   return useMutation(getDeleteReportMutationOptions(options));
+};
+
+/**
+ * @summary Create a limited-time upload link for one saved report image group
+ */
+export const getCreateReportImageGroupShareUrl = (
+  projectId: number,
+  reportId: number,
+  groupIndex: number,
+) => {
+  return `/api/projects/${projectId}/reports/${reportId}/image-groups/${groupIndex}/share`;
+};
+
+export const createReportImageGroupShare = async (
+  projectId: number,
+  reportId: number,
+  groupIndex: number,
+  options?: RequestInit,
+): Promise<CreateReportImageGroupShare201> => {
+  return customFetch<CreateReportImageGroupShare201>(
+    getCreateReportImageGroupShareUrl(projectId, reportId, groupIndex),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getCreateReportImageGroupShareMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createReportImageGroupShare>>,
+    TError,
+    { projectId: number; reportId: number; groupIndex: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createReportImageGroupShare>>,
+  TError,
+  { projectId: number; reportId: number; groupIndex: number },
+  TContext
+> => {
+  const mutationKey = ["createReportImageGroupShare"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createReportImageGroupShare>>,
+    { projectId: number; reportId: number; groupIndex: number }
+  > = (props) => {
+    const { projectId, reportId, groupIndex } = props ?? {};
+
+    return createReportImageGroupShare(
+      projectId,
+      reportId,
+      groupIndex,
+      requestOptions,
+    );
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateReportImageGroupShareMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createReportImageGroupShare>>
+>;
+
+export type CreateReportImageGroupShareMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a limited-time upload link for one saved report image group
+ */
+export const useCreateReportImageGroupShare = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createReportImageGroupShare>>,
+    TError,
+    { projectId: number; reportId: number; groupIndex: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createReportImageGroupShare>>,
+  TError,
+  { projectId: number; reportId: number; groupIndex: number },
+  TContext
+> => {
+  return useMutation(getCreateReportImageGroupShareMutationOptions(options));
+};
+
+/**
+ * @summary Cancel active upload links for one report image group
+ */
+export const getCancelReportImageGroupShareUrl = (
+  projectId: number,
+  reportId: number,
+  groupIndex: number,
+) => {
+  return `/api/projects/${projectId}/reports/${reportId}/image-groups/${groupIndex}/share`;
+};
+
+export const cancelReportImageGroupShare = async (
+  projectId: number,
+  reportId: number,
+  groupIndex: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(
+    getCancelReportImageGroupShareUrl(projectId, reportId, groupIndex),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getCancelReportImageGroupShareMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelReportImageGroupShare>>,
+    TError,
+    { projectId: number; reportId: number; groupIndex: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cancelReportImageGroupShare>>,
+  TError,
+  { projectId: number; reportId: number; groupIndex: number },
+  TContext
+> => {
+  const mutationKey = ["cancelReportImageGroupShare"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cancelReportImageGroupShare>>,
+    { projectId: number; reportId: number; groupIndex: number }
+  > = (props) => {
+    const { projectId, reportId, groupIndex } = props ?? {};
+
+    return cancelReportImageGroupShare(
+      projectId,
+      reportId,
+      groupIndex,
+      requestOptions,
+    );
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CancelReportImageGroupShareMutationResult = NonNullable<
+  Awaited<ReturnType<typeof cancelReportImageGroupShare>>
+>;
+
+export type CancelReportImageGroupShareMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Cancel active upload links for one report image group
+ */
+export const useCancelReportImageGroupShare = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelReportImageGroupShare>>,
+    TError,
+    { projectId: number; reportId: number; groupIndex: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cancelReportImageGroupShare>>,
+  TError,
+  { projectId: number; reportId: number; groupIndex: number },
+  TContext
+> => {
+  return useMutation(getCancelReportImageGroupShareMutationOptions(options));
+};
+
+/**
+ * @summary Validate a public upload link and return limited section and report-period information
+ */
+export const getGetPublicReportImageShareUrl = (
+  params: GetPublicReportImageShareParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/public/report-image-shares?${stringifiedParams}`
+    : `/api/public/report-image-shares`;
+};
+
+export const getPublicReportImageShare = async (
+  params: GetPublicReportImageShareParams,
+  options?: RequestInit,
+): Promise<GetPublicReportImageShare200> => {
+  return customFetch<GetPublicReportImageShare200>(
+    getGetPublicReportImageShareUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetPublicReportImageShareQueryKey = (
+  params?: GetPublicReportImageShareParams,
+) => {
+  return [
+    `/api/public/report-image-shares`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetPublicReportImageShareQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPublicReportImageShare>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetPublicReportImageShareParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicReportImageShare>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPublicReportImageShareQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPublicReportImageShare>>
+  > = ({ signal }) =>
+    getPublicReportImageShare(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicReportImageShare>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPublicReportImageShareQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPublicReportImageShare>>
+>;
+export type GetPublicReportImageShareQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Validate a public upload link and return limited section and report-period information
+ */
+
+export function useGetPublicReportImageShare<
+  TData = Awaited<ReturnType<typeof getPublicReportImageShare>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetPublicReportImageShareParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicReportImageShare>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPublicReportImageShareQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add one validated image to the section named by its limited upload token
+ */
+export const getUploadPublicReportImageUrl = () => {
+  return `/api/public/report-image-shares/upload`;
+};
+
+export const uploadPublicReportImage = async (
+  uploadPublicReportImageBody: string,
+  options?: RequestInit,
+): Promise<UploadPublicReportImage201> => {
+  return customFetch<UploadPublicReportImage201>(
+    getUploadPublicReportImageUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "text/plain", ...options?.headers },
+      body: uploadPublicReportImageBody,
+    },
+  );
+};
+
+export const getUploadPublicReportImageMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadPublicReportImage>>,
+    TError,
+    { data: BodyType<string> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadPublicReportImage>>,
+  TError,
+  { data: BodyType<string> },
+  TContext
+> => {
+  const mutationKey = ["uploadPublicReportImage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadPublicReportImage>>,
+    { data: BodyType<string> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return uploadPublicReportImage(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadPublicReportImageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadPublicReportImage>>
+>;
+export type UploadPublicReportImageMutationBody = BodyType<string>;
+export type UploadPublicReportImageMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Add one validated image to the section named by its limited upload token
+ */
+export const useUploadPublicReportImage = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadPublicReportImage>>,
+    TError,
+    { data: BodyType<string> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadPublicReportImage>>,
+  TError,
+  { data: BodyType<string> },
+  TContext
+> => {
+  return useMutation(getUploadPublicReportImageMutationOptions(options));
+};
+
+/**
+ * @summary Finish uploads and disable the public link
+ */
+export const getCompletePublicReportImageShareUrl = () => {
+  return `/api/public/report-image-shares/complete`;
+};
+
+export const completePublicReportImageShare = async (
+  completePublicReportImageShareBody: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getCompletePublicReportImageShareUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "text/plain", ...options?.headers },
+    body: completePublicReportImageShareBody,
+  });
+};
+
+export const getCompletePublicReportImageShareMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completePublicReportImageShare>>,
+    TError,
+    { data: BodyType<string> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof completePublicReportImageShare>>,
+  TError,
+  { data: BodyType<string> },
+  TContext
+> => {
+  const mutationKey = ["completePublicReportImageShare"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof completePublicReportImageShare>>,
+    { data: BodyType<string> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return completePublicReportImageShare(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CompletePublicReportImageShareMutationResult = NonNullable<
+  Awaited<ReturnType<typeof completePublicReportImageShare>>
+>;
+export type CompletePublicReportImageShareMutationBody = BodyType<string>;
+export type CompletePublicReportImageShareMutationError =
+  ErrorType<ErrorResponse>;
+
+/**
+ * @summary Finish uploads and disable the public link
+ */
+export const useCompletePublicReportImageShare = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completePublicReportImageShare>>,
+    TError,
+    { data: BodyType<string> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof completePublicReportImageShare>>,
+  TError,
+  { data: BodyType<string> },
+  TContext
+> => {
+  return useMutation(getCompletePublicReportImageShareMutationOptions(options));
 };
 
 /**
