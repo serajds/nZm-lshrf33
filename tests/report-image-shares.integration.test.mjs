@@ -71,6 +71,12 @@ test("report image sections persist empty groups and public links upload only in
     assert.equal(createdReport.imageGroups.length, 2, "empty sections remain saved");
     assert.equal(createdReport.imageUrls.length, 0);
 
+    const listResponse = await fetch(`${base}/projects/${project.id}/reports`, { headers: authHeaders });
+    const listedReports = await listResponse.json();
+    assert.equal(listResponse.status, 200, JSON.stringify(listedReports));
+    assert.equal(listedReports.length, 1);
+    assert.equal(listedReports[0].id, createdReport.id);
+
     const updateResponse = await fetch(`${base}/projects/${project.id}/reports/${createdReport.id}`, {
       method: "PATCH",
       headers: authHeaders,
