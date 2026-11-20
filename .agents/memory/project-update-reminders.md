@@ -7,7 +7,7 @@ Show the activity-update reminder once per Libya calendar day when the member op
 
 **Why:** The user explicitly chose daily on-project-open reminders and manager-only control.
 
-**How to apply:** Display the member's name and their own latest recorded change to activity data in that project, not another member's changes, report edits, or simple page views. If there is no record, say no previous update is recorded. A reminder never grants permission to edit activities.
+**How to apply:** Display the member's name and their own latest recorded change to activity data in that project, not another member's changes, report edits, or simple page views. If there is no record, say no previous update is recorded. Cache both shown and not-shown claim results by member, project, and Libya-local day so project-tab navigation does not claim again. A reminder never grants permission to edit activities.
 
 Automatic project notices must appear one at a time without interrupting an already visible notice. A reminder claimed for the day but still waiting must remain pending across project sub-page navigation until dismissed; pending state is private to that member, project, and day.
 

@@ -10,7 +10,6 @@ import {
   useUpdateReportStatus,
   useDeleteReport,
   useGetProject,
-  useListActivities,
   useGetReportAuditLog,
   getGetReportAuditLogQueryKey,
   getReport,
@@ -542,8 +541,6 @@ export default function ProjectReports() {
     { query: { enabled: !!projectId, staleTime: 1000 * 60 * 5 } as any },
   );
 
-  const { data: activities } = useListActivities(projectId, { query: { enabled: !!projectId } });
-  
   const createReport = useCreateReport();
   const updateReport = useUpdateReport();
   const updateReportStatus = useUpdateReportStatus();

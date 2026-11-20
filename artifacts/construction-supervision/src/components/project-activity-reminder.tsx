@@ -9,6 +9,7 @@ import { BellRing } from "lucide-react";
 import { useAutomaticNoticeSlot } from "./automatic-notices";
 
 type Reminder = { show: boolean; fullName?: string; lastUpdatedAt?: string | null };
+const REMINDER_CACHE_MS = 24 * 60 * 60 * 1000;
 
 export function ProjectActivityReminder({ projectId, canViewActivities }: {
   projectId: number;
@@ -26,13 +27,16 @@ export function ProjectActivityReminder({ projectId, canViewActivities }: {
       // A claimed reminder waiting behind another notice has not been dismissed.
       // Keep it available across project sub-page navigation in this session.
       const pending = queryClient.getQueryData<Reminder>(queryKey);
-      return pending?.show ? Promise.resolve(pending)
+      return pending ? Promise.resolve(pending)
         : customFetch(`/api/projects/${projectId}/my-activity-reminder/claim`, { method: "POST" });
     },
     enabled: !!user && projectId > 0,
     retry: false,
-    staleTime: 0,
-    refetchOnMount: "always",
+    // The key contains the Libya-local day, so cache both shown and dismissed
+    // outcomes for that day instead of reclaiming on every project tab mount.
+    staleTime: REMINDER_CACHE_MS,
+    gcTime: REMINDER_CACHE_MS,
+    refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
