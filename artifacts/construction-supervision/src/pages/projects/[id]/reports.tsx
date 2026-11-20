@@ -525,7 +525,12 @@ export default function ProjectReports() {
   // doesn't blank the screen for a round-trip. `staleTime` of 2 minutes
   // matches the global default but is set explicitly here for clarity
   // alongside the placeholder behaviour.
-  const { data: reports, isLoading } = useListReports(projectId, {
+  const {
+    data: reports,
+    isLoading,
+    isError: reportsLoadFailed,
+    refetch: retryLoadReports,
+  } = useListReports(projectId, {
     type: project?.reportDisplayMode === "period_only" || !typeFilter || typeFilter === "all" ? undefined : typeFilter,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
@@ -2265,6 +2270,21 @@ export default function ProjectReports() {
           <>
             {isLoading || isProjectLoading || !project ? (
               <LoadingSpinner text="جاري تحميل التقارير..." />
+            ) : reportsLoadFailed && !reports ? (
+              <Card className="border-amber-300/70">
+                <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
+                  <AlertCircle className="h-8 w-8 text-amber-600" />
+                  <div>
+                    <h3 className="font-semibold">تعذر تحميل التقارير</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      لم نتمكن من تأكيد عدم وجود تقارير. أعد المحاولة بعد قليل.
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" onClick={() => void retryLoadReports()}>
+                    إعادة المحاولة
+                  </Button>
+                </CardContent>
+              </Card>
             ) : reportsList.length === 0 ? (
               <Card className="border-dashed">
                 <EmptyState
