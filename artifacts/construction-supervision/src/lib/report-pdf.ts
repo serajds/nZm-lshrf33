@@ -24,8 +24,10 @@ export interface CompanyLogo {
 }
 
 export interface ReportImageGroupForPdf {
+  id?: string;
   category: string;
   urls: string[];
+  shareStatus?: "pending" | "uploading" | "completed";
 }
 
 export interface ReportPdfData {
@@ -223,17 +225,21 @@ export function buildPrintHTML(data: ReportPdfData): string {
         </div>` : ""; }).join("")}
     </div>`;
 
-  const groups = (data.imageGroups ?? []).filter(g => g && Array.isArray(g.urls) && g.urls.length > 0);
+  const groups = (data.imageGroups ?? []).filter(g => g && Array.isArray(g.urls));
   let imagesHTML = "";
   if (groups.length > 0) {
     let runningIdx = 0;
     const totalImages = groups.reduce((s, g) => s + g.urls.length, 0);
     const sectionsHTML = groups.map((g, gi) => {
+      const shareStatus = g.shareStatus === "pending" ? " — بانتظار الرفع"
+        : g.shareStatus === "uploading" ? " — جارٍ الرفع"
+        : g.shareStatus === "completed" ? " — مكتمل" : "";
       const html = `
         <div class="avoid-break" style="${gi > 0 ? "margin-top:18px;" : ""}break-after:avoid;page-break-after:avoid">
-          <div class="section-title blue-title" style="border:none;padding:0 0 10px 0;margin-bottom:14px;border-bottom:2px solid #bfdbfe">📷 ${esc(g.category)} (${g.urls.length} صورة)</div>
+          <div class="section-title blue-title" style="border:none;padding:0 0 10px 0;margin-bottom:14px;border-bottom:2px solid #bfdbfe">📷 ${esc(g.category)} (${g.urls.length} صورة)${shareStatus}</div>
         </div>
-        ${renderImageGrid(g.urls, totalImages, runningIdx)}`;
+        ${g.urls.length > 0 ? renderImageGrid(g.urls, totalImages, runningIdx)
+          : `<p class="body-text" style="border:1px dashed #cbd5e1;border-radius:6px;padding:10px;color:#64748b">لا توجد صور في هذا القسم بعد.</p>`}`;
       runningIdx += g.urls.length;
       return html;
     }).join("");

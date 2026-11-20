@@ -63,7 +63,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, AlertCircle, Star, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2, Settings2, GripVertical, MoreHorizontal } from "lucide-react";
+import { Copy, Plus, Edit2, Trash2, ArrowRight, FileText, CheckCircle2, AlertTriangle, AlertCircle, Star, ImagePlus, X, Loader2, Calculator, Eye, Printer, FolderPlus, ChevronDown, RotateCcw, History, UserCircle2, Settings2, GripVertical, MoreHorizontal, MessageCircle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
@@ -80,6 +80,7 @@ import {
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
 const imageGroupSchema = z.object({
+  id: z.string().optional(),
   category: z.string().min(1),
   urls: z.array(z.string()).default([]),
 });
@@ -97,9 +98,14 @@ const reportSchema = z.object({
 });
 
 type ReportFormValues = z.infer<typeof reportSchema>;
-type ImageGroup = z.infer<typeof imageGroupSchema>;
+type ImageGroup = z.infer<typeof imageGroupSchema> & {
+  shareStatus?: "pending" | "uploading" | "completed";
+  shareExpiresAt?: string;
+  shareId?: number;
+};
 
 const DEFAULT_CATEGORY = "صور عامة";
+const newImageGroupId = () => crypto.randomUUID();
 const PRESET_CATEGORIES: string[] = [
   "صور عامة",
   "الأعمال الإنشائية",
@@ -472,6 +478,7 @@ export default function ProjectReports() {
   const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
+  const groupShareLinks = useRef(new Map<string, { url: string; expiresAt: number }>());
   const isAnyUploading = Object.keys(uploadProgress).length > 0;
 
   // Editable copy of the report's activities snapshot. Populated when
@@ -480,6 +487,7 @@ export default function ProjectReports() {
   // table. See task #45.
   const [snapshotRows, setSnapshotRows] = useState<(ReportActivitiesSnapshotItem & { actualManuallyApproved?: boolean; actualHistoricalUnverified?: boolean })[]>([]);
   const [referenceRows, setReferenceRows] = useState<(ReportActivitiesSnapshotItem & { actualHistoricalUnverified?: boolean })[]>([]);
+  const [snapshotUpdateOpen, setSnapshotUpdateOpen] = useState(false);
   const originalSnapshotRows = useRef<ReportActivitiesSnapshotItem[]>([]);
   const aiDraftSnapshotFingerprint = useRef<string | null>(null);
   const aiApprovedContext = useRef<string | null>(null);
@@ -563,7 +571,7 @@ export default function ProjectReports() {
       progressPercentage: 0,
       technicalNotes: "",
       recommendations: "",
-      imageGroups: [{ category: DEFAULT_CATEGORY, urls: [] }],
+      imageGroups: [{ id: newImageGroupId(), category: DEFAULT_CATEGORY, urls: [] }],
     }
   });
 
@@ -628,11 +636,12 @@ export default function ProjectReports() {
     editOpenerRef.current = opener ?? null;
     setSelectedReportId(null);
     setEditingId(r.id);
+    setSnapshotUpdateOpen(false);
     aiDraftSnapshotFingerprint.current = null;
     const existingGroups = (r.imageGroups as ImageGroup[] | null | undefined) ?? null;
     const initialGroups: ImageGroup[] = existingGroups && existingGroups.length > 0
-      ? existingGroups.map(g => ({ category: g.category, urls: g.urls ?? [] }))
-      : [{ category: DEFAULT_CATEGORY, urls: r.imageUrls ?? [] }];
+      ? existingGroups.map(g => ({ id: g.id || newImageGroupId(), category: g.category, urls: g.urls ?? [] }))
+      : [{ id: newImageGroupId(), category: DEFAULT_CATEGORY, urls: r.imageUrls ?? [] }];
     form.reset({
       type: r.type as ReportFormValues["type"],
       reportDate: new Date(r.reportDate).toISOString().split('T')[0],
@@ -1009,8 +1018,8 @@ export default function ProjectReports() {
         return;
       }
       const cleanedGroups = (values.imageGroups ?? [])
-        .map(g => ({ category: g.category.trim(), urls: g.urls ?? [] }))
-        .filter(g => g.category.length > 0 && g.urls.length > 0);
+        .map(g => ({ id: g.id || newImageGroupId(), category: g.category.trim(), urls: g.urls ?? [] }))
+        .filter(g => g.category.length > 0);
       const flatImageUrls = Array.from(new Set(cleanedGroups.flatMap(g => g.urls)));
       const { imageGroups: _omit, ...rest } = values;
       const groupsForApi = cleanedGroups.length > 0 ? cleanedGroups : null;
@@ -1071,6 +1080,151 @@ export default function ProjectReports() {
     }
   };
 
+  const refreshReportLists = (reportId: number) => {
+    queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
+    queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, reportId) });
+  };
+
+  const groupShareCacheKey = (reportId: number, groupIndex: number) => `${reportId}:${groupIndex}`;
+
+  const createGroupShareLink = async (reportId: number, groupIndex: number) => {
+    const response = await fetchWithSession(
+      `/api/projects/${projectId}/reports/${reportId}/image-groups/${groupIndex}/share`,
+      { method: "POST" },
+    );
+    const result = await response.json().catch(() => ({})) as {
+      publicToken?: string;
+      expiresAt?: string;
+      error?: string;
+    };
+    if (!response.ok || !result.publicToken || !result.expiresAt) {
+      throw new Error(result.error || "تعذّر إنشاء رابط القسم");
+    }
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const link = `${window.location.origin}${base}/report-image-upload?token=${encodeURIComponent(result.publicToken)}`;
+    groupShareLinks.current.set(groupShareCacheKey(reportId, groupIndex), {
+      url: link,
+      expiresAt: new Date(result.expiresAt).getTime(),
+    });
+    refreshReportLists(reportId);
+    return link;
+  };
+
+  const getOrCreateGroupShareLink = async (
+    reportId: number,
+    groupIndex: number,
+    shareStatus?: ImageGroup["shareStatus"],
+  ) => {
+    const key = groupShareCacheKey(reportId, groupIndex);
+    const cached = groupShareLinks.current.get(key);
+    if (cached && cached.expiresAt > Date.now() && shareStatus !== "completed") return cached.url;
+    return createGroupShareLink(reportId, groupIndex);
+  };
+
+  const createGroupShare = async (reportId: number, groupIndex: number, shareStatus?: ImageGroup["shareStatus"]) => {
+    try {
+      const link = await getOrCreateGroupShareLink(reportId, groupIndex, shareStatus);
+      try {
+        await navigator.clipboard.writeText(link);
+        toast({ title: "تم إنشاء الرابط ونسخه", description: "الرابط صالح لمدة 7 أيام، ويمكن إلغاؤه من التقرير." });
+      } catch {
+        window.prompt("انسخ رابط رفع الصور للقسم", link);
+      }
+    } catch (error) {
+      toast({
+        title: "تعذّر إنشاء رابط القسم",
+        description: error instanceof Error ? error.message : "تحقق من الاتصال ثم حاول مرة أخرى.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const shareGroupViaWhatsApp = async (
+    report: Report,
+    groupIndex: number,
+    group: ImageGroup,
+  ) => {
+    const popup = window.open("about:blank", "_blank");
+    if (popup) popup.opener = null;
+    try {
+      const link = await getOrCreateGroupShareLink(report.id, groupIndex, group.shareStatus);
+      const message = [
+        "السلام عليكم،",
+        `يرجى رفع صور قسم «${group.category}» في التقرير.`,
+        `فترة التقرير من ${fmtDate(report.periodStart)} إلى ${fmtDate(report.periodEnd)}.`,
+        "",
+        "طريقة الرفع:",
+        "1. افتح الرابط أدناه.",
+        "2. اسحب الصور وأفلتها أو اخترها من جهازك.",
+        "3. بعد رفع جميع الصور اضغط «إنهاء الرفع» لتأكيد اكتمال القسم.",
+        "",
+        `رابط رفع الصور: ${link}`,
+      ].join("\n");
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+      if (popup) {
+        popup.location.href = whatsappUrl;
+        toast({ title: "جهزت رسالة المشاركة عبر واتساب" });
+      } else {
+        try {
+          await navigator.clipboard.writeText(message);
+          toast({
+            title: "تعذّر فتح واتساب تلقائياً",
+            description: "نسخت رسالة المشاركة كاملة؛ افتح واتساب والصقها.",
+          });
+        } catch {
+          window.prompt("انسخ رسالة المشاركة إلى واتساب", message);
+        }
+      }
+    } catch (error) {
+      popup?.close();
+      toast({
+        title: "تعذّر تجهيز مشاركة واتساب",
+        description: error instanceof Error ? error.message : "تحقق من الاتصال ثم حاول مرة أخرى.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const cancelGroupShare = async (reportId: number, groupIndex: number) => {
+    try {
+      const response = await fetchWithSession(
+        `/api/projects/${projectId}/reports/${reportId}/image-groups/${groupIndex}/share`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(result.error || "تعذّر إلغاء الرابط");
+      }
+      groupShareLinks.current.delete(groupShareCacheKey(reportId, groupIndex));
+      toast({ title: "تم إلغاء رابط القسم" });
+      refreshReportLists(reportId);
+    } catch (error) {
+      toast({
+        title: "تعذّر إلغاء الرابط",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getReportShareState = (report: Report) => {
+    const groups = (report.imageGroups as ImageGroup[] | null | undefined) ?? [];
+    const statuses = groups.map(group => group.shareStatus).filter(Boolean);
+    if (statuses.includes("pending")) return "pending";
+    if (statuses.includes("uploading")) return "uploading";
+    if (statuses.includes("completed")) return "completed";
+    return null;
+  };
+
+  const getReportPendingGroupNames = (report: Report) => {
+    const groups = (report.imageGroups as ImageGroup[] | null | undefined) ?? [];
+    return groups.filter(group => group.shareStatus === "pending" || group.shareStatus === "uploading")
+      .map(group => group.category);
+  };
+
+  const shareStateLabel = (status: string) => status === "pending"
+    ? "بانتظار الرفع" : status === "uploading" ? "جارٍ الرفع" : "مكتمل";
+
   const addImageGroup = (category: string) => {
     const cat = category.trim();
     if (!cat) return;
@@ -1079,13 +1233,13 @@ export default function ProjectReports() {
       toast({ variant: "destructive", title: "هذا القسم موجود مسبقاً" });
       return;
     }
-    form.setValue("imageGroups", [...current, { category: cat, urls: [] }], { shouldDirty: true });
+    form.setValue("imageGroups", [...current, { id: newImageGroupId(), category: cat, urls: [] }], { shouldDirty: true });
   };
 
   const removeImageGroup = (groupIndex: number) => {
     const current = form.getValues("imageGroups") ?? [];
     const updated = current.filter((_, i) => i !== groupIndex);
-    form.setValue("imageGroups", updated.length > 0 ? updated : [{ category: DEFAULT_CATEGORY, urls: [] }], { shouldDirty: true });
+    form.setValue("imageGroups", updated.length > 0 ? updated : [{ id: newImageGroupId(), category: DEFAULT_CATEGORY, urls: [] }], { shouldDirty: true });
   };
 
   const removeImageFromGroup = (groupIndex: number, imageIndex: number) => {
@@ -1496,20 +1650,30 @@ export default function ProjectReports() {
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
                         نسب إنجاز البنود
                       </h3>
-                      <div className="border rounded-2xl overflow-hidden shadow-sm">
-                        <div className="bg-gradient-to-r from-muted/50 to-muted/20 px-4 py-3 flex items-center justify-between flex-wrap gap-2 border-b border-border/50">
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-semibold">تحديث حالة البنود</h3>
-                            {snapshotRows.length > 0 && (
-                              <span className="text-xs text-muted-foreground bg-background px-2 py-0.5 rounded-full border shadow-sm">({snapshotRows.length} بند)</span>
-                            )}
-                          </div>
-                          {snapshotWeightedProgress != null && (
-                            <Badge variant="outline" className="font-mono bg-background shadow-sm border-primary/20 text-primary">
-                              متوسط الإنجاز الكلي: {snapshotWeightedProgress}%
-                            </Badge>
-                          )}
-                        </div>
+                      <Collapsible open={snapshotUpdateOpen} onOpenChange={setSnapshotUpdateOpen}>
+                        <div className="border rounded-2xl overflow-hidden shadow-sm">
+                          <CollapsibleTrigger asChild>
+                            <button
+                              type="button"
+                              aria-expanded={snapshotUpdateOpen}
+                              aria-controls="report-snapshot-update-content"
+                              className="w-full bg-muted/30 px-4 py-3 flex items-center justify-between flex-wrap gap-2 border-b border-border/50 text-right hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                            >
+                              <div className="flex items-center gap-2">
+                                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${snapshotUpdateOpen ? "rotate-180" : ""}`} />
+                                <h3 className="text-sm font-semibold">تحديث حالة البنود</h3>
+                                {snapshotRows.length > 0 && (
+                                  <span className="text-xs text-muted-foreground bg-background px-2 py-0.5 rounded-full border shadow-sm">({snapshotRows.length} بند)</span>
+                                )}
+                              </div>
+                              {snapshotWeightedProgress != null && (
+                                <Badge variant="outline" className="font-mono bg-background shadow-sm border-primary/20 text-primary">
+                                  متوسط الإنجاز الكلي: {snapshotWeightedProgress}%
+                                </Badge>
+                              )}
+                            </button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent id="report-snapshot-update-content">
                         <p className="px-4 py-3 text-xs text-muted-foreground">
                           التعديلات تخص هذا التقرير حتى نهاية فترته ولا تغيّر المشروع. أدخل نسبة البند لاعتمادها ثم أعد الصياغة.
                           معلومات المصدر والمخطط غير الموثق للمراجعة الداخلية فقط؛ لا تظهر في التقرير الصادر، وتُستبعد المقارنات التي لا تتوفر بياناتها.
@@ -1595,7 +1759,9 @@ export default function ProjectReports() {
                             </table>
                           </div>
                         )}
-                      </div>
+                          </CollapsibleContent>
+                        </div>
+                      </Collapsible>
                     </div>
                   </>
                 )}
@@ -1912,14 +2078,14 @@ export default function ProjectReports() {
 
         const renderDetailsBody = (report: Report) => {
           const reportGroups = (report.imageGroups as ImageGroup[] | null | undefined) ?? null;
-          const hasGroups = reportGroups && reportGroups.length > 0 && reportGroups.some(g => (g.urls?.length ?? 0) > 0);
+          const hasGroups = reportGroups && reportGroups.length > 0;
           const hasImages = (report.imageUrls && report.imageUrls.length > 0) || hasGroups;
           const totalImages = hasGroups
             ? reportGroups!.reduce((s, g) => s + (g.urls?.length ?? 0), 0)
             : (report.imageUrls?.length ?? 0);
           const displayGroups: ImageGroup[] = hasGroups
-            ? reportGroups!.filter(g => (g.urls?.length ?? 0) > 0)
-            : [{ category: "صور الموقع", urls: report.imageUrls ?? [] }];
+            ? reportGroups!
+            : (report.imageUrls?.length ? [{ category: "صور الموقع", urls: report.imageUrls }] : []);
           let runningCounter = 0;
           return (
             <div className="space-y-5">
@@ -1942,6 +2108,11 @@ export default function ProjectReports() {
                       <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">مسودة</Badge>
                     ) : (
                       <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100">معتمد</Badge>
+                    )}
+                    {getReportShareState(report) && (
+                      <Badge variant="outline" className="mt-1 border-amber-300 bg-amber-50 text-amber-900">
+                        صور الأقسام: {shareStateLabel(getReportShareState(report)!)}
+                      </Badge>
                     )}
                   </div>
                 </div>
@@ -2000,42 +2171,88 @@ export default function ProjectReports() {
 
               {hasImages && (
                 <div className="pt-3 border-t space-y-4">
+                  {displayGroups.some(group => group.shareStatus === "pending" || group.shareStatus === "uploading") && (
+                    <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                      توجد أقسام صور مشتركة لم يكتمل رفعها بعد:
+                      {" "}{displayGroups.filter(group => group.shareStatus === "pending" || group.shareStatus === "uploading")
+                        .map(group => `${group.category} (${shareStateLabel(group.shareStatus!)})`).join("، ")}
+                    </div>
+                  )}
                   {displayGroups.map((group, gi) => (
-                    <div key={gi}>
+                    <div key={group.id || gi} className="rounded-lg border p-3">
                       <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
                         <ImagePlus className="h-4 w-4 text-muted-foreground" />
                         {group.category}
                         <span className="text-xs text-muted-foreground font-normal">({group.urls.length} صورة)</span>
+                        {group.shareStatus && (
+                          <Badge variant="outline" className="text-xs border-amber-300 bg-amber-50 text-amber-900">
+                            {shareStateLabel(group.shareStatus)}
+                          </Badge>
+                        )}
                       </h4>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                        {group.urls.map((url, idx) => {
-                          runningCounter += 1;
-                          const positionLabel = `${runningCounter}/${totalImages}`;
-                          return (
-                            <button
-                              type="button"
-                              key={idx}
-                              onClick={() => void openProtectedAsset(url)}
-                              className="group relative aspect-video rounded-lg overflow-hidden border-2 border-muted hover:border-primary/40 transition-all shadow-sm hover:shadow-md block"
-                            >
-                              <ProtectedImage
-                                src={url}
-                                alt={`صورة ${idx + 1}`}
-                                loading="lazy"
-                                decoding="async"
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                              />
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </div>
-                              <div className="absolute bottom-1.5 right-1.5 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">
-                                {positionLabel}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
+                      {group.urls.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                          {group.urls.map((url, idx) => {
+                            runningCounter += 1;
+                            const positionLabel = `${runningCounter}/${totalImages}`;
+                            return (
+                              <button
+                                type="button"
+                                key={idx}
+                                onClick={() => void openProtectedAsset(url)}
+                                className="group relative aspect-video rounded-lg overflow-hidden border-2 border-muted hover:border-primary/40 transition-all shadow-sm hover:shadow-md block"
+                              >
+                                <ProtectedImage
+                                  src={url}
+                                  alt={`صورة ${idx + 1}`}
+                                  loading="lazy"
+                                  decoding="async"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                />
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                  <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                                <div className="absolute bottom-1.5 right-1.5 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">
+                                  {positionLabel}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="rounded-md border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">
+                          لا توجد صور في هذا القسم بعد.
+                        </p>
+                      )}
+                      {canEditReports && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 print:hidden">
+                          <Button type="button" size="sm" variant="outline" className="gap-2"
+                            onClick={() => void createGroupShare(report.id, gi, group.shareStatus)}>
+                            <Copy className="h-4 w-4" /> إنشاء رابط ونسخه
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="gap-2 border-green-700 text-green-800 hover:bg-green-50 hover:text-green-900"
+                            onClick={() => void shareGroupViaWhatsApp(report, gi, group)}
+                          >
+                            <MessageCircle className="h-4 w-4" /> مشاركة عبر واتساب
+                          </Button>
+                          {(group.shareStatus === "pending" || group.shareStatus === "uploading") && (
+                            <>
+                              <span className="text-xs text-muted-foreground">
+                                الرابط صالح حتى {group.shareExpiresAt ? fmtDate(group.shareExpiresAt) : "انتهاء الصلاحية"}
+                              </span>
+                              <Button type="button" size="sm" variant="ghost" className="text-destructive"
+                                onClick={() => void cancelGroupShare(report.id, gi)}>
+                                إلغاء الرابط
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -2131,10 +2348,23 @@ export default function ProjectReports() {
                                 )}
                               </td>
                               <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                                <span className="inline-flex items-center gap-1">
-                                  <ImagePlus className="h-3.5 w-3.5" />
-                                  {imgCount}
-                                </span>
+                                <div className="flex flex-col items-start gap-1">
+                                  <span className="inline-flex items-center gap-1">
+                                    <ImagePlus className="h-3.5 w-3.5" />
+                                    {imgCount}
+                                  </span>
+                                  {getReportShareState(report) && (
+                                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-900">
+                                      صور: {shareStateLabel(getReportShareState(report)!)}
+                                    </Badge>
+                                  )}
+                                  {getReportPendingGroupNames(report).length > 0 && (
+                                    <span className="max-w-44 truncate text-[10px] text-amber-800"
+                                      title={`أقسام لم يكتمل رفعها: ${getReportPendingGroupNames(report).join("، ")}`}>
+                                      لم يكتمل: {getReportPendingGroupNames(report).join("، ")}
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-3 py-2 text-left">
                                 {renderActions(report)}
@@ -2206,6 +2436,18 @@ export default function ProjectReports() {
                               <ImagePlus className="h-3.5 w-3.5" /> {imgCount}
                             </span>
                           </div>
+                          {getReportShareState(report) && (
+                            <div className="space-y-1">
+                              <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
+                                صور الأقسام: {shareStateLabel(getReportShareState(report)!)}
+                              </Badge>
+                              {getReportPendingGroupNames(report).length > 0 && (
+                                <p className="text-xs text-amber-800">
+                                  لم يكتمل رفع: {getReportPendingGroupNames(report).join("، ")}
+                                </p>
+                              )}
+                            </div>
+                          )}
                           <div className="pt-1">
                             {renderActions(report)}
                           </div>

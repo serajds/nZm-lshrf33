@@ -675,6 +675,157 @@ paths:
         "204":
           description: Deleted
 
+  /projects/{projectId}/reports/{reportId}/image-groups/{groupIndex}/share:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: reportId
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: groupIndex
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: createReportImageGroupShare
+      tags: [reports]
+      summary: Create a limited-time upload link for one saved report image group
+      responses:
+        "201":
+          description: Created upload link
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shareId:
+                    type: integer
+                  publicToken:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  category:
+                    type: string
+                required: [shareId, publicToken, expiresAt, category]
+        "404":
+          description: Report or image group not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: cancelReportImageGroupShare
+      tags: [reports]
+      summary: Cancel active upload links for one report image group
+      responses:
+        "204":
+          description: Upload links cancelled
+
+  /public/report-image-shares:
+    get:
+      operationId: getPublicReportImageShare
+      tags: [reports]
+      summary: Validate a public upload link and return limited section and report-period information
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Limited section information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  status:
+                    type: string
+                    enum: [pending, uploading]
+                  periodStart:
+                    type: string
+                    format: date
+                  periodEnd:
+                    type: string
+                    format: date
+                required: [category, expiresAt, status, periodStart, periodEnd]
+        "410":
+          description: Link expired, cancelled, or completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /public/report-image-shares/upload:
+    post:
+      operationId: uploadPublicReportImage
+      tags: [reports]
+      summary: Add one validated image to the section named by its limited upload token
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+              description: JSON-encoded object with token, fileName, mimeType, and imageBase64.
+      responses:
+        "201":
+          description: Image attached to the shared section
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploaded:
+                    type: boolean
+        "400":
+          description: Invalid or unsupported image
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Link expired, cancelled, or completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /public/report-image-shares/complete:
+    post:
+      operationId: completePublicReportImageShare
+      tags: [reports]
+      summary: Finish uploads and disable the public link
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+              description: JSON-encoded object containing the upload token.
+      responses:
+        "200":
+          description: Upload link completed
+        "410":
+          description: Link expired, cancelled, or already completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /projects/{projectId}/reports/{id}/status:
     patch:
       operationId: updateReportStatus
@@ -2452,12 +2603,22 @@ components:
           items:
             type: object
             properties:
+              id:
+                type: string
               category:
                 type: string
               urls:
                 type: array
                 items:
                   type: string
+              shareStatus:
+                type: string
+                enum: [pending, uploading, completed]
+              shareExpiresAt:
+                type: string
+                format: date-time
+              shareId:
+                type: integer
             required:
               - category
               - urls
@@ -2551,6 +2712,8 @@ components:
           items:
             type: object
             properties:
+              id:
+                type: string
               category:
                 type: string
               urls:
@@ -2633,6 +2796,8 @@ components:
           items:
             type: object
             properties:
+              id:
+                type: string
               category:
                 type: string
               urls:

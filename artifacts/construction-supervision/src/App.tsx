@@ -57,6 +57,7 @@ const Companies = lazyRoute(() => import("@/pages/companies"), "companies");
 const AuditLog = lazyRoute(() => import("@/pages/audit-log"), "audit-log");
 const OwnerPortal = lazyRoute(() => import("@/pages/owner/[token]"), "owner-portal");
 const PublicForm = lazyRoute(() => import("@/pages/public-form"), "public-form");
+const PublicReportImageUpload = lazyRoute(() => import("@/pages/public-report-image-upload"), "public-report-image-upload");
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -235,6 +236,7 @@ function Router() {
         <Route path="/login" component={Login} />
         <Route path="/owner/:token" component={OwnerPortal} />
         <Route path="/form/:token" component={PublicForm} />
+        <Route path="/report-image-upload" component={PublicReportImageUpload} />
         <Route>
           {isLoading ? (
             <FullScreenLoader />

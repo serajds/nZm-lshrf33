@@ -5,8 +5,13 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { ReportImageGroupsItemShareStatus } from "./reportImageGroupsItemShareStatus";
 
 export type ReportImageGroupsItem = {
+  id?: string;
   category: string;
   urls: string[];
+  shareStatus?: ReportImageGroupsItemShareStatus;
+  shareExpiresAt?: Date;
+  shareId?: number;
 };
