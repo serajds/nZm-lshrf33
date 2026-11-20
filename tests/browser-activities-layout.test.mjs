@@ -270,6 +270,8 @@ test("activities layout is RTL and percentages fit on desktop, mobile and Gantt"
     await waitFor(() => browser.evaluate('document.body.innerText.includes("نسبة الإنجاز") || document.body.innerText.includes("ملخص المشروع")'));
     await navigate("/dashboard");
     await navigate("/projects/1/activities");
+    assert.equal(browser.requests.filter(r => r.path === "/api/projects/1/my-activity-reminder/claim").length, 1,
+      "the daily reminder should be claimed once while navigating project tabs");
     assert.deepEqual(browser.events, []);
     const journeys = [...browser.requests];
     await browser.send("Network.enable");
