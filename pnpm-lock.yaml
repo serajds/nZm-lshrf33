@@ -139,6 +139,7 @@ overrides:
   rollup>@rollup/rollup-linux-x64-musl: '-'
   rollup>@rollup/rollup-openbsd-x64: '-'
   rollup>@rollup/rollup-openharmony-arm64: '-'
+  '@types/react-test-renderer>@types/react': 19.2.14
 
 importers:
 
@@ -824,6 +825,9 @@ importers:
       orval:
         specifier: ^8.5.2
         version: 8.5.3(prettier@3.8.1)(typescript@5.9.3)
+      typescript:
+        specifier: ~5.9.2
+        version: 5.9.3
 
   lib/api-zod:
     dependencies:
@@ -3324,9 +3328,6 @@ packages:
 
   '@types/react@19.2.14':
     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
-
-  '@types/react@19.3.0':
-    resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
 
   '@types/request@2.48.13':
     resolution: {integrity: sha512-FGJ6udDNUCjd19pp0Q3iTiDkwhYup7J8hpMW9c4k53NrccQFFWKRho6hvtPPEhnXWKvukfwAlB6DbDz4yhH5Gg==}
@@ -10150,13 +10151,9 @@ snapshots:
 
   '@types/react-test-renderer@19.3.1':
     dependencies:
-      '@types/react': 19.3.0
+      '@types/react': 19.2.14
 
   '@types/react@19.2.14':
-    dependencies:
-      csstype: 3.2.3
-
-  '@types/react@19.3.0':
     dependencies:
       csstype: 3.2.3
 
