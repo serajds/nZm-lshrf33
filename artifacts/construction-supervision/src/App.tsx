@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ComponentType } from "react";
+import { lazy, startTransition, Suspense, type ComponentType } from "react";
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
@@ -257,7 +257,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <WouterRouter
+          base={import.meta.env.BASE_URL.replace(/\/$/, "")}
+          aroundNav={(navigate, to, options) => {
+            startTransition(() => navigate(to, options));
+          }}
+        >
           <AuthProvider>
             <Router />
           </AuthProvider>

@@ -100,7 +100,16 @@ test("project tabs preserve their viewport position on desktop and phone", {
 
     const token = signToken({ userId: user.id, phone: user.phone, role: user.role });
     await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
-      source: `localStorage.setItem("auth_token", ${JSON.stringify(token)}); localStorage.setItem("pwa-install-dismissed-at", String(Date.now()));`,
+      source: `
+        localStorage.setItem("auth_token", ${JSON.stringify(token)});
+        localStorage.setItem("pwa-install-dismissed-at", String(Date.now()));
+        window.projectPageAnimations = [];
+        document.addEventListener("animationstart", event => {
+          if (event.target?.classList?.contains("page-transition")) {
+            window.projectPageAnimations.push(event.animationName);
+          }
+        });
+      `,
     });
 
     const origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
@@ -131,6 +140,7 @@ test("project tabs preserve their viewport position on desktop and phone", {
         };
       })()`);
       const linkSelector = `a[href$="/${targetTab}"]`;
+      const animationCount = await cdp.eval("window.projectPageAnimations.length");
       await cdp.eval(`document.querySelector('[data-project-page-scroll] nav[aria-label="أقسام المشروع"] ${linkSelector}').click()`);
       await until(() => cdp.eval(
         `!!document.querySelector('[data-project-page-scroll] nav[aria-label="أقسام المشروع"] a[aria-current="page"][href$="/${targetTab}"]')`,
@@ -166,6 +176,8 @@ test("project tabs preserve their viewport position on desktop and phone", {
         `${width}px viewport: horizontal tab position changed ${before.navScrollLeft} -> ${after.navScrollLeft}`);
       assert.notEqual(after.position, "sticky", "the tab bar remains in normal page flow");
       assert.ok(after.scrollTop > 0, "the page stays at the tab bar position instead of returning to the top");
+      const newAnimations = await cdp.eval(`window.projectPageAnimations.slice(${animationCount})`);
+      assert.ok(newAnimations.includes("page-transition-enter"), "the new section uses the page transition animation");
     };
 
     await assertTabPositionAfterClick({
