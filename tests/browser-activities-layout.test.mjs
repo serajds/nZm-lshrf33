@@ -90,7 +90,7 @@ class Browser {
   }
   async evaluate(expression) {
     const result = await this.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text);
+    if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
     return result.result.value;
   }
   async screenshot(file) {
@@ -186,6 +186,11 @@ test("activities layout is RTL and percentages fit on desktop, mobile and Gantt"
       const grid = document.querySelector('[aria-label="فهرس مجموعات بنود الأعمال"]');
       const table = document.querySelector('[aria-label="جدول بنود الأعمال قابل للتمرير أفقياً"]');
       const mobileCard = [...document.querySelectorAll('div')].find(el => getComputedStyle(el).display !== 'none' && el.textContent?.includes('مخطط 40.4%') && el.textContent?.includes('فعلي 10.8%') && el.children.length < 5);
+      if (!grid) return {
+        width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth,
+        gridPresent: false, visibleLabels: [...document.querySelectorAll('[aria-label]')].slice(0, 20).map(el => el.getAttribute('aria-label')),
+        bodyText: document.body.innerText.slice(0, 500),
+      };
       const shown = table && getComputedStyle(table).display !== 'none';
       const percentCells = shown ? [...table.querySelectorAll('td')].filter(td => td.textContent?.includes('10.8%')) : [];
       return {
@@ -291,14 +296,14 @@ test("activities layout is RTL and percentages fit on desktop, mobile and Gantt"
       alert?.querySelector("button")?.click();
     })()`);
     await waitFor(() => browser.evaluate('!document.body.innerText.includes("تعذر تحديث بعض البيانات")'));
-    browser.delayMs = 6000;
+    browser.delayMs = 11000;
     await browser.send("Page.reload", { ignoreCache: true });
     await waitFor(() => browser.evaluate('document.body?.innerText.includes("جارٍ تحميل البنود")'));
     assert.equal(await browser.evaluate(`(() => {
       const section = document.querySelector('[aria-labelledby="activities-overview"]');
       return section?.querySelector(".tabular-nums.text-2xl")?.textContent === "—";
     })()`), true);
-    await waitFor(() => browser.evaluate('document.body.innerText.includes("الاتصال أبطأ من المعتاد")'));
+    await waitFor(() => browser.evaluate('document.body.innerText.includes("ما زال تحميل بعض البيانات جارياً")'));
     await waitFor(() => browser.evaluate('document.body.innerText.includes("10.8%")'));
     browser.delayMs = 0;
     const resources = await browser.evaluate(`performance.getEntriesByType("resource").map(r => ({
