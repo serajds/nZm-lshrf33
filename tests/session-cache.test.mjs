@@ -215,13 +215,14 @@ test("web attendance queue stops on account changes and retains retryable auth/s
   assert.equal(shouldRetainAttendanceResponse(403), false);
 });
 
-test("PWA and mobile identity/cache boundaries remain safe", async () => {
-  const [viteConfig, cleanup, mobileQueue, mobileAuth, mobileApi, webQueue, serverApp] = await Promise.all([
+test("PWA and Expo identity/cache boundaries remain safe", async () => {
+  const [viteConfig, cleanup, mobileSession, mobileAuth, mobileApi, mobileGuard, webQueue, serverApp] = await Promise.all([
     readFile("artifacts/construction-supervision/vite.config.ts", "utf8"),
     readFile("artifacts/construction-supervision/public/cache-cleanup.js", "utf8"),
-    readFile("artifacts/mobile/lib/offlineQueue.ts", "utf8"),
-    readFile("artifacts/mobile/context/AuthContext.tsx", "utf8"),
-    readFile("artifacts/mobile/lib/api.ts", "utf8"),
+    readFile("artifacts/attendance-mobile/lib/session.ts", "utf8"),
+    readFile("artifacts/attendance-mobile/context/auth-context.tsx", "utf8"),
+    readFile("artifacts/attendance-mobile/lib/api.ts", "utf8"),
+    readFile("artifacts/attendance-mobile/lib/session-guard.ts", "utf8"),
     readFile("artifacts/construction-supervision/src/lib/offline-attendance.ts", "utf8"),
     readFile("artifacts/api-server/src/app.ts", "utf8"),
   ]);
@@ -231,18 +232,17 @@ test("PWA and mobile identity/cache boundaries remain safe", async () => {
   assert.match(viteConfig, /url\.pathname\.startsWith\("\/api\/"\)/);
   assert.match(cleanup, /key === "api-cache"/);
   assert.equal(cleanup.includes("attendance_offline_queue"), false);
-  assert.match(mobileQueue, /ownerUserId: number/);
-  assert.match(mobileQueue, /QUARANTINE_KEY/);
-  assert.match(mobileQueue, /function serialized</);
-  assert.match(mobileQueue, /item\.ownerUserId === ownerUserId/);
-  assert.match(mobileAuth, /auth_credentials_v2/);
-  assert.match(mobileAuth, /await apiGetMe\(\)/);
-  assert.match(mobileAuth, /_hydratingRevision === _authRevision/);
-  assert.match(mobileAuth, /credentials = \{ token: _currentToken, user: freshUser \}/);
-  assert.match(mobileAuth, /unregisterCurrentToken\(sessionToken\)/);
-  assert.match(mobileApi, /Authorization: `Bearer \$\{sessionToken\}`/);
-  assert.match(mobileApi, /publicAuthRequest/);
-  assert.match(mobileApi, /cache: "no-store"/);
+  assert.match(mobileSession, /SecureStore\.getItemAsync\(SESSION_KEY\)/);
+  assert.match(mobileSession, /SecureStore\.WHEN_UNLOCKED_THIS_DEVICE_ONLY/);
+  assert.match(mobileSession, /persistenceQueue/);
+  assert.match(mobileAuth, /const attempt = beginLoginAttempt\(\)/);
+  assert.match(mobileAuth, /auth: false/);
+  assert.match(mobileAuth, /queryClient\.clear\(\)/);
+  assert.match(mobileApi, /headers\.set\("Authorization", `Bearer \$\{sentToken\}`\)/);
+  assert.match(mobileApi, /applyRenewedToken\(renewedToken, sentToken\)/);
+  assert.match(mobileApi, /clearCredentialForToken\(sentToken\)/);
+  assert.match(mobileApi, /shouldExpireSession\(/);
+  assert.match(mobileGuard, /sentToken === currentToken/);
   assert.match(webQueue, /Authorization: `Bearer \$\{requestToken\}`/);
   assert.match(webQueue, /isAttendanceSessionCurrent/);
   assert.match(webQueue, /shouldRetainAttendanceResponse/);
