@@ -1,8 +1,9 @@
-import type { CSSProperties } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { CalendarRange, ClipboardList, Clock3, FileText, FolderOpen, LayoutDashboard, PauseCircle, TrendingDown, UserCheck, type LucideIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useMyProjectPermissions } from "@/hooks/use-tab-access";
+import { captureProjectTabScrollPosition, restoreProjectTabScrollPosition } from "@/lib/project-tab-scroll";
 import { ProjectActivityReminder } from "./project-activity-reminder";
 
 type TabKey =
@@ -32,8 +33,19 @@ interface ProjectNavProps {
   projectId: number;
 }
 
+interface PendingProjectTabScroll {
+  projectId: number;
+  from: string;
+  to: string;
+  capturedAt: number;
+  position: ReturnType<typeof captureProjectTabScrollPosition>;
+}
+
+let pendingProjectTabScroll: PendingProjectTabScroll | null = null;
+
 export function ProjectNav({ projectId }: ProjectNavProps) {
   const [location] = useLocation();
+  const navScrollRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const basePath = `/projects/${projectId}`;
   const userRole = user?.role;
@@ -54,16 +66,72 @@ export function ProjectNav({ projectId }: ProjectNavProps) {
     return userRole && item.legacyRoles.includes(userRole);
   });
 
+  useLayoutEffect(() => {
+    const pending = pendingProjectTabScroll;
+    if (!pending) return;
+
+    if (Date.now() - pending.capturedAt > 30_000) {
+      pendingProjectTabScroll = null;
+      return;
+    }
+
+    if (pending.projectId !== projectId || pending.to !== location) {
+      if (pending.from !== location) pendingProjectTabScroll = null;
+      return;
+    }
+
+    const scrollContainer = document.querySelector<HTMLElement>("[data-project-page-scroll]");
+    const navContainer = navScrollRef.current;
+    if (!scrollContainer || !navContainer) return;
+
+    const restoreStartedAt = Date.now();
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const restoreWhenContentIsReady = () => {
+      const restored = restoreProjectTabScrollPosition(scrollContainer, navContainer, pending.position);
+      if (restored || Date.now() - restoreStartedAt >= 5_000) {
+        if (pendingProjectTabScroll === pending) pendingProjectTabScroll = null;
+        return;
+      }
+
+      retry = setTimeout(restoreWhenContentIsReady, 50);
+    };
+    const frame = requestAnimationFrame(() => {
+      restoreWhenContentIsReady();
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (retry) clearTimeout(retry);
+    };
+  }, [location, projectId]);
+
+  const rememberScrollPosition = (targetPath: string) => {
+    if (targetPath === location) return;
+
+    const scrollContainer = document.querySelector<HTMLElement>("[data-project-page-scroll]");
+    const navContainer = navScrollRef.current;
+    if (!scrollContainer || !navContainer) return;
+
+    pendingProjectTabScroll = {
+      projectId,
+      from: location,
+      to: targetPath,
+      capturedAt: Date.now(),
+      position: captureProjectTabScrollPosition(scrollContainer, navContainer),
+    };
+  };
+
   return (
     <>
     <ProjectActivityReminder projectId={projectId} canViewActivities={navItems.some(item => item.tab === "activities")} />
-    <div
-      className="-mx-1 overflow-x-auto rounded-2xl border border-border/70 bg-card/80 p-1.5 shadow-sm md:mx-0"
-      style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" } as CSSProperties}
+    <nav
+      aria-label="أقسام المشروع"
+      className="rounded-2xl border border-border/70 bg-card p-1.5 shadow-sm md:p-2"
     >
       <div
-        className="flex gap-1"
-        style={{ minWidth: "max-content" }}
+        ref={navScrollRef}
+        className="flex gap-1.5 overflow-x-auto"
+        style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
       >
         {navItems.map((item) => {
           const href = `${basePath}${item.path}`;
@@ -73,23 +141,30 @@ export function ProjectNav({ projectId }: ProjectNavProps) {
               : location.startsWith(href);
 
           return (
-            <Link key={item.path} href={href}>
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-semibold whitespace-nowrap cursor-pointer transition-all sm:px-4 sm:text-sm ${
+            <Link
+              key={item.path}
+              href={href}
+              aria-current={isActive ? "page" : undefined}
+              onClick={() => rememberScrollPosition(href)}
+              className={`relative inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl px-3.5 text-xs font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:px-4 sm:text-sm ${
                   isActive
-                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
+                    ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
                 }`}
-                style={{ marginBottom: "-1px" }}
-              >
-                <item.icon className="h-4 w-4 shrink-0" />
-                {item.label}
-              </span>
+            >
+              <item.icon aria-hidden="true" className="h-[17px] w-[17px] shrink-0" strokeWidth={2} />
+              <span>{item.label}</span>
+              {isActive && (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-4 bottom-1 h-0.5 rounded-full bg-primary-foreground/65"
+                />
+              )}
             </Link>
           );
         })}
       </div>
-    </div>
+    </nav>
     </>
   );
 }
