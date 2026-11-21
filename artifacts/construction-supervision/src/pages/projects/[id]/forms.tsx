@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useGetProject, fetchWithSession } from "@workspace/api-client-react";
 import { useMyProjectPermissions, useTabAccess } from "@/hooks/use-tab-access";
 import { useAuth } from "@/hooks/use-auth";
@@ -986,6 +987,7 @@ export default function ProjectForms() {
   const params = useParams();
   const [, setLocation] = useLocation();
   const projectId = parseInt(params.id || "0", 10);
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -1563,7 +1565,7 @@ export default function ProjectForms() {
             />
           ) : (
             <div className="space-y-2">
-              <div className="hidden md:block">
+              {!isMobile && <div>
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
@@ -1632,9 +1634,9 @@ export default function ProjectForms() {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </div>}
 
-              <div className="md:hidden space-y-2">
+              {isMobile && <div className="space-y-2">
                 {filteredSubmissions.map(s => (
                   <Card key={s.id}>
                     <CardContent className="p-3">
@@ -1674,7 +1676,7 @@ export default function ProjectForms() {
                     </CardContent>
                   </Card>
                 ))}
-              </div>
+              </div>}
             </div>
           )}
         </div>

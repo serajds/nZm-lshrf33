@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetProject, fetchWithSession } from "@workspace/api-client-react";
 import { useMyProjectPermissions, useTabAccess } from "@/hooks/use-tab-access";
 import { useAuth } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ProjectNav } from "@/components/project-nav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,11 +22,13 @@ import { SelfieCameraDialog } from "@/components/selfie-camera-dialog";
 import { fmtLibyaDateTime, fmtLibyaTime, fmtLibyaDate, getCurrentPosition } from "@/lib/attendance-utils";
 import { ProtectedImage } from "@/components/protected-image";
 import { Loader2, MapPin, LogIn, LogOut, Camera, Printer, AlertTriangle, CheckCircle2, Crosshair, Image as ImageIcon, ArrowRight } from "lucide-react";
-import { previewAttendanceReport, type CompanyLogo, type AttendanceReportData } from "@/lib/report-pdf";
+import type { CompanyLogo, AttendanceReportData } from "@/lib/report-pdf";
 import { AttendanceLocationMapDialog, type AttendanceMapPoint } from "@/components/attendance-location-map-dialog";
-import { SiteGeofenceMap } from "@/components/site-geofence-map";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
+const SiteGeofenceMap = lazy(() =>
+  import("@/components/site-geofence-map").then(module => ({ default: module.SiteGeofenceMap })),
+);
 
 interface AttendanceRecordWithUser {
   id: number;
@@ -462,6 +465,7 @@ function ActiveTab({
   onShowPhoto: (url: string) => void;
   onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
 }) {
+  const isMobile = useIsMobile(640);
   if (loading) return <Card className="surface-card surface-card-hover"><CardContent className="py-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin inline-block" /></CardContent></Card>;
 
   return (
@@ -480,7 +484,7 @@ function ActiveTab({
         ) : (
           <>
             {/* Mobile: card list */}
-            <div className="sm:hidden space-y-2">
+            {isMobile && <div className="space-y-2">
               {active!.members.map(m => (
                 <div key={m.recordId} className="rounded-md border bg-card p-3 space-y-2 text-sm">
                   <div className="flex items-start justify-between gap-2">
@@ -522,10 +526,10 @@ function ActiveTab({
                   </div>
                 </div>
               ))}
-            </div>
+            </div>}
 
             {/* Desktop: table */}
-            <div className="hidden sm:block overflow-x-auto">
+            {!isMobile && <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-xs text-muted-foreground bg-muted/50">
                   <tr>
@@ -578,7 +582,7 @@ function ActiveTab({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div>}
           </>
         )}
       </CardContent>
@@ -718,15 +722,16 @@ function RecordsTable({ rows, showName, canManage = false, onMutated, onShowPhot
   onShowPhoto: (url: string) => void;
   onShowMap: (p: Omit<AttendanceMapPoint, "siteLat" | "siteLng" | "siteRadius">) => void;
 }) {
+  const isMobile = useIsMobile(640);
   const [editing, setEditing] = useState<AttendanceRecordWithUser | null>(null);
   const [deleting, setDeleting] = useState<AttendanceRecordWithUser | null>(null);
 
   return (
     <>
       {/* Mobile: card list */}
-      <div className="sm:hidden space-y-2">
+      {isMobile && <div className="space-y-2">
         {rows.map(r => (
-          <div key={r.id} className="rounded-md border bg-card p-3 space-y-2 text-sm">
+          <div key={r.id} data-attendance-record-id={r.id} className="rounded-md border bg-card p-3 space-y-2 text-sm">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 {showName && (
@@ -788,10 +793,10 @@ function RecordsTable({ rows, showName, canManage = false, onMutated, onShowPhot
             </div>
           </div>
         ))}
-      </div>
+      </div>}
 
       {/* Desktop: table */}
-      <div className="hidden sm:block overflow-x-auto">
+      {!isMobile && <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-xs text-muted-foreground bg-muted/50">
             <tr>
@@ -807,7 +812,7 @@ function RecordsTable({ rows, showName, canManage = false, onMutated, onShowPhot
           </thead>
           <tbody>
             {rows.map(r => (
-              <tr key={r.id} className="border-t">
+              <tr key={r.id} data-attendance-record-id={r.id} className="border-t">
                 {showName && <td className="px-2 py-2">{r.fullName ?? "—"}<div className="text-xs text-muted-foreground">{r.phone ?? ""}</div></td>}
                 <td className="px-2 py-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -863,7 +868,7 @@ function RecordsTable({ rows, showName, canManage = false, onMutated, onShowPhot
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       {editing && (
         <EditRecordDialog
@@ -1070,6 +1075,7 @@ interface ProjectMember {
 
 function EmployeeReportTab({ projectId }: { projectId: number }) {
   const { toast } = useToast();
+  const isMobile = useIsMobile(640);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [employeeId, setEmployeeId] = useState<string>("");
@@ -1142,32 +1148,41 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
     retry: false,
   });
 
-  function openPreview() {
+  async function openPreview() {
     if (!report || !report.employee || !project) {
       toast({ variant: "destructive", title: "اعرض التقرير أولاً قبل المعاينة" });
       return;
     }
-    const apiBase = API_BASE.replace("/api", "");
-    const safeSummary = report.summary ?? { totalMinutes: 0, workDays: 0, averageDailyMinutes: 0, incompleteDays: 0, longDays: 0 };
-    const safeDays = Array.isArray(report.days) ? report.days : [];
-    previewAttendanceReport({
-      projectName: project.name,
-      ownerEntity: project.ownerEntity,
-      contractor: project.contractor,
-      supervisorEntity: project.supervisorEntity,
-      location: project.location,
-      employeeName: report.employee.fullName,
-      employeeRole: report.employee.role,
-      employeePhone: report.employee.phone,
-      dateFrom: report.dateFrom ?? from ?? null,
-      dateTo: report.dateTo ?? to ?? null,
-      days: safeDays,
-      summary: safeSummary,
-      autoCloseHours: report.autoCloseHours,
-      longDayHours: report.longDayHours,
-      companyLogos: companyLogos as AttendanceReportData["companyLogos"],
-      apiBase,
-    });
+    try {
+      const { previewAttendanceReport } = await import("@/lib/report-pdf");
+      const apiBase = API_BASE.replace("/api", "");
+      const safeSummary = report.summary ?? { totalMinutes: 0, workDays: 0, averageDailyMinutes: 0, incompleteDays: 0, longDays: 0 };
+      const safeDays = Array.isArray(report.days) ? report.days : [];
+      previewAttendanceReport({
+        projectName: project.name,
+        ownerEntity: project.ownerEntity,
+        contractor: project.contractor,
+        supervisorEntity: project.supervisorEntity,
+        location: project.location,
+        employeeName: report.employee.fullName,
+        employeeRole: report.employee.role,
+        employeePhone: report.employee.phone,
+        dateFrom: report.dateFrom ?? from ?? null,
+        dateTo: report.dateTo ?? to ?? null,
+        days: safeDays,
+        summary: safeSummary,
+        autoCloseHours: report.autoCloseHours,
+        longDayHours: report.longDayHours,
+        companyLogos: companyLogos as AttendanceReportData["companyLogos"],
+        apiBase,
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "تعذّر تجهيز تقرير الحضور",
+        description: error instanceof Error ? error.message : undefined,
+      });
+    }
   }
 
   return (
@@ -1246,7 +1261,7 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
             </div>
 
             {/* Mobile: card list */}
-            <div className="sm:hidden space-y-2">
+            {isMobile && <div className="space-y-2">
               {days.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">لا توجد سجلات.</p>
               ) : days.map(d => (
@@ -1284,10 +1299,10 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
                   ))}
                 </div>
               ))}
-            </div>
+            </div>}
 
             {/* Desktop: table */}
-            <div className="hidden sm:block overflow-x-auto">
+            {!isMobile && <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-xs text-muted-foreground bg-muted/50">
                   <tr>
@@ -1332,7 +1347,7 @@ function EmployeeReportTab({ projectId }: { projectId: number }) {
                   })}
                 </tbody>
               </table>
-            </div>
+            </div>}
           </div>
           );
         })()}
@@ -1488,15 +1503,17 @@ function SiteSettingsTab({ projectId, onUpdated }: { projectId: number; onUpdate
             <a className="text-sm text-primary hover:underline inline-flex items-center gap-1" target="_blank" rel="noreferrer" href={osmLink(latNum, lngNum)}>
               <MapPin className="h-4 w-4" /> فتح الموقع في الخريطة
             </a>
-            <SiteGeofenceMap
-              lat={latNum}
-              lng={lngNum}
-              radius={radiusNum}
-              onChange={({ lat: la, lng: ln }) => {
-                setLat(la.toFixed(6));
-                setLng(ln.toFixed(6));
-              }}
-            />
+            <Suspense fallback={<div className="flex h-64 items-center justify-center text-sm text-muted-foreground">جاري تحميل الخريطة…</div>}>
+              <SiteGeofenceMap
+                lat={latNum}
+                lng={lngNum}
+                radius={radiusNum}
+                onChange={({ lat: la, lng: ln }) => {
+                  setLat(la.toFixed(6));
+                  setLng(ln.toFixed(6));
+                }}
+              />
+            </Suspense>
           </div>
         ) : null}
       </CardContent>

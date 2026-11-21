@@ -13,6 +13,7 @@ import {
   fetchWithSession,
 } from "@workspace/api-client-react";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { Activity, ProjectSuspension, UpdateActivityBodyStatus } from "@workspace/api-client-react";
 import {
   DndContext,
@@ -389,6 +390,7 @@ export default function ProjectActivities() {
   const params = useParams();
   const [, setLocation] = useLocation();
   const projectId = parseInt(params.id || "0", 10);
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const { user } = useAuth();
   const isContractorBase = user?.role === "contractor" || user?.isContractorCompanyUser === true;
@@ -2373,7 +2375,7 @@ export default function ProjectActivities() {
           </CardHeader>
 
           {/* Desktop Table */}
-          <CardContent className="min-w-0 max-w-full p-0 overflow-x-auto overscroll-x-contain hidden md:block" role="region" aria-label="جدول بنود الأعمال قابل للتمرير أفقياً" tabIndex={0}>
+          {!isMobile && <CardContent className="min-w-0 max-w-full p-0 overflow-x-auto overscroll-x-contain" role="region" aria-label="جدول بنود الأعمال قابل للتمرير أفقياً" tabIndex={0}>
             {(() => {
               const allActs = activityRows;
               const groupMap = new Map<number | "ungrouped", (Activity & { groupId?: number | null })[]>();
@@ -2681,10 +2683,10 @@ export default function ProjectActivities() {
                 </DndContext>
               );
             })()}
-          </CardContent>
+          </CardContent>}
 
           {/* Mobile Card View */}
-          <CardContent className="min-w-0 md:hidden space-y-3 px-3">
+          {isMobile && <CardContent className="min-w-0 space-y-3 px-3">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-12 gap-2">
                 <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
@@ -2874,7 +2876,7 @@ export default function ProjectActivities() {
                 </>
               );
             })()}
-          </CardContent>
+          </CardContent>}
         </Card>
         )}
       </div>
