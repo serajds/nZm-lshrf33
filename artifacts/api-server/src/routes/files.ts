@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { projectFilesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { requireTabEdit } from "../middlewares/tab-access";
+import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -11,6 +11,7 @@ import { promises as fsp } from "fs";
 import { randomUUID, createHash } from "node:crypto";
 import sharp from "sharp";
 import { uploadToCloud, deleteFromCloud } from "../lib/fileStorage";
+import { isValidBase64String } from "../lib/base64-validation";
 import { reportsTable, reportImageSharesTable } from "@workspace/db";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
@@ -58,7 +59,7 @@ async function compressImage(filePath: string): Promise<{ size: number; filename
 
 const router: IRouter = Router();
 
-router.get("/projects/:projectId/files", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/files", requireProjectAccess("projectId"), rejectContractor, requireTabView("files"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const { category } = req.query;
@@ -203,7 +204,7 @@ router.post("/public/report-image-shares/upload", async (req, res): Promise<void
   const mimeType = req.body?.mimeType;
   const originalName = typeof req.body?.fileName === "string" ? req.body.fileName : "صورة";
   if (typeof base64 !== "string" || base64.length === 0 || base64.length > Math.ceil(REPORT_SHARE_MAX_BYTES * 4 / 3) + 8
-    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
+    || !isValidBase64String(base64)) {
     res.status(400).json({ error: "بيانات الصورة غير صالحة أو تجاوزت الحجم المسموح" });
     return;
   }

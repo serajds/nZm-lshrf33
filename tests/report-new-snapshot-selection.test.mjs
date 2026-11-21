@@ -8,7 +8,7 @@ const reportPage = readFileSync(new URL("../artifacts/construction-supervision/s
 const reportPdf = readFileSync(new URL("../artifacts/construction-supervision/src/lib/report-pdf.ts", import.meta.url), "utf8");
 const serverPdf = readFileSync(new URL("../artifacts/api-server/src/routes/pdf.ts", import.meta.url), "utf8");
 
-test("new reports select only in-progress and completed items regardless of their source", () => {
+test("snapshot selection excludes not-started items without mutating the activity list", () => {
   const activities = [
     { id: 1, origin: "manual", status: "not_started", actualProgress: 0 },
     { id: 2, origin: "imported", status: "not_started", actualProgress: 0 },
@@ -23,11 +23,12 @@ test("new reports select only in-progress and completed items regardless of thei
   assert.equal(activities.length, 8, "selection must not mutate the project's activities");
 });
 
-test("selection is wired only into new-report snapshot capture; previews and both PDFs use saved rows", () => {
-  assert.match(reportRoute, /const resolvedActivities = await resolveLinkedActivityProgress\(currentActivities, reportAsOf\);[\s\S]*?const snapshot = selectReportSnapshotActivities\(resolvedActivities\)\.map/);
+test("new reports use the period snapshot; previews and PDFs use saved rows", () => {
+  assert.match(reportRoute, /getReportPeriodProgress\(projectId, periodEnd, new Date\(\), periodStart\)/);
+  assert.match(reportRoute, /const snapshot = progress\.activities/);
   assert.match(reportRoute, /activitiesSnapshot: snapshot/);
-  assert.match(reportRoute, /const existing = \(current\.snapshot \?\? null\)/);
-  assert.match(reportRoute, /mergeSnapshot\(existing, body\.activitiesSnapshot\)/);
+  assert.match(reportRoute, /const existing = \(current\.snapshot \?\? \(validReportDay\(approvalDay\)/);
+  assert.match(reportRoute, /mergeSnapshot\(existing, body\.activitiesSnapshot, approvalDay\)/);
   assert.match(reportPage, /snapshotRows\.map\(row =>/);
   assert.match(reportPage, /const sourceActivities: ReportActivitiesSnapshotItem\[\] = hasSnapshot \? snapshotActivities : \[\]/);
   assert.match(reportPdf, /@page \{ size: A4 portrait; margin: 12mm 14mm 14mm 14mm; \}/);

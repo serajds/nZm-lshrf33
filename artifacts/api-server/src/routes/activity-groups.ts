@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { activityGroupsTable, projectsTable } from "@workspace/db";
 import { eq, and, asc, ilike, sql } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { requireTabEdit } from "../middlewares/tab-access";
+import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import { captureProjectProgressHistory } from "../lib/capture-project-progress-history";
 import { canReadProject, createActivityGroupUnderSourceGraphLock, getGroupSummary, normalizeLinkCode, reconcileGroupToSideProject, reconcileTargetsLinkedToProject, refreshLinkedSources, withSourceGraphLock } from "../lib/external-sources";
 import { normalizeProjectLinkCode } from "../lib/activity-source-rules";
@@ -68,7 +68,7 @@ export async function reorderActivityGroups(
   }));
 }
 
-router.get("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/activity-groups", requireProjectAccess("projectId"), requireTabView("activities"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
   const groups = await db.select()
     .from(activityGroupsTable)
@@ -77,7 +77,7 @@ router.get("/projects/:projectId/activity-groups", requireProjectAccess("project
   res.json(groups.map(publicGroup));
 });
 
-router.get("/projects/:projectId/activity-groups/search", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/activity-groups/search", requireProjectAccess("projectId"), requireTabView("activities"), async (req, res): Promise<void> => {
   const projectId = Number(req.params.projectId);
   const query = String(req.query.query ?? "").trim();
   if (!query) {

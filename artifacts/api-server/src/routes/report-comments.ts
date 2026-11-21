@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { reportCommentsTable, reportsTable, usersTable } from "@workspace/db";
 import { and, asc, eq } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor } from "../middlewares/auth";
+import { requireTabView } from "../middlewares/tab-access";
 
 const router: IRouter = Router();
 
@@ -10,6 +11,7 @@ router.get(
   "/projects/:projectId/reports/:reportId/comments",
   requireProjectAccess("projectId"),
   rejectContractor,
+  requireTabView("reports"),
   async (req, res): Promise<void> => {
     const projectId = parseInt(String(req.params.projectId), 10);
     const reportId = parseInt(String(req.params.reportId), 10);
@@ -46,6 +48,7 @@ router.post(
   "/projects/:projectId/reports/:reportId/comments",
   requireProjectAccess("projectId"),
   rejectContractor,
+  requireTabView("reports"),
   async (req, res): Promise<void> => {
     const projectId = parseInt(String(req.params.projectId), 10);
     const reportId = parseInt(String(req.params.reportId), 10);
@@ -122,6 +125,7 @@ router.delete(
   "/projects/:projectId/reports/:reportId/comments/:id",
   requireProjectAccess("projectId"),
   rejectContractor,
+  requireTabView("reports"),
   async (req, res): Promise<void> => {
     const projectId = parseInt(String(req.params.projectId), 10);
     const reportId = parseInt(String(req.params.reportId), 10);

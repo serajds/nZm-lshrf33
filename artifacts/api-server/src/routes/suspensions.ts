@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { projectSuspensionsTable, projectsTable, activitiesTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { requireTabEdit } from "../middlewares/tab-access";
+import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
 import { refreshLinkedSources } from "../lib/external-sources";
 import { captureProjectProgressHistory } from "../lib/capture-project-progress-history";
@@ -33,7 +33,7 @@ async function shiftActivities(projectId: number, suspStartDate: string, calenda
   return [...changedGroups];
 }
 
-router.get("/projects/:projectId/suspensions", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/suspensions", requireProjectAccess("projectId"), rejectContractor, requireTabView("suspensions"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
 
   const suspensions = await db.select()

@@ -12,6 +12,7 @@ import { logger } from "../lib/logger";
 import { db } from "@workspace/db";
 import { projectMembersTable, userCompaniesTable, projectsTable, usersTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
+import { resolveTabPermissions } from "../lib/tab-permissions";
 
 // Issue a fresh token when the presented one has less than half its lifetime
 // remaining, and return it in the X-Renewed-Token response header so the
@@ -51,6 +52,7 @@ declare global {
     interface Request {
       user?: JwtPayload;
       projectRole?: string;
+      projectTabPermissions?: ReturnType<typeof resolveTabPermissions>;
     }
   }
 }
@@ -156,6 +158,7 @@ export function requireProjectAccess(paramName: string = "projectId") {
       const role = req.user?.role;
 
       if (role === "admin") {
+        req.projectTabPermissions = resolveTabPermissions("admin", null);
         next();
         return;
       }
@@ -188,6 +191,7 @@ export function requireProjectAccess(paramName: string = "projectId") {
         if (project?.contractorCompanyId && companyIds.includes(project.contractorCompanyId)) {
           if (actualRole !== "admin" && actualRole !== "project_manager") {
             req.projectRole = "contractor";
+            req.projectTabPermissions = resolveTabPermissions("contractor", null);
             next();
             return;
           }
@@ -209,6 +213,10 @@ export function requireProjectAccess(paramName: string = "projectId") {
         // need a valid membership (or contractor-company link) to access the
         // project at all — never trust role alone for project access.
         req.projectRole = actualRole === "contractor" ? "contractor" : membership.role;
+        req.projectTabPermissions = resolveTabPermissions(
+          req.projectRole as any,
+          req.projectRole === "contractor" ? null : membership.tabPermissions ?? null,
+        );
         next();
         return;
       }
@@ -225,6 +233,7 @@ export function requireProjectManager(paramName: string = "projectId") {
       const role = req.user?.role;
 
       if (role === "admin") {
+        req.projectTabPermissions = resolveTabPermissions("admin", null);
         next();
         return;
       }
@@ -276,6 +285,10 @@ export function requireProjectManager(paramName: string = "projectId") {
       }
 
       req.projectRole = membership.role;
+      req.projectTabPermissions = resolveTabPermissions(
+        membership.role as any,
+        membership.tabPermissions ?? null,
+      );
       next();
     });
   };
@@ -287,11 +300,11 @@ export async function canViewAttendancePhoto(
   recordUserId: number,
   projectId: number,
 ): Promise<boolean> {
-  if (userId === recordUserId || userRole === "admin") return true;
+  if (userRole === "admin") return true;
   if (userRole === "contractor") return false;
 
   const [[membership], [project]] = await Promise.all([
-    db.select({ role: projectMembersTable.role })
+    db.select({ role: projectMembersTable.role, tabPermissions: projectMembersTable.tabPermissions })
       .from(projectMembersTable)
       .where(and(
         eq(projectMembersTable.projectId, projectId),
@@ -301,7 +314,14 @@ export async function canViewAttendancePhoto(
       .from(projectsTable)
       .where(eq(projectsTable.id, projectId)),
   ]);
-  if (membership?.role !== "project_manager") return false;
+  if (!membership) return false;
+  const projectRole = membership.role === "contractor" ? "contractor" : membership.role;
+  const permissions = resolveTabPermissions(projectRole as any,
+    projectRole === "contractor" ? null : membership.tabPermissions ?? null);
+  if (permissions.attendance === "hidden") return false;
+
+  if (userId === recordUserId) return true;
+  if (membership.role !== "project_manager") return false;
 
   if (project?.contractorCompanyId != null) {
     const [companyLink] = await db.select({ companyId: userCompaniesTable.companyId })

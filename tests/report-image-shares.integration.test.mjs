@@ -111,6 +111,19 @@ test("report image sections persist empty groups and public links upload only in
     assert.equal(publicInfo.periodStart, "2026-11-16");
     assert.equal(publicInfo.periodEnd, "2026-11-20");
 
+    const largeNonImageBase64 = Buffer.alloc(15 * 1024 * 1024).toString("base64");
+    const largeRejectedResponse = await fetch(`${base}/public/report-image-shares/upload`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({
+        token: shareCreated.publicToken,
+        fileName: "synthetic-invalid-image.png",
+        mimeType: "image/png",
+        imageBase64: largeNonImageBase64,
+      }),
+    });
+    assert.equal(largeRejectedResponse.status, 400, "large invalid image data fails normally, not with a server error");
+
     const onePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/2p8AAAAASUVORK5CYII=";
     const uploadResponse = await fetch(`${base}/public/report-image-shares/upload`, {
       method: "POST",

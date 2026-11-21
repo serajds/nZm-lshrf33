@@ -52,21 +52,56 @@ test("measured activities, source sharing, reorder isolation, report payload and
     const current = (await import("../artifacts/api-server/src/routes/activities.ts")).default;
     const reports = (await import("../artifacts/api-server/src/routes/reports.ts")).default;
     const dashboard = (await import("../artifacts/api-server/src/routes/dashboard.ts")).default;
+    const projectsRouter = (await import("../artifacts/api-server/src/routes/projects.ts")).default;
+    const attendance = (await import("../artifacts/api-server/src/routes/attendance.ts")).default;
     const { db, usersTable, projectsTable, activitiesTable, activityGroupsTable, reportsTable,
+      formTemplatesTable, formSubmissionsTable, attendanceRecordsTable,
       requestMetrics, newRequestMetrics } = schema;
     pool = schema.pool;
-    const [admin, reader] = await db.insert(usersTable).values([
+    const [admin, reader, hiddenReader] = await db.insert(usersTable).values([
       { phone: "fixture-perf-admin", fullName: "Fixture", role: "admin", passwordHash: "unused" },
       { phone: "fixture-perf-reader", fullName: "Fixture", role: "engineer", passwordHash: "unused" },
+      { phone: "fixture-perf-hidden-reader", fullName: "Fixture", role: "engineer", passwordHash: "unused" },
     ]).returning();
     const token = signToken({ userId: admin.id, phone: admin.phone, role: admin.role });
     const readerToken = signToken({ userId: reader.id, phone: reader.phone, role: reader.role });
+    const hiddenReaderToken = signToken({ userId: hiddenReader.id, phone: hiddenReader.phone, role: hiddenReader.role });
     const projects = await db.insert(projectsTable).values(["source", "target"].map(name => ({
       name, location: "isolated", ownerEntity: "fixture", supervisorEntity: "fixture", contractor: "fixture",
       startDate: "2026-01-01", expectedEndDate: "2026-12-31",
     }))).returning();
     const [source, target] = projects;
-    await db.insert(schema.projectMembersTable).values({ projectId: target.id, userId: reader.id, role: "engineer" });
+    await db.insert(schema.projectMembersTable).values([
+      { projectId: target.id, userId: reader.id, role: "engineer" },
+      {
+        projectId: target.id, userId: hiddenReader.id, role: "engineer",
+        tabPermissions: { activities: "hidden", reports: "hidden", forms: "hidden", attendance: "hidden" },
+      },
+    ]);
+    const [hiddenTemplate] = await db.insert(formTemplatesTable).values({
+      projectId: target.id,
+      name: "synthetic hidden form",
+      fields: [{ id: "private-field", label: "Synthetic field", type: "text" }],
+    }).returning();
+    await db.insert(formSubmissionsTable).values({
+      projectId: target.id,
+      templateId: hiddenTemplate.id,
+      data: { "private-field": "synthetic hidden value" },
+      reportDate: "2026-11-21",
+    });
+    await db.update(projectsTable).set({
+      summaryWidgets: [{
+        id: "synthetic-widget",
+        label: "Synthetic widget",
+        templateId: hiddenTemplate.id,
+        fieldId: "private-field",
+      }],
+    }).where(eq(projectsTable.id, target.id));
+    await db.insert(attendanceRecordsTable).values({
+      projectId: target.id,
+      userId: hiddenReader.id,
+      type: "check_in",
+    });
     const groups = await db.insert(activityGroupsTable).values([
       { projectId: source.id, name: "source group", linkCode: "fixture-private-code" },
       ...Array.from({ length: 100 }, (_, index) => ({ projectId: target.id, name: `target ${index}`, sortOrder: index })),
@@ -99,7 +134,7 @@ test("measured activities, source sharing, reorder isolation, report payload and
       });
       app.use(compression({ threshold: 1024 }));
       app.use(express.json());
-      app.use("/api", router, reports, dashboard);
+      app.use("/api", router, reports, dashboard, projectsRouter, attendance);
       const server = app.listen(0, "127.0.0.1");
       servers.push(server);
       await once(server, "listening");
@@ -148,6 +183,10 @@ test("measured activities, source sharing, reorder isolation, report payload and
         samples.push(await run(`${url}/activities/reorder`, order));
         assert.equal(samples.at(-1).status, 200);
       }
+      if (label === "after") {
+        assert.ok(samples.every(sample => sample.queries <= 16),
+          "request-local tab permissions should avoid duplicate membership lookups on edits");
+      }
       results.push(...samples.map((sample, index) => ({ label, operation: "reorder-100-100-groups", sample: index, ...summarize(sample) })));
     }
     await t.test("order and source values stay correct; stale claims never expose private sources", async () => {
@@ -160,6 +199,26 @@ test("measured activities, source sharing, reorder isolation, report payload and
       assert.equal(redacted.status, 200);
       assert.ok(redacted.queries < 25);
       assert.ok(redacted.data.every(row => !("externalSourceGroupId" in row) && !("linkCode" in row.externalSource)));
+      assert.equal((await request(`${url}/activities`, undefined, hiddenReaderToken)).status, 403);
+      assert.equal((await request(`${url}/reports`, undefined, hiddenReaderToken)).status, 403);
+      const hiddenDashboard = await request("/dashboard/summary", undefined, hiddenReaderToken);
+      assert.equal(hiddenDashboard.status, 200);
+      assert.equal(hiddenDashboard.data.totalProjects, 1);
+      assert.equal(hiddenDashboard.data.totalReports, 0);
+      assert.equal(hiddenDashboard.data.totalActivities, 0);
+      assert.deepEqual(hiddenDashboard.data.recentReports, []);
+      const hiddenWidgets = await request(`/projects/${target.id}/summary-widgets`, undefined, hiddenReaderToken);
+      assert.equal(hiddenWidgets.status, 200);
+      assert.equal(hiddenWidgets.data[0].value, null);
+      assert.equal(hiddenWidgets.data[0].fieldLabel, null);
+      const hiddenAttendance = await request("/attendance/my-status", undefined, hiddenReaderToken);
+      assert.deepEqual(hiddenAttendance.data, []);
+      assert.equal((await request(`/attendance/my-history?projectId=${target.id}`, undefined, hiddenReaderToken)).status, 403);
+      assert.deepEqual((await request("/attendance/my-history", undefined, hiddenReaderToken)).data, []);
+      const deniedEdit = await request(`${url}/activities/reorder`, {
+        items: [...rows].map((row, sortOrder) => ({ id: row.id, sortOrder })),
+      }, readerToken);
+      assert.equal(deniedEdit.status, 403);
       // Concurrent operations are serialized, and the final request wins.
       const ascending = { items: rows.map((row, sortOrder) => ({ id: row.id, sortOrder })) };
       const reversed = { items: [...rows].reverse().map((row, sortOrder) => ({ id: row.id, sortOrder })) };

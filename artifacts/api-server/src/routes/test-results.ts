@@ -5,12 +5,9 @@ import { eq } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import { getUncachableOneDriveClient } from "../lib/onedrive";
 import { requireAdmin } from "../middlewares/auth";
+import { JWT_SECRET } from "../lib/auth";
 
 const router: IRouter = Router();
-const JWT_SECRET =
-  process.env.JWT_SECRET ||
-  process.env.SESSION_SECRET ||
-  "dev-owner-secret-key-change-in-prod";
 
 router.get(
   "/owner/:token/test-results",

@@ -3,11 +3,11 @@ import { db } from "@workspace/db";
 import { formTemplatesTable, formSubmissionsTable, usersTable, skippedDaysTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { requireTabEdit, loadEffectiveTabPermissions } from "../middlewares/tab-access";
+import { requireTabEdit, requireTabView, loadEffectiveTabPermissions } from "../middlewares/tab-access";
 
 const router = Router();
 
-router.get("/projects/:id/form-templates", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.get("/projects/:id/form-templates", requireProjectAccess("id"), requireTabView("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
 
@@ -24,7 +24,7 @@ router.get("/projects/:id/form-templates", requireProjectAccess("id"), async (re
   res.json(templates);
 });
 
-router.get("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.get("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), requireTabView("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = parseInt(Array.isArray(req.params.templateId) ? req.params.templateId[0] : req.params.templateId, 10);
 
@@ -46,7 +46,7 @@ router.get("/projects/:id/form-templates/:templateId", requireProjectAccess("id"
   res.json(template);
 });
 
-router.post("/projects/:id/form-templates", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.post("/projects/:id/form-templates", requireProjectAccess("id"), requireTabEdit("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const userRole = req.user?.role;
   const projectRole = req.projectRole;
@@ -78,7 +78,7 @@ router.post("/projects/:id/form-templates", requireProjectAccess("id"), async (r
   res.status(201).json(template);
 });
 
-router.put("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.put("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), requireTabEdit("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = parseInt(Array.isArray(req.params.templateId) ? req.params.templateId[0] : req.params.templateId, 10);
   const userRole = req.user?.role;
@@ -118,7 +118,7 @@ router.put("/projects/:id/form-templates/:templateId", requireProjectAccess("id"
   res.json(template);
 });
 
-router.delete("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.delete("/projects/:id/form-templates/:templateId", requireProjectAccess("id"), requireTabEdit("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = parseInt(Array.isArray(req.params.templateId) ? req.params.templateId[0] : req.params.templateId, 10);
   const userRole = req.user?.role;
@@ -143,7 +143,7 @@ router.delete("/projects/:id/form-templates/:templateId", requireProjectAccess("
   res.sendStatus(204);
 });
 
-router.get("/projects/:id/form-submissions", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.get("/projects/:id/form-submissions", requireProjectAccess("id"), requireTabView("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = req.query.templateId ? parseInt(req.query.templateId as string, 10) : undefined;
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
@@ -169,7 +169,7 @@ router.get("/projects/:id/form-submissions", requireProjectAccess("id"), async (
   res.json(submissions);
 });
 
-router.get("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.get("/projects/:id/form-submissions/:submissionId", requireProjectAccess("id"), requireTabView("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const submissionId = parseInt(Array.isArray(req.params.submissionId) ? req.params.submissionId[0] : req.params.submissionId, 10);
 
@@ -198,7 +198,7 @@ router.get("/projects/:id/form-submissions/:submissionId", requireProjectAccess(
   res.json(submission);
 });
 
-router.post("/projects/:id/form-submissions", requireProjectAccess("id"), rejectViewer, async (req, res): Promise<void> => {
+router.post("/projects/:id/form-submissions", requireProjectAccess("id"), requireTabView("forms", "id"), rejectViewer, async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const { templateId, data, reportDate, notes, status } = req.body;
 
@@ -341,7 +341,7 @@ router.delete("/projects/:id/form-submissions/:submissionId", requireProjectAcce
   res.sendStatus(204);
 });
 
-router.get("/projects/:id/daily-gaps", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.get("/projects/:id/daily-gaps", requireProjectAccess("id"), requireTabView("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
   if (isContractor) {
@@ -454,7 +454,7 @@ router.post("/projects/:id/skip-day", requireProjectAccess("id"), rejectContract
   res.status(201).json(record);
 });
 
-router.get("/projects/:id/submission-stats", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.get("/projects/:id/submission-stats", requireProjectAccess("id"), requireTabView("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const isContractor = req.user?.role === "contractor" || req.projectRole === "contractor";
 

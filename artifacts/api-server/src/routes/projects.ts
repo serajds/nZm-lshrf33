@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, activityGroupsTable, reportsTable, projectFilesTable, companiesTable, projectMembersTable, userCompaniesTable, formSubmissionsTable, formTemplatesTable, projectSuspensionsTable } from "@workspace/db";
 import { eq, ilike, or, sql, inArray, and } from "drizzle-orm";
 import { requireAuth, requireEngineerOrAdmin, requireProjectAccess, requireAdmin } from "../middlewares/auth";
+import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import { v4 as uuidv4 } from "uuid";
 import { hashPassword as hashPw } from "../lib/auth";
 import { deleteProjectUnderSourceGraphLock, withSourceGraphLock } from "../lib/external-sources";
@@ -458,7 +459,7 @@ router.delete("/projects/:id", requireAdmin, async (req, res): Promise<void> => 
   res.sendStatus(204);
 });
 
-router.post("/projects/:projectId/generate-owner-link", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.post("/projects/:projectId/generate-owner-link", requireProjectAccess("projectId"), requireTabEdit("overview"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -514,7 +515,7 @@ router.post("/projects/:projectId/generate-owner-link", requireProjectAccess("pr
   res.json({ token, url });
 });
 
-router.get("/projects/:id/summary-widgets", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.get("/projects/:id/summary-widgets", requireProjectAccess("id"), requireTabView("overview", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
 
   const [project] = await db.select({ summaryWidgets: projectsTable.summaryWidgets })
@@ -527,6 +528,17 @@ router.get("/projects/:id/summary-widgets", requireProjectAccess("id"), async (r
   }
 
   const widgets = (project.summaryWidgets as any[]) || [];
+  if (req.projectTabPermissions?.forms === "hidden") {
+    res.json(widgets.map((widget: any) => ({
+      id: widget.id,
+      label: widget.label,
+      templateId: widget.templateId,
+      fieldId: widget.fieldId,
+      value: null,
+      fieldLabel: null,
+    })));
+    return;
+  }
 
   // PERFORMANCE: the previous implementation did 2 sequential DB
   // round-trips PER widget (template fetch, then latest submission).
@@ -590,7 +602,7 @@ router.get("/projects/:id/summary-widgets", requireProjectAccess("id"), async (r
   res.json(results);
 });
 
-router.put("/projects/:id/summary-widgets", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.put("/projects/:id/summary-widgets", requireProjectAccess("id"), requireTabEdit("overview", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const userRole = req.user?.role;
   const projectRole = req.projectRole;
@@ -615,7 +627,7 @@ router.put("/projects/:id/summary-widgets", requireProjectAccess("id"), async (r
 
 export default router;
 
-router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/ai-executive-summary", requireProjectAccess("projectId"), requireTabView("overview"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   if (req.query.curve != null && req.query.curve !== "linear" && req.query.curve !== "scurve") {

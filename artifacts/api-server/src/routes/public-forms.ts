@@ -2,22 +2,13 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { formTemplatesTable, formSubmissionsTable, projectsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import crypto from "crypto";
 import { requireProjectAccess } from "../middlewares/auth";
-
-function generateShortToken(length = 5): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  const bytes = crypto.randomBytes(length);
-  let result = "";
-  for (let i = 0; i < length; i++) {
-    result += chars[bytes[i] % chars.length];
-  }
-  return result;
-}
+import { requireTabEdit } from "../middlewares/tab-access";
+import { generatePublicFormToken } from "../lib/public-form-token";
 
 const router = Router();
 
-router.post("/projects/:id/form-templates/:templateId/public-link", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.post("/projects/:id/form-templates/:templateId/public-link", requireProjectAccess("id"), requireTabEdit("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = parseInt(Array.isArray(req.params.templateId) ? req.params.templateId[0] : req.params.templateId, 10);
 
@@ -42,14 +33,14 @@ router.post("/projects/:id/form-templates/:templateId/public-link", requireProje
     return;
   }
 
-  let token = generateShortToken(5);
+  let token = generatePublicFormToken();
   let attempts = 0;
   while (attempts < 10) {
     const [existing] = await db.select({ id: formTemplatesTable.id })
       .from(formTemplatesTable)
       .where(eq(formTemplatesTable.publicToken, token));
     if (!existing) break;
-    token = generateShortToken(5);
+    token = generatePublicFormToken();
     attempts++;
   }
 
@@ -61,7 +52,7 @@ router.post("/projects/:id/form-templates/:templateId/public-link", requireProje
   res.json({ publicToken: updated.publicToken });
 });
 
-router.delete("/projects/:id/form-templates/:templateId/public-link", requireProjectAccess("id"), async (req, res): Promise<void> => {
+router.delete("/projects/:id/form-templates/:templateId/public-link", requireProjectAccess("id"), requireTabEdit("forms", "id"), async (req, res): Promise<void> => {
   const projectId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const templateId = parseInt(Array.isArray(req.params.templateId) ? req.params.templateId[0] : req.params.templateId, 10);
 

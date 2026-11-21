@@ -4,8 +4,9 @@ import { measurePhase } from "@workspace/db";
 import { activitiesTable, projectsTable, activityGroupsTable, projectMembersTable, memberGroupAssignmentsTable } from "@workspace/db";
 import { eq, and, avg, max, inArray } from "drizzle-orm";
 import { activityOrderCase, validActivityOrderItems } from "../lib/activity-order";
+import { isValidBase64String } from "../lib/base64-validation";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { loadProjectVisibilityForUser, requireTabEdit } from "../middlewares/tab-access";
+import { loadProjectVisibilityForUser, requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import { recalcExpectedEndDate } from "../lib/recalc-end-date";
 import { captureProjectProgressHistory, type HistoryTransaction } from "../lib/capture-project-progress-history";
 import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
@@ -155,7 +156,7 @@ async function serializeSingleActivityForUser(
   return serializeActivityForUser(activity, asOf, hasSchedule, summaries, sourceAccess);
 }
 
-router.get("/projects/:projectId/activities", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/activities", requireProjectAccess("projectId"), requireTabView("activities"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
 
@@ -593,7 +594,7 @@ router.post("/projects/:projectId/activities/import/preview", requireProjectAcce
   if (!["detect", "existing", "none"].includes(mode) ||
       (mode === "existing" && (!Number.isInteger(groupId) || groupId <= 0)) ||
       typeof fileBase64 !== "string" || fileBase64.length > 7_000_000 ||
-      !/^[A-Za-z0-9+/]+={0,2}$/.test(fileBase64)) {
+      !isValidBase64String(fileBase64, { allowUnpadded: true })) {
     res.status(400).json({ error: "اختر طريقة الاستيراد وأرفق ملف Excel صالحاً لا يتجاوز 5 ميغابايت" });
     return;
   }

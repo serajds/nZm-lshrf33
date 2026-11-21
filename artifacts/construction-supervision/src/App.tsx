@@ -83,7 +83,7 @@ const queryClient = new QueryClient({
   },
 });
 
-import { FullScreenLoader, PageFallback, AuthConnectionProblem } from "@/components/loaders";
+import { FullScreenLoader, PageFallback, PageDataLoadingProgress, AuthConnectionProblem } from "@/components/loaders";
 import { PageTransition } from "@/components/page-transition";
 
 // PageFallback and FullScreenLoader have been moved to @/components/loaders
@@ -140,6 +140,7 @@ function AuthenticatedShell() {
   return (
     <AutomaticNoticeProvider key={user?.id}>
     <AppLayout>
+      <PageDataLoadingProgress />
       <ConnectionStatus />
       {connectionError && (
         <div role="alert" dir="rtl" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted p-3 text-sm">

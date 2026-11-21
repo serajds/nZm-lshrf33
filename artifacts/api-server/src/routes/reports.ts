@@ -4,7 +4,7 @@ import { db, reportImageSharesTable } from "@workspace/db";
 import { reportsTable, activitiesTable, projectsTable, activityGroupsTable } from "@workspace/db";
 import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectManager } from "../middlewares/auth";
-import { requireTabEdit } from "../middlewares/tab-access";
+import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
 import { getReportPeriodProgress, validReportDay } from "../lib/report-period-progress";
 import { buildReportAiContext, reportAiSnapshotFingerprint } from "../lib/report-ai-context";
@@ -185,7 +185,7 @@ async function attachImageShareStatus<T extends { id: number; imageGroups: unkno
 
 const router: IRouter = Router();
 
-router.get("/projects/:projectId/reports/progress-as-of", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/reports/progress-as-of", requireProjectAccess("projectId"), rejectContractor, requireTabView("reports"), async (req, res): Promise<void> => {
   if (!validReportDay(req.query.periodEnd)) {
     res.status(400).json({ error: "تاريخ نهاية الفترة غير صالح" });
     return;
@@ -470,7 +470,7 @@ router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("proje
   }
 });
 
-router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), rejectContractor, requireTabView("reports"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const { type, dateFrom, dateTo } = req.query;
@@ -835,7 +835,7 @@ router.post("/projects/:projectId/reports/:id/duplicate", requireProjectAccess("
   res.status(201).json(copy);
 });
 
-router.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, requireTabView("reports"), async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
@@ -970,7 +970,7 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
   res.json(report);
 });
 
-router.patch("/projects/:projectId/reports/:id/status", requireProjectManager("projectId"), async (req, res): Promise<void> => {
+router.patch("/projects/:projectId/reports/:id/status", requireProjectManager("projectId"), requireTabEdit("reports"), async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
