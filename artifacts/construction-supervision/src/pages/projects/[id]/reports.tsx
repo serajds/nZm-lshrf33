@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { NewReportProgressField, useReportPeriodProgress } from "@/components/report-period-progress";
 import { reportTypeLabel, suggestedReportPeriodEnd } from "@/lib/report-types";
 import { 
@@ -456,6 +457,7 @@ export default function ProjectReports() {
   const params = useParams();
   const [, setLocation] = useLocation();
   const projectId = parseInt(params.id || "0", 10);
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   usePageTitle("التقارير");
@@ -2293,7 +2295,7 @@ export default function ProjectReports() {
             ) : (
               <>
                 {/* Desktop: table view */}
-                <Card className="hidden md:block overflow-hidden">
+                {!isMobile && <Card className="overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-muted/60 text-muted-foreground">
@@ -2392,10 +2394,10 @@ export default function ProjectReports() {
                       </tbody>
                     </table>
                   </div>
-                </Card>
+                </Card>}
 
                 {/* Mobile: compact cards */}
-                <div className="grid gap-3 md:hidden">
+                {isMobile && <div className="grid gap-3">
                   {reportsList.map((report) => {
                     const imgCount = countImages(report);
                     return (
@@ -2472,7 +2474,7 @@ export default function ProjectReports() {
                       </Card>
                     );
                   })}
-                </div>
+                </div>}
               </>
             )}
 

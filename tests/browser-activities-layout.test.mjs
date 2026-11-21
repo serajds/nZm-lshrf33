@@ -23,6 +23,21 @@ const activities = groups.map((group, i) => ({
   plannedStartDate: "2026-01-01", plannedEndDate: "2026-11-01",
   actualStartDate: "2026-03-01", actualEndDate: null,
 }));
+const attendanceRecords = Array.from({ length: 80 }, (_, index) => ({
+  id: index + 1,
+  userId: 2,
+  fullName: "موظف اختبار",
+  phone: null,
+  type: index % 2 ? "check_out" : "check_in",
+  recordedAt: "2026-11-20T08:00:00.000Z",
+  latitude: null,
+  longitude: null,
+  accuracyMeters: null,
+  distanceMeters: null,
+  outOfRange: false,
+  selfieUrl: null,
+  notes: null,
+}));
 
 function fixtureFor(url) {
   const path = new URL(url).pathname;
@@ -40,6 +55,7 @@ function fixtureFor(url) {
   if (path === "/api/projects/1/summary") return { overallProgress: 10.8, plannedProgress: 40.4, recentReports: [], activitiesTotal: 7 };
   if (path === "/api/dashboard/summary") return { allProjects: [], recentProjects: [], recentReports: [], delayedActivities: [] };
   if (path === "/api/attendance/projects/1/active") return { activeCount: 0, members: [] };
+  if (path === "/api/attendance/projects/1/records") return attendanceRecords;
   return [];
 }
 
@@ -202,6 +218,7 @@ test("activities layout is RTL and percentages fit on desktop, mobile and Gantt"
         firstCardRight: grid.firstElementChild.getBoundingClientRect().right,
         gridRight: grid.getBoundingClientRect().right,
         tableVisible: shown,
+        renderedActivityRows: document.querySelectorAll("[data-activity-id]").length,
         hasRoundedRows: shown ? table.textContent.includes('40.4%') && table.textContent.includes('-29.7%') : Boolean(mobileCard),
         hasRawRows: shown ? table.textContent.includes('10.769230769230769') : document.body.innerText.includes('10.769230769230769'),
         overflowingCells: percentCells.filter(td => [...td.querySelectorAll('span[dir="ltr"],bdi[dir="ltr"]')].some(el => el.getBoundingClientRect().right > td.getBoundingClientRect().right + 1 || el.getBoundingClientRect().left < td.getBoundingClientRect().left - 1)).length,
@@ -213,6 +230,7 @@ test("activities layout is RTL and percentages fit on desktop, mobile and Gantt"
     assert.ok(desktop.gridWidth >= desktop.parentWidth * 0.95, JSON.stringify(desktop));
     assert.ok(Math.abs(desktop.firstCardRight - desktop.gridRight) < 3, JSON.stringify(desktop));
     assert.ok(desktop.hasRoundedRows && !desktop.hasRawRows && !desktop.overflowingCells, JSON.stringify(desktop));
+    assert.equal(desktop.renderedActivityRows, activities.length, "only the desktop activity rows should be mounted");
     assert.ok(desktop.scrollWidth <= desktop.width + 1, JSON.stringify(desktop));
     await browser.evaluate('document.querySelector("[aria-label=\\"فهرس مجموعات بنود الأعمال\\"]").scrollIntoView()');
     await browser.screenshot("/tmp/activities-desktop-groups.png");
@@ -223,6 +241,7 @@ test("activities layout is RTL and percentages fit on desktop, mobile and Gantt"
     await delay(300);
     const mobile = await measure();
     assert.equal(mobile.columns, 1, JSON.stringify(mobile));
+    assert.equal(mobile.renderedActivityRows, activities.length, "only the mobile activity cards should be mounted");
     assert.ok(mobile.hasRoundedRows && !mobile.hasRawRows, JSON.stringify(mobile));
     assert.ok(mobile.scrollWidth <= mobile.width + 1, JSON.stringify(mobile));
     await browser.evaluate('document.querySelector("[aria-label=\\"فهرس مجموعات بنود الأعمال\\"]").scrollIntoView()');
@@ -266,6 +285,28 @@ test("activities layout is RTL and percentages fit on desktop, mobile and Gantt"
       "returning to a fresh cached activities query must not issue another network read");
     await navigate("/projects/1/attendance");
     await waitFor(() => browser.evaluate('document.body.innerText.includes("حضور وانصراف الطاقم")'));
+    const historyTab = await browser.evaluate(`(() => {
+      const tab = [...document.querySelectorAll('[role="tab"]')].find(el => el.textContent.includes("سجل المشروع"));
+      if (!tab) throw new Error("Attendance project history tab not found");
+      const rect = tab.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    })()`);
+    await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...historyTab });
+    await browser.send("Input.dispatchMouseEvent", { type: "mousePressed", ...historyTab, button: "left", clickCount: 1 });
+    await browser.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...historyTab, button: "left", clickCount: 1 });
+    await waitFor(() => browser.evaluate('document.querySelectorAll("[data-attendance-record-id]").length === 80'));
+    assert.equal(
+      await browser.evaluate('document.querySelectorAll("[data-attendance-record-id]").length'),
+      attendanceRecords.length,
+      "only one responsive attendance record view should be mounted",
+    );
+    await browser.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await delay(100);
+    assert.equal(
+      await browser.evaluate('document.querySelectorAll("[data-attendance-record-id]").length'),
+      attendanceRecords.length,
+      "changing viewport should swap to one mobile record view",
+    );
     await navigate("/projects/1");
     await waitFor(() => browser.evaluate('document.body.innerText.includes("نسبة الإنجاز") || document.body.innerText.includes("ملخص المشروع")'));
     await navigate("/dashboard");
