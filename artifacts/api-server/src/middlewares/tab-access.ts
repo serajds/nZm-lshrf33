@@ -78,7 +78,6 @@ export async function loadProjectVisibilityForUser(
   }
   return result;
 }
-
 /**
  * Compute the effective tab permissions for the authenticated user on a project,
  * combining their global role, their project_members entry (if any), and any
@@ -157,15 +156,54 @@ export function requireTabEdit(tabKey: TabKey, paramName: string = "projectId") 
       return;
     }
 
-    const result = await loadEffectiveTabPermissions(userId, projectId);
-    if (!result) {
+    const result = req.projectTabPermissions
+      ? null
+      : await loadEffectiveTabPermissions(userId, projectId);
+    const effective = req.projectTabPermissions ?? result?.effective;
+    if (!effective) {
       res.status(403).json({ error: "ليس لديك صلاحية الوصول لهذا المشروع" });
       return;
     }
-    if (result.effective[tabKey] !== "edit") {
+    if (effective[tabKey] !== "edit") {
       res.status(403).json({ error: "ليس لديك صلاحية التعديل على هذا القسم" });
       return;
     }
     next();
   };
 }
+
+/**
+ * Requires at least view access to a project tab. Chain after
+ * requireProjectAccess so the effective permissions are already available
+ * on the request and no extra membership queries are needed.
+ */
+export function requireTabView(tabKey: TabKey, paramName: string = "projectId") {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "غير مصرح" });
+      return;
+    }
+    const rawId = req.params[paramName] || req.params.id;
+    const projectId = parseInt(Array.isArray(rawId) ? rawId[0] : rawId, 10);
+    if (isNaN(projectId)) {
+      res.status(400).json({ error: "معرف المشروع غير صالح" });
+      return;
+    }
+
+    const result = req.projectTabPermissions
+      ? null
+      : await loadEffectiveTabPermissions(userId, projectId);
+    const effective = req.projectTabPermissions ?? result?.effective;
+    if (!effective) {
+      res.status(403).json({ error: "ليس لديك صلاحية الوصول لهذا المشروع" });
+      return;
+    }
+    if (effective[tabKey] === "hidden") {
+      res.status(403).json({ error: "ليس لديك صلاحية عرض هذا القسم" });
+      return;
+    }
+    next();
+  };
+}
+// This also supports routes that resolve tab access without precomputed request permissions.

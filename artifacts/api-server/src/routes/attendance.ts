@@ -3,7 +3,9 @@ import { db } from "@workspace/db";
 import { attendanceRecordsTable, projectsTable, usersTable, projectMembersTable, userCompaniesTable } from "@workspace/db";
 import { eq, and, desc, gte, lte, inArray, sql } from "drizzle-orm";
 import { canViewAttendancePhoto, requireAuth, requireProjectAccess, verifyAndMaybeRenewToken } from "../middlewares/auth";
-import { requireTabEdit } from "../middlewares/tab-access";
+import { loadEffectiveTabPermissions, requireTabEdit, requireTabView } from "../middlewares/tab-access";
+import { parseAttendanceEventTime } from "../lib/attendance-event-time";
+import { resolveTabPermissions } from "../lib/tab-permissions";
 import { haversineDistanceMeters } from "../lib/geo";
 import { logAudit } from "../lib/audit";
 import { pairAttendanceSessions, type AttendanceSession } from "../lib/attendance-sessions";
@@ -184,23 +186,36 @@ async function getProjectIdsForUser(userId: number, role: string): Promise<numbe
     const all = await db.select({ id: projectsTable.id }).from(projectsTable);
     return all.map(p => p.id);
   }
-  const ids = new Set<number>();
-  const memberships = await db.select({ projectId: projectMembersTable.projectId })
+  if (role === "contractor") return [];
+  const memberships = await db.select({
+    projectId: projectMembersTable.projectId,
+    role: projectMembersTable.role,
+    tabPermissions: projectMembersTable.tabPermissions,
+  })
     .from(projectMembersTable)
     .where(eq(projectMembersTable.userId, userId));
-  memberships.forEach(m => ids.add(m.projectId));
+  if (memberships.length === 0) return [];
 
-  const companies = await db.select({ companyId: userCompaniesTable.companyId })
-    .from(userCompaniesTable)
-    .where(eq(userCompaniesTable.userId, userId));
-  if (companies.length > 0) {
-    const cIds = companies.map(c => c.companyId);
-    const projects = await db.select({ id: projectsTable.id })
-      .from(projectsTable)
-      .where(inArray(projectsTable.contractorCompanyId, cIds));
-    projects.forEach(p => ids.add(p.id));
-  }
-  return Array.from(ids);
+  const companyLinks = role === "project_manager"
+    ? []
+    : await db.select({ companyId: userCompaniesTable.companyId })
+        .from(userCompaniesTable)
+        .where(eq(userCompaniesTable.userId, userId));
+  const companyIds = new Set(companyLinks.map(link => link.companyId));
+  const projectRows = companyIds.size > 0
+    ? await db.select({ id: projectsTable.id, contractorCompanyId: projectsTable.contractorCompanyId })
+        .from(projectsTable)
+        .where(inArray(projectsTable.id, memberships.map(membership => membership.projectId)))
+    : [];
+  const contractorProjectIds = new Set(projectRows
+    .filter(project => project.contractorCompanyId != null && companyIds.has(project.contractorCompanyId))
+    .map(project => project.id));
+
+  return memberships.filter((membership) => {
+    if (membership.role === "contractor" || contractorProjectIds.has(membership.projectId)) return false;
+    const permissions = resolveTabPermissions(membership.role as any, membership.tabPermissions ?? null);
+    return permissions.attendance !== "hidden";
+  }).map(membership => membership.projectId);
 }
 
 // Get current user's status across all their projects
@@ -273,11 +288,28 @@ router.get("/attendance/my-history", requireAuth, async (req, res): Promise<void
   }
   const userId = req.user!.userId;
   const limit = Math.min(parseInt(String(req.query.limit ?? "100"), 10) || 100, 500);
-  const projectIdQ = req.query.projectId !== undefined ? parseInt(String(req.query.projectId), 10) : NaN;
+  const hasProjectId = req.query.projectId !== undefined;
+  const projectIdQ = hasProjectId ? parseInt(String(req.query.projectId), 10) : NaN;
+  if (hasProjectId && (!Number.isSafeInteger(projectIdQ) || projectIdQ <= 0)) {
+    res.status(400).json({ error: "معرف المشروع غير صالح" });
+    return;
+  }
 
   const conds = [eq(attendanceRecordsTable.userId, userId)];
-  if (!Number.isNaN(projectIdQ)) {
+  if (hasProjectId) {
+    const access = await loadEffectiveTabPermissions(userId, projectIdQ);
+    if (!access || access.effective.attendance === "hidden") {
+      res.status(403).json({ error: "ليس لديك صلاحية عرض حضور هذا المشروع" });
+      return;
+    }
     conds.push(eq(attendanceRecordsTable.projectId, projectIdQ));
+  } else {
+    const projectIds = await getProjectIdsForUser(userId, req.user!.role);
+    if (projectIds.length === 0) {
+      res.json([]);
+      return;
+    }
+    conds.push(inArray(attendanceRecordsTable.projectId, projectIds));
   }
 
   const records = await db.select({
@@ -374,6 +406,13 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
   }
 
   if (!req.file) { res.status(400).json({ error: "صورة من الموقع مطلوبة" }); return; }
+
+  const eventTime = parseAttendanceEventTime(req.body.capturedAt);
+  if (!eventTime.ok) {
+    fs.unlink(req.file.path, () => {});
+    res.status(400).json({ error: "وقت تسجيل الحضور غير صالح" });
+    return;
+  }
 
   const lat = req.body.latitude !== undefined ? parseFloat(String(req.body.latitude)) : NaN;
   const lng = req.body.longitude !== undefined ? parseFloat(String(req.body.longitude)) : NaN;
@@ -473,6 +512,7 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
     projectId,
     userId,
     type,
+    ...(eventTime.recordedAt ? { recordedAt: eventTime.recordedAt } : {}),
     latitude: lat,
     longitude: lng,
     accuracyMeters: Number.isNaN(acc) ? null : acc,
@@ -535,6 +575,7 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
 router.get(
   "/attendance/projects/:projectId/active",
   requireProjectAccess("projectId"),
+  requireTabView("attendance"),
   async (req, res): Promise<void> => {
     const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
     const projectId = parseInt(raw, 10);
@@ -639,6 +680,7 @@ router.get(
 router.get(
   "/attendance/projects/:projectId/records",
   requireProjectAccess("projectId"),
+  requireTabView("attendance"),
   async (req, res): Promise<void> => {
     const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
     const projectId = parseInt(raw, 10);
@@ -692,6 +734,7 @@ router.get(
 router.get(
   "/attendance/projects/:projectId/users/:userId/report",
   requireProjectAccess("projectId"),
+  requireTabView("attendance"),
   async (req, res): Promise<void> => {
     const projectId = parseInt(Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId, 10);
     const targetUserId = parseInt(Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId, 10);
@@ -1118,10 +1161,9 @@ router.get("/attendance/records/:recordId/photo", async (req: Request, res: Resp
     res.status(403).json({ error: "ليس لديك صلاحية لعرض هذه الصورة" });
     return;
   }
-
   const filename = record.selfieFilename;
   const localPath = path.join(uploadsDir, filename);
-  res.setHeader("Cache-Control", "private, max-age=86400");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
 
   if (fs.existsSync(localPath)) {
     res.sendFile(localPath);

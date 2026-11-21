@@ -196,6 +196,7 @@ export async function sendOrQueue(
     longitude: entry.longitude,
     accuracy: entry.accuracy != null && Number.isFinite(entry.accuracy) ? entry.accuracy : undefined,
     clientId: entry.clientId,
+    capturedAt: entry.capturedAt,
     selfieBase64,
   });
 

@@ -158,16 +158,23 @@ test("a claimed but unseen reminder survives navigation without another server c
     readFileSync(new URL("src/components/project-activity-reminder.tsx", webRoot), "utf8"),
     ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const fn = findNode(source, node => ts.isPropertyAssignment(node) && node.name.getText(source) === "queryFn");
-  let pending = { show: true, fullName: "Synthetic", lastUpdatedAt: null };
+  let pending;
   let claims = 0;
   const key = ["project-activity-reminder", 1, 2, "2026-10-31"];
   const load = vm.runInNewContext(transpile(`(${fn.initializer.getText(source)})`), {
     queryKey: key, projectId: 2,
     queryClient: { getQueryData: actualKey => { assert.equal(actualKey, key); return pending; } },
-    customFetch: async () => { claims++; return { show: false }; },
+    customFetch: async () => {
+      claims++;
+      pending = { show: true, fullName: "Synthetic", lastUpdatedAt: null };
+      return pending;
+    },
   });
-  assert.deepEqual(await load(), pending);
-  assert.equal(claims, 0);
+  const claimed = await load();
+  assert.deepEqual(claimed, pending);
+  assert.equal(claims, 1);
+  assert.deepEqual(await load(), claimed);
+  assert.equal(claims, 1);
   pending = { show: false };
   assert.equal((await load()).show, false);
   assert.equal(claims, 1);

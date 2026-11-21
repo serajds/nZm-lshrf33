@@ -45,7 +45,13 @@ function fixtureFor(url) {
   if (path === "/api/projects/1") return project;
   if (path === "/api/projects/1/activities") return activities;
   if (path === "/api/projects/1/activity-groups") return groups;
-  if (path === "/api/projects/1/my-permissions") return { canEditAll: true, isViewer: false, projectRole: "admin" };
+  if (path === "/api/projects/1/my-permissions") return {
+    canEditAll: true, isViewer: false, projectRole: "admin",
+    tabPermissions: {
+      overview: "edit", activities: "edit", extensions: "edit", suspensions: "edit",
+      reports: "edit", forms: "edit", attendance: "edit", files: "edit", deviation: "edit",
+    },
+  };
   if (path === "/api/projects/1/progress-history-backfill") {
     return { project, activities: [], batches: [], fingerprint: "visual-test" };
   }
@@ -342,6 +348,7 @@ test("activities layout is RTL and percentages fit on desktop, mobile and Gantt"
     browser.delayMs = 11000;
     await browser.send("Page.reload", { ignoreCache: true });
     await waitFor(() => browser.evaluate('document.body?.innerText.includes("جارٍ تحميل البنود")'));
+    await waitFor(() => browser.evaluate('document.querySelector("[data-page-loading-indicator]") !== null'));
     assert.equal(await browser.evaluate(`(() => {
       const section = document.querySelector('[aria-labelledby="activities-overview"]');
       return section?.querySelector(".tabular-nums.text-2xl")?.textContent === "—";

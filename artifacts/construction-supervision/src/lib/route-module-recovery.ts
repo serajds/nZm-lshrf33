@@ -19,6 +19,16 @@ export async function loadRouteModule<T>(
     return module;
   } catch (error) {
     if (!isModuleFetchError(error)) throw error;
+    // A short in-place retry lets the dev server finish a cold module
+    // transform without forcing the user through a full page refresh.
+    await new Promise<void>(resolve => setTimeout(resolve, 250));
+    try {
+      const module = await loader();
+      try { recovery.storage.removeItem(retryKey); } catch { /* Storage may be blocked. */ }
+      return module;
+    } catch (retryError) {
+      if (!isModuleFetchError(retryError)) throw retryError;
+    }
     try {
       if (!recovery.storage.getItem(retryKey)) {
         // Persist the guard before navigation; blocked storage must not cause a reload loop.

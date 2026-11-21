@@ -93,90 +93,105 @@ test("pooled callback attribution follows the requesting context, not the releas
   assert.equal(second.queries, 1);
 });
 
-test("geofence shares one attendance read and suppresses unknown, overlapping and stale notifications", async () => {
-  const runtime = { watchers: 0, removed: 0, reads: 0, notices: [], status: deferred(), callbacks: [] };
-  globalThis.__geoFixture = runtime;
-  const module = await bundled("artifacts/mobile/lib/geofenceReminder.ts", {
-    "@react-native-async-storage/async-storage": `export default {getItem: async () => null, setItem: async () => {}};`,
-    "expo-location": `
-      export const Accuracy = {Balanced:1};
-      export async function getForegroundPermissionsAsync(){return {granted:true};}
-      export async function watchPositionAsync(_opts, callback) {
-        const r=globalThis.__geoFixture; r.watchers++; r.callbacks.push(callback);
-        return {remove(){r.removed++;}};
-      }`,
-    "expo-notifications": `export async function scheduleNotificationAsync(payload){globalThis.__geoFixture.notices.push(payload);}`,
-    "./api": `
-      export async function apiListProjects(){return [1,2,3].map(id=>({id,name:"fixture",siteLatitude:1,siteLongitude:1}));}
-      export async function apiMyAttendanceStatus(){const r=globalThis.__geoFixture;r.reads++;return r.status.promise;}`,
+test("web geofence watcher debounces entry, rearms after exit and disposes its location watch", async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  let positionCallback;
+  let clearedWatch = null;
+  let arrivals = 0;
+  const geo = {
+    watchPosition(success, _error, options) {
+      positionCallback = success;
+      assert.equal(options.enableHighAccuracy, true);
+      return 17;
+    },
+    clearWatch(id) { clearedWatch = id; },
+  };
+  Object.defineProperty(globalThis, "navigator", {
+    value: { geolocation: geo }, configurable: true,
   });
-  await Promise.all([module.startGeofenceReminder(1), module.startGeofenceReminder(1)]);
-  assert.equal(runtime.watchers, 1);
-  const position = { coords: { latitude: 1, longitude: 1 } };
-  runtime.callbacks[0](position);
-  runtime.callbacks[0](position);
-  await tick();
-  assert.equal(runtime.reads, 1);
-  runtime.status.reject(new Error("network unavailable"));
-  await tick();
-  assert.equal(runtime.notices.length, 0);
-  runtime.status = deferred();
-  runtime.callbacks[0](position);
-  await tick();
-  runtime.status.resolve([{ projectId: 1, currentlyCheckedIn: false }, { projectId: 2, currentlyCheckedIn: true }]);
-  await tick();
-  assert.equal(runtime.notices.length, 1);
-  assert.equal(runtime.notices[0].content.data.projectId, 1);
-  runtime.status = deferred();
-  runtime.callbacks[0](position);
-  await tick();
-  module.stopGeofenceReminder();
-  runtime.status.resolve([{ projectId: 2, currentlyCheckedIn: false }]);
-  await tick();
-  assert.equal(runtime.notices.length, 1);
-  assert.equal(runtime.removed, 1);
-  await module.startGeofenceReminder(2);
-  runtime.callbacks[0](position); // callback retained by the old native watcher
-  await tick();
-  assert.equal(runtime.reads, 3);
-  module.stopGeofenceReminder();
-  delete globalThis.__geoFixture;
+  try {
+    const { startGeofenceWatch } = await import("../artifacts/construction-supervision/src/lib/geofence-watcher.ts");
+    const watcher = startGeofenceWatch({
+      projectId: 1, projectName: "fixture", siteLatitude: 1, siteLongitude: 1,
+      radiusMeters: 200, onArrive: () => { arrivals++; },
+    });
+    const position = (latitude, accuracy = 20) => ({
+      coords: { latitude, longitude: 1, accuracy },
+    });
+    positionCallback(position(1, 500)); // inaccurate fixes do not trigger
+    assert.equal(arrivals, 0);
+    positionCallback(position(1));
+    positionCallback(position(1));
+    assert.equal(arrivals, 1);
+    positionCallback(position(1.0021)); // jitter inside the hysteresis band
+    assert.equal(arrivals, 1);
+    positionCallback(position(1.003)); // leave the fence and re-arm
+    positionCallback(position(1));
+    assert.equal(arrivals, 2);
+    watcher.stop();
+    assert.equal(clearedWatch, 17);
+  } finally {
+    if (original) Object.defineProperty(globalThis, "navigator", original);
+    else delete globalThis.navigator;
+  }
 });
 
-test("mobile identity and 401 confirmation have finite deadlines and keep valid credentials on transport failure", async () => {
-  const api = await bundled("artifacts/mobile/lib/api.ts", {
-    "expo-crypto": `export const randomUUID = () => "fixture";`,
-    "expo-file-system/legacy": `export const EncodingType={Base64:"base64"};export async function readAsStringAsync(){return "";}`,
+test("mobile API attaches the current credential and renews only its matching session", async () => {
+  const runtime = { credential: { token: "old-token" } };
+  globalThis.__mobileApiFixture = runtime;
+  const api = await bundled("artifacts/attendance-mobile/lib/api.ts", {
+    "@/lib/session": `
+      export const getCurrentCredential = () => globalThis.__mobileApiFixture.credential;
+      export async function applyRenewedToken(token, sentToken) {
+        const fixture = globalThis.__mobileApiFixture;
+        if (fixture.credential?.token !== sentToken) return false;
+        fixture.credential = {...fixture.credential, token};
+        return true;
+      }
+      export async function clearCredentialForToken(sentToken) {
+        const fixture = globalThis.__mobileApiFixture;
+        if (fixture.credential?.token !== sentToken) return false;
+        fixture.credential = null;
+        return true;
+      }`,
+    "@/lib/session-guard": `
+      export function shouldExpireSession(status, sentToken, currentToken) {
+        return status === 401 && !!sentToken && sentToken === currentToken;
+      }`,
   });
-  let current = "current", logouts = 0;
-  api.setTokenGetter(() => current);
-  api.setUnauthorizedHandler(() => { logouts++; current = null; });
-  const originalFetch = globalThis.fetch, originalTimeout = globalThis.setTimeout, originalClear = globalThis.clearTimeout;
-  const timers = new Set();
+  const originalFetch = globalThis.fetch;
+  const oldApiUrl = process.env.EXPO_PUBLIC_API_URL;
+  process.env.EXPO_PUBLIC_API_URL = "https://fixture.invalid";
   try {
-    globalThis.setTimeout = callback => { timers.add(callback); return callback; };
-    globalThis.clearTimeout = callback => timers.delete(callback);
-    globalThis.fetch = () => new Promise(() => {});
-    const read = api.apiGetMe();
-    for (const callback of [...timers]) callback();
-    await assert.rejects(read, error => error.status === 0);
-    assert.equal(current, "current");
-    assert.equal(logouts, 0);
-    let calls = 0;
-    globalThis.fetch = async () => {
-      if (++calls === 1) return new Response('{"error":"rejected"}', { status: 401 });
-      return new Promise(() => {});
+    let requestSeen;
+    globalThis.fetch = async (url, init) => {
+      requestSeen = { url, init };
+      return new Response('{"ok":true}', {
+        status: 200,
+        headers: { "X-Renewed-Token": "renewed-token" },
+      });
     };
-    await assert.rejects(api.apiListProjects());
-    await tick();
-    for (const callback of [...timers]) callback();
-    await tick();
-    assert.equal(logouts, 0);
-    globalThis.fetch = async () => new Response('{"error":"rejected"}', { status: 401 });
-    await assert.rejects(api.apiListProjects());
-    await tick();
-    assert.equal(logouts, 1);
+    assert.deepEqual(await api.apiRequest("/projects"), { ok: true });
+    assert.equal(requestSeen.url, "https://fixture.invalid/api/projects");
+    assert.equal(new Headers(requestSeen.init.headers).get("Authorization"), "Bearer old-token");
+    assert.equal(runtime.credential.token, "renewed-token");
+
+    runtime.credential = { token: "sent-token" };
+    globalThis.fetch = async () => {
+      runtime.credential = { token: "new-login-token" };
+      return new Response('{"error":"expired"}', { status: 401 });
+    };
+    await assert.rejects(api.apiRequest("/projects"), error => error.status === 401);
+    assert.equal(runtime.credential.token, "new-login-token");
+
+    runtime.credential = { token: "current-token" };
+    globalThis.fetch = async () => new Response('{"error":"expired"}', { status: 401 });
+    await assert.rejects(api.apiRequest("/projects"), error => error.status === 401);
+    assert.equal(runtime.credential, null);
   } finally {
-    globalThis.fetch = originalFetch; globalThis.setTimeout = originalTimeout; globalThis.clearTimeout = originalClear;
+    globalThis.fetch = originalFetch;
+    if (oldApiUrl === undefined) delete process.env.EXPO_PUBLIC_API_URL;
+    else process.env.EXPO_PUBLIC_API_URL = oldApiUrl;
+    delete globalThis.__mobileApiFixture;
   }
 });

@@ -2,10 +2,9 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { createHash } from "node:crypto";
 
-const JWT_SECRET =
-  process.env.JWT_SECRET ??
-  process.env.SESSION_SECRET ??
-  (process.env.NODE_ENV === "production"
+const configuredJwtSecret = process.env.JWT_SECRET?.trim() || process.env.SESSION_SECRET?.trim();
+export const JWT_SECRET = configuredJwtSecret
+  || (process.env.NODE_ENV === "production"
     ? (() => { throw new Error("JWT_SECRET or SESSION_SECRET environment variable is required in production"); })()
     : "engineering-supervision-dev-secret-key");
 

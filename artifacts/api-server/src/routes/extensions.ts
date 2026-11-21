@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { projectExtensionsTable, projectsTable } from "@workspace/db";
 import { eq, desc, and, asc } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { requireTabEdit } from "../middlewares/tab-access";
+import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import { recalcExpectedEndDate, getActivitiesBaseEndDate } from "../lib/recalc-end-date";
 import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
 
@@ -28,7 +28,7 @@ async function recomputeExtensionChain(projectId: number, baseEndDate: string) {
   }
 }
 
-router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"), rejectContractor, async (req, res): Promise<void> => {
+router.get("/projects/:projectId/extensions", requireProjectAccess("projectId"), rejectContractor, requireTabView("extensions"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId as string, 10);
 
   const extensions = await db.select()

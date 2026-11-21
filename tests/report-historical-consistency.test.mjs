@@ -4,28 +4,24 @@ import { readFileSync } from "node:fs";
 import { calcActivityPlannedProgress, calcSPI, hasValidProjectSchedule, utcDayDifference } from "../artifacts/api-server/src/lib/progress.ts";
 
 const reportRoute = readFileSync(new URL("../artifacts/api-server/src/routes/reports.ts", import.meta.url), "utf8");
+const periodProgress = readFileSync(new URL("../artifacts/api-server/src/lib/report-period-progress.ts", import.meta.url), "utf8");
 const pdfRoute = readFileSync(new URL("../artifacts/api-server/src/routes/pdf.ts", import.meta.url), "utf8");
 const reportPage = readFileSync(new URL("../artifacts/construction-supervision/src/pages/projects/[id]/reports.tsx", import.meta.url), "utf8");
 const reportPdf = readFileSync(new URL("../artifacts/construction-supervision/src/lib/report-pdf.ts", import.meta.url), "utf8");
 
-test("report activity plan is calculated at the requested UTC report date", () => {
+test("report activity plan is calculated at the saved period end date", () => {
   const asOf = new Date("2026-04-06T00:00:00.000Z");
   assert.equal(calcActivityPlannedProgress({
     plannedStartDate: "2026-04-01",
     plannedEndDate: "2026-04-11",
   }, asOf), 50);
-  assert.match(reportRoute, /const reportAsOf = new Date\(`\$\{reportDate\}T00:00:00\.000Z`\)/);
-  assert.match(reportRoute, /\}, reportAsOf\)\)/);
-  assert.match(reportRoute, /updateData\.activitiesSnapshot = body\.reportDate !== undefined/);
-  assert.match(reportRoute, /const resolvedActivities = await resolveLinkedActivityProgress\(currentActivities, reportAsOf\)/);
-  assert.match(reportRoute, /externalSourceGroupId: a\.externalSourceGroupId/);
-  assert.match(reportRoute, /plannedAsOfDate: reportDate/);
-  assert.match(reportRoute, /plannedHistoricalUnverified: false/);
-  assert.match(reportRoute, /plannedProgress: hasSchedule \? clampPercent\(/);
-  assert.match(reportRoute, /actualProgress: clampPercent\(a\.actualProgress\)/);
-  assert.match(reportRoute, /row\.externalSourceGroupId != null/);
-  assert.match(reportRoute, /row\.plannedAsOfDate !== body\.reportDate/);
-  assert.match(reportRoute, /plannedHistoricalUnverified: row\.plannedAsOfDate !== body\.reportDate/);
+  assert.match(reportRoute, /getReportPeriodProgress\(projectId, periodEnd, new Date\(\), periodStart\)/);
+  assert.match(reportRoute, /progressAsOfDate: periodEnd/);
+  assert.match(reportRoute, /const snapshot = progress\.activities/);
+  assert.match(reportRoute, /activitiesSnapshot: snapshot/);
+  assert.match(periodProgress, /const asOf = new Date\(`\$\{day\}T00:00:00Z`\)/);
+  assert.match(periodProgress, /plannedAsOfDate: day/);
+  assert.match(periodProgress, /plannedProgress: hasSchedule \? resolved\.plannedProgress : 0/);
 });
 
 test("linked activity plan keeps the resolver's source snapshot instead of using target dates", () => {
@@ -44,18 +40,17 @@ test("projects without a valid schedule suppress planned progress and SPI compar
   assert.equal(hasValidProjectSchedule("2026-05-02", "2026-05-01"), false);
   assert.equal(hasValidProjectSchedule("2026-05-01", "2026-05-02"), true);
   assert.equal(utcDayDifference("2026-05-04T23:59:00-07:00", "2026-05-01T00:00:00Z"), 4);
-  assert.match(reportRoute, /noSchedule: projectsTable\.noSchedule/);
-  assert.match(reportRoute, /hasValidProjectSchedule\(schedule\?\.startDate, schedule\?\.expectedEndDate\)/);
-  assert.match(reportRoute, /plannedProgress: hasSchedule \? clampPercent\([\s\S]*?\) : 0/);
+  assert.match(periodProgress, /const hasSchedule = !rootSnapshot\.noSchedule && hasValidProjectSchedule\(rootSnapshot\.startDate, rootSnapshot\.expectedEndDate\)/);
+  assert.match(periodProgress, /plannedProgress = hasSchedule && !activities\.some\(a => a\.plannedHistoricalUnverified\)/);
   assert.match(pdfRoute, /hasValidProjectSchedule\(project\.startDate, project\.expectedEndDate\)/);
   assert.match(pdfRoute, /utcDayDifference\(project\.expectedEndDate!, project\.startDate!\)/);
   assert.match(reportPdf, /hasValidSchedule\(data\.startDate, data\.expectedEndDate, data\.noSchedule\)/);
-  assert.match(reportPdf, /snapshotAvailable && scheduleAvailable && !plannedUnverified/);
+  assert.match(reportPdf, /deviation = !plannedUnverified && plannedPct != null/);
   assert.match(reportPage, /noSchedule: project\.noSchedule === true/);
 });
 
 test("report creation keeps the manually reported percentage separate from its snapshot", () => {
-  assert.match(reportRoute, /progressPercentage: progressPercentage \?\? 0/);
+  assert.match(reportRoute, /progressPercentage: manual \? progressPercentage : progress\.overallProgress!/);
   assert.match(reportRoute, /activitiesSnapshot: snapshot/);
 });
 
@@ -80,7 +75,8 @@ test("SPI is unavailable when a saved historical snapshot has no planned progres
   assert.match(pdfRoute, /return totalWeight > 0 \? weightedProgress \/ totalWeight : 0/);
   assert.match(pdfRoute, /calcSPI\(rawHistoricalPlanned, rawHistoricalActual\)/);
   assert.match(reportPage, /return totalWeight > 0 \? weighted \/ totalWeight : 0/);
-  assert.match(reportPage, /snapshotActual \/ snapshotPlanned/);
+  assert.match(reportPage, /\(periodSource === "manual" \? fullReport\.progressPercentage : snapshotActual\) \/ snapshotPlanned/);
+  assert.match(reportPage, /snapshotPlanned != null && snapshotPlanned > 0 && snapshotActual != null/);
   assert.match(reportPage, /weighted \/ totalWeight/);
   assert.match(reportPdf, /Math\.round\(Math\.min\(100, Math\.max\(0, data\.plannedProgress\)\) \* 10\) \/ 10/);
   assert.match(pdfRoute, /actualUnverified \|\| plannedUnavailable\s*\?\s*null/);

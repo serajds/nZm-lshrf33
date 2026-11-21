@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { useIsFetching } from "@tanstack/react-query";
 import { Building2, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -54,6 +56,31 @@ export function PageFallback() {
   );
 }
 
+export function PageDataLoadingProgress() {
+  const activeQueries = useIsFetching();
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setVisible(activeQueries > 0),
+      activeQueries > 0 ? 140 : 220,
+    );
+    return () => window.clearTimeout(timer);
+  }, [activeQueries]);
+
+  if (!visible) return null;
+
+  return (
+    <div
+      className="fixed inset-x-0 top-0 z-[100] h-1 overflow-hidden bg-primary/10"
+      role="progressbar"
+      aria-label="جارٍ تحميل بيانات الصفحة"
+      data-page-loading-indicator
+    >
+      <div className="page-data-progress h-full w-[34%] bg-primary" />
+    </div>
+  );
+}
 
 export function DashboardSkeleton() {
   return (

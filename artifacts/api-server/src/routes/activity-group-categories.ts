@@ -3,7 +3,7 @@ import { db, activityGroupCategoriesTable as categories, activityGroupsTable as 
   projectMembersTable, memberGroupAssignmentsTable } from "@workspace/db";
 import { eq, and, asc, inArray, sql, max } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
-import { requireTabEdit } from "../middlewares/tab-access";
+import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import { withSourceGraphLock } from "../lib/external-sources";
 import { normalizeCategoryName, parseCategoryAssignment } from "../lib/activity-group-categories";
 
@@ -29,7 +29,7 @@ const requireWholeScheduleAccess: RequestHandler = async (req, res, next) => {
 const editAccess = [requireProjectAccess("projectId"), rejectContractor, rejectViewer,
   requireTabEdit("activities"), requireWholeScheduleAccess];
 
-router.get("/projects/:projectId/activity-group-categories", requireProjectAccess("projectId"), async (req, res) => {
+router.get("/projects/:projectId/activity-group-categories", requireProjectAccess("projectId"), requireTabView("activities"), async (req, res) => {
   res.json(await db.select().from(categories).where(eq(categories.projectId, Number(req.params.projectId)))
     .orderBy(asc(categories.sortOrder), asc(categories.id)));
 });

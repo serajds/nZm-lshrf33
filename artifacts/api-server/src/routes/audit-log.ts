@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, auditLogTable, usersTable, reportsTable } from "@workspace/db";
 import { desc, eq, and, gte, lte, type SQL } from "drizzle-orm";
 import { requireAdmin, requireProjectAccess } from "../middlewares/auth";
+import { requireTabView } from "../middlewares/tab-access";
 import { sanitizeAuditDetails } from "../lib/audit-sanitize";
 
 const router: IRouter = Router();
@@ -16,6 +17,7 @@ const router: IRouter = Router();
 router.get(
   "/projects/:projectId/reports/:id/audit-log",
   requireProjectAccess("projectId"),
+  requireTabView("reports"),
   async (req, res): Promise<void> => {
     const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
     const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;

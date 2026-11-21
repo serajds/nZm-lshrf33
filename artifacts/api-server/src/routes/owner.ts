@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectsTable, activitiesTable, activityGroupsTable, reportsTable, projectFilesTable, projectExtensionsTable, projectSuspensionsTable, companiesTable } from "@workspace/db";
 import { eq, and, count, desc, asc } from "drizzle-orm";
-import { comparePassword } from "../lib/auth";
+import { comparePassword, JWT_SECRET } from "../lib/auth";
 import jwt from "jsonwebtoken";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
 import { getReportPeriodProgress, periodCutoff, validReportDay } from "../lib/report-period-progress";
@@ -20,8 +20,6 @@ import {
 } from "../lib/progress";
 
 const router: IRouter = Router();
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod";
-
 type OwnerReportHistoryReference = {
   id: number | null;
   actualProgress: number | null;

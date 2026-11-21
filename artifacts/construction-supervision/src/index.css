@@ -453,6 +453,15 @@ html, body, * {
   animation: page-fallback-progress 1.35s ease-in-out infinite;
 }
 
+@keyframes page-data-progress {
+  from { transform: translateX(110%); }
+  to { transform: translateX(-115%); }
+}
+
+.page-data-progress {
+  animation: page-data-progress 1.1s ease-in-out infinite;
+}
+
 .auth-form-transition {
   min-height: 22rem;
 }
@@ -466,6 +475,7 @@ html, body, * {
   .loader-spinner,
   .page-loader-text-enter,
   .page-fallback-bar,
+  .page-data-progress,
   .auth-form-panel-enter {
     animation: none;
   }

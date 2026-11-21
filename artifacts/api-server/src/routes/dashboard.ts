@@ -4,7 +4,8 @@ import { projectsTable, activitiesTable, reportsTable, projectFilesTable, projec
 import { eq, count, avg, sql, desc, inArray } from "drizzle-orm";
 import { requireStaffOrContractor, requireProjectAccess } from "../middlewares/auth";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
-import { loadEffectiveTabPermissions } from "../middlewares/tab-access";
+import { requireTabView } from "../middlewares/tab-access";
+import { resolveTabPermissions } from "../lib/tab-permissions";
 import { getDeviationAnalysis, getDeviationTimeline, getProjectAnalysisSnapshot } from "../lib/deviation-service";
 import {
   calcPlannedProgressForProject,
@@ -28,11 +29,26 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
   const userId = _req.user?.userId;
 
   let projectFilter: number[] | null = null;
+  let reportProjectFilter: number[] | null = null;
+  let activityProjectFilter: number[] | null = null;
   if (userRole !== "admin" && userId) {
-    const memberships = await db.select({ projectId: projectMembersTable.projectId })
+    const memberships = await db.select({
+      projectId: projectMembersTable.projectId,
+      role: projectMembersTable.role,
+      tabPermissions: projectMembersTable.tabPermissions,
+    })
       .from(projectMembersTable)
       .where(eq(projectMembersTable.userId, userId));
-    projectFilter = memberships.map(m => m.projectId);
+    const permissions = memberships.map((membership) => ({
+      projectId: membership.projectId,
+      tabs: resolveTabPermissions(
+        userRole === "contractor" ? "contractor" : membership.role as any,
+        userRole === "contractor" ? null : membership.tabPermissions ?? null,
+      ),
+    }));
+    projectFilter = permissions.filter(({ tabs }) => tabs.overview !== "hidden").map(({ projectId }) => projectId);
+    reportProjectFilter = permissions.filter(({ tabs }) => tabs.reports !== "hidden").map(({ projectId }) => projectId);
+    activityProjectFilter = permissions.filter(({ tabs }) => tabs.activities !== "hidden").map(({ projectId }) => projectId);
   }
 
   const baseProjectQuery = projectFilter && projectFilter.length > 0
@@ -77,12 +93,12 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
           .from(projectsTable).where(inArray(projectsTable.id, projectFilter)).groupBy(projectsTable.status)
       : db.select({ status: projectsTable.status, cnt: count() })
           .from(projectsTable).groupBy(projectsTable.status),
-    projectFilter
-      ? db.select({ count: count() }).from(reportsTable).where(inArray(reportsTable.projectId, projectFilter))
+    reportProjectFilter
+      ? db.select({ count: count() }).from(reportsTable).where(inArray(reportsTable.projectId, reportProjectFilter))
       : db.select({ count: count() }).from(reportsTable),
-    projectFilter
+    activityProjectFilter
       ? db.select({ status: activitiesTable.status, cnt: count() })
-          .from(activitiesTable).where(inArray(activitiesTable.projectId, projectFilter)).groupBy(activitiesTable.status)
+          .from(activitiesTable).where(inArray(activitiesTable.projectId, activityProjectFilter)).groupBy(activitiesTable.status)
       : db.select({ status: activitiesTable.status, cnt: count() })
           .from(activitiesTable).groupBy(activitiesTable.status),
     projectFilter
@@ -104,12 +120,12 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
           startDate: projectsTable.startDate, expectedEndDate: projectsTable.expectedEndDate,
           ownerEntity: projectsTable.ownerEntity, noSchedule: projectsTable.noSchedule,
         }).from(projectsTable).orderBy(desc(projectsTable.overallProgress)),
-    projectFilter
+    reportProjectFilter
       ? db.select({
           id: reportsTable.id, projectId: reportsTable.projectId,
           type: reportsTable.type, reportDate: reportsTable.reportDate,
           progressPercentage: reportsTable.progressPercentage,
-        }).from(reportsTable).where(inArray(reportsTable.projectId, projectFilter)).orderBy(desc(reportsTable.reportDate)).limit(5)
+        }).from(reportsTable).where(inArray(reportsTable.projectId, reportProjectFilter)).orderBy(desc(reportsTable.reportDate)).limit(5)
       : db.select({
           id: reportsTable.id, projectId: reportsTable.projectId,
           type: reportsTable.type, reportDate: reportsTable.reportDate,
@@ -130,10 +146,9 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
     return found ? Number(found.cnt) : 0;
   };
 
-  const allActivities = allProjects.length > 0
-    ? await db.select().from(activitiesTable).where(
-        inArray(activitiesTable.projectId, allProjects.map(p => p.id))
-      )
+  const activityProjectIds = activityProjectFilter ?? allProjects.map((project) => project.id);
+  const allActivities = activityProjectIds.length > 0
+    ? await db.select().from(activitiesTable).where(inArray(activitiesTable.projectId, activityProjectIds))
     : [];
   const resolvedActivities = await resolveLinkedActivityProgress(allActivities, today);
 
@@ -255,7 +270,7 @@ router.get("/dashboard/summary", requireStaffOrContractor, async (_req, res): Pr
   });
 });
 
-router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), requireTabView("overview"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   if (req.query.curve != null && req.query.curve !== "linear" && req.query.curve !== "scurve") {
@@ -269,6 +284,7 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
   }
 
   const {project,analysis:a,activities} = snapshot;
+  const canViewActivities = req.projectTabPermissions?.activities !== "hidden";
   const hasSchedule = !project.noSchedule && hasValidProjectSchedule(project.startDate, project.expectedEndDate);
   const totalDays = hasSchedule ? Math.max(1, utcDayDifference(project.expectedEndDate!, project.startDate!)) : 0;
   const daysElapsed = hasSchedule ? Math.max(0, utcDayDifference(a.asOfDate, project.startDate!)) : 0;
@@ -283,9 +299,9 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
     progressDeviation:a.progressDeviation,spi:a.spi,
     forecastCompletionDate:a.forecastCompletionDate,forecastStatus:a.forecastStatus,
     forecastDelayDays:a.forecastDelayDays,
-    activitiesTotal: activities.length,
-    activitiesCompleted: activities.filter(a => a.status === "completed").length,
-    activitiesDelayed: activities.filter(a => a.delayed).length,
+    activitiesTotal: canViewActivities ? activities.length : 0,
+    activitiesCompleted: canViewActivities ? activities.filter(a => a.status === "completed").length : 0,
+    activitiesDelayed: canViewActivities ? activities.filter(a => a.delayed).length : 0,
     daysElapsed,
     totalDays,
     daysRemaining,
@@ -293,28 +309,20 @@ router.get("/projects/:projectId/summary", requireProjectAccess("projectId"), as
     suspensionDays:a.suspensionDays,
     netDelayDays:a.netDelayDays,
     overrunDays:a.overrunDays,
-    reportsCount: snapshot.reportsCount,
-    filesCount: snapshot.filesCount,
+    reportsCount: req.projectTabPermissions?.reports === "hidden" ? 0 : snapshot.reportsCount,
+    filesCount: req.projectTabPermissions?.files === "hidden" ? 0 : snapshot.filesCount,
   });
 });
 
-router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/deviation", requireProjectAccess("projectId"), requireTabView("deviation"), async (req, res): Promise<void> => {
   const projectId = Number(req.params.projectId);
-  const access = await loadEffectiveTabPermissions(req.user!.userId, projectId);
-  if (!access || access.effective.deviation === "hidden") {
-    res.status(403).json({ error: "ليس لديك صلاحية الوصول لهذا القسم" }); return;
-  }
   const data = await getDeviationAnalysis(projectId, req.user!.userId, req.query.curve === "scurve" ? "scurve" : "linear");
   if (!data) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
   res.json(data);
 });
 
-router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+router.get("/projects/:projectId/deviation/timeline", requireProjectAccess("projectId"), requireTabView("deviation"), async (req, res): Promise<void> => {
   const projectId = Number(req.params.projectId);
-  const access = await loadEffectiveTabPermissions(req.user!.userId, projectId);
-  if (!access || access.effective.deviation === "hidden") {
-    res.status(403).json({ error: "ليس لديك صلاحية الوصول لهذا القسم" }); return;
-  }
   const data = await getDeviationTimeline(projectId, req.user!.userId, req.query.curve === "scurve" ? "scurve" : "linear");
   if (!data) { res.status(404).json({ error: "المشروع غير موجود" }); return; }
   res.json(data);

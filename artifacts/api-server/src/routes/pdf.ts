@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { projectsTable, reportsTable, activitiesTable, projectExtensionsTable, projectSuspensionsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { requireProjectAccess } from "../middlewares/auth";
+import { requireTabView } from "../middlewares/tab-access";
 import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcActivityPlannedProgress, calcSPI, hasValidProjectSchedule, isActivityDelayed, roundPercent, utcDay, utcDayDifference } from "../lib/progress";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
 import PDFDocument from "pdfkit";
@@ -140,7 +141,7 @@ function snapshotActualIsHistoricallyUnverified(
 // ─────────────────────────────────────────────
 // Route
 // ─────────────────────────────────────────────
-router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("projectId"), async (req, res): Promise<void> => {
+  router.get("/projects/:projectId/reports/export-pdf", requireProjectAccess("projectId"), requireTabView("reports"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
   const requestedReportId = typeof req.query.reportId === "string" ? Number(req.query.reportId) : null;

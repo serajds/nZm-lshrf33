@@ -106,14 +106,13 @@ export default function ProjectDetails() {
     } as any,
   });
 
-  // PERFORMANCE: prime the cache for child components (ProjectNav,
-  // ProjectMembers, AttendanceQuickActions) at the same instant the page
-  // mounts. Otherwise these queries fire one-by-one as each child component
-  // wakes up — on a slow Vite dev server we measured a 4 second waterfall
-  // (extensions → form-templates → members → my-permissions → my-status).
-  // Calling the hooks here triggers the requests immediately, in parallel,
-  // and React Query dedupes when the children mount and call them again.
-  useMyProjectPermissions(projectId);
+  // Start the permissions request with the project page. Requests for each
+  // tab's data wait until visibility is known, then run in parallel; React
+  // Query deduplicates them when child components mount.
+  const { data: myPermissions } = useMyProjectPermissions(projectId);
+  const tabPermissions = myPermissions?.tabPermissions;
+  const canViewTab = (tab: string) =>
+    !!tabPermissions && tabPermissions[tab as keyof typeof tabPermissions] !== "hidden";
   useListProjectMembers(projectId, { query: { enabled: !!projectId && !isContractor } });
   // Prefetch eligible-users ONLY for admins. Project-level PMs also need
   // this list, but membership-derived PM status isn't known until /members
@@ -130,7 +129,7 @@ export default function ProjectDetails() {
       if (!r.ok) throw Object.assign(new Error("تعذّر تحميل المجموعات"), { status: r.status });
       return r.json();
     },
-    enabled: !!projectId && !isContractor,
+    enabled: !!projectId && !isContractor && canViewTab("activities"),
     staleTime: 1000 * 60 * 5,
   });
   useQuery<unknown[]>({
@@ -141,7 +140,7 @@ export default function ProjectDetails() {
       if (!r.ok) throw Object.assign(new Error("تعذّر قراءة حالة الحضور"), { status: r.status });
       return r.json();
     },
-    enabled: !!user && !isContractor && user.role !== "owner",
+    enabled: !!user && !isContractor && user.role !== "owner" && canViewTab("attendance"),
   });
   // These three lists rarely change during a session; trust the cache for
   // 5 minutes so navigating between project tabs doesn't re-hit the API.
@@ -152,7 +151,7 @@ export default function ProjectDetails() {
       if (!r.ok) throw Object.assign(new Error("تعذّر تحميل التمديدات"), { status: r.status });
       return r.json();
     },
-    enabled: !!projectId,
+    enabled: !!projectId && canViewTab("extensions"),
     staleTime: 1000 * 60 * 5,
   });
 
@@ -175,6 +174,7 @@ export default function ProjectDetails() {
   // IMPORTANT: share the same cache key as the forms tab so opening the
   // project overview AFTER the forms tab (or vice-versa) doesn't re-fetch
   // the same /form-templates endpoint a second time.
+  const [widgetConfigOpen, setWidgetConfigOpen] = useState(false);
   const { data: formTemplates = [] } = useQuery<FormTemplateOption[]>({
     queryKey: [`/api/projects/${projectId}/form-templates`],
     queryFn: async () => {
@@ -182,11 +182,10 @@ export default function ProjectDetails() {
       if (!r.ok) throw Object.assign(new Error("تعذّر تحميل النماذج"), { status: r.status });
       return r.json();
     },
-    enabled: !!projectId,
+    enabled: !!projectId && canViewTab("forms"),
     staleTime: 1000 * 60 * 5,
   });
 
-  const [widgetConfigOpen, setWidgetConfigOpen] = useState(false);
   const [editWidgets, setEditWidgets] = useState<SummaryWidget[]>([]);
   const isAdminOrPM = user?.role === "admin" || user?.role === "project_manager" || (user?.role === "engineer" && !isContractor);
 
@@ -610,14 +609,14 @@ export default function ProjectDetails() {
         </div>
 
         {/* Summary Widgets */}
-        {(widgets.length > 0 || isAdminOrPM) && (
+        {(widgets.length > 0 || (isAdminOrPM && canViewTab("forms"))) && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold flex items-center gap-2">
                 <LayoutDashboard className="h-4 w-4" />
                 أدوات الملخص
               </h3>
-              {isAdminOrPM && (
+              {isAdminOrPM && canViewTab("forms") && (
                 <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => setWidgetConfigOpen(true)}>
                   <Settings2 className="h-3.5 w-3.5" />
                   تخصيص
@@ -648,7 +647,7 @@ export default function ProjectDetails() {
                   </Card>
                 ))}
               </div>
-            ) : isAdminOrPM ? (
+            ) : isAdminOrPM && canViewTab("forms") ? (
               <Card className="border-2 border-dashed border-muted-foreground/20">
                 <CardContent className="p-6 text-center">
                   <p className="text-sm text-muted-foreground">اضغط "تخصيص" لإعداد أدوات الملخص</p>

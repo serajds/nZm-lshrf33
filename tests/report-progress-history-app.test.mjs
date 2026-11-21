@@ -67,7 +67,10 @@ test("report progress history works without PostgreSQL triggers", { timeout: 120
     const today = `${part("year")}-${part("month")}-${part("day")}`;
 
     const readProgress = async () => {
-      const response = await fetch(`${base}/projects/${project.id}/reports/progress-as-of?periodEnd=${today}`, { headers });
+      const response = await fetch(
+        `${base}/projects/${project.id}/reports/progress-as-of?periodEnd=${today}&periodStart=${today}`,
+        { headers },
+      );
       const payload = await response.json();
       assert.equal(response.status, 200, JSON.stringify(payload));
       return payload;

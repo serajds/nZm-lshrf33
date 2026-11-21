@@ -7,11 +7,11 @@ import fs from "fs";
 import jwt from "jsonwebtoken";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { verifyToken } from "./lib/auth";
-import { diagnoseRejectedToken } from "./lib/auth";
+import { JWT_SECRET, verifyToken, diagnoseRejectedToken } from "./lib/auth";
 import { canViewAttendancePhoto, verifyAndMaybeRenewToken } from "./middlewares/auth";
 import { streamFromCloud, cloudReportImageSource } from "./lib/fileStorage";
 import { reportImageVariant } from "./lib/reportImageVariants";
+import { resolveTabPermissions } from "./lib/tab-permissions";
 import { db, requestMetrics, newRequestMetrics } from "@workspace/db";
 import { usersTable, userCompaniesTable, projectMembersTable, projectsTable, projectFilesTable, attendanceRecordsTable } from "@workspace/db";
 import { eq, count, inArray, and } from "drizzle-orm";
@@ -139,7 +139,11 @@ async function canAccessPrivateUpload(filename: string, token: string, res: Resp
     if (user.role === "contractor") return false;
 
     const [memberships, projects] = await Promise.all([
-      db.select({ id: projectMembersTable.id, role: projectMembersTable.role })
+      db.select({
+        id: projectMembersTable.id,
+        role: projectMembersTable.role,
+        tabPermissions: projectMembersTable.tabPermissions,
+      })
         .from(projectMembersTable)
         .where(and(
           eq(projectMembersTable.projectId, file.projectId),
@@ -163,13 +167,18 @@ async function canAccessPrivateUpload(filename: string, token: string, res: Resp
         .limit(1);
       if (companyLink.length > 0) return false;
     }
-    return memberships.length > 0 && memberships[0].role !== "contractor";
+    if (memberships.length === 0 || memberships[0].role === "contractor") return false;
+    const permissions = resolveTabPermissions(
+      memberships[0].role as any,
+      memberships[0].tabPermissions ?? null,
+    );
+    return permissions.files !== "hidden";
   }
 
   try {
     const owner = jwt.verify(
       token,
-      process.env.JWT_SECRET || process.env.SESSION_SECRET || "dev-owner-secret-key-change-in-prod",
+      JWT_SECRET,
     ) as { ownerToken?: string; projectId?: number };
     if (typeof owner.ownerToken !== "string" || typeof owner.projectId !== "number"
       || owner.projectId !== file.projectId) return false;
