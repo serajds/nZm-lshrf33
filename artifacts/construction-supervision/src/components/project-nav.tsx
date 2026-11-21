@@ -85,23 +85,59 @@ export function ProjectNav({ projectId }: ProjectNavProps) {
     if (!scrollContainer || !navContainer) return;
 
     const restoreStartedAt = Date.now();
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    const restoreWhenContentIsReady = () => {
-      const restored = restoreProjectTabScrollPosition(scrollContainer, navContainer, pending.position);
-      if (restored || Date.now() - restoreStartedAt >= 5_000) {
-        if (pendingProjectTabScroll === pending) pendingProjectTabScroll = null;
+    let frame: number | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let finished = false;
+    const contentContainer = scrollContainer.children[0]?.children[0];
+    const finish = (clearPending = true) => {
+      if (finished) return;
+      finished = true;
+      if (clearPending && pendingProjectTabScroll === pending) pendingProjectTabScroll = null;
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      if (timeout) clearTimeout(timeout);
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      scrollContainer.removeEventListener("wheel", cancelRestore);
+      scrollContainer.removeEventListener("touchstart", cancelRestore);
+      scrollContainer.removeEventListener("pointerdown", cancelRestore);
+    };
+    const attemptRestore = () => {
+      frame = undefined;
+      if (finished || pendingProjectTabScroll !== pending) {
+        finish();
         return;
       }
 
-      retry = setTimeout(restoreWhenContentIsReady, 50);
+      const restored = restoreProjectTabScrollPosition(scrollContainer, navContainer, pending.position);
+      if (restored || Date.now() - restoreStartedAt >= 5_000) finish();
     };
-    const frame = requestAnimationFrame(() => {
-      restoreWhenContentIsReady();
+    const scheduleRestore = () => {
+      if (!finished && frame === undefined) frame = requestAnimationFrame(attemptRestore);
+    };
+    const cancelRestore = () => {
+      if (pendingProjectTabScroll === pending) pendingProjectTabScroll = null;
+      finish();
+    };
+    const resizeObserver = new ResizeObserver(scheduleRestore);
+    const mutationObserver = new MutationObserver(scheduleRestore);
+    resizeObserver.observe(scrollContainer);
+    if (contentContainer instanceof HTMLElement) resizeObserver.observe(contentContainer);
+    mutationObserver.observe(scrollContainer, {
+      attributes: true,
+      childList: true,
+      characterData: true,
+      subtree: true,
     });
+    scrollContainer.addEventListener("wheel", cancelRestore, { passive: true });
+    scrollContainer.addEventListener("touchstart", cancelRestore, { passive: true });
+    scrollContainer.addEventListener("pointerdown", cancelRestore, { passive: true });
+    timeout = setTimeout(finish, 5_000);
+    scheduleRestore();
 
     return () => {
-      cancelAnimationFrame(frame);
-      if (retry) clearTimeout(retry);
+      // The source tab unmounts during route navigation. Keep the saved
+      // position for the destination tab, which will attach its own observers.
+      finish(false);
     };
   }, [location, projectId]);
 
