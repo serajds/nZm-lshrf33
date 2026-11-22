@@ -71,7 +71,7 @@ test("failed photos and logos reject instead of silently issuing an incomplete r
   }
 });
 
-test("large reports use at most six downloads and preserve all 61 assets in order", async () => {
+test("large reports use at most two downloads and preserve all 61 assets in order", async () => {
   let active = 0;
   let peak = 0;
   const urls = Array.from({ length: 60 }, (_, i) => `photo-${i}`);
@@ -88,7 +88,7 @@ test("large reports use at most six downloads and preserve all 61 assets in orde
     },
     onProgress: (done, total) => progress.push([done, total]),
   });
-  assert.equal(peak, 6);
+  assert.equal(peak, 2);
   assert.deepEqual(result.imageGroups[0].urls, urls.map(url => `blob:${url}`));
   assert.equal(result.companyLogos.owner.logoUrl, "blob:logo");
   assert.deepEqual(progress.at(-1), [61, 61]);

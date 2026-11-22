@@ -19,11 +19,12 @@ export async function loadReportPreview<T extends ReportImages>(options: {
   const assets = new Map<string, Promise<string>>();
   let completed = 0;
   let preparing = true;
-  // Bound downloads rather than sending a large report's full photo set at once.
+  // Match the API image processor's concurrency limit so one preview cannot
+  // flood it with image-variant work.
   let active = 0;
   const queue: Array<() => void> = [];
   const runAsset = async (url: string, logo: boolean): Promise<string> => {
-    if (active >= 6) await new Promise<void>(resolve => queue.push(resolve));
+    if (active >= 2) await new Promise<void>(resolve => queue.push(resolve));
     else active++;
     try {
       if (!preparing) throw new Error("Report preview preparation has ended");
