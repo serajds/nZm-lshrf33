@@ -7,6 +7,7 @@ import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectMan
 import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import { calcActivityPlannedProgress, hasValidProjectSchedule, roundPercent } from "../lib/progress";
 import { getReportPeriodProgress, validReportDay } from "../lib/report-period-progress";
+import { getReportForecastProgress, type ReportForecastProgress } from "../lib/report-forecast";
 import { buildReportAiContext, reportAiSnapshotFingerprint } from "../lib/report-ai-context";
 import { buildReportAiPrompt, reportEditorInstruction } from "../lib/report-ai-prompt";
 import { approvedReportFingerprint, buildApprovedReportPrompt, parseApprovedReportDraft, validApprovedProgress } from "../lib/report-approved-inputs";
@@ -53,6 +54,12 @@ function clampPercent(n: unknown): number {
   const v = Number(n);
   if (!Number.isFinite(v)) return 0;
   return Math.min(100, Math.max(0, v));
+}
+
+function currentTripoliReportDay(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(now);
 }
 
 function calcWeightedProgress(rows: SnapshotRow[]): number {
@@ -185,6 +192,11 @@ async function attachImageShareStatus<T extends { id: number; imageGroups: unkno
 
 const router: IRouter = Router();
 
+function forecastProgressHistorySource(forecast: ReportForecastProgress): "actual" | "estimated" | null {
+  if (!forecast.actualAvailable) return null;
+  return forecast.actualSource === "estimated_history" ? "estimated" : "actual";
+}
+
 router.get("/projects/:projectId/reports/progress-as-of", requireProjectAccess("projectId"), rejectContractor, requireTabView("reports"), async (req, res): Promise<void> => {
   if (!validReportDay(req.query.periodEnd)) {
     res.status(400).json({ error: "تاريخ نهاية الفترة غير صالح" });
@@ -201,6 +213,16 @@ router.get("/projects/:projectId/reports/progress-as-of", requireProjectAccess("
   const { activities, ...summary } = progress;
   res.setHeader("Cache-Control", "private, no-store");
   res.json({ ...summary, activitiesCount: activities?.length ?? 0 });
+});
+
+router.get("/projects/:projectId/reports/forecast-as-of", requireProjectAccess("projectId"), rejectContractor, requireTabView("reports"), async (req, res): Promise<void> => {
+  if (!validReportDay(req.query.targetDate)) {
+    res.status(400).json({ error: "تاريخ المسودة الاستشرافية غير صالح" });
+    return;
+  }
+  const forecast = await getReportForecastProgress(Number(req.params.projectId), req.query.targetDate);
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(forecast);
 });
 
 router.post("/projects/:projectId/reports/ai-draft", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("reports"), async (req, res): Promise<void> => {
@@ -513,6 +535,7 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), re
     imageUrls: reportsTable.imageUrls,
     imageGroups: reportsTable.imageGroups,
     historicalSnapshotAvailable: sql<boolean>`${reportsTable.activitiesSnapshot} IS NOT NULL`,
+    forecastDraft: reportsTable.forecastDraft,
     progressSource: reportsTable.progressSource,
     progressAsOfDate: reportsTable.progressAsOfDate,
     progressHistoryCapturedAt: reportsTable.progressHistoryCapturedAt,
@@ -533,7 +556,25 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), re
     // order and "newest" felt broken to users.
     .orderBy(desc(reportsTable.reportDate), desc(reportsTable.createdAt), desc(reportsTable.id));
 
-  res.json(await attachImageShareStatus(reports));
+  const today = currentTripoliReportDay();
+  const visibleReports = await Promise.all(reports.map(async report => {
+    if (!report.forecastDraft || report.status !== "draft" || report.periodEnd > today) return report;
+    const forecast = await getReportForecastProgress(projectId, report.periodEnd);
+    const manuallyDocumented = report.progressSource === "manual";
+    return {
+      ...report,
+      forecastDraft: false,
+      forecastMatured: true,
+      actualAvailable: forecast.actualAvailable || manuallyDocumented,
+      actualAsOfDate: forecast.actualAsOfDate,
+      progressPercentage: manuallyDocumented
+        ? report.progressPercentage
+        : forecast.actualProgress ?? report.progressPercentage,
+      progressSource: manuallyDocumented ? "manual" : forecast.actualAvailable ? "history" : null,
+      progressHistorySource: forecastProgressHistorySource(forecast),
+    };
+  }));
+  res.json(await attachImageShareStatus(visibleReports));
 });
 
 router.post(
@@ -704,6 +745,7 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
     type, reportDate, periodStart, periodEnd, workDescription,
     progressPercentage, technicalNotes, recommendations, imageUrls, imageGroups
   } = req.body;
+  const forecastDraft = req.body.forecastDraft === true;
 
   const groups = normalizeImageGroups(imageGroups);
   const finalImageUrls: string[] = groups && groups.length > 0
@@ -716,6 +758,42 @@ router.post("/projects/:projectId/reports", requireProjectAccess("projectId"), r
   }
   if (!validReportDay(periodStart) || !validReportDay(periodEnd) || !validReportDay(reportDate) || periodStart > periodEnd) {
     res.status(400).json({ error: "تواريخ فترة التقرير غير صالحة" });
+    return;
+  }
+  if (forecastDraft && (periodEnd !== reportDate || periodEnd <= currentTripoliReportDay())) {
+    res.status(400).json({ error: "يجب أن يطابق تاريخ التقرير نهاية الفترة وأن يكون مستقبلياً للمسودة الاستشرافية" });
+    return;
+  }
+  if (forecastDraft) {
+    const forecast = await getReportForecastProgress(projectId, periodEnd);
+    const [maxResult] = await db.select({ maxNum: sql<number>`COALESCE(MAX(${reportsTable.reportNumber}), 0)` })
+      .from(reportsTable)
+      .where(eq(reportsTable.projectId, projectId));
+    const [report] = await db.insert(reportsTable).values({
+      projectId,
+      reportNumber: (maxResult?.maxNum ?? 0) + 1,
+      type,
+      reportDate,
+      periodStart,
+      periodEnd,
+      workDescription,
+      progressPercentage: forecast.actualProgress ?? 0,
+      progressSource: null,
+      progressAsOfDate: forecast.actualAvailable ? forecast.actualAsOfDate : null,
+      progressHistoryCapturedAt: null,
+      progressStartPercentage: null,
+      progressHistorySource: null,
+      technicalNotes: technicalNotes ?? null,
+      recommendations: recommendations ?? null,
+      imageUrls: finalImageUrls,
+      imageGroups: groups && groups.length > 0 ? groups : null,
+      activitiesSnapshot: forecast.activities,
+      forecastDraft: true,
+      createdById: req.user?.userId ?? null,
+    }).returning();
+    const { logAudit } = await import("../lib/audit");
+    await logAudit({ userId: (req as any).user?.userId, action: "create", entityType: "report", entityId: report.id, entityName: `مسودة استشرافية #${report.reportNumber}`, projectId, details: { reportDate: report.reportDate, statusAfter: report.status, forecastDraft: true } });
+    res.status(201).json({ ...report, ...forecast });
     return;
   }
   const progress = await getReportPeriodProgress(projectId, periodEnd, new Date(), periodStart);
@@ -816,6 +894,7 @@ router.post("/projects/:projectId/reports/:id/duplicate", requireProjectAccess("
       imageUrls: source.imageUrls,
       imageGroups: source.imageGroups,
       activitiesSnapshot: source.activitiesSnapshot,
+      forecastDraft: source.forecastDraft,
       progressSource: source.progressSource,
       progressAsOfDate: source.progressAsOfDate,
       progressHistoryCapturedAt: source.progressHistoryCapturedAt,
@@ -849,11 +928,32 @@ router.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId")
     return;
   }
 
-  const referenceActivities = !Array.isArray(report.activitiesSnapshot) && validReportDay(report.periodEnd)
+  const forecast = report.forecastDraft && report.status === "draft"
+    ? await getReportForecastProgress(projectId, report.periodEnd)
+    : null;
+  const forecastMatured = forecast != null && forecast.targetDate <= forecast.today;
+  const manuallyDocumented = report.progressSource === "manual";
+  const reportForResponse = forecast
+    ? {
+        ...report,
+        ...forecast,
+        forecastDraft: !forecastMatured,
+        forecastMatured,
+        actualAvailable: forecast.actualAvailable || manuallyDocumented,
+        progressPercentage: manuallyDocumented
+          ? report.progressPercentage
+          : forecast.actualProgress ?? report.progressPercentage,
+        progressSource: manuallyDocumented ? "manual" : forecast.actualAvailable ? "history" : null,
+        progressAsOfDate: forecast.actualAvailable ? forecast.actualAsOfDate : manuallyDocumented ? report.progressAsOfDate : null,
+        progressHistorySource: forecastProgressHistorySource(forecast) ?? (manuallyDocumented ? report.progressHistorySource : null),
+        activitiesSnapshot: forecast.activities,
+      }
+    : report;
+  const referenceActivities = !Array.isArray(reportForResponse.activitiesSnapshot) && validReportDay(report.periodEnd)
     ? (await getReportPeriodProgress(projectId, report.periodEnd)).activities ?? []
     : undefined;
   res.setHeader("Cache-Control", "private, no-store");
-  const [withShareStatus] = await attachImageShareStatus([report]);
+  const [withShareStatus] = await attachImageShareStatus([reportForResponse]);
   res.json({ ...withShareStatus, referenceActivities });
 });
 
@@ -868,9 +968,34 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
   const [progressMeta] = await db.select({
     source: reportsTable.progressSource,
     periodEnd: reportsTable.periodEnd,
+    reportDate: reportsTable.reportDate,
     percentage: reportsTable.progressPercentage,
+    forecastDraft: reportsTable.forecastDraft,
+    status: reportsTable.status,
   }).from(reportsTable).where(and(eq(reportsTable.id, id), eq(reportsTable.projectId, projectId)));
-  if (progressMeta?.source && body.periodEnd !== undefined && body.periodEnd !== progressMeta.periodEnd) {
+  const nextReportDate = body.reportDate ?? progressMeta?.reportDate;
+  const nextPeriodEnd = body.periodEnd ?? progressMeta?.periodEnd;
+  const today = currentTripoliReportDay();
+  const isMaturedForecast = progressMeta?.forecastDraft === true
+    && progressMeta.status === "draft"
+    && nextPeriodEnd <= today;
+  const isEditableForecast = progressMeta?.forecastDraft === true
+    && progressMeta.status === "draft"
+    && !isMaturedForecast;
+  if (progressMeta?.forecastDraft && progressMeta.status !== "draft"
+    && (body.reportDate !== undefined || body.periodEnd !== undefined)) {
+    res.status(409).json({ error: "لا يمكن تغيير تاريخ مسودة استشرافية بعد اعتمادها" });
+    return;
+  }
+  if (isEditableForecast && nextReportDate !== nextPeriodEnd) {
+    res.status(400).json({ error: "يجب أن يطابق تاريخ التقرير نهاية الفترة في المسودة الاستشرافية" });
+    return;
+  }
+  const maturedTargetChanged = isMaturedForecast
+    && body.periodEnd !== undefined
+    && body.periodEnd !== progressMeta?.periodEnd;
+  if (progressMeta?.source && body.periodEnd !== undefined && body.periodEnd !== progressMeta.periodEnd
+    && !(progressMeta.forecastDraft && progressMeta.status === "draft")) {
     res.status(409).json({ error: "نهاية الفترة مرتبطة بلقطة التقرير المحفوظة؛ أنشئ تقريراً جديداً للفترة المختلفة" });
     return;
   }
@@ -883,6 +1008,10 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
   if (body.periodEnd !== undefined) updateData.periodEnd = body.periodEnd;
   if (body.workDescription !== undefined) updateData.workDescription = body.workDescription;
   if (body.progressPercentage !== undefined) updateData.progressPercentage = body.progressPercentage;
+  if (body.progressSource !== undefined && body.progressSource !== "manual" && body.progressSource !== "history") {
+    res.status(400).json({ error: "مصدر نسبة الإنجاز غير صالح" });
+    return;
+  }
   if (body.technicalNotes !== undefined) updateData.technicalNotes = body.technicalNotes;
   if (body.recommendations !== undefined) updateData.recommendations = body.recommendations;
   if (body.imageGroups !== undefined) {
@@ -903,13 +1032,68 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
     updateData.imageGroups = null;
   }
 
+  if (isEditableForecast && (body.reportDate !== undefined || body.periodEnd !== undefined)) {
+    if (!validReportDay(nextPeriodEnd)) {
+      res.status(400).json({ error: "تاريخ المسودة الاستشرافية غير صالح" });
+      return;
+    }
+    const forecast = await getReportForecastProgress(projectId, nextPeriodEnd);
+    updateData.activitiesSnapshot = forecast.activities;
+    updateData.progressPercentage = forecast.actualProgress ?? 0;
+    updateData.progressAsOfDate = forecast.actualAvailable ? forecast.actualAsOfDate : null;
+    updateData.progressHistoryCapturedAt = null;
+    updateData.progressStartPercentage = null;
+    updateData.progressSource = forecast.actualAvailable ? "history" : null;
+    updateData.progressHistorySource = forecastProgressHistorySource(forecast);
+  }
+  if (isMaturedForecast) {
+    if (!validReportDay(nextPeriodEnd)) {
+      res.status(400).json({ error: "تاريخ التقرير غير صالح" });
+      return;
+    }
+    const historical = await getReportForecastProgress(projectId, nextPeriodEnd);
+    const existingSnapshot = historical.activities as SnapshotRow[];
+    const manuallyEditedSnapshot = body.activitiesSnapshot !== undefined
+      ? mergeSnapshot(existingSnapshot, body.activitiesSnapshot, nextPeriodEnd)
+      : existingSnapshot;
+    updateData.activitiesSnapshot = manuallyEditedSnapshot ?? existingSnapshot;
+    if (body.progressSource === "manual") {
+      if (typeof body.progressPercentage !== "number" || !Number.isFinite(body.progressPercentage)
+        || body.progressPercentage < 0 || body.progressPercentage > 100) {
+        res.status(400).json({ error: "أدخل نسبة إنجاز موثّقة من 0 إلى 100" });
+        return;
+      }
+      updateData.progressPercentage = body.progressPercentage;
+      updateData.progressSource = "manual";
+      updateData.progressAsOfDate = nextPeriodEnd;
+      updateData.progressHistoryCapturedAt = null;
+      updateData.progressHistorySource = null;
+    } else if (progressMeta?.source === "manual" && !maturedTargetChanged) {
+      updateData.progressSource = "manual";
+      updateData.progressAsOfDate = nextPeriodEnd;
+    } else if (historical.actualAvailable && historical.actualProgress !== null) {
+      updateData.progressPercentage = historical.actualProgress;
+      updateData.progressSource = "history";
+      updateData.progressAsOfDate = historical.actualAsOfDate;
+      updateData.progressHistoryCapturedAt = null;
+      updateData.progressHistorySource = forecastProgressHistorySource(historical);
+    } else {
+      if (maturedTargetChanged) updateData.progressPercentage = 0;
+      updateData.progressSource = null;
+      updateData.progressAsOfDate = null;
+      updateData.progressHistoryCapturedAt = null;
+      updateData.progressHistorySource = null;
+    }
+  }
+
   // Snapshot edits are local to the report (see task #45). We load the
   // existing snapshot, merge the partial payload (only actualProgress and
   // status, keyed by id), and — when the client did NOT explicitly pass
   // `progressPercentage` — recompute the report's overall % as a weighted
   // average using each row's stored `weight`. The project's master
   // `activities` table is never touched by this path.
-  if (body.activitiesSnapshot !== undefined || body.reportDate !== undefined) {
+  if (!isEditableForecast && !isMaturedForecast
+    && (body.activitiesSnapshot !== undefined || body.reportDate !== undefined)) {
     const [current] = await db.select({ snapshot: reportsTable.activitiesSnapshot })
       .from(reportsTable)
       .where(and(eq(reportsTable.id, id), eq(reportsTable.projectId, projectId)));
@@ -982,15 +1166,40 @@ router.patch("/projects/:projectId/reports/:id/status", requireProjectManager("p
     return;
   }
 
-  const [existing] = await db.select({ status: reportsTable.status }).from(reportsTable)
+  const [existing] = await db.select({
+    status: reportsTable.status,
+    forecastDraft: reportsTable.forecastDraft,
+    periodEnd: reportsTable.periodEnd,
+    progressSource: reportsTable.progressSource,
+  }).from(reportsTable)
     .where(and(eq(reportsTable.id, id), eq(reportsTable.projectId, projectId)));
   if (!existing) {
     res.status(404).json({ error: "التقرير غير موجود" });
     return;
   }
+  const maturedForecast = existing.forecastDraft && existing.status === "draft"
+    && existing.periodEnd <= currentTripoliReportDay();
+  if (existing.forecastDraft && status === "approved" && !maturedForecast) {
+    res.status(409).json({ error: "المسودة الاستشرافية توقع وليست تقرير إنجاز فعلياً؛ أنشئ تقرير إنجاز بعد حلول التاريخ" });
+    return;
+  }
 
   const updateData: Record<string, unknown> = { status };
   if (status === "approved") {
+    if (maturedForecast && existing.progressSource !== "manual") {
+      const actual = await getReportForecastProgress(projectId, existing.periodEnd);
+      if (!actual.actualAvailable || actual.actualProgress === null) {
+        res.status(409).json({ error: "حلّ موعد المسودة، لكن لا يتوفر سجل إنجاز موثوق لهذا التاريخ. أدخل النسبة الفعلية الموثقة أولاً." });
+        return;
+      }
+      updateData.progressPercentage = actual.actualProgress;
+      updateData.progressSource = "history";
+      updateData.progressAsOfDate = actual.actualAsOfDate;
+      updateData.progressHistoryCapturedAt = null;
+      updateData.progressHistorySource = actual.actualSource === "estimated_history" ? "estimated" : "actual";
+      updateData.activitiesSnapshot = actual.activities;
+    }
+    if (maturedForecast) updateData.forecastDraft = false;
     updateData.approvedAt = new Date();
     updateData.approvedById = req.user?.userId ?? null;
   } else {

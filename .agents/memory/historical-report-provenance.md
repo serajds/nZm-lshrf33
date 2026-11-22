@@ -56,3 +56,15 @@ When resolving linked history, use the database row's `project_id` as the author
 **Why:** The linked estimate test exposed a mismatch between the database identity and snapshot shape that silently classified estimated values as actual.
 
 **How to apply:** Normalize each loaded snapshot with its row's `project_id` before building linked-group ownership or estimated-project sets. Do not rewrite stored snapshots to solve a read-time identity mismatch.
+
+Future report drafts may project planned progress and item status from the schedule, but must never project actual progress. Before the target date, keep them clearly forecast and non-approvable. Once the target date arrives, present the same draft as an ordinary report: use verified target-date history when available, otherwise require documented actual input before approval. Never auto-approve or change project activity data.
+
+**Why:** The user clarified that the purpose is to prepare one report in advance and use it as an ordinary report when its date arrives, not create a separate report.
+
+**How to apply:** Recalculate only forecast drafts when reopened, re-dated, or when their target date arrives. Preserve ordinary and approved report snapshots, and leave actuals unavailable when no reliable dated history exists.
+
+A complete historical estimate that the ordinary report flow identifies as reviewed remains a usable aggregate source when a forecast draft matures. Preserve its `estimated` provenance; do not label it as actual history, fill individual activity actuals from it, or derive historical SPI from it.
+
+**Why:** The user clarified that reviewed estimated history already powers ordinary report percentages and expected it to be reused for a matured forecast.
+
+**How to apply:** Reuse the period-history aggregate when it is available, label the aggregate as a reviewed historical estimate, and keep estimated item values and unsupported planned comparisons unverified.

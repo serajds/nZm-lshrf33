@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { NewReportProgressField, useReportPeriodProgress } from "@/components/report-period-progress";
+import { ForecastReportProgressField, NewReportProgressField, useReportForecastProgress, useReportPeriodProgress } from "@/components/report-period-progress";
 import { reportTypeLabel, suggestedReportPeriodEnd } from "@/lib/report-types";
 import { 
   useListReports, 
@@ -461,12 +461,22 @@ export default function ProjectReports() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   usePageTitle("التقارير");
+  const tripoliToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const editOpenerRef = useRef<HTMLElement | null>(null);
   const [newReportManual, setNewReportManual] = useState(false);
+  const [newReportForecast, setNewReportForecast] = useState(false);
+  const [editingForecastDraft, setEditingForecastDraft] = useState(false);
+  const [editingMaturedForecast, setEditingMaturedForecast] = useState(false);
+  const [maturedForecastActualAvailable, setMaturedForecastActualAvailable] = useState(false);
+  const [maturedForecastManuallyDocumented, setMaturedForecastManuallyDocumented] = useState(false);
+  const [maturedManualReferenceReportNumber, setMaturedManualReferenceReportNumber] = useState<number | null>(null);
   const [manualProgressEntered, setManualProgressEntered] = useState(false);
+  const maturedTargetDateRef = useRef<string | null>(null);
   const [copyingId, setCopyingId] = useState<number | null>(null);
   const [isAiDrafting, setIsAiDrafting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -543,6 +553,16 @@ export default function ProjectReports() {
     { query: { enabled: !!projectId, staleTime: 1000 * 60 * 5 } as any },
   );
 
+  useEffect(() => {
+    const hasFutureForecast = reports?.some(report =>
+      report.forecastDraft && report.status === "draft" && report.periodEnd > tripoliToday);
+    if (!hasFutureForecast) return;
+    const timer = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [projectId, queryClient, reports, tripoliToday]);
+
   const createReport = useCreateReport();
   const updateReport = useUpdateReport();
   const updateReportStatus = useUpdateReportStatus();
@@ -582,7 +602,31 @@ export default function ProjectReports() {
   const watchedType = form.watch("type");
   const watchedPeriodStart = form.watch("periodStart");
   const watchedPeriodEnd = form.watch("periodEnd");
+  const watchedReportDate = form.watch("reportDate");
+  const watchedTargetDate = watchedPeriodEnd || watchedReportDate;
   const periodProgress = useReportPeriodProgress(projectId, watchedPeriodEnd, isDialogOpen && !editingId, watchedPeriodStart);
+  const forecastMode = newReportForecast || (editingForecastDraft && watchedTargetDate > tripoliToday);
+  const maturedForecastMode = editingMaturedForecast || (editingForecastDraft && !forecastMode);
+  const forecastProgress = useReportForecastProgress(
+    projectId,
+    watchedTargetDate,
+    isDialogOpen && (newReportForecast || editingForecastDraft || editingMaturedForecast),
+    isDialogOpen && forecastMode,
+  );
+  const maturedActualAvailable = editingMaturedForecast
+    ? forecastProgress.data?.targetDate === watchedTargetDate
+      ? forecastProgress.data.actualAvailable
+        || (maturedTargetDateRef.current === watchedTargetDate && maturedForecastManuallyDocumented)
+      : maturedTargetDateRef.current === watchedTargetDate && maturedForecastActualAvailable
+    : forecastProgress.data?.targetDate === watchedTargetDate && forecastProgress.data.actualAvailable;
+  const maturedHistoryLoading = maturedForecastMode
+    && !maturedForecastManuallyDocumented
+    && forecastProgress.isFetching
+    && forecastProgress.data?.targetDate !== watchedTargetDate;
+  const maturedHistoryFailed = maturedForecastMode
+    && !maturedForecastManuallyDocumented
+    && forecastProgress.isError
+    && !maturedHistoryLoading;
   useEffect(() => {
     if (editingId) return;
     setNewReportManual(false);
@@ -631,15 +675,63 @@ export default function ProjectReports() {
   }, [projectCategoryHistory, watchedImageGroups]);
 
   useEffect(() => {
-    if (editingId || !watchedPeriodStart) return;
+    if (editingId || newReportForecast || !watchedPeriodStart) return;
     const endDate = suggestedReportPeriodEnd(watchedType, watchedPeriodStart);
     if (endDate !== null) form.setValue("periodEnd", endDate);
-  }, [watchedType, watchedPeriodStart, editingId]);
+  }, [watchedType, watchedPeriodStart, editingId, newReportForecast]);
+
+  useEffect(() => {
+    if ((!forecastMode && !maturedForecastMode) || !forecastProgress.data
+      || forecastProgress.data.targetDate !== watchedTargetDate) return;
+    const rows = forecastProgress.data.activities as ReportActivitiesSnapshotItem[];
+    const sorted = [...rows].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    setSnapshotRows(sorted);
+    originalSnapshotRows.current = sorted;
+  }, [forecastMode, maturedForecastMode, forecastProgress.data, watchedTargetDate]);
+
+  useEffect(() => {
+    if (!maturedForecastMode || !maturedTargetDateRef.current) return;
+    if (maturedTargetDateRef.current !== watchedTargetDate) {
+      setMaturedForecastActualAvailable(false);
+      setMaturedForecastManuallyDocumented(false);
+      setMaturedManualReferenceReportNumber(null);
+      setManualProgressEntered(false);
+      form.setValue("progressPercentage", 0, { shouldDirty: true });
+    }
+    maturedTargetDateRef.current = watchedTargetDate;
+  }, [maturedForecastMode, watchedTargetDate, form]);
+
+  useEffect(() => {
+    const progress = forecastProgress.data;
+    if (!maturedForecastMode || !progress || progress.targetDate !== watchedTargetDate) return;
+    if (progress.actualAvailable) {
+      setMaturedForecastActualAvailable(true);
+      if (!maturedForecastManuallyDocumented) {
+        setManualProgressEntered(false);
+        form.setValue("progressPercentage", progress.actualProgress ?? 0, { shouldDirty: false });
+      }
+    } else if (!maturedForecastManuallyDocumented) {
+      setMaturedForecastActualAvailable(false);
+      setManualProgressEntered(false);
+      form.setValue("progressPercentage", 0, { shouldDirty: false });
+    }
+  }, [maturedForecastMode, forecastProgress.data, watchedTargetDate, maturedForecastManuallyDocumented, form]);
 
   const handleEdit = async (r: Report, opener?: HTMLElement) => {
     editOpenerRef.current = opener ?? null;
+    maturedTargetDateRef.current = r.periodEnd;
     setSelectedReportId(null);
     setEditingId(r.id);
+    setNewReportForecast(false);
+    setEditingForecastDraft(r.forecastDraft && r.status === "draft");
+    setEditingMaturedForecast((r as Report & { forecastMatured?: boolean }).forecastMatured === true);
+    setMaturedForecastManuallyDocumented((r as Report & { progressSource?: string | null }).progressSource === "manual");
+    setMaturedManualReferenceReportNumber(null);
+    setMaturedForecastActualAvailable(
+      (r as Report & { actualAvailable?: boolean }).actualAvailable === true
+      || (r as Report & { progressSource?: string | null }).progressSource === "manual",
+    );
+    setManualProgressEntered(false);
     setSnapshotUpdateOpen(false);
     aiDraftSnapshotFingerprint.current = null;
     const existingGroups = (r.imageGroups as ImageGroup[] | null | undefined) ?? null;
@@ -672,6 +764,20 @@ export default function ProjectReports() {
         queryFn: ({ signal }) => getReport(projectId, r.id, { signal }),
         staleTime: 0,
       }) as Report;
+      const fullForecast = full as Report & {
+        forecastMatured?: boolean;
+        actualAvailable?: boolean;
+        progressSource?: string | null;
+      };
+      setEditingMaturedForecast(fullForecast.forecastMatured === true);
+      setMaturedForecastManuallyDocumented(fullForecast.progressSource === "manual");
+      setMaturedManualReferenceReportNumber(null);
+      setMaturedForecastActualAvailable(
+        fullForecast.actualAvailable === true || fullForecast.progressSource === "manual",
+      );
+      if (fullForecast.forecastMatured) {
+        form.setValue("progressPercentage", full.progressPercentage, { shouldDirty: false });
+      }
       const snap = (full.activitiesSnapshot ?? (full as Report & { referenceActivities?: ReportActivitiesSnapshotItem[] }).referenceActivities ?? []) as ReportActivitiesSnapshotItem[];
       setReferenceRows((full as Report & { referenceActivities?: typeof referenceRows }).referenceActivities ?? []);
       const sorted = [...snap].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -710,6 +816,7 @@ export default function ProjectReports() {
   };
 
   const snapshotWeightedProgress = useMemo(() => {
+    if (forecastMode) return null;
     if (snapshotRows.length === 0) return null;
     if (snapshotRows.some(row => (row as { referenceOnly?: boolean }).referenceOnly)) return null;
     let totalWeight = 0;
@@ -721,7 +828,7 @@ export default function ProjectReports() {
     }
     if (totalWeight === 0) return null;
     return Math.round((weighted / totalWeight) * 10) / 10;
-  }, [snapshotRows]);
+  }, [snapshotRows, forecastMode]);
 
   const updateSnapshotRow = (id: number, patch: Partial<ReportActivitiesSnapshotItem>) => {
     setSnapshotRows(prev => prev.map(r => (r.id === id ? {
@@ -787,16 +894,20 @@ export default function ProjectReports() {
     const hasSnapshot = Array.isArray(snapshotActivities);
     const hasSavedSnapshot = Array.isArray(fullReport.activitiesSnapshot);
     const sourceActivities: ReportActivitiesSnapshotItem[] = hasSnapshot ? snapshotActivities : [];
+    const isForecastDraft = fullReport.forecastDraft && fullReport.status === "draft";
     const activityList: ActivityForReport[] = sourceActivities.map((a) => ({
       name: a.name ?? "",
       plannedProgress: a.plannedProgress ?? 0,
       actualProgress: a.actualProgress ?? 0,
       actualValueMissing: typeof a.actualProgress !== "number" || !Number.isFinite(a.actualProgress)
+        || (isForecastDraft && (a as ReportActivitiesSnapshotItem & { actualHistoricalUnverified?: boolean }).actualHistoricalUnverified === true)
         || ((a as { referenceOnly?: boolean }).referenceOnly === true
           && (a as { actualHistoricalUnverified?: boolean }).actualHistoricalUnverified === true),
       plannedValueMissing: typeof a.plannedProgress !== "number" || !Number.isFinite(a.plannedProgress)
+        || (isForecastDraft && (a as { plannedHistoricalUnverified?: boolean }).plannedHistoricalUnverified === true)
         || (!hasSavedSnapshot && (a as { plannedHistoricalUnverified?: boolean }).plannedHistoricalUnverified === true),
       status: (a.status as ActivityForReport["status"]) ?? "not_started",
+      forecastStatus: (a as ReportActivitiesSnapshotItem & { forecastStatus?: string }).forecastStatus,
       plannedStartDate: a.plannedStartDate,
       plannedEndDate: a.plannedEndDate,
       actualHistoricalUnverified: (a as ReportActivitiesSnapshotItem & { actualHistoricalUnverified?: boolean }).actualHistoricalUnverified,
@@ -828,7 +939,9 @@ export default function ProjectReports() {
       ? createdAt.toISOString().slice(0, 10)
       : null;
     const periodSource = (fullReport as Report & { progressSource?: string }).progressSource;
-    const actualHistoricalUnverified = hasSnapshot && (periodSource
+    const actualHistoricalUnverified = isForecastDraft
+      ? ((fullReport as Report & { actualAvailable?: boolean }).actualAvailable !== true)
+      : hasSnapshot && (periodSource
       ? periodSource === "manual" || sourceActivities.some(row =>
           (row as ReportActivitiesSnapshotItem & { actualAsOfDate?: string; actualHistoricalUnverified?: boolean }).actualHistoricalUnverified === true
           || (row as ReportActivitiesSnapshotItem & { actualAsOfDate?: string }).actualAsOfDate !== fullReport.periodEnd)
@@ -881,6 +994,16 @@ export default function ProjectReports() {
       apiBase,
       reportSignatures: (project as any).reportSignatures ?? null,
       reportDisplayMode: project.reportDisplayMode,
+      forecastDraft: isForecastDraft,
+      actualProgressUnavailable: (fullReport as Report & {
+        forecastMatured?: boolean;
+        actualAvailable?: boolean;
+      }).forecastMatured === true
+        && (fullReport as Report & { actualAvailable?: boolean }).actualAvailable !== true
+        && periodSource !== "manual",
+      forecastTargetDate: fullReport.periodEnd,
+      actualAsOfDate: (fullReport as Report & { actualAsOfDate?: string }).actualAsOfDate
+        ?? sourceActivities.find(row => row.actualAsOfDate)?.actualAsOfDate,
     }, previewWindow);
     } catch {
       showReportPreviewError(previewWindow);
@@ -1013,6 +1136,14 @@ export default function ProjectReports() {
 
   const onSubmit = async (values: ReportFormValues) => {
     try {
+      if (forecastMode && !forecastProgress.data) {
+        toast({ variant: "destructive", title: "انتظر اكتمال معاينة المسودة الاستشرافية قبل الحفظ" });
+        return;
+      }
+      if (newReportForecast && values.reportDate <= forecastProgress.data!.today) {
+        toast({ variant: "destructive", title: "اختر تاريخاً مستقبلياً لإنشاء المسودة الاستشرافية" });
+        return;
+      }
       if (aiApprovedContext.current && aiApprovedContext.current !== approvalKey(values)) {
         toast({ variant: "destructive", title: "تغيرت النسبة أو الفترة بعد الصياغة؛ أعد الصياغة قبل الحفظ" });
         return;
@@ -1031,7 +1162,7 @@ export default function ProjectReports() {
         // Only send snapshot rows that actually have an id (defensive — the
         // generated type marks `id` as required, and rows without one
         // wouldn't match anything server-side anyway).
-        const snapshotPayload: UpdateReportBodyActivitiesSnapshotItem[] = snapshotRows
+        const snapshotPayload: UpdateReportBodyActivitiesSnapshotItem[] = (forecastMode ? [] : snapshotRows)
           .filter((r): r is typeof r & { id: number } => typeof r.id === "number")
           .filter(r => r.actualManuallyApproved || originalSnapshotRows.current.some(o =>
             o.id === r.id && (o.actualProgress !== r.actualProgress || o.status !== r.status)))
@@ -1046,6 +1177,9 @@ export default function ProjectReports() {
           imageUrls: flatImageUrls,
           imageGroups: groupsForApi,
         };
+        if (maturedForecastMode && manualProgressEntered) {
+          updateBody.progressSource = "manual";
+        }
         if (snapshotPayload.length > 0) {
           updateBody.activitiesSnapshot = snapshotPayload;
         }
@@ -1054,18 +1188,26 @@ export default function ProjectReports() {
         queryClient.invalidateQueries({ queryKey: getGetReportAuditLogQueryKey(projectId, editingId) });
         toast({ title: "تم التحديث" });
       } else {
-        if (newReportManual ? !manualProgressEntered : !periodProgress.data?.available || periodProgress.isFetching) {
+        if (newReportForecast
+          ? !forecastProgress.data || forecastProgress.isFetching
+          : newReportManual ? !manualProgressEntered : !periodProgress.data?.available || periodProgress.isFetching) {
           toast({ variant: "destructive", title: newReportManual
             ? "أدخل النسبة الموثّقة لهذه الفترة قبل الحفظ"
             : "لا تتوفر نسبة تاريخية جاهزة؛ انتظر تحميل السجل أو اختر الإدخال اليدوي الموثّق" });
           return;
         }
-        const createBody: CreateReportBody & { progressSource: "manual" | "history"; historyFingerprint?: string } = {
+        const createBody: CreateReportBody & {
+          progressSource?: "manual" | "history";
+          historyFingerprint?: string;
+          forecastDraft?: boolean;
+        } = {
           ...rest,
           imageUrls: flatImageUrls,
           imageGroups: groupsForApi,
-          progressSource: newReportManual ? "manual" : "history",
-          ...(!newReportManual && periodProgress.data?.fingerprint ? { historyFingerprint: periodProgress.data.fingerprint } : {}),
+          ...(newReportForecast ? { forecastDraft: true } : {
+            progressSource: newReportManual ? "manual" : "history",
+            ...(!newReportManual && periodProgress.data?.fingerprint ? { historyFingerprint: periodProgress.data.fingerprint } : {}),
+          }),
         };
         if (aiDraftSnapshotFingerprint.current) {
           (createBody as CreateReportBody & { aiDraftSnapshotFingerprint?: string }).aiDraftSnapshotFingerprint =
@@ -1078,6 +1220,14 @@ export default function ProjectReports() {
       setIsDialogOpen(false);
       form.reset();
       setEditingId(null);
+      setNewReportForecast(false);
+      setEditingForecastDraft(false);
+      setEditingMaturedForecast(false);
+      setMaturedForecastActualAvailable(false);
+      setMaturedForecastManuallyDocumented(false);
+      setMaturedManualReferenceReportNumber(null);
+      setManualProgressEntered(false);
+      maturedTargetDateRef.current = null;
     } catch (error) {
       if (!editingId) void periodProgress.refetch();
       toast({ variant: "destructive", title: "فشل الحفظ", description: error instanceof Error ? error.message : undefined });
@@ -1387,6 +1537,14 @@ export default function ProjectReports() {
             if (!open) {
               form.reset();
               setEditingId(null);
+              setNewReportForecast(false);
+              setEditingForecastDraft(false);
+              setEditingMaturedForecast(false);
+              setMaturedForecastActualAvailable(false);
+              setMaturedForecastManuallyDocumented(false);
+              setMaturedManualReferenceReportNumber(null);
+              maturedTargetDateRef.current = null;
+              setManualProgressEntered(false);
               setSnapshotRows([]);
               aiDraftSnapshotFingerprint.current = null;
             }
@@ -1395,6 +1553,13 @@ export default function ProjectReports() {
               <Button className="gap-2" onClick={() => {
               if (!editingId) {
                 setNewReportManual(false);
+                setNewReportForecast(false);
+                setEditingForecastDraft(false);
+                setEditingMaturedForecast(false);
+                setMaturedForecastActualAvailable(false);
+                setMaturedForecastManuallyDocumented(false);
+                setMaturedManualReferenceReportNumber(null);
+                maturedTargetDateRef.current = null;
                 setManualProgressEntered(false);
 
                 const allReports = reports ?? [];
@@ -1441,7 +1606,9 @@ export default function ProjectReports() {
                   <div>
                     <DialogTitle className="text-xl">{editingId ? "تعديل التقرير" : "إضافة تقرير جديد"}</DialogTitle>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {editingId ? "تحديث بيانات التقرير ونسب الإنجاز والملاحظات." : "أدخل تفاصيل الإنجاز الفنية والنسب للتقرير الجديد."}
+                      {forecastMode
+                        ? "مسودة توقع من الجدول الزمني؛ الإنجاز الفعلي يعرض فقط حتى آخر تاريخ موثوق."
+                        : editingId ? "تحديث بيانات التقرير ونسب الإنجاز والملاحظات." : "أدخل تفاصيل الإنجاز الفنية والنسب للتقرير الجديد."}
                     </p>
                   </div>
                 </div>
@@ -1454,6 +1621,58 @@ export default function ProjectReports() {
                   
                   {/* Section 1: Basic Info */}
                   <div className="space-y-4">
+                    {!editingId && (
+                      <div className={`rounded-xl border p-3 ${newReportForecast ? "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20" : "border-border"}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold">إعداد مسودة استشرافية</p>
+                            <p className="text-xs text-muted-foreground">توقع الجدول فقط؛ لا يُنشئ إنجازاً فعلياً مستقبلياً.</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant={newReportForecast ? "secondary" : "outline"}
+                            onClick={() => {
+                              const enable = !newReportForecast;
+                              setNewReportForecast(enable);
+                              setNewReportManual(false);
+                              if (enable) {
+                                const today = new Intl.DateTimeFormat("en-CA", {
+                                  timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit",
+                                }).format(new Date());
+                                const target = new Date(`${today}T12:00:00`);
+                                target.setDate(target.getDate() + 7);
+                                const targetDay = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`;
+                                form.setValue("reportDate", targetDay, { shouldDirty: true });
+                                form.setValue("periodEnd", targetDay, { shouldDirty: true });
+                              }
+                            }}
+                          >
+                            {newReportForecast ? "المسودة الاستشرافية مفعّلة" : "تفعيل المسودة الاستشرافية"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {editingForecastDraft && forecastMode && (
+                      <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
+                        هذه مسودة استشرافية غير معتمدة. ستتحدث معاينتها حسب التاريخ والجدول والسجل المتاح، ولن تغيّر أنشطة المشروع.
+                      </div>
+                    )}
+                    {maturedForecastMode && (
+                      <div className="rounded-xl border border-sky-300 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/20 dark:text-sky-200">
+                        حلّ التاريخ المستهدف؛ أصبحت هذه مسودة تقرير عادي للمراجعة والاعتماد.
+                        {maturedHistoryLoading
+                          ? " جارٍ التحقق من سجل الإنجاز لهذا التاريخ."
+                          : maturedActualAvailable
+                          ? forecastProgress.data?.actualSource === "approved_report"
+                            ? ` عُرضت النسبة المحفوظة في التقرير المعتمد رقم ${forecastProgress.data.actualReportNumber} لنفس التاريخ.`
+                            : forecastProgress.data?.actualSource === "estimated_history"
+                              ? ` عُرضت نسبة ${forecastProgress.data.actualProgress}% من السجل التاريخي التقديري المراجع حتى ${fmtDate(forecastProgress.data.actualAsOfDate)}.`
+                              : " عُرض الإنجاز الفعلي الموثق لذلك التاريخ."
+                          : maturedHistoryFailed
+                            ? " تعذّر التحقق من السجل؛ أعد المحاولة أو أدخل نسبة فعلية موثقة قبل الاعتماد."
+                            : " لا يتوفر سجل إنجاز موثوق؛ أدخل النسبة الفعلية الموثقة قبل اعتماد التقرير."}
+                      </div>
+                    )}
                     <h3 className="text-sm font-semibold text-indigo-600/80 uppercase tracking-wide flex items-center gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
                       معلومات التقرير
@@ -1485,7 +1704,10 @@ export default function ProjectReports() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>تاريخ التقرير</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
+                        <FormControl><Input type="date" {...field} onChange={event => {
+                          field.onChange(event);
+                          if (forecastMode || maturedForecastMode) form.setValue("periodEnd", event.target.value, { shouldDirty: true });
+                        }} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1507,7 +1729,10 @@ export default function ProjectReports() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>نهاية الفترة</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
+                        <FormControl><Input type="date" {...field} onChange={event => {
+                          field.onChange(event);
+                          if (forecastMode || maturedForecastMode) form.setValue("reportDate", event.target.value, { shouldDirty: true });
+                        }} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1516,6 +1741,14 @@ export default function ProjectReports() {
                     control={form.control}
                     name="progressPercentage"
                     render={({ field }) => {
+                      if (forecastMode) return (
+                        <ForecastReportProgressField
+                          targetDate={watchedTargetDate}
+                          data={forecastProgress.data}
+                          loading={forecastProgress.isFetching}
+                          failed={forecastProgress.isError}
+                        />
+                      );
                       if (!editingId) return (
                         <NewReportProgressField
                           periodStart={watchedPeriodStart}
@@ -1536,7 +1769,9 @@ export default function ProjectReports() {
                       return (
                         <FormItem className="sm:col-span-2">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
-                            <FormLabel className="mb-0">نسبة الإنجاز حتى تاريخه (%)</FormLabel>
+                            <FormLabel className="mb-0">
+                              {maturedForecastMode ? "الإنجاز الفعلي حتى نهاية الفترة (%)" : "نسبة الإنجاز حتى تاريخه (%)"}
+                            </FormLabel>
                           </div>
                           <FormControl>
                             <div className="relative">
@@ -1546,12 +1781,73 @@ export default function ProjectReports() {
                                 max={100}
                                 step={0.1}
                                 {...field}
+                                value={maturedForecastMode && !maturedActualAvailable && !manualProgressEntered
+                                  ? ""
+                                  : field.value}
+                                onChange={event => {
+                                  const raw = event.target.value;
+                                  field.onChange(raw === "" ? 0 : Number(raw));
+                                  if (maturedForecastMode) {
+                                    const entered = raw.trim() !== "";
+                                    setManualProgressEntered(entered);
+                                    setMaturedForecastActualAvailable(entered);
+                                    setMaturedForecastManuallyDocumented(entered);
+                                    setMaturedManualReferenceReportNumber(null);
+                                  }
+                                }}
                                 disabled={isDerivedReadOnly}
                                 className="pl-8"
                               />
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium pointer-events-none">%</span>
                             </div>
                           </FormControl>
+                          {maturedForecastMode
+                            && maturedManualReferenceReportNumber !== null
+                            && manualProgressEntered && (
+                              <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                                نُقلت القيمة من المسودة غير المعتمدة رقم {maturedManualReferenceReportNumber}. راجعها قبل الحفظ والاعتماد.
+                              </p>
+                            )}
+                          {maturedForecastMode
+                            && !maturedActualAvailable
+                            && !maturedHistoryLoading
+                            && !maturedHistoryFailed
+                            && forecastProgress.data?.targetDate === watchedTargetDate
+                            && forecastProgress.data.manualSuggestion && (
+                              <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-100">
+                                <p>
+                                  وُجدت نسبة {forecastProgress.data.manualSuggestion.progressPercentage}% بتاريخ {fmtDate(forecastProgress.data.manualSuggestion.actualAsOfDate)} في المسودة غير المعتمدة رقم {forecastProgress.data.manualSuggestion.reportNumber}، الصادرة بتاريخ {fmtDate(forecastProgress.data.manualSuggestion.reportDate)}.
+                                  لم تُستخدم تلقائياً.
+                                </p>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="mt-2 border-amber-400 bg-background"
+                                  onClick={() => {
+                                    const suggestion = forecastProgress.data?.manualSuggestion;
+                                    if (!suggestion) return;
+                                    field.onChange(suggestion.progressPercentage);
+                                    setManualProgressEntered(true);
+                                    setMaturedForecastActualAvailable(true);
+                                    setMaturedForecastManuallyDocumented(true);
+                                    setMaturedManualReferenceReportNumber(suggestion.reportNumber);
+                                    maturedTargetDateRef.current = watchedTargetDate;
+                                  }}
+                                >
+                                  استخدام النسبة بعد مراجعتها
+                                </Button>
+                              </div>
+                            )}
+                          {maturedForecastMode && !maturedActualAvailable && (
+                            <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                              {maturedHistoryLoading
+                                ? "جارٍ التحقق من سجل الإنجاز لهذا التاريخ..."
+                                : maturedHistoryFailed
+                                  ? "تعذّر التحقق من السجل. أعد المحاولة أو أدخل نسبة فعلية موثقة؛ ترك الحقل فارغاً يمنع الاعتماد."
+                                  : "لا يوجد سجل موثوق لهذا التاريخ. أدخل النسبة الفعلية الموثقة؛ ترك الحقل فارغاً يمنع اعتماد التقرير."}
+                            </p>
+                          )}
                           {hasSnapshot ? (
                             <p className="text-xs text-muted-foreground mt-1">
                               {isDerivedReadOnly
@@ -1582,7 +1878,7 @@ export default function ProjectReports() {
                         size="sm"
                         className="h-8 gap-1.5 border-indigo-200 bg-indigo-50/50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 dark:border-indigo-900/30 dark:bg-indigo-950/20 dark:text-indigo-400"
                         onClick={handleAiDraft}
-                        disabled={isAiDrafting}
+                        disabled={isAiDrafting || forecastMode}
                       >
                         {isAiDrafting ? (
                           <>
@@ -1606,10 +1902,14 @@ export default function ProjectReports() {
                           <FormItem>
                             <FormLabel className="text-base text-foreground/90 flex items-center gap-2">
                               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                              وصف الأعمال المنجزة خلال الفترة
+                              {forecastMode ? "الأعمال المخطط تنفيذها خلال الفترة" : "وصف الأعمال المنجزة خلال الفترة"}
                             </FormLabel>
-                            <FormControl><Textarea className="min-h-28 text-base bg-background shadow-inner" placeholder="أضف ما نُفّذ خلال الفترة، أو اطلب تحليل البنود التاريخية وصياغة التقرير..." {...field} /></FormControl>
-                            <p className="text-xs text-muted-foreground">الصياغة تحلل البنود والمخطط الموثّقين حتى نهاية الفترة، مع نصك ونسبة التقرير المعتمدة. الحالة التراكمية للبند لا تعني أنه نُفّذ كله خلال الفترة.</p>
+                            <FormControl><Textarea className="min-h-28 text-base bg-background shadow-inner" placeholder={forecastMode ? "اكتب الأعمال المقترح تنفيذها؛ ستظهر في المسودة بصفتها خطة لا إنجازاً فعلياً..." : "أضف ما نُفّذ خلال الفترة، أو اطلب تحليل البنود التاريخية وصياغة التقرير..."} {...field} /></FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              {forecastMode
+                                ? "تظهر هذه الملاحظات كأعمال مخطط تنفيذها. صياغة الإنجاز الفعلي بالذكاء الاصطناعي غير متاحة قبل حلول التاريخ."
+                                : "الصياغة تحلل البنود والمخطط الموثّقين حتى نهاية الفترة، مع نصك ونسبة التقرير المعتمدة. الحالة التراكمية للبند لا تعني أنه نُفّذ كله خلال الفترة."}
+                            </p>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -1679,8 +1979,9 @@ export default function ProjectReports() {
                           </CollapsibleTrigger>
                           <CollapsibleContent id="report-snapshot-update-content">
                         <p className="px-4 py-3 text-xs text-muted-foreground">
-                          التعديلات تخص هذا التقرير حتى نهاية فترته ولا تغيّر المشروع. أدخل نسبة البند لاعتمادها ثم أعد الصياغة.
-                          معلومات المصدر والمخطط غير الموثق للمراجعة الداخلية فقط؛ لا تظهر في التقرير الصادر، وتُستبعد المقارنات التي لا تتوفر بياناتها.
+                          {forecastMode
+                            ? `الخطة المتوقعة محسوبة حتى ${watchedTargetDate}. الإنجاز الفعلي منفصل ومؤرخ حتى ${forecastProgress.data?.actualAsOfDate ?? "آخر سجل متاح"}؛ لا تعدّل هذه المعاينة بيانات المشروع.`
+                            : "التعديلات تخص هذا التقرير حتى نهاية فترته ولا تغيّر المشروع. أدخل نسبة البند لاعتمادها ثم أعد الصياغة. معلومات المصدر والمخطط غير الموثق للمراجعة الداخلية فقط؛ لا تظهر في التقرير الصادر، وتُستبعد المقارنات التي لا تتوفر بياناتها."}
                         </p>
                         {isLoadingSnapshot ? (
                           <div className="p-8"><LoadingSpinner text="جاري تحميل البنود..." /></div>
@@ -1703,9 +2004,9 @@ export default function ProjectReports() {
                                 <tr>
                                   <th className="text-right px-4 py-3 font-semibold">البند</th>
                                   <th className="text-center px-4 py-3 font-semibold whitespace-nowrap">الوزن</th>
-                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap">المخطط %</th>
-                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap w-32">الفعلي %</th>
-                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap w-36">الحالة</th>
+                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap">{forecastMode ? "المخطط المتوقع %" : "المخطط %"}</th>
+                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap w-32">{forecastMode ? `الفعلي حتى ${forecastProgress.data?.actualAsOfDate ?? "—"}` : "الفعلي %"}</th>
+                                  <th className="text-center px-4 py-3 font-semibold whitespace-nowrap w-36">{forecastMode ? "الحالة المتوقعة" : "الحالة"}</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-border/40">
@@ -1722,11 +2023,17 @@ export default function ProjectReports() {
                                         {referenceRow.referenceOnly ? "—" : typeof row.weight === "number" ? row.weight : 1}
                                       </td>
                                       <td className="px-4 py-3 text-center font-mono text-xs text-muted-foreground/70">
-                                        {typeof row.plannedProgress === "number" ? Math.round(row.plannedProgress * 10) / 10 : 0}%
+                                        {typeof row.plannedProgress === "number" ? `${Math.round(row.plannedProgress * 10) / 10}%` : "غير متاح"}
                                         {referenceRow.referenceOnly && <span> (مرجعي)</span>}
                                       </td>
                                       <td className="px-4 py-3">
-                                        <Input
+                                        {forecastMode ? (
+                                          <div className="text-center font-mono text-xs text-muted-foreground">
+                                            {row.actualHistoricalUnverified || typeof row.actualProgress !== "number"
+                                              ? "غير متاح"
+                                              : `${Math.round(row.actualProgress * 10) / 10}%`}
+                                          </div>
+                                        ) : <Input
                                           type="number"
                                           min={0}
                                           max={100}
@@ -1739,22 +2046,28 @@ export default function ProjectReports() {
                                             updateSnapshotRow(rowId, { actualProgress: clamped });
                                           }}
                                           className="h-9 text-center font-mono text-sm bg-background border-input/60 shadow-inner"
-                                        />
+                                        />}
                                       </td>
                                       <td className="px-4 py-3">
-                                        <Select
-                                          value={row.status ?? "not_started"}
-                                          onValueChange={(v) => updateSnapshotRow(rowId, { status: v })}
-                                        >
-                                          <SelectTrigger dir="rtl" className="h-9 text-xs bg-background">
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent dir="rtl">
-                                            {Object.entries(STATUS_LABELS).map(([v, label]) => (
-                                              <SelectItem key={v} value={v}>{label}</SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
+                                        {forecastMode ? (
+                                          <span className="block text-center text-xs text-muted-foreground">
+                                            {STATUS_LABELS[row.forecastStatus ?? row.status ?? ""] ?? "غير متاح"}
+                                          </span>
+                                        ) : (
+                                          <Select
+                                            value={row.status ?? "not_started"}
+                                            onValueChange={(v) => updateSnapshotRow(rowId, { status: v })}
+                                          >
+                                            <SelectTrigger dir="rtl" className="h-9 text-xs bg-background">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent dir="rtl">
+                                              {Object.entries(STATUS_LABELS).map(([v, label]) => (
+                                                <SelectItem key={v} value={v}>{label}</SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        )}
                                       </td>
                                     </tr>
                                   );
@@ -1986,6 +2299,11 @@ export default function ProjectReports() {
         const renderActions = (report: Report, size: "row" | "panel" = "row") => {
           const rowMode = size === "row";
           const buttonSize = rowMode ? "h-9 px-2.5 text-xs sm:px-3 sm:text-sm" : "h-10 px-3 text-sm";
+          const needsForecastActualEntry = (report as Report & {
+            forecastMatured?: boolean;
+            actualAvailable?: boolean;
+          }).forecastMatured === true
+            && (report as Report & { actualAvailable?: boolean }).actualAvailable !== true;
           const actionLayout = rowMode
             ? "grid w-full grid-cols-2 gap-1.5 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:gap-2"
             : "grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center";
@@ -2010,14 +2328,16 @@ export default function ProjectReports() {
                 )}
                 معاينة وطباعة
               </Button>
-              {canApprove && report.status === "draft" && (
+              {canApprove && report.status === "draft" && !report.forecastDraft && (
                 <Button
                   variant="outline"
                   size="sm"
                   className={`w-full border-emerald-200 bg-emerald-50 font-semibold text-emerald-800 shadow-none hover:bg-emerald-100 hover:text-emerald-900 sm:w-auto ${buttonSize}`}
-                  onClick={() => handleApprove(report.id, "approved")}
-                  disabled={updateReportStatus.isPending}
-                  title="اعتماد التقرير وإظهاره في تقارير المالك"
+                onClick={() => handleApprove(report.id, "approved")}
+                disabled={updateReportStatus.isPending || needsForecastActualEntry}
+                title={needsForecastActualEntry
+                  ? "أدخل الإنجاز الفعلي الموثق قبل اعتماد التقرير"
+                  : "اعتماد التقرير وإظهاره في تقارير المالك"}
                 >
                   <CheckCircle2 className="h-4 w-4" /> اعتماد
                 </Button>
@@ -2108,7 +2428,9 @@ export default function ProjectReports() {
                 <div>
                   <div className="text-xs text-muted-foreground mb-0.5">الحالة</div>
                   <div>
-                    {report.status === "draft" ? (
+                    {report.forecastDraft ? (
+                      <Badge className="bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-100">توقع غير معتمد</Badge>
+                    ) : report.status === "draft" ? (
                       <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">مسودة</Badge>
                     ) : (
                       <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100">معتمد</Badge>
@@ -2126,7 +2448,12 @@ export default function ProjectReports() {
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground mb-0.5">الإنجاز التراكمي</div>
-                  <Badge className="bg-primary text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>
+                  {report.forecastDraft
+                    ? <span className="text-xs text-amber-800">افتح المعاينة لعرض المخطط المتوقع</span>
+                    : (report as Report & { forecastMatured?: boolean; actualAvailable?: boolean }).forecastMatured
+                      && !(report as Report & { actualAvailable?: boolean }).actualAvailable
+                      ? <span className="text-xs text-amber-800">أدخل الإنجاز الفعلي الموثق</span>
+                      : <Badge className="bg-primary text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>}
                   {(report as any).progressHistorySource && (
                     <p className="mt-1 text-[10px] text-muted-foreground">
                       المصدر: {(report as any).progressHistorySource === "estimated" ? "سجل تقديري مراجع" : "سجل فعلي"}
@@ -2344,7 +2671,9 @@ export default function ProjectReports() {
                                 </td>
                               )}
                               <td className="px-3 py-2.5 whitespace-nowrap">
-                                {report.status === "draft" ? (
+                                {report.forecastDraft ? (
+                                  <Badge className="bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-100">توقع غير معتمد</Badge>
+                                ) : report.status === "draft" ? (
                                   <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">مسودة</Badge>
                                 ) : (
                                   <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100">معتمد</Badge>
@@ -2355,7 +2684,12 @@ export default function ProjectReports() {
                                 {fmtDate(report.periodStart)} — {fmtDate(report.periodEnd)}
                               </td>
                               <td className="px-3 py-2.5 whitespace-nowrap">
-                                <Badge className="bg-primary text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>
+                                {report.forecastDraft
+                                  ? <span className="text-xs text-amber-800">افتح المعاينة لعرض التوقع</span>
+                                  : (report as Report & { forecastMatured?: boolean; actualAvailable?: boolean }).forecastMatured
+                                    && !(report as Report & { actualAvailable?: boolean }).actualAvailable
+                                    ? <span className="text-xs text-amber-800">أدخل الإنجاز الفعلي الموثق</span>
+                                    : <Badge className="bg-primary text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>}
                                 {(report as any).progressHistorySource === "estimated" && (
                                   <p className="mt-1 text-[10px] text-amber-700">سجل تقديري</p>
                                 )}
@@ -2429,14 +2763,21 @@ export default function ProjectReports() {
                                   </Badge>
                                 </>
                               )}
-                              {report.status === "draft" ? (
+                              {report.forecastDraft ? (
+                                <Badge className="bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-100 text-xs">توقع غير معتمد</Badge>
+                              ) : report.status === "draft" ? (
                                 <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100 text-xs">مسودة</Badge>
                               ) : (
                                 <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 text-xs">معتمد</Badge>
                               )}
                             </div>
                             <div className="shrink-0 text-left">
-                              <Badge className="bg-primary text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>
+                              {report.forecastDraft
+                                ? <span className="text-xs text-amber-800">توقع، وليس إنجازاً فعلياً</span>
+                                : (report as Report & { forecastMatured?: boolean; actualAvailable?: boolean }).forecastMatured
+                                  && !(report as Report & { actualAvailable?: boolean }).actualAvailable
+                                  ? <span className="text-xs text-amber-800">أدخل الإنجاز الفعلي الموثق</span>
+                                  : <Badge className="bg-primary text-white">{Math.round(report.progressPercentage * 10) / 10}%</Badge>}
                               {(report as any).progressHistorySource === "estimated" && (
                                 <p className="mt-1 text-[10px] text-amber-700">سجل تقديري</p>
                               )}

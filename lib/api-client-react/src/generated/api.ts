@@ -48,6 +48,7 @@ import type {
   GetProjectDeviationTimelineParams,
   GetPublicReportImageShare200,
   GetPublicReportImageShareParams,
+  GetReportForecastProgressParams,
   HealthStatus,
   ImportActivities400,
   ImportActivitiesBody,
@@ -77,6 +78,7 @@ import type {
   RegisterResponse,
   Report,
   ReportAuditLogEntry,
+  ReportForecastProgress,
   SearchActivityGroupSourcesParams,
   UpdateActivityBody,
   UpdateActivityGroupBody,
@@ -96,10 +98,6 @@ import type {
 
 import { customFetch } from "../custom-fetch";
 import type { ErrorType, BodyType } from "../custom-fetch";
-
-type AwaitedInput<T> = PromiseLike<T> | T;
-
-type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -2290,6 +2288,127 @@ export const useCreateReport = <
 > => {
   return useMutation(getCreateReportMutationOptions(options));
 };
+
+/**
+ * @summary Preview a report draft from the schedule without forecasting actual progress
+ */
+export const getGetReportForecastProgressUrl = (
+  projectId: number,
+  params: GetReportForecastProgressParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/projects/${projectId}/reports/forecast-as-of?${stringifiedParams}`
+    : `/api/projects/${projectId}/reports/forecast-as-of`;
+};
+
+export const getReportForecastProgress = async (
+  projectId: number,
+  params: GetReportForecastProgressParams,
+  options?: RequestInit,
+): Promise<ReportForecastProgress> => {
+  return customFetch<ReportForecastProgress>(
+    getGetReportForecastProgressUrl(projectId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetReportForecastProgressQueryKey = (
+  projectId: number,
+  params?: GetReportForecastProgressParams,
+) => {
+  return [
+    `/api/projects/${projectId}/reports/forecast-as-of`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetReportForecastProgressQueryOptions = <
+  TData = Awaited<ReturnType<typeof getReportForecastProgress>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  projectId: number,
+  params: GetReportForecastProgressParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReportForecastProgress>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetReportForecastProgressQueryKey(projectId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getReportForecastProgress>>
+  > = ({ signal }) =>
+    getReportForecastProgress(projectId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!projectId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getReportForecastProgress>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetReportForecastProgressQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getReportForecastProgress>>
+>;
+export type GetReportForecastProgressQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Preview a report draft from the schedule without forecasting actual progress
+ */
+
+export function useGetReportForecastProgress<
+  TData = Awaited<ReturnType<typeof getReportForecastProgress>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  projectId: number,
+  params: GetReportForecastProgressParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReportForecastProgress>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReportForecastProgressQueryOptions(
+    projectId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get a report by ID

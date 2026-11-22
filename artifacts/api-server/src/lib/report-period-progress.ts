@@ -11,6 +11,7 @@ export type HistoricalActivity = {
   status: string; sortOrder: number; externalSourceGroupId: number | null;
   actualHistoricalUnverified?: boolean;
   actualHistoryEstimated?: boolean;
+  plannedHistoricalUnverified?: boolean;
 };
 export type HistoricalProject = {
   projectId: number; noSchedule: boolean; startDate: string | null; expectedEndDate: string | null;
