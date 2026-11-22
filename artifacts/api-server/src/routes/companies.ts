@@ -8,6 +8,10 @@ import path from "path";
 import fs from "fs";
 import { promises as fsp } from "fs";
 import { uploadToCloud, deleteFromCloud } from "../lib/fileStorage";
+import {
+  createAndStoreReportImageVariant,
+  deleteStoredReportImageVariants,
+} from "../lib/reportImageVariantStorage";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -173,6 +177,11 @@ router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, r
     } catch (err) {
       console.error("Cloud upload failed for logo, saved locally only:", err);
     }
+    try {
+      await createAndStoreReportImageVariant(req.file.filename, "report-logo", uploadsDir);
+    } catch (err) {
+      console.warn("Report logo preview copy could not be prepared during upload:", err);
+    }
     logoUrl = `/api/uploads/${req.file.filename}`;
   }
 
@@ -251,6 +260,11 @@ router.patch("/companies/:id", requireAdminOrPM, async (req, res, next): Promise
     } catch (err) {
       console.error("Cloud upload failed for logo update, saved locally only:", err);
     }
+    try {
+      await createAndStoreReportImageVariant(req.file.filename, "report-logo", uploadsDir);
+    } catch (err) {
+      console.warn("Report logo preview copy could not be prepared during upload:", err);
+    }
     updateData.logoUrl = `/api/uploads/${req.file.filename}`;
   }
 
@@ -292,6 +306,7 @@ router.delete("/companies/:id", requireAdminOrPM, async (req, res): Promise<void
       const filePath = path.join(uploadsDir, filename);
       await fsp.unlink(filePath).catch(() => {});
       await deleteFromCloud(filename);
+      await deleteStoredReportImageVariants(filename, uploadsDir);
     }
   }
 

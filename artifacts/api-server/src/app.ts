@@ -11,6 +11,10 @@ import { JWT_SECRET, verifyToken, diagnoseRejectedToken } from "./lib/auth";
 import { canViewAttendancePhoto, verifyAndMaybeRenewToken } from "./middlewares/auth";
 import { streamFromCloud, cloudReportImageSource } from "./lib/fileStorage";
 import { reportImageVariant } from "./lib/reportImageVariants";
+import {
+  findStoredReportImageVariant,
+  storeReportImageVariant,
+} from "./lib/reportImageVariantStorage";
 import { resolveTabPermissions } from "./lib/tab-permissions";
 import { db, requestMetrics, newRequestMetrics } from "@workspace/db";
 import { usersTable, userCompaniesTable, projectMembersTable, projectsTable, projectFilesTable, attendanceRecordsTable } from "@workspace/db";
@@ -238,6 +242,18 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
   if (req.query.variant === "report-photo" || req.query.variant === "report-logo") {
     const variant = req.query.variant;
     void (async () => {
+      const savedVariant = await findStoredReportImageVariant(filename, variant, uploadsDir);
+      if (savedVariant) {
+        res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+        res.type(savedVariant.contentType);
+        savedVariant.stream.on("error", () => {
+          if (!res.headersSent) res.status(500).json({ error: "تعذّر تحميل صورة التقرير" });
+          else res.end();
+        });
+        savedVariant.stream.pipe(res);
+        return;
+      }
+
       let key: string;
       let read: () => Promise<Buffer>;
       try {
@@ -256,6 +272,11 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
         read = source.read;
       }
       const image = await reportImageVariant(key, variant, read);
+      try {
+        await storeReportImageVariant(filename, variant, image, uploadsDir);
+      } catch (error) {
+        logger.warn({ err: error, filename, variant }, "Could not persist report image preview");
+      }
       res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
       res.type(image.contentType).send(image.buffer);
     })().catch((error) => {
