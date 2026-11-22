@@ -58,6 +58,30 @@ test("reuse is versioned, coalesced and distinct for photos and logos", async ()
   assert.equal(reads, 3);
 });
 
+test("reports cache state, source dimensions and active processor counts", async () => {
+  const get = createReportImageVariants();
+  const source = await sharp({ create: { width: 240, height: 120, channels: 3, background: "teal" } })
+    .jpeg().toBuffer();
+  const diagnostics = [];
+  const read = async () => source;
+
+  await get("diagnostic-photo", "report-photo", read, item => diagnostics.push(item));
+  assert.equal(diagnostics[0].state, "processed");
+  assert.equal(diagnostics[0].sourceBytes, source.length);
+  assert.equal(diagnostics[0].width, 240);
+  assert.equal(diagnostics[0].height, 120);
+  assert.equal(diagnostics[0].activeJobs, 1);
+  assert.ok(diagnostics[0].metadataMs >= 0);
+  assert.ok(diagnostics[0].encodeMs >= 0);
+
+  diagnostics.length = 0;
+  await get("diagnostic-photo", "report-photo", read, item => diagnostics.push(item));
+  assert.equal(diagnostics[0].state, "memory_hit");
+  assert.ok(diagnostics[0].outputBytes > 0);
+  assert.equal(get.getStatus().activeJobs, 0);
+  assert.equal(get.getStatus().pendingJobs, 0);
+});
+
 test("corrupt input fails explicitly and does not poison reuse", async () => {
   const get = createReportImageVariants();
   for (let i = 0; i < 2; i++) {

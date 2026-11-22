@@ -2,6 +2,25 @@ import sharp from "sharp";
 
 export type ReportImageVariant = "report-photo" | "report-logo";
 type ImageResult = { buffer: Buffer; contentType: string };
+export type ReportImageVariantDiagnostic = {
+  state: "memory_hit" | "coalesced" | "processed";
+  sourceBytes?: number;
+  width?: number;
+  height?: number;
+  metadataMs?: number;
+  encodeMs?: number;
+  outputBytes?: number;
+  activeJobs: number;
+  queuedJobs: number;
+};
+type VariantProcessor = ((
+  key: string,
+  variant: ReportImageVariant,
+  readSource: () => Promise<Buffer>,
+  onDiagnostic?: (diagnostic: ReportImageVariantDiagnostic) => void,
+) => Promise<ImageResult>) & {
+  getStatus: () => { activeJobs: number; queuedJobs: number; cachedEntries: number; cacheBytes: number; pendingJobs: number };
+};
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 const MAX_CACHE_BYTES = 32 * 1024 * 1024;
 const TTL = 10 * 60 * 1000;
@@ -18,7 +37,7 @@ export function createReportImageVariants() {
     if (entry) bytes -= entry.buffer.length;
     cache.delete(key);
   };
-  return async (key: string, variant: ReportImageVariant, readSource: () => Promise<Buffer>): Promise<ImageResult> => {
+  const getVariant: VariantProcessor = async (key, variant, readSource, onDiagnostic) => {
     const cacheKey = `${key}:${variant}:v1`;
     const now = Date.now();
     for (const [k, value] of cache) if (value.expires <= now) evict(k);
@@ -26,10 +45,19 @@ export function createReportImageVariants() {
     if (hit) {
       cache.delete(cacheKey);
       cache.set(cacheKey, hit);
+      onDiagnostic?.({
+        state: "memory_hit",
+        outputBytes: hit.buffer.length,
+        activeJobs: active,
+        queuedJobs: queue.length,
+      });
       return hit;
     }
     const existing = pending.get(cacheKey);
-    if (existing) return existing;
+    if (existing) {
+      onDiagnostic?.({ state: "coalesced", activeJobs: active, queuedJobs: queue.length });
+      return existing;
+    }
     if (active >= 2 && queue.length >= 16) throw new Error("Report image processor is busy");
     const task = (async () => {
       if (active >= 2) await new Promise<void>(resolve => queue.push(resolve));
@@ -38,7 +66,9 @@ export function createReportImageVariants() {
         const source = await readSource();
         if (source.length > MAX_SOURCE_BYTES) throw new Error("Report image is too large");
         const options = { limitInputPixels: 40_000_000 };
+        const metadataStarted = onDiagnostic ? performance.now() : 0;
         const metadata = await sharp(source, options).metadata();
+        const metadataMs = onDiagnostic ? performance.now() - metadataStarted : undefined;
         const edge = variant === "report-logo" ? 1000 : 1600;
         const png = variant === "report-logo" || metadata.hasAlpha;
         let pipeline = sharp(source, options).rotate().resize({
@@ -47,7 +77,9 @@ export function createReportImageVariants() {
         pipeline = png
           ? pipeline.png({ compressionLevel: 9, adaptiveFiltering: true })
           : pipeline.jpeg({ quality: 82, mozjpeg: true });
+        const encodeStarted = onDiagnostic ? performance.now() : 0;
         let buffer = await pipeline.toBuffer();
+        const encodeMs = onDiagnostic ? performance.now() - encodeStarted : undefined;
         let contentType = png ? "image/png" : "image/jpeg";
         // Do not inflate an already-small supported image or lose alpha/orientation.
         const originalTypes: Record<string, string> = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
@@ -63,6 +95,17 @@ export function createReportImageVariants() {
           cache.set(cacheKey, { ...result, expires: Date.now() + TTL });
           bytes += buffer.length;
         }
+        if (onDiagnostic) onDiagnostic({
+          state: "processed",
+          sourceBytes: source.length,
+          width: metadata.width,
+          height: metadata.height,
+          metadataMs,
+          encodeMs,
+          outputBytes: buffer.length,
+          activeJobs: active,
+          queuedJobs: queue.length,
+        });
         return result;
       } finally {
         const next = queue.shift();
@@ -73,6 +116,14 @@ export function createReportImageVariants() {
     pending.set(cacheKey, task);
     try { return await task; } finally { pending.delete(cacheKey); }
   };
+  getVariant.getStatus = () => ({
+    activeJobs: active,
+    queuedJobs: queue.length,
+    cachedEntries: cache.size,
+    cacheBytes: bytes,
+    pendingJobs: pending.size,
+  });
+  return getVariant;
 }
 
 export const reportImageVariant = createReportImageVariants();

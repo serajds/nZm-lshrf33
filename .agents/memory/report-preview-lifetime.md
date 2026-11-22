@@ -32,3 +32,9 @@ Treat direct signed reads as a transport/load mitigation, not proof of the cause
 **Why:** Production logs showed successful image responses followed by a process kill, while memory metrics and image-variant cache-hit data were unavailable.
 
 **How to apply:** Before claiming a root fix, measure per-image variant hits/misses, cloud read/encode time, active Sharp jobs, and process RSS in Development using the same report pattern; keep the production termination cause explicitly unconfirmed until evidenced.
+
+Adding derivative generation to the upload path does not create derivatives for files that already exist. Do not synchronously transform a batch of legacy report images in the API during preview; account for cold-cache files separately.
+
+**Why:** Older shared-report photos were uploaded before derivative persistence was added, so the first preview invoked lazy Sharp transforms against the API process.
+
+**How to apply:** Test a cold report with many old images before deployment. Use bounded, observable backfill or serve the original safely while derivatives are prepared; verify hits/misses and RSS before declaring the issue resolved.
