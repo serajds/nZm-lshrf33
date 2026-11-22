@@ -6,8 +6,6 @@ import {
   useGetProject,
   useGetProjectSummary,
   useGenerateOwnerLink,
-  useListProjectMembers,
-  useGetEligibleUsers,
   fetchWithSession,
 } from "@workspace/api-client-react";
 import { useMyProjectPermissions } from "@/hooks/use-tab-access";
@@ -23,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Building2, MapPin, Calendar, ActivitySquare, CheckCircle2,
   AlertTriangle, ArrowRight, Share2, Copy, Clock, PauseCircle, FileText, Presentation,
-  Settings2, LayoutDashboard, History, Link2
+  Settings2, LayoutDashboard, History, Link2, ChevronDown, Users
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -35,6 +33,7 @@ import { ProjectQuickViewDialog } from "@/components/project-quick-view-dialog";
 import { AttendanceQuickActions } from "@/components/attendance-quick-actions";
 import { ProjectProgressHistoryBackfill } from "@/components/project-progress-history-backfill";
 import { LinkedSourceHistoryRepair } from "@/components/linked-source-history-repair";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 // PERFORMANCE (dev): leaflet + react-leaflet pull a large dependency tree
 // that Vite must transform on first navigation, blocking the project page
 // for several seconds. The map is rendered well below the fold and isn't
@@ -89,6 +88,8 @@ export default function ProjectDetails() {
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isGeneratingSlides, setIsGeneratingSlides] = useState(false);
   const [activeHistoryTool, setActiveHistoryTool] = useState<"history" | "linked-sources" | null>(null);
+  const [isSiteSectionOpen, setIsSiteSectionOpen] = useState(false);
+  const [isTeamSectionOpen, setIsTeamSectionOpen] = useState(false);
 
   // The project record itself rarely changes during a session and is read
   // by every project sub-page (overview, reports, activities, files…). A
@@ -118,15 +119,8 @@ export default function ProjectDetails() {
   const tabPermissions = myPermissions?.tabPermissions;
   const canViewTab = (tab: string) =>
     !!tabPermissions && tabPermissions[tab as keyof typeof tabPermissions] !== "hidden";
-  useListProjectMembers(projectId, { query: { enabled: !!projectId && !isContractor } });
-  // Prefetch eligible-users ONLY for admins. Project-level PMs also need
-  // this list, but membership-derived PM status isn't known until /members
-  // resolves, so we let ProjectMembers fire its own request in that case
-  // (one short hop rather than the four-step waterfall this page used to
-  // have). A global "project_manager" role does NOT imply PM-of-this-project,
-  // so we deliberately don't prefetch on global role alone — that would
-  // waste a request for PMs not assigned to this project.
-  useGetEligibleUsers(projectId, { query: { enabled: !!projectId && user?.role === "admin" } });
+  // Member data is loaded by ProjectMembers only when the user opens its
+  // collapsed section, avoiding unnecessary requests on the overview page.
   useQuery<unknown[]>({
     queryKey: [`/api/projects/${projectId}/activity-groups`],
     queryFn: async () => {
@@ -848,27 +842,71 @@ export default function ProjectDetails() {
 
         {/* Project Site Location (read-only map with geofence circle) */}
         {project.siteLatitude != null && project.siteLongitude != null && (
-          <Card className="surface-card surface-card-hover">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <MapPin className="h-4 w-4" />
-                موقع المشروع والنطاق المسموح
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Suspense fallback={<div className="h-64 flex items-center justify-center text-xs text-muted-foreground">جاري تحميل الخريطة...</div>}>
-                <SiteGeofenceMap
-                  lat={project.siteLatitude}
-                  lng={project.siteLongitude}
-                  radius={project.siteRadiusMeters ?? 200}
-                  className="h-64"
-                />
-              </Suspense>
-            </CardContent>
-          </Card>
+          <Collapsible open={isSiteSectionOpen} onOpenChange={setIsSiteSectionOpen}>
+            <Card className="surface-card overflow-hidden">
+              <CardHeader className="p-0">
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-right transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5"
+                    aria-label="فتح أو إغلاق موقع المشروع والنطاق المسموح"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <MapPin className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-foreground">موقع المشروع والنطاق المسموح</span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">عرض موقع المشروع وحدود الحضور الجغرافي</span>
+                      </span>
+                    </span>
+                    <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${isSiteSectionOpen ? "rotate-180" : ""}`} />
+                  </button>
+                </CollapsibleTrigger>
+              </CardHeader>
+              <CollapsibleContent>
+                <CardContent className="border-t border-border/70 p-3 sm:p-4">
+                  <Suspense fallback={<div className="flex h-64 items-center justify-center text-xs text-muted-foreground">جاري تحميل الخريطة...</div>}>
+                    <SiteGeofenceMap
+                      lat={project.siteLatitude}
+                      lng={project.siteLongitude}
+                      radius={project.siteRadiusMeters ?? 200}
+                      className="h-64"
+                    />
+                  </Suspense>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
         )}
 
-        {!isContractor && <ProjectMembers projectId={project.id} />}
+        {!isContractor && (
+          <Collapsible open={isTeamSectionOpen} onOpenChange={setIsTeamSectionOpen}>
+            <div className="space-y-3">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="surface-card flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-right transition-colors hover:border-primary/30 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-5"
+                  aria-label="فتح أو إغلاق فريق العمل"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Users className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-foreground">فريق العمل</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">عرض أعضاء المشروع وإدارة صلاحياتهم</span>
+                    </span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${isTeamSectionOpen ? "rotate-180" : ""}`} />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <ProjectMembers projectId={project.id} />
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+        )}
       </div>
     </div>
   );
