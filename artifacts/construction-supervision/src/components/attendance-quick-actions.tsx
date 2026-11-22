@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, LogIn, LogOut, AlertTriangle, CloudOff, RefreshCw } from "lucide-react";
+import { Loader2, LogIn, LogOut, AlertTriangle, CloudOff, RefreshCw, Clock3, History, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { SelfieCameraDialog } from "@/components/selfie-camera-dialog";
@@ -229,32 +229,50 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
 
   return (
     <>
-      <Card className="border-2 border-primary/30 bg-primary/5">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2 flex-wrap">
-            {isCheckedIn ? (
-              <Badge className="bg-green-600 hover:bg-green-600 text-white">مسجّل حضور الآن</Badge>
-            ) : (
-              <Badge variant="secondary">{status ? "غير حاضر" : "حالة الحضور غير معروفة"}</Badge>
-            )}
-            <span>تسجيل الحضور والانصراف</span>
-            <Link href={`/projects/${projectId}/attendance`} className="text-xs text-primary hover:underline mr-auto">
-              التفاصيل والتقارير ←
-            </Link>
-          </CardTitle>
+      <Card className="surface-card overflow-hidden">
+        <CardHeader className="border-b border-border/70 bg-muted/20 px-4 py-4 sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Clock3 className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <CardTitle className="text-base">الحضور والانصراف</CardTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">تسجيل الدوام في موقع المشروع</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge
+                className={isCheckedIn
+                  ? "border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-50"
+                  : status
+                    ? "border border-slate-200 bg-background text-muted-foreground hover:bg-background"
+                    : "border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50"}
+              >
+                {isCheckedIn ? "مسجّل حضور الآن" : status ? "غير حاضر" : "حالة الحضور غير معروفة"}
+              </Badge>
+              <Link
+                href={`/projects/${projectId}/attendance`}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+              >
+                <History className="h-3.5 w-3.5" />
+                التفاصيل والتقارير
+              </Link>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4 p-4 sm:p-5">
           {statusError && <p role="alert" className="text-sm text-destructive">
             تعذّر تحديث حالة الحضور. <button type="button" className="underline" onClick={() => { void refetch(); }}>إعادة المحاولة</button>
           </p>}
           {!hasLocation && (
-            <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs p-2 flex gap-2">
+            <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
               <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>لم يتم ضبط موقع الموقع للمشروع. سيتم قبول التسجيل بدون التحقق من النطاق.</span>
+              <span>لم يُحدّد موقع المشروع بعد؛ سيُسجّل الحضور دون التحقق من النطاق الجغرافي.</span>
             </div>
           )}
           {pendingSyncCount > 0 && (
-            <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs p-2 flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
               <CloudOff className="h-4 w-4 shrink-0" />
               <span className="flex-1">
                 {pendingSyncCount === 1
@@ -275,20 +293,36 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
               </Button>
             </div>
           )}
-          {last && (
-            <div className="text-sm text-muted-foreground">
-              آخر إجراء: {last.type === "check_in" ? "حضور" : "انصراف"} —{" "}
-              <span className="font-medium text-foreground">{fmtLibyaDateTime(last.recordedAt)}</span>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex min-w-0 items-start gap-2.5 rounded-xl border border-border/70 bg-background p-3">
+              <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="text-[11px] text-muted-foreground">آخر إجراء</p>
+                <p className="mt-0.5 text-sm font-semibold text-foreground">
+                  {last
+                    ? `${last.type === "check_in" ? "تسجيل حضور" : "تسجيل انصراف"} — ${fmtLibyaDateTime(last.recordedAt)}`
+                    : "لا يوجد تسجيل سابق"}
+                </p>
+              </div>
             </div>
-          )}
-          <div className="flex flex-wrap gap-2">
+            <div className="flex min-w-0 items-start gap-2.5 rounded-xl border border-border/70 bg-background p-3">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="text-[11px] text-muted-foreground">نطاق موقع المشروع</p>
+                <p className="mt-0.5 text-sm font-semibold text-foreground">
+                  {hasLocation ? `مفعّل — ${project?.siteRadiusMeters ?? 200} متر` : "غير محدد"}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
             <Button
               size="lg"
               onClick={() => start("check_in")}
               disabled={submitting || !status || isCheckedIn}
-              className="bg-green-600 hover:bg-green-700"
+              className="h-12 w-full bg-emerald-600 font-semibold text-white hover:bg-emerald-700"
             >
-              {submitting ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <LogIn className="h-4 w-4 ml-2" />}
+              {submitting ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <LogIn className="ml-2 h-4 w-4" />}
               تسجيل حضور
             </Button>
             <Button
@@ -296,14 +330,12 @@ export function AttendanceQuickActions({ projectId, project }: AttendanceQuickAc
               onClick={() => start("check_out")}
               disabled={submitting || !isCheckedIn}
               variant="destructive"
+              className="h-12 w-full font-semibold"
             >
-              {submitting ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <LogOut className="h-4 w-4 ml-2" />}
+              {submitting ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <LogOut className="ml-2 h-4 w-4" />}
               تسجيل انصراف
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            سيتم طلب صورة سيلفي + إحداثيات GPS. يعمل بدون إنترنت — سيُرسل تلقائياً عند توفّر الشبكة.
-          </p>
         </CardContent>
       </Card>
 
