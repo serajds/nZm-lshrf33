@@ -291,8 +291,10 @@ export function buildPrintHTML(data: ReportPdfData): string {
   /* ── COMPANY LOGOS STRIP ── */
   .logos-strip {
     display: flex;
-    justify-content: space-around;
-    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 16px;
     padding: 18px 24px;
     margin-bottom: 12px;
     border: 1.5px solid #e2e8f0;
@@ -301,10 +303,12 @@ export function buildPrintHTML(data: ReportPdfData): string {
   }
   .logo-item {
     display: flex;
+    flex: 1 1 calc((100% - 32px) / 3);
     flex-direction: column;
     align-items: center;
     gap: 8px;
     text-align: center;
+    width: calc((100% - 32px) / 3);
     min-width: 0;
     max-width: 220px;
   }
@@ -448,6 +452,12 @@ export function buildPrintHTML(data: ReportPdfData): string {
   }
   @media screen {
     body { max-width: 210mm; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+  }
+  @media screen and (max-width: 480px) {
+    .logos-strip { gap: 10px; padding: 12px; }
+    .logo-item { flex-basis: calc((100% - 10px) / 2); width: calc((100% - 10px) / 2); max-width: none; }
+    .logo-img-box { width: 64px; height: 64px; }
+    .logo-name { max-width: 100%; font-size: 11px; }
   }
 </style>
 </head>
