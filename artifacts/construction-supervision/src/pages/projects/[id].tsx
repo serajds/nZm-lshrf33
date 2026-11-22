@@ -23,8 +23,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Building2, MapPin, Calendar, ActivitySquare, CheckCircle2,
   AlertTriangle, ArrowRight, Share2, Copy, Clock, PauseCircle, FileText, Presentation,
-  Settings2, LayoutDashboard
+  Settings2, LayoutDashboard, History, Link2
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ProjectNav } from "@/components/project-nav";
 import { ProjectMembers } from "@/components/project-members";
 import { ProjectQuickViewDialog } from "@/components/project-quick-view-dialog";
@@ -84,6 +88,7 @@ export default function ProjectDetails() {
   const [showRegenerateForm, setShowRegenerateForm] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isGeneratingSlides, setIsGeneratingSlides] = useState(false);
+  const [activeHistoryTool, setActiveHistoryTool] = useState<"history" | "linked-sources" | null>(null);
 
   // The project record itself rarely changes during a session and is read
   // by every project sub-page (overview, reports, activities, files…). A
@@ -388,6 +393,39 @@ export default function ProjectDetails() {
               {isGeneratingSlides ? <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Presentation className="h-4 w-4" />}
               <span className="hidden sm:inline">{isGeneratingSlides ? "جاري تجهيز العرض..." : "عرض تقديمي"}</span>
             </Button>
+            {(user?.role === "admin" || myPermissions?.projectRole === "project_manager") && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="relative z-10 gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    aria-label="أدوات السجل التاريخي"
+                  >
+                    <Settings2 className="h-4 w-4" />
+                    <span>أدوات السجل</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-60 text-right" style={{ direction: "rtl" }}>
+                  <DropdownMenuLabel>أدوات السجل التاريخي</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="min-h-11 gap-2"
+                    onSelect={() => setActiveHistoryTool("history")}
+                  >
+                    <History className="h-4 w-4 text-primary" />
+                    إعدادات السجل التاريخي
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="min-h-11 gap-2"
+                    onSelect={() => setActiveHistoryTool("linked-sources")}
+                  >
+                    <Link2 className="h-4 w-4 text-primary" />
+                    مصادر المقاول المرتبطة
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="relative z-10 gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white">
                 <Share2 className="h-4 w-4" />
@@ -477,6 +515,19 @@ export default function ProjectDetails() {
         </div>}
       </div>
 
+      <ProjectProgressHistoryBackfill
+        projectId={project.id}
+        showCard={false}
+        open={activeHistoryTool === "history"}
+        onOpenChange={open => { if (!open) setActiveHistoryTool(null); }}
+      />
+      <LinkedSourceHistoryRepair
+        projectId={project.id}
+        showCard={false}
+        open={activeHistoryTool === "linked-sources"}
+        onOpenChange={open => { if (!open) setActiveHistoryTool(null); }}
+      />
+
       {/* ── Project Navigation ── */}
       <ProjectNav projectId={project.id} />
 
@@ -490,9 +541,6 @@ export default function ProjectDetails() {
           siteRadiusMeters: project.siteRadiusMeters,
         }}
       />
-
-      <ProjectProgressHistoryBackfill projectId={project.id} />
-      <LinkedSourceHistoryRepair projectId={project.id} />
 
       {/* ── Summary Content ── */}
       <div className="space-y-5">
