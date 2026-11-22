@@ -20,3 +20,9 @@ Validate image transport changes through the actual report HTML builder, includi
 **Why:** A successful download and blob decode can still produce a report with no photos if the final template rejects that URL scheme. A synthetic image-only browser page previously missed exactly this regression.
 
 **How to apply:** Assert expected photo and logo counts and successful decoding after rendering the real report, with both grouped and legacy photo inputs. Keep unsafe URL schemes rejected.
+
+For the Development-only direct-storage preview experiment, mint short-lived signed GET URLs only after checking access to the report and confirming each image filename belongs uniquely to that same project. Do not send the user's app bearer token to object storage, persist signed URLs, or enable this path in production without explicit approval.
+
+**Why:** Reports with many photos can generate a large number of per-image API authorization requests. Signed storage reads can bypass those repeated API checks, but each URL is a temporary bearer capability.
+
+**How to apply:** Keep the endpoint report-scoped, project-file-scoped, no-store, and short-lived; fetch signed URLs without credentials, convert to preview-owned Blob URLs, and gate both client and server to Development until the user authorizes broader use.

@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { db, reportImageSharesTable } from "@workspace/db";
-import { reportsTable, activitiesTable, projectsTable, activityGroupsTable } from "@workspace/db";
+import { reportsTable, activitiesTable, projectsTable, activityGroupsTable, projectFilesTable, attendanceRecordsTable } from "@workspace/db";
 import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer, requireProjectManager } from "../middlewares/auth";
 import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
@@ -11,6 +11,8 @@ import { buildReportAiContext, reportAiSnapshotFingerprint } from "../lib/report
 import { buildReportAiPrompt, reportEditorInstruction } from "../lib/report-ai-prompt";
 import { approvedReportFingerprint, buildApprovedReportPrompt, parseApprovedReportDraft, validApprovedProgress } from "../lib/report-approved-inputs";
 import { buildReportActivityAnalysis } from "../lib/report-activity-analysis";
+import { createSignedUploadReadUrl } from "../lib/fileStorage";
+import { authorizedReportImageFilenames, mapWithConcurrency, reportUploadFilenames } from "../lib/report-preview-assets";
 
 type ImageGroup = {
   id?: string;
@@ -866,6 +868,84 @@ router.post("/projects/:projectId/reports/:id/duplicate", requireProjectAccess("
   await logAudit({ userId: req.user?.userId, action: "create", entityType: "report", entityId: copy.id, entityName: `نسخة من التقرير #${sourceId}`, projectId, details: { reportDate: copy.reportDate, progressPercentage: copy.progressPercentage, statusAfter: copy.status } });
   res.status(201).json(copy);
 });
+
+// Development-only experiment: issue short-lived direct object-storage links
+// so report photos do not each pass through the API's upload authorization path.
+router.get(
+  "/projects/:projectId/reports/:id/preview-image-links",
+  requireProjectAccess("projectId"), rejectContractor, requireTabView("reports"),
+  async (req, res): Promise<void> => {
+    if (process.env.NODE_ENV !== "development") {
+      res.sendStatus(404);
+      return;
+    }
+    const projectId = Number(req.params.projectId);
+    const reportId = Number(req.params.id);
+    if (!Number.isSafeInteger(projectId) || projectId <= 0
+      || !Number.isSafeInteger(reportId) || reportId <= 0) {
+      res.status(400).json({ error: "معرف التقرير غير صالح" });
+      return;
+    }
+
+    const [report] = await db.select({
+      imageUrls: reportsTable.imageUrls,
+      imageGroups: reportsTable.imageGroups,
+    }).from(reportsTable)
+      .where(and(eq(reportsTable.id, reportId), eq(reportsTable.projectId, projectId)));
+    if (!report) {
+      res.status(404).json({ error: "التقرير غير موجود" });
+      return;
+    }
+
+    const groupUrls = Array.isArray(report.imageGroups)
+      ? (report.imageGroups as ImageGroup[]).flatMap(group => Array.isArray(group.urls) ? group.urls : [])
+      : [];
+    const referenced = reportUploadFilenames(
+      groupUrls.length ? groupUrls : Array.isArray(report.imageUrls) ? report.imageUrls : [],
+    );
+    if (referenced.length > 300) {
+      res.status(413).json({ error: "عدد صور التقرير يتجاوز حد المعاينة" });
+      return;
+    }
+    if (!referenced.length) {
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({ assets: {}, expiresAt: new Date(Date.now() + 300_000).toISOString() });
+      return;
+    }
+
+    const [files, attendance] = await Promise.all([
+      db.select({
+        filename: projectFilesTable.filename,
+        projectId: projectFilesTable.projectId,
+        category: projectFilesTable.category,
+      }).from(projectFilesTable).where(inArray(projectFilesTable.filename, referenced)),
+      db.select({ filename: attendanceRecordsTable.selfieFilename })
+        .from(attendanceRecordsTable)
+        .where(inArray(attendanceRecordsTable.selfieFilename, referenced)),
+    ]);
+    const authorized = authorizedReportImageFilenames(
+      referenced,
+      files,
+      attendance.map(row => row.filename).filter((filename): filename is string => typeof filename === "string"),
+      projectId,
+    );
+
+    try {
+      const signed = await mapWithConcurrency(authorized, 8, async filename => [
+        `/api/uploads/${encodeURIComponent(filename)}`,
+        await createSignedUploadReadUrl(filename, 300),
+      ] as const);
+      res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+      res.json({
+        assets: Object.fromEntries(signed),
+        expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      });
+    } catch (error) {
+      req.log.error({ error, projectId, reportId, imageCount: authorized.length }, "Could not sign report preview images");
+      res.status(503).json({ error: "تعذّر تجهيز روابط صور التقرير؛ حاول مرة أخرى" });
+    }
+  },
+);
 
 router.get("/projects/:projectId/reports/:id", requireProjectAccess("projectId"), rejectContractor, requireTabView("reports"), async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;

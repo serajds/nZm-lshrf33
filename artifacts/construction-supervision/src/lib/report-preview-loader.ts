@@ -14,6 +14,7 @@ export async function loadReportPreview<T extends ReportImages>(options: {
   loadLogos: () => Promise<Record<string, ReportLogo>>;
   loadAsset: (url: string) => Promise<string>;
   loadLogoAsset?: (url: string) => Promise<string>;
+  loadSignedAssets?: () => Promise<Record<string, string>>;
   onProgress: (completed: number, total: number) => void;
 }) {
   const assets = new Map<string, Promise<string>>();
@@ -35,12 +36,13 @@ export async function loadReportPreview<T extends ReportImages>(options: {
       else active--;
     }
   };
+  let signedAssets: Record<string, string> = {};
   const load = (url: string, logo = false) => {
     if (!preparing) throw new Error("Report preview preparation has ended");
     const key = logo && options.loadLogoAsset ? `logo:${url}` : url;
     let pending = assets.get(key);
     if (!pending) {
-      pending = runAsset(url, logo).then(result => {
+      pending = runAsset(logo ? url : signedAssets[url] ?? url, logo).then(result => {
         if (!result) throw new Error("تعذّر تحميل إحدى صور التقرير");
         completed += 1;
         if (preparing) options.onProgress(completed, assets.size);
@@ -51,22 +53,37 @@ export async function loadReportPreview<T extends ReportImages>(options: {
     }
     return pending;
   };
-  const reportTask = options.loadReport().then(async report => {
+  try {
+    const reportTask = options.loadReport();
+    const logosTask = options.loadLogos().then(logos => prepareReportLogos(logos, url => load(url, true)));
+    void logosTask.catch(() => undefined);
+    const report = await reportTask;
     const groups = report.imageGroups as ImageGroup[] | null | undefined;
-    const imageGroups = groups?.length
-      ? await Promise.all(groups.map(async group => ({
+    const photoUrls = groups?.length
+      ? groups.flatMap(group => group.urls ?? [])
+      : report.imageUrls ?? [];
+    if (options.loadSignedAssets && photoUrls.length) {
+      signedAssets = await options.loadSignedAssets();
+    }
+    const imageGroupsTask = groups?.length
+      ? Promise.all(groups.map(async group => ({
           category: group.category,
           urls: await Promise.all((group.urls ?? []).map(url => load(url))),
           shareStatus: group.shareStatus,
         })))
-      : null;
-    const imageUrls = imageGroups ? [] : await Promise.all((report.imageUrls ?? []).map(url => load(url)));
-    return { report, imageGroups, imageUrls };
-  });
-  const logosTask = options.loadLogos().then(logos => prepareReportLogos(logos, url => load(url, true)));
-  const [images, companyLogos] = await Promise.all([reportTask, logosTask])
-    .finally(() => { preparing = false; });
-  return { ...images, companyLogos };
+      : Promise.resolve(null);
+    const imageUrlsTask = groups?.length
+      ? Promise.resolve([] as string[])
+      : Promise.all((report.imageUrls ?? []).map(url => load(url)));
+    const [imageGroups, imageUrls, companyLogos] = await Promise.all([
+      imageGroupsTask,
+      imageUrlsTask,
+      logosTask,
+    ]);
+    return { report, imageGroups, imageUrls, companyLogos };
+  } finally {
+    preparing = false;
+  }
 }
 
 /** Open synchronously inside the click so browsers don't block a delayed popup. */
