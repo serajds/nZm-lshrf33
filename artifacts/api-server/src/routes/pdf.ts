@@ -161,12 +161,12 @@ function snapshotActualIsHistoricallyUnverified(
     return;
   }
 
+  const reportConditions = [eq(reportsTable.projectId, projectId), eq(reportsTable.status, "approved")];
+  if (requestedReportId !== null) {
+    reportConditions.push(eq(reportsTable.id, requestedReportId));
+  }
   const reports = await db.select().from(reportsTable)
-    .where(
-      requestedReportId === null
-        ? eq(reportsTable.projectId, projectId)
-        : and(eq(reportsTable.projectId, projectId), eq(reportsTable.id, requestedReportId)),
-    )
+    .where(and(...reportConditions))
     .orderBy(reportsTable.reportDate);
 
   if (requestedReportId !== null && reports.length === 0) {

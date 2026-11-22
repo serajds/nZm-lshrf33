@@ -4,6 +4,23 @@ import fs from "node:fs";
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 
+test("owner portal and PDF exports only include approved reports, regardless of forecast date", () => {
+  const ownerSource = fs.readFileSync(new URL("../src/routes/owner.ts", import.meta.url), "utf8");
+  const pdfSource = fs.readFileSync(new URL("../src/routes/pdf.ts", import.meta.url), "utf8");
+
+  // Forecast drafts may be past-dated and matured, but they remain drafts until
+  // explicitly approved. Keep the owner query independent of report dates.
+  assert.match(
+    ownerSource,
+    /\.where\(and\(eq\(reportsTable\.projectId, project\.id\), eq\(reportsTable\.status, "approved"\)\)\)/,
+  );
+  assert.match(
+    pdfSource,
+    /const reportConditions = \[eq\(reportsTable\.projectId, projectId\), eq\(reportsTable\.status, "approved"\)\]/,
+  );
+  assert.match(pdfSource, /reportConditions\.push\(eq\(reportsTable\.id, requestedReportId\)\)/);
+});
+
 // Exercise the real AI handler with isolated history fixtures and a DB that
 // rejects unexpected access. No live application data is read or written.
 const schemaDir = new URL("../../../lib/db/src/schema/", import.meta.url);
@@ -219,6 +236,7 @@ test("matured forecast appears as a normal draft with its dated historical perce
     assert.equal(response.body[0].actualAvailable, true);
     assert.equal(response.body[0].progressPercentage, 47);
     assert.equal(response.body[0].progressSource, "history");
+    assert.equal(response.body[0].status, "draft");
   } finally {
     delete globalThis.approvedForecastFixture;
   }
