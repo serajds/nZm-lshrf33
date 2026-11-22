@@ -335,28 +335,33 @@ export default function ProjectDetails() {
         enabled={!!projectId}
       />
       {/* ── Header ── */}
-      <div className="page-hero flex flex-wrap items-start gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white"
-          onClick={() => setLocation("/projects")}
-        >
-          <ArrowRight className="h-5 w-5" />
-        </Button>
+      <div className="page-hero">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+          <div className="flex min-w-0 items-start gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white"
+              onClick={() => setLocation("/projects")}
+              aria-label="العودة إلى المشاريع"
+              title="العودة إلى المشاريع"
+            >
+              <ArrowRight className="h-5 w-5" />
+            </Button>
 
-        <div className="flex-1 min-w-0">
-          <h1 className="relative z-10 text-lg font-bold leading-tight text-white md:text-2xl">{project.name}</h1>
-          <div className="relative z-10 mt-1.5 flex flex-wrap items-center gap-2">
-            {getStatusBadge(project.status)}
-            <span className="flex items-center gap-1 text-sm text-white/65">
-              <MapPin className="h-3.5 w-3.5 shrink-0" />
-              {project.location}
-            </span>
+            <div className="min-w-0 flex-1">
+              <h1 className="relative z-10 break-words text-lg font-bold leading-tight text-white md:text-2xl">{project.name}</h1>
+              <div className="relative z-10 mt-2 flex flex-wrap items-center gap-2">
+                {getStatusBadge(project.status)}
+                <span className="flex min-w-0 items-center gap-1 text-sm text-white/70">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                  <span className="break-words">{project.location}</span>
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
 
-        {!isContractor && <div className="shrink-0">
+        {!isContractor && <div className="w-full shrink-0 sm:w-auto">
           <Dialog open={isLinkDialogOpen} onOpenChange={(open) => {
             setIsLinkDialogOpen(open);
             if (open) {
@@ -366,72 +371,78 @@ export default function ProjectDetails() {
               setOwnerSlug((project as any)?.ownerAccessToken || "");
             }
           }}>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="relative z-10 gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white" 
-              onClick={handleExecutiveSummary}
-              disabled={isGeneratingSummary}
-            >
-              {isGeneratingSummary ? (
-                <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <FileText className="h-4 w-4" />
-              )}
-              <span className="hidden sm:inline">
-                {isGeneratingSummary ? "جاري التحليل..." : "ملخص تنفيذي"}
-              </span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="relative z-10 gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-              onClick={handleExecutiveSlides}
-              disabled={isGeneratingSlides}
-              title="فتح تقرير حالة المشروع كعرض تقديمي"
-            >
-              {isGeneratingSlides ? <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Presentation className="h-4 w-4" />}
-              <span className="hidden sm:inline">{isGeneratingSlides ? "جاري تجهيز العرض..." : "عرض تقديمي"}</span>
-            </Button>
-            {(user?.role === "admin" || myPermissions?.projectRole === "project_manager") && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="relative z-10 gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-                    aria-label="أدوات السجل التاريخي"
-                  >
-                    <Settings2 className="h-4 w-4" />
-                    <span>أدوات السجل</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-60 text-right" style={{ direction: "rtl" }}>
-                  <DropdownMenuLabel>أدوات السجل التاريخي</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="min-h-11 gap-2"
-                    onSelect={() => setActiveHistoryTool("history")}
-                  >
-                    <History className="h-4 w-4 text-primary" />
-                    إعدادات السجل التاريخي
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="min-h-11 gap-2"
-                    onSelect={() => setActiveHistoryTool("linked-sources")}
-                  >
-                    <Link2 className="h-4 w-4 text-primary" />
-                    مصادر المقاول المرتبطة
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="relative z-10 gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white">
-                <Share2 className="h-4 w-4" />
-                <span className="hidden sm:inline">رابط المالك</span>
+            <div className="relative z-10 flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 border-white/20 bg-white text-primary shadow-sm hover:bg-white/90 hover:text-primary"
+                onClick={handleExecutiveSummary}
+                disabled={isGeneratingSummary}
+                aria-label={isGeneratingSummary ? "جاري تجهيز الملخص التنفيذي" : "الملخص التنفيذي"}
+                title={isGeneratingSummary ? "جاري تجهيز الملخص التنفيذي" : "الملخص التنفيذي"}
+              >
+                {isGeneratingSummary ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
               </Button>
-            </DialogTrigger>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                onClick={handleExecutiveSlides}
+                disabled={isGeneratingSlides}
+                aria-label={isGeneratingSlides ? "جاري تجهيز العرض التقديمي" : "عرض تقديمي"}
+                title={isGeneratingSlides ? "جاري تجهيز العرض التقديمي" : "عرض تقديمي"}
+              >
+                {isGeneratingSlides ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Presentation className="h-4 w-4" />}
+              </Button>
+              {(user?.role === "admin" || myPermissions?.projectRole === "project_manager") && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                      aria-label="أدوات السجل التاريخي"
+                      title="أدوات السجل التاريخي"
+                    >
+                      <Settings2 className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-60 text-right" style={{ direction: "rtl" }}>
+                    <DropdownMenuLabel>أدوات السجل التاريخي</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="min-h-11 gap-2"
+                      onSelect={() => setActiveHistoryTool("history")}
+                    >
+                      <History className="h-4 w-4 text-primary" />
+                      إعدادات السجل التاريخي
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="min-h-11 gap-2"
+                      onSelect={() => setActiveHistoryTool("linked-sources")}
+                    >
+                      <Link2 className="h-4 w-4 text-primary" />
+                      مصادر المقاول المرتبطة
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  aria-label="رابط المالك"
+                  title="رابط المالك"
+                >
+                  <Share2 className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+            </div>
             <DialogContent dir="rtl">
               <DialogHeader>
                 <DialogTitle>{(project as any)?.ownerAccessToken ? "رابط المالك" : "إنشاء رابط للمالك"}</DialogTitle>
@@ -513,6 +524,7 @@ export default function ProjectDetails() {
             </DialogContent>
           </Dialog>
         </div>}
+        </div>
       </div>
 
       <ProjectProgressHistoryBackfill
@@ -545,23 +557,41 @@ export default function ProjectDetails() {
       {/* ── Summary Content ── */}
       <div className="space-y-5">
         {/* Progress + KPIs */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card className="surface-card surface-card-hover">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">نسبة الإنجاز</CardTitle>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+          <Card className="surface-card surface-card-hover overflow-hidden">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ActivitySquare className="h-4 w-4 text-primary" />
+                تقدم المشروع
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-end justify-between mb-3">
-                <div className="text-4xl font-bold tabular-nums">
-                  {(summary?.overallProgress ?? 0).toFixed(1)}%
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-end justify-between gap-4 rounded-xl border border-border/70 bg-muted/20 p-4">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">الإنجاز الفعلي</p>
+                  <p className="mt-1 text-4xl font-bold tabular-nums tracking-tight text-primary">
+                    {(summary?.overallProgress ?? 0).toFixed(1)}%
+                  </p>
                 </div>
                 {!summary?.noSchedule && (
-                  <div className="text-sm text-muted-foreground">
-                    المخطط: {summary?.plannedProgress==null?"—":`${summary.plannedProgress.toFixed(1)}%`}
+                  <div className="rounded-lg bg-background px-3 py-2 text-right">
+                    <p className="text-[11px] text-muted-foreground">المخطط حتى اليوم</p>
+                    <p className="mt-0.5 text-lg font-semibold tabular-nums">
+                      {summary?.plannedProgress == null ? "—" : `${summary.plannedProgress.toFixed(1)}%`}
+                    </p>
                   </div>
                 )}
               </div>
-              <div className="relative h-3 w-full overflow-hidden rounded-full bg-secondary/80">
+              <div>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" /> فعلي</span>
+                  {!summary?.noSchedule && <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary/30" /> مخطط</span>}
+                </div>
+                <div
+                  className="relative h-3 w-full overflow-hidden rounded-full bg-secondary/80"
+                  role="img"
+                  aria-label={`الإنجاز الفعلي ${(summary?.overallProgress ?? 0).toFixed(1)} بالمئة${summary?.noSchedule ? "" : `، والمخطط ${summary?.plannedProgress == null ? "غير متاح" : `${summary.plannedProgress.toFixed(1)} بالمئة`}`}`}
+                >
                 {!summary?.noSchedule && (
                   <div
                     className="absolute top-0 right-0 h-full bg-primary/25 rounded-full"
@@ -573,19 +603,20 @@ export default function ProjectDetails() {
                   style={{ width: `${summary?.overallProgress ?? 0}%` }}
                 />
               </div>
+              </div>
               {summary?.noSchedule ? (
-                <div className="mt-3">
-                  <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                    <Clock className="h-4 w-4 shrink-0" />
+                <div className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <Clock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
                     مشروع بدون جدول زمني معتمد — لا يُحسب الانحراف عن الخطة ولا تجاوز المدة
                   </p>
                 </div>
               ) : (
-                <div className="mt-3 space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground leading-relaxed border-r-2 border-muted pr-2">
+                <div className="space-y-2 border-t border-border/70 pt-3">
+                  <p className="border-r-2 border-muted pr-2 text-[11px] leading-relaxed text-muted-foreground">
                     المكافئ الزمني تقدير لفجوة التقدم، وليس تأخيرًا تعاقديًا أو تحليل مسار حرج. التجاوز يُقاس مقابل النهاية المجدولة الحالية.
                   </p>
-                  <p className={`text-sm flex items-center gap-1.5 font-medium ${(summary?.delayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
+                  <p className={`flex items-center gap-1.5 text-sm font-medium ${(summary?.delayDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
                     {(summary?.delayDays ?? 0) > 0 ? (
                       <><AlertTriangle className="h-4 w-4 shrink-0" /> مكافئ فجوة التقدم التقديري: {summary!.delayDays} يوم</>
                     ) : summary?.delayDays==null ? (
@@ -594,14 +625,14 @@ export default function ProjectDetails() {
                       <><CheckCircle2 className="h-4 w-4 shrink-0" /> لا يوجد انحراف عن الخطة</>
                     )}
                   </p>
-                  <p className="text-sm text-amber-600 flex items-center gap-1.5 font-medium">
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-amber-600">
                     <PauseCircle className="h-4 w-4 shrink-0" />
                     توقفات مسجلة دون تكرار: {summary?.suspensionDays ?? 0} يوم
                   </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground">
                     صافي التأخر غير محسوب؛ لا يُخصم التوقف تلقائيًا دون إثبات أثره.
                   </p>
-                  <p className={`text-sm flex items-center gap-1.5 font-semibold pt-1.5 border-t ${(summary?.overrunDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
+                  <p className={`flex items-center gap-1.5 border-t border-border/70 pt-2 text-sm font-semibold ${(summary?.overrunDays ?? 0) > 0 ? "text-destructive" : "text-emerald-600"}`}>
                     {(summary?.overrunDays ?? 0) > 0 ? (
                       <><AlertTriangle className="h-4 w-4 shrink-0" /> تجاوز النهاية المجدولة: {summary!.overrunDays} يوم</>
                     ) : summary?.overrunDays==null ? (
@@ -616,37 +647,40 @@ export default function ProjectDetails() {
           </Card>
 
           <Card className="surface-card surface-card-hover">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">مؤشرات الأداء</CardTitle>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <LayoutDashboard className="h-4 w-4 text-primary" />
+                مؤشرات المشروع
+              </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">البنود المكتملة</p>
-                <p className="text-xl font-bold tabular-nums">
+            <CardContent className="grid grid-cols-2 gap-3">
+              <div className="min-w-0 rounded-xl border border-border/70 bg-muted/20 p-3">
+                <p className="text-[11px] text-muted-foreground">البنود المكتملة</p>
+                <p className="mt-1 text-xl font-bold tabular-nums">
                   {summary?.activitiesCompleted ?? 0}
                   <span className="text-sm font-normal text-muted-foreground"> / {summary?.activitiesTotal ?? 0}</span>
                 </p>
               </div>
               {!summary?.noSchedule && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">بنود متأخرة</p>
-                  <p className="text-xl font-bold tabular-nums text-destructive">
+                <div className="min-w-0 rounded-xl border border-border/70 bg-muted/20 p-3">
+                  <p className="text-[11px] text-muted-foreground">بنود متأخرة</p>
+                  <p className="mt-1 text-xl font-bold tabular-nums text-destructive">
                     {summary?.activitiesDelayed ?? 0}
                   </p>
                 </div>
               )}
               {!summary?.noSchedule && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">الأيام المنقضية</p>
-                  <p className="text-xl font-bold tabular-nums">
+                <div className="min-w-0 rounded-xl border border-border/70 bg-muted/20 p-3">
+                  <p className="text-[11px] text-muted-foreground">الأيام المنقضية</p>
+                  <p className="mt-1 text-xl font-bold tabular-nums">
                     {summary?.daysElapsed ?? 0}
                     <span className="text-sm font-normal text-muted-foreground"> / {summary?.totalDays ?? 0}</span>
                   </p>
                 </div>
               )}
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">تقارير / ملفات</p>
-                <p className="text-xl font-bold tabular-nums">
+              <div className="min-w-0 rounded-xl border border-border/70 bg-muted/20 p-3">
+                <p className="text-[11px] text-muted-foreground">التقارير / الملفات</p>
+                <p className="mt-1 text-xl font-bold tabular-nums">
                   {summary?.reportsCount ?? 0}
                   <span className="text-muted-foreground font-normal"> / </span>
                   {summary?.filesCount ?? 0}
