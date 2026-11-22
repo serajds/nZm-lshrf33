@@ -12,7 +12,7 @@ const bundle = await build({
 });
 const module = { exports: {} };
 new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
-const { createReportImageVariants, shouldUseOriginalForDevelopmentPhotoMiss } = module.exports;
+const { createReportImageVariants, shouldServeOriginalCompressedSharePhoto } = module.exports;
 
 test("large photos are smaller, bounded for printing, and originals are untouched", async () => {
   const source = await sharp({ create: { width: 3600, height: 2400, channels: 3, background: "#bb845d" } })
@@ -82,13 +82,16 @@ test("reports cache state, source dimensions and active processor counts", async
   assert.equal(get.getStatus().pendingJobs, 0);
 });
 
-test("only Development report-photo cache misses use original-image fallback", async () => {
-  assert.equal(shouldUseOriginalForDevelopmentPhotoMiss("development", "report-photo", false), true);
-  assert.equal(shouldUseOriginalForDevelopmentPhotoMiss("development", "report-photo", true), false);
-  assert.equal(shouldUseOriginalForDevelopmentPhotoMiss("production", "report-photo", false), false);
-  assert.equal(shouldUseOriginalForDevelopmentPhotoMiss("development", "report-logo", false), false);
+test("compressed shared photos avoid Sharp in Development and on production cache misses", async () => {
+  const filename = "report-share-56f8a6e3-06bc-43f4-a627-e473c5aa6dca-compressed.jpg";
+  assert.equal(shouldServeOriginalCompressedSharePhoto("development", filename, "report-photo", true), true);
+  assert.equal(shouldServeOriginalCompressedSharePhoto("development", filename, "report-photo", false), true);
+  assert.equal(shouldServeOriginalCompressedSharePhoto("production", filename, "report-photo", true), false);
+  assert.equal(shouldServeOriginalCompressedSharePhoto("production", filename, "report-photo", false), true);
+  assert.equal(shouldServeOriginalCompressedSharePhoto("development", "other.jpg", "report-photo", false), false);
+  assert.equal(shouldServeOriginalCompressedSharePhoto("development", filename, "report-logo", false), false);
   const source = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
-  const fallback = source.indexOf("if (developmentOriginalPhotoFallback)");
+  const fallback = source.indexOf("if (originalSharePhotoFallback)");
   const sharpTransform = source.indexOf("reportImageVariant(key, variant");
   assert.ok(fallback >= 0 && fallback < sharpTransform);
 });

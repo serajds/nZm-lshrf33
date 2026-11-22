@@ -14,12 +14,17 @@ export type ReportImageVariantDiagnostic = {
   queuedJobs: number;
 };
 
-export function shouldUseOriginalForDevelopmentPhotoMiss(
+export function shouldServeOriginalCompressedSharePhoto(
   environment: string | undefined,
+  filename: string,
   variant: ReportImageVariant,
   storedVariantFound: boolean,
 ): boolean {
-  return environment === "development" && variant === "report-photo" && !storedVariantFound;
+  const isCompressedSharePhoto =
+    /^report-share-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-compressed\.jpg$/i
+      .test(filename);
+  if (variant !== "report-photo" || !isCompressedSharePhoto) return false;
+  return environment === "development" || !storedVariantFound;
 }
 
 type VariantProcessor = ((
