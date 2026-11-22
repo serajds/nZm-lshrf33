@@ -10,7 +10,7 @@ import { logger } from "./lib/logger";
 import { JWT_SECRET, verifyToken, diagnoseRejectedToken } from "./lib/auth";
 import { canViewAttendancePhoto, verifyAndMaybeRenewToken } from "./middlewares/auth";
 import { streamFromCloud, cloudReportImageSource } from "./lib/fileStorage";
-import { reportImageVariant } from "./lib/reportImageVariants";
+import { reportImageVariant, type ReportImageVariantDiagnostic } from "./lib/reportImageVariants";
 import {
   findStoredReportImageVariant,
   storeReportImageVariant,
@@ -21,6 +21,21 @@ import { usersTable, userCompaniesTable, projectMembersTable, projectsTable, pro
 import { eq, count, inArray, and } from "drizzle-orm";
 
 const app: Express = express();
+if (process.env.NODE_ENV === "development") {
+  const imageMemorySampler = setInterval(() => {
+    const imageStatus = reportImageVariant.getStatus();
+    if (imageStatus.activeJobs === 0 && imageStatus.pendingJobs === 0) return;
+    const memory = process.memoryUsage();
+    logger.info({
+      ...imageStatus,
+      rssBytes: memory.rss,
+      heapUsedBytes: memory.heapUsed,
+      externalBytes: memory.external,
+      arrayBuffersBytes: memory.arrayBuffers,
+    }, "Report image processing memory sample");
+  }, 1_000);
+  imageMemorySampler.unref();
+}
 app.use((req, res, next) => {
   const metrics = newRequestMetrics();
   const start = performance.now();
@@ -242,7 +257,18 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
   if (req.query.variant === "report-photo" || req.query.variant === "report-logo") {
     const variant = req.query.variant;
     void (async () => {
+      const developmentImageDiagnostics = process.env.NODE_ENV === "development";
+      const variantLookupStarted = developmentImageDiagnostics ? performance.now() : 0;
       const savedVariant = await findStoredReportImageVariant(filename, variant, uploadsDir);
+      const variantLookupMs = developmentImageDiagnostics ? performance.now() - variantLookupStarted : 0;
+      if (developmentImageDiagnostics) {
+        logger.info({
+          variant,
+          storedVariantFound: Boolean(savedVariant),
+          variantLookupMs: Number(variantLookupMs.toFixed(1)),
+          ...reportImageVariant.getStatus(),
+        }, "Report image variant lookup");
+      }
       if (savedVariant) {
         res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
         res.type(savedVariant.contentType);
@@ -256,6 +282,7 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
 
       let key: string;
       let read: () => Promise<Buffer>;
+      let cloudMetadataMs = 0;
       try {
         const stat = await fs.promises.stat(localPath);
         if (stat.size > 25 * 1024 * 1024) throw new Error("Report image is too large");
@@ -263,7 +290,9 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
         read = () => fs.promises.readFile(localPath);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        const cloudMetadataStarted = developmentImageDiagnostics ? performance.now() : 0;
         const source = await cloudReportImageSource(filename);
+        if (developmentImageDiagnostics) cloudMetadataMs = performance.now() - cloudMetadataStarted;
         if (!source) {
           res.status(404).json({ error: "الملف غير موجود" });
           return;
@@ -271,11 +300,61 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
         key = `cloud:${filename}:${source.version}`;
         read = source.read;
       }
-      const image = await reportImageVariant(key, variant, read);
+      let sourceReadMs = 0;
+      let sourceBytes = 0;
+      const processingStarted = developmentImageDiagnostics ? performance.now() : 0;
+      const readSource = developmentImageDiagnostics
+        ? async () => {
+            const sourceReadStarted = performance.now();
+            const source = await read();
+            sourceReadMs = performance.now() - sourceReadStarted;
+            sourceBytes = source.length;
+            return source;
+          }
+        : read;
+      const onVariantDiagnostic = developmentImageDiagnostics ? (diagnostic: ReportImageVariantDiagnostic) => {
+        const memory = process.memoryUsage();
+        logger.info({
+          ...diagnostic,
+          sourceReadMs: Number(sourceReadMs.toFixed(1)),
+          cloudMetadataMs: Number(cloudMetadataMs.toFixed(1)),
+          processingElapsedMs: Number((performance.now() - processingStarted).toFixed(1)),
+          rssBytes: memory.rss,
+          heapUsedBytes: memory.heapUsed,
+          externalBytes: memory.external,
+          arrayBuffersBytes: memory.arrayBuffers,
+        }, "Report image variant processing");
+      } : undefined;
+      const image = await reportImageVariant(key, variant, readSource, onVariantDiagnostic);
+      const persistStarted = developmentImageDiagnostics ? performance.now() : 0;
+      let persisted = true;
       try {
         await storeReportImageVariant(filename, variant, image, uploadsDir);
       } catch (error) {
+        persisted = false;
         logger.warn({ err: error, filename, variant }, "Could not persist report image preview");
+      }
+      if (developmentImageDiagnostics) {
+        logger.info({
+          variant,
+          sourceBytes,
+          outputBytes: image.buffer.length,
+          sourceReadMs: Number(sourceReadMs.toFixed(1)),
+          cloudMetadataMs: Number(cloudMetadataMs.toFixed(1)),
+          persistenceMs: Number((performance.now() - persistStarted).toFixed(1)),
+          persisted,
+          processingElapsedMs: Number((performance.now() - processingStarted).toFixed(1)),
+          ...reportImageVariant.getStatus(),
+          ...(() => {
+            const memory = process.memoryUsage();
+            return {
+              rssBytes: memory.rss,
+              heapUsedBytes: memory.heapUsed,
+              externalBytes: memory.external,
+              arrayBuffersBytes: memory.arrayBuffers,
+            };
+          })(),
+        }, "Report image variant request complete");
       }
       res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
       res.type(image.contentType).send(image.buffer);
