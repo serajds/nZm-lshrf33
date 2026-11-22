@@ -28,6 +28,7 @@ export const pool = new Pool({
   ...(!local ? { ssl: { rejectUnauthorized: true } } : {}),
   min: 0,
   max: 10,
+  keepAlive: true,
   idleTimeoutMillis: 20000,
   connectionTimeoutMillis: 10000,
   allowExitOnIdle: true,
