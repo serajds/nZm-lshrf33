@@ -13,6 +13,10 @@ import sharp from "sharp";
 import { uploadToCloud, deleteFromCloud } from "../lib/fileStorage";
 import { isValidBase64String } from "../lib/base64-validation";
 import { reportsTable, reportImageSharesTable } from "@workspace/db";
+import {
+  createAndStoreReportImageVariant,
+  deleteStoredReportImageVariants,
+} from "../lib/reportImageVariantStorage";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -111,6 +115,13 @@ export async function persistUploadedFile(
   } catch (err) {
     console.error("Cloud upload failed, file saved locally only:", err);
   }
+  if (category === "image" && isImageFile(finalFilename)) {
+    try {
+      await createAndStoreReportImageVariant(finalFilename, "report-photo", uploadsDir);
+    } catch (err) {
+      console.warn("Report preview copy could not be prepared during upload:", err);
+    }
+  }
 
   const fileUrl = `/api/uploads/${finalFilename}`;
 
@@ -183,6 +194,7 @@ async function discardPersistedReportImage(fileId: number, filename: string): Pr
   await db.delete(projectFilesTable).where(eq(projectFilesTable.id, fileId));
   await fsp.unlink(path.join(uploadsDir, filename)).catch(() => {});
   await deleteFromCloud(filename);
+  await deleteStoredReportImageVariants(filename, uploadsDir);
 }
 
 const reportShareTokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -344,6 +356,7 @@ router.delete("/projects/:projectId/files/:id", requireProjectAccess("projectId"
   const filePath = path.join(uploadsDir, file.filename);
   await fsp.unlink(filePath).catch(() => {});
   await deleteFromCloud(file.filename);
+  await deleteStoredReportImageVariants(file.filename, uploadsDir);
 
   res.sendStatus(204);
 });
