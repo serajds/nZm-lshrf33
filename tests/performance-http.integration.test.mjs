@@ -316,6 +316,7 @@ test("measured activities, source sharing, reorder isolation, report payload and
       assert.equal(pool.totalCount, 0);
       assert.equal((await pool.query("select 1 as ok")).rows[0].ok, 1);
       assert.equal(pool.options.min, 0);
+      assert.equal(pool.options.keepAlive, true);
       assert.equal(pool.options.idleTimeoutMillis, 20000);
       assert.equal(pool.options.allowExitOnIdle, true);
     });
