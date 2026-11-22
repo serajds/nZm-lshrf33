@@ -1,4 +1,4 @@
-import { objectStorageClient } from "./objectStorage";
+import { objectStorageClient, signObjectURL } from "./objectStorage";
 import fs from "fs";
 import path from "path";
 
@@ -18,6 +18,19 @@ export async function uploadToCloud(localPath: string, filename: string): Promis
   await getBucket().upload(localPath, {
     destination,
     resumable: false,
+  });
+}
+
+export async function createSignedUploadReadUrl(filename: string, ttlSec = 300): Promise<string> {
+  if (!BUCKET_ID) throw new Error("Object storage bucket is not configured");
+  if (!filename || path.basename(filename) !== filename || filename === "." || filename === "..") {
+    throw new Error("Invalid upload filename");
+  }
+  return signObjectURL({
+    bucketName: BUCKET_ID,
+    objectName: UPLOADS_PREFIX + filename,
+    method: "GET",
+    ttlSec,
   });
 }
 

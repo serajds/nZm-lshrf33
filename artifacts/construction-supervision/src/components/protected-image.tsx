@@ -43,16 +43,23 @@ function waitBeforePreviewRetry(delayMs: number, signal: AbortSignal): Promise<v
   });
 }
 
-async function fetchPreviewBlob(url: string, signal: AbortSignal): Promise<Blob> {
+async function fetchPreviewBlob(url: string, signal: AbortSignal, authenticated = true): Promise<Blob> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (signal.aborted) throw signal.reason ?? new Error("Report preview asset request was aborted");
     let response: Response;
     try {
-      response = await fetchWithSession(url, {
-        signal,
-        headers: { Accept: "image/*,application/pdf,application/octet-stream" },
-      });
+      response = authenticated
+        ? await fetchWithSession(url, {
+            signal,
+            headers: { Accept: "image/*,application/pdf,application/octet-stream" },
+          })
+        : await fetch(url, {
+            signal,
+            mode: "cors",
+            credentials: "omit",
+            headers: { Accept: "image/*" },
+          });
     } catch (error) {
       if (signal.aborted || attempt === 2) throw error;
       lastError = error;
@@ -80,13 +87,32 @@ async function fetchPreviewBlob(url: string, signal: AbortSignal): Promise<Blob>
   throw lastError instanceof Error ? lastError : new Error("Report preview asset request failed");
 }
 
+function isSignedObjectUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:"
+      && parsed.hostname === "storage.googleapis.com"
+      && parsed.searchParams.has("X-Goog-Signature");
+  } catch {
+    return false;
+  }
+}
+
 /** Preview-owned blob URLs avoid base64 expansion and are released with its window. */
 export async function protectedAssetToPreviewUrl(url: string, owner: Window, kind: "photo" | "logo" = "photo"): Promise<string> {
-  if (!isProtectedApiAsset(url)) return url;
+  const protectedApiAsset = isProtectedApiAsset(url);
+  const signedObjectUrl = isSignedObjectUrl(url);
+  if (!protectedApiAsset && !signedObjectUrl) {
+    if (owner.closed) throw new Error("Report preview was closed");
+    return url;
+  }
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 45_000);
   try {
-    const blob = await fetchPreviewBlob(reportPreviewAssetUrl(url, kind, window.location.origin), controller.signal);
+    const assetUrl = protectedApiAsset
+      ? reportPreviewAssetUrl(url, kind, window.location.origin)
+      : url;
+    const blob = await fetchPreviewBlob(assetUrl, controller.signal, protectedApiAsset);
     if (owner.closed) throw new Error("Report preview was closed");
     return (owner as Window & typeof globalThis).URL.createObjectURL(blob);
   } finally {

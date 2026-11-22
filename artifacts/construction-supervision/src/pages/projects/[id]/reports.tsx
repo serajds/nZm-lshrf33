@@ -848,6 +848,17 @@ export default function ProjectReports() {
           if (result.error || !result.data) throw result.error ?? new Error("Missing company logos");
           return result.data;
         },
+        loadSignedAssets: import.meta.env.DEV ? async () => {
+          const response = await fetchWithSession(
+            `/api/projects/${projectId}/reports/${report.id}/preview-image-links`,
+          );
+          if (!response.ok) throw new Error(`تعذّر تجهيز روابط صور التقرير (${response.status})`);
+          const payload = await response.json() as { assets?: Record<string, string> };
+          if (!payload.assets || typeof payload.assets !== "object") {
+            throw new Error("استجابة روابط صور التقرير غير صالحة");
+          }
+          return payload.assets;
+        } : undefined,
         loadAsset: url => protectedAssetToPreviewUrl(url, previewWindow),
         loadLogoAsset: url => protectedAssetToPreviewUrl(url, previewWindow, "logo"),
         onProgress: (done, total) => updateReportPreviewStatus(

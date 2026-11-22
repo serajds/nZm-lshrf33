@@ -60,6 +60,31 @@ test("logos use their lossless variant separately from report photos", async () 
   assert.equal(result.companyLogos.owner.logoUrl, "blob:lossless-logo");
 });
 
+test("development signed image links replace per-image API fetches", async () => {
+  const sourceUrls = ["/api/uploads/a.jpg", "/api/uploads/b.jpg"];
+  const loaded = [];
+  let signRequests = 0;
+  const result = await loadReportPreview({
+    loadReport: async () => ({ imageGroups: [{ category: "صور", urls: sourceUrls }] }),
+    loadLogos: async () => ({}),
+    loadSignedAssets: async () => {
+      signRequests++;
+      return {
+        [sourceUrls[0]]: "https://storage.example/signed-a",
+        [sourceUrls[1]]: "https://storage.example/signed-b",
+      };
+    },
+    loadAsset: async url => {
+      loaded.push(url);
+      return url;
+    },
+    onProgress: () => {},
+  });
+  assert.equal(signRequests, 1);
+  assert.deepEqual(loaded, ["https://storage.example/signed-a", "https://storage.example/signed-b"]);
+  assert.deepEqual(result.imageGroups[0].urls, loaded);
+});
+
 test("failed photos and logos reject instead of silently issuing an incomplete report", async () => {
   for (const failure of ["photo", "logo"]) {
     await assert.rejects(loadReportPreview({
