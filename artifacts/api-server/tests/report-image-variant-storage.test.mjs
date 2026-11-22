@@ -85,6 +85,32 @@ test("transparent company-logo previews are stored as PNG", async () => {
   }
 });
 
+test("small JPEG and WebP company logos can be stored without conversion", async () => {
+  for (const [extension, format, contentType] of [
+    ["jpg", "jpeg", "image/jpeg"],
+    ["webp", "webp", "image/webp"],
+  ]) {
+    const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "report-small-logo-"));
+    const originalFilename = `logo-small.${extension}`;
+    const rawPixels = Buffer.alloc(80 * 40 * 3);
+    for (let i = 0; i < rawPixels.length; i++) rawPixels[i] = (i * 73 + (i >> 3) * 19) % 256;
+    const source = await sharp(rawPixels, { raw: { width: 80, height: 40, channels: 3 } })
+      [format]({ quality: 35 }).toBuffer();
+
+    try {
+      await writeFile(path.join(uploadsDir, originalFilename), source);
+      await createAndStoreReportImageVariant(originalFilename, "report-logo", uploadsDir);
+
+      const saved = await findStoredReportImageVariant(originalFilename, "report-logo", uploadsDir);
+      assert.ok(saved);
+      assert.equal(saved.contentType, contentType);
+      assert.deepEqual(await streamToBuffer(saved.stream), source);
+    } finally {
+      await rm(uploadsDir, { recursive: true, force: true });
+    }
+  }
+});
+
 test("small WebP photos keep their supported format in the stored preview copy", async () => {
   const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "report-webp-preview-"));
   const originalFilename = "small-photo.webp";

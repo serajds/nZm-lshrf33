@@ -32,7 +32,13 @@ function candidateVariantFilenames(
   // the source version while keeping derivatives easy to find and clean up.
   const prefix = `report-preview-${variant}-${originalFilename}`;
   if (variant === "report-logo") {
-    return [{ filename: `${prefix}.png`, contentType: "image/png" }];
+    // Small JPEG/WebP logos may be returned unchanged by the variant
+    // processor. Keep those supported formats instead of failing persistence.
+    return [
+      { filename: `${prefix}.png`, contentType: "image/png" },
+      { filename: `${prefix}.jpg`, contentType: "image/jpeg" },
+      { filename: `${prefix}.webp`, contentType: "image/webp" },
+    ];
   }
   return [
     { filename: `${prefix}.jpg`, contentType: "image/jpeg" },
