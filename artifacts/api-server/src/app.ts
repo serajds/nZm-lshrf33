@@ -258,12 +258,16 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
     const variant = req.query.variant;
     void (async () => {
       const developmentImageDiagnostics = process.env.NODE_ENV === "development";
+      const forceColdDiagnostic = developmentImageDiagnostics && req.query.diagnosticCold === "1";
       const variantLookupStarted = developmentImageDiagnostics ? performance.now() : 0;
-      const savedVariant = await findStoredReportImageVariant(filename, variant, uploadsDir);
+      const savedVariant = forceColdDiagnostic
+        ? null
+        : await findStoredReportImageVariant(filename, variant, uploadsDir);
       const variantLookupMs = developmentImageDiagnostics ? performance.now() - variantLookupStarted : 0;
       if (developmentImageDiagnostics) {
         logger.info({
           variant,
+          forceColdDiagnostic,
           storedVariantFound: Boolean(savedVariant),
           variantLookupMs: Number(variantLookupMs.toFixed(1)),
           ...reportImageVariant.getStatus(),
@@ -325,18 +329,22 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
           arrayBuffersBytes: memory.arrayBuffers,
         }, "Report image variant processing");
       } : undefined;
-      const image = await reportImageVariant(key, variant, readSource, onVariantDiagnostic);
+      const diagnosticKey = forceColdDiagnostic ? `${key}:cold:${String(req.id)}` : key;
+      const image = await reportImageVariant(diagnosticKey, variant, readSource, onVariantDiagnostic);
       const persistStarted = developmentImageDiagnostics ? performance.now() : 0;
-      let persisted = true;
-      try {
-        await storeReportImageVariant(filename, variant, image, uploadsDir);
-      } catch (error) {
-        persisted = false;
-        logger.warn({ err: error, filename, variant }, "Could not persist report image preview");
+      let persisted = !forceColdDiagnostic;
+      if (!forceColdDiagnostic) {
+        try {
+          await storeReportImageVariant(filename, variant, image, uploadsDir);
+        } catch (error) {
+          persisted = false;
+          logger.warn({ err: error, filename, variant }, "Could not persist report image preview");
+        }
       }
       if (developmentImageDiagnostics) {
         logger.info({
           variant,
+          forceColdDiagnostic,
           sourceBytes,
           outputBytes: image.buffer.length,
           sourceReadMs: Number(sourceReadMs.toFixed(1)),
