@@ -7,6 +7,7 @@
  */
 import type { ReportActivitiesSnapshotItem } from "./reportActivitiesSnapshotItem";
 import type { ReportImageGroupsItem } from "./reportImageGroupsItem";
+import type { ReportProgressSource } from "./reportProgressSource";
 import type { ReportStatus } from "./reportStatus";
 import type { ReportType } from "./reportType";
 
@@ -29,6 +30,11 @@ export interface Report {
   imageGroups?: ReportImageGroupsItem[] | null;
   /** @nullable */
   activitiesSnapshot?: ReportActivitiesSnapshotItem[] | null;
+  forecastDraft: boolean;
+  forecastMatured?: boolean;
+  actualAvailable?: boolean;
+  /** @nullable */
+  progressSource?: ReportProgressSource;
   status: ReportStatus;
   /** @nullable */
   approvedAt?: Date | null;

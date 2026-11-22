@@ -6,6 +6,7 @@ import { requireProjectAccess } from "../middlewares/auth";
 import { requireTabView } from "../middlewares/tab-access";
 import { calcPlannedProgressForProject, calcActualProgressForProject, calcDelayDays, calcActivityPlannedProgress, calcSPI, hasValidProjectSchedule, isActivityDelayed, roundPercent, utcDay, utcDayDifference } from "../lib/progress";
 import { resolveLinkedActivityProgress } from "../lib/external-sources";
+import { getReportForecastProgress } from "../lib/report-forecast";
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
@@ -105,6 +106,9 @@ type ReportSnapshotRow = {
   actualRecordedAt?: string;
   plannedAsOfDate?: string;
   plannedHistoricalUnverified?: boolean;
+  actualHistoricalUnverified?: boolean;
+  actualAsOfDate?: string;
+  forecastStatus?: string;
   weight?: number;
   status?: string;
 };
@@ -475,10 +479,60 @@ function snapshotActualIsHistoricallyUnverified(
     doc.text("لا توجد تقارير دورية مسجلة لهذا المشروع.", MARGIN, PAGE_H / 2, { width: CONTENT_W, align: "center" });
   } else {
     for (let idx = 0; idx < reports.length; idx++) {
-      const report = reports[idx];
+      const storedReport = reports[idx];
+      const hasForecastDraft = storedReport.forecastDraft === true;
+      const forecast = hasForecastDraft && storedReport.status === "draft"
+        ? await getReportForecastProgress(projectId, storedReport.periodEnd)
+        : null;
+      const isForecast = forecast != null && forecast.targetDate > forecast.today;
+      const forecastMatured = forecast != null && forecast.targetDate <= forecast.today;
+      const manuallyDocumented = storedReport.progressSource === "manual";
+      const report: typeof storedReport & { actualAvailable?: boolean; forecastMatured?: boolean } = forecast
+        ? {
+            ...storedReport,
+            ...forecast,
+            forecastDraft: isForecast,
+            forecastMatured,
+            actualAvailable: forecast.actualAvailable || manuallyDocumented,
+            progressPercentage: manuallyDocumented
+              ? storedReport.progressPercentage
+              : forecast.actualProgress ?? storedReport.progressPercentage,
+            progressSource: manuallyDocumented ? "manual" : forecast.actualAvailable ? "history" : null,
+            progressAsOfDate: forecast.actualAvailable
+              ? forecast.actualAsOfDate
+              : manuallyDocumented ? storedReport.progressAsOfDate : null,
+            progressHistorySource: forecast.actualAvailable
+              ? forecast.actualSource === "estimated_history" ? "estimated" : "actual"
+              : manuallyDocumented ? storedReport.progressHistorySource : null,
+            activitiesSnapshot: forecast.activities,
+          }
+        : storedReport;
+      const actualUnavailable = forecastMatured && report.actualAvailable !== true;
       doc.addPage();
       if (hasFont) doc.font("Amiri");
       y = MARGIN;
+
+      if (isForecast) {
+        doc.roundedRect(MARGIN, y, CONTENT_W, 34, 4).fill("#fff7ed").stroke(C.warning);
+        setFont(9, "#9a3412");
+        doc.text(
+          `${report.status === "draft" ? "مسودة استشرافية غير معتمدة" : "توقع محفوظ وليس إنجازاً فعلياً"} — الخطة المتوقعة حتى ${formatDate(report.periodEnd)}${forecast ? `؛ الإنجاز الفعلي الموثق حتى ${formatDate(forecast.actualAsOfDate)}` : ""}`,
+          MARGIN + 8,
+          y + 8,
+          { width: CONTENT_W - 16, align: "right" },
+        );
+        y += 42;
+      } else if (actualUnavailable) {
+        doc.roundedRect(MARGIN, y, CONTENT_W, 30, 4).fill("#fff7ed").stroke(C.warning);
+        setFont(8, "#9a3412");
+        doc.text(
+          "أصبح هذا تقريراً عادياً غير معتمد، لكن لا يتوفر سجل إنجاز موثوق لهذا التاريخ. أدخل النسبة الفعلية الموثقة قبل اعتماده.",
+          MARGIN + 8,
+          y + 7,
+          { width: CONTENT_W - 16, align: "right" },
+        );
+        y += 38;
+      }
 
       // Report header
       const typeColor = report.type === "monthly" ? C.primary : C.accent;
@@ -510,11 +564,25 @@ function snapshotActualIsHistoricallyUnverified(
       // Progress indicator for this report
       doc.roundedRect(MARGIN, y, CONTENT_W, 32, 4).fill(C.light).stroke(C.border);
       setFont(8, C.textMuted);
-      doc.text("نسبة الإنجاز المُبلَّغ عنها في هذه الفترة", MARGIN + 8, y + 6, { width: CONTENT_W - 100, align: "right" });
-      const displayedReportedProgress = roundPercent(report.progressPercentage ?? 0);
-      drawProgressBar(doc, MARGIN + 8, y + 20, CONTENT_W - 100, 8, displayedReportedProgress, typeColor);
+      doc.text(
+        isForecast
+          ? `المخطط المتوقع حتى ${formatDate(report.periodEnd)}`
+          : actualUnavailable ? "الإنجاز الفعلي غير متاح" : "نسبة الإنجاز المُبلَّغ عنها في هذه الفترة",
+        MARGIN + 8, y + 6, { width: CONTENT_W - 100, align: "right" },
+      );
+      const storedForecastPlan = Array.isArray(report.activitiesSnapshot)
+        && report.activitiesSnapshot.length > 0
+        && (report.activitiesSnapshot as ReportSnapshotRow[]).every(row =>
+          typeof row.plannedProgress === "number" && row.plannedHistoricalUnverified !== true)
+        ? snapshotProgress(report.activitiesSnapshot as ReportSnapshotRow[], "plannedProgress")
+        : null;
+      const reportProgressValue = isForecast
+        ? forecast ? forecast.plannedProgress : storedForecastPlan
+        : actualUnavailable ? null : report.progressPercentage ?? 0;
+      const displayedReportedProgress = reportProgressValue == null ? null : roundPercent(reportProgressValue);
+      drawProgressBar(doc, MARGIN + 8, y + 20, CONTENT_W - 100, 8, displayedReportedProgress ?? 0, typeColor);
       setFont(14, typeColor);
-      doc.text(`${displayedReportedProgress}%`, MARGIN + CONTENT_W - 88, y + 8, { width: 80, align: "center" });
+      doc.text(displayedReportedProgress == null ? "—" : `${displayedReportedProgress}%`, MARGIN + CONTENT_W - 88, y + 8, { width: 80, align: "center" });
       y += 42;
 
       const reportSnapshot = Array.isArray(report.activitiesSnapshot)
@@ -535,22 +603,26 @@ function snapshotActualIsHistoricallyUnverified(
         const rawHistoricalPlanned = snapshotProgress(reportSnapshot, "plannedProgress");
         const rawHistoricalActual = snapshotProgress(reportSnapshot, "actualProgress");
         const plannedUnverified = reportSnapshot.some(row => row.plannedHistoricalUnverified === true);
-        const actualUnverified = snapshotActualIsHistoricallyUnverified(
-          report.reportDate,
-          report.createdAt,
-          reportSnapshot,
-        );
+        const actualUnverified = isForecast
+          ? (forecast ? !forecast.actualAvailable : report.progressAsOfDate == null)
+          : actualUnavailable
+            ? true
+            : snapshotActualIsHistoricallyUnverified(report.reportDate, report.createdAt, reportSnapshot);
         const plannedUnavailable = !hasSchedule || plannedUnverified;
         const historicalSpi = actualUnverified || plannedUnavailable
           ? null
           : calcSPI(rawHistoricalPlanned, rawHistoricalActual);
         const displayedPlanned = roundPercent(rawHistoricalPlanned);
-        const displayedActual = roundPercent(rawHistoricalActual);
+        const displayedActual = actualUnavailable ? null : roundPercent(rawHistoricalActual);
         y = ensurePage(doc, 45);
-        y = drawSectionHeader(doc, `لقطة الأنشطة المحفوظة للتقرير (${formatDate(report.reportDate)})`, y);
+        y = drawSectionHeader(doc, isForecast
+          ? `معاينة المخطط المتوقع (${formatDate(report.periodEnd)})`
+          : `لقطة الأنشطة المحفوظة للتقرير (${formatDate(report.reportDate)})`, y);
         setFont(9, C.textDark);
         doc.text(
-          `${!hasSchedule ? "المخطط الموزون: غير متاح (لا يوجد جدول صالح)" : plannedUnverified ? "المخطط الموزون: غير موثق لتاريخ التقرير" : `المخطط الموزون: ${displayedPlanned}%`}    الفعلي المسجل عند الإنشاء: ${displayedActual}%    SPI: ${historicalSpi == null ? (!hasSchedule ? "غير متاح" : actualUnverified || plannedUnverified ? "غير موثق تاريخياً" : "غير متاح (المخطط صفر)") : historicalSpi}`,
+          isForecast
+            ? `${!hasSchedule || plannedUnverified ? "المخطط المتوقع: غير متاح" : `المخطط المتوقع: ${displayedPlanned}%`}    الفعلي الموثق حتى ${formatDate(forecast?.actualAsOfDate ?? report.progressAsOfDate)}: ${actualUnverified ? "غير متاح" : `${roundPercent(forecast?.actualProgress ?? rawHistoricalActual)}%`}    SPI: غير محسوب للمسودة الاستشرافية`
+            : `${!hasSchedule ? "المخطط الموزون: غير متاح (لا يوجد جدول صالح)" : plannedUnverified ? "المخطط الموزون: غير موثق لتاريخ التقرير" : `المخطط الموزون: ${displayedPlanned}%`}    الفعلي المسجل عند الإنشاء: ${displayedActual == null ? "غير متاح" : `${displayedActual}%`}    SPI: ${historicalSpi == null ? (!hasSchedule ? "غير متاح" : actualUnverified || plannedUnverified ? "غير موثق تاريخياً" : "غير متاح (المخطط صفر)") : historicalSpi}`,
           MARGIN + 4,
           y,
           { width: CONTENT_W - 8, align: "right" },
@@ -561,7 +633,9 @@ function snapshotActualIsHistoricallyUnverified(
           doc.roundedRect(MARGIN, y, CONTENT_W, 24, 4).fill("#fff7ed").stroke(C.warning);
           setFont(8, "#9a3412");
           doc.text(
-            "القيم الفعلية أدناه مسجلة وقت إنشاء التقرير، ولا يمكن توثيقها كإنجاز فعلي في تاريخ تقرير أسبق.",
+            isForecast
+              ? "لا تتوفر تغطية تاريخية موثوقة للإنجاز الفعلي؛ لا تعرض هذه المسودة أرقاماً مستقبلية على أنها إنجاز."
+              : "القيم الفعلية أدناه مسجلة وقت إنشاء التقرير، ولا يمكن توثيقها كإنجاز فعلي في تاريخ تقرير أسبق.",
             MARGIN + 8,
             y + 6,
             { width: CONTENT_W - 16, align: "right" },
@@ -586,12 +660,18 @@ function snapshotActualIsHistoricallyUnverified(
           const planned = roundPercent(typeof activity.plannedProgress === "number" ? activity.plannedProgress : 0);
           const plannedText = !hasSchedule
             ? "غير متاح"
+            : isForecast && activity.plannedHistoricalUnverified
+              ? "غير متاح"
             : plannedUnverified && activity.plannedHistoricalUnverified
               ? `${planned}% (الخطة المحفوظة بتاريخ ${formatDate(activity.plannedAsOfDate)})`
               : `${planned}%`;
           setFont(8, C.textDark);
           doc.text(
-            `${activity.name ?? "بند"} — مخطط ${plannedText}، فعلي ${actual}%، الحالة: ${statusLabel(activity.status ?? "not_started")}`,
+            isForecast
+              ? `${activity.name ?? "بند"} — مخطط متوقع ${plannedText}، فعلي ${activity.actualHistoricalUnverified ? "غير متاح" : `${actual}% حتى ${formatDate(activity.actualAsOfDate)}`}، الحالة المتوقعة: ${statusLabel(activity.forecastStatus ?? activity.status ?? "not_started")}`
+              : actualUnavailable
+                ? `${activity.name ?? "بند"} — مخطط ${plannedText}، فعلي غير متاح، الحالة غير متاحة`
+                : `${activity.name ?? "بند"} — مخطط ${plannedText}، فعلي ${actual}%، الحالة: ${statusLabel(activity.status ?? "not_started")}`,
             MARGIN + 6,
             y,
             { width: CONTENT_W - 12, align: "right" },
@@ -604,7 +684,7 @@ function snapshotActualIsHistoricallyUnverified(
       // Work description
       if (report.workDescription) {
         y = ensurePage(doc, 40);
-        y = drawSectionHeader(doc, "الأعمال المنجزة خلال الفترة", y);
+        y = drawSectionHeader(doc, isForecast ? "الأعمال المخطط تنفيذها خلال الفترة" : "الأعمال المنجزة خلال الفترة", y);
         doc.roundedRect(MARGIN, y, CONTENT_W, 14).fill(C.light);
         setFont(9, C.textDark);
         const descLines = report.workDescription.split("\n");

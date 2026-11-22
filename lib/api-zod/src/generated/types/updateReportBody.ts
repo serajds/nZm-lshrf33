@@ -7,6 +7,7 @@
  */
 import type { UpdateReportBodyActivitiesSnapshotItem } from "./updateReportBodyActivitiesSnapshotItem";
 import type { UpdateReportBodyImageGroupsItem } from "./updateReportBodyImageGroupsItem";
+import type { UpdateReportBodyProgressSource } from "./updateReportBodyProgressSource";
 import type { UpdateReportBodyType } from "./updateReportBodyType";
 
 export interface UpdateReportBody {
@@ -22,6 +23,8 @@ export interface UpdateReportBody {
   workDescription?: string | null;
   /** @nullable */
   progressPercentage?: number | null;
+  /** @nullable */
+  progressSource?: UpdateReportBodyProgressSource;
   /** @nullable */
   technicalNotes?: string | null;
   /** @nullable */

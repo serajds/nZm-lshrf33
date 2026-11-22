@@ -22,4 +22,5 @@ export interface CreateReportBody {
   imageUrls?: string[];
   /** @nullable */
   imageGroups?: CreateReportBodyImageGroupsItem[] | null;
+  forecastDraft?: boolean;
 }

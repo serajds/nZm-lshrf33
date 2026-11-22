@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, real, integer, date, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, integer, date, jsonb, index, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -19,6 +19,7 @@ export const reportsTable = pgTable("reports", {
   imageUrls: text("image_urls").array().notNull().default([]),
   imageGroups: jsonb("image_groups").$type<ReportImageGroup[]>(),
   activitiesSnapshot: jsonb("activities_snapshot"),
+  forecastDraft: boolean("forecast_draft").notNull().default(false),
   progressSource: text("progress_source", { enum: ["history", "manual"] }),
   progressAsOfDate: date("progress_as_of_date"),
   progressHistoryCapturedAt: timestamp("progress_history_captured_at", { withTimezone: true }),

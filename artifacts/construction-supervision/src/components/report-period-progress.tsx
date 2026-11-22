@@ -35,6 +35,54 @@ export function useReportPeriodProgress(projectId: number, periodEnd: string, en
   });
 }
 
+export interface ReportForecastProgress {
+  forecastDraft: true;
+  targetDate: string;
+  today: string;
+  actualAsOfDate: string;
+  actualAvailable: boolean;
+  actualProgress: number | null;
+  plannedProgress: number | null;
+  plannedSource: "project_schedule" | "unavailable";
+  actualSource: "history" | "estimated_history" | "approved_report" | "unavailable";
+  actualReportNumber: number | null;
+  manualSuggestion: {
+    reportNumber: number;
+    progressPercentage: number;
+    actualAsOfDate: string;
+    reportDate: string;
+  } | null;
+  activities: Array<{
+    id: number;
+    name: string;
+    plannedProgress: number | null;
+    actualProgress: number | null;
+    actualAsOfDate: string;
+    actualHistoricalUnverified: boolean;
+    plannedHistoricalUnverified: boolean;
+    status: string;
+    forecastStatus: string;
+    actualStatus: string | null;
+    weight: number;
+    sortOrder: number;
+    [key: string]: unknown;
+  }>;
+}
+
+export function useReportForecastProgress(projectId: number, targetDate: string, enabled: boolean, poll = enabled) {
+  return useQuery({
+    queryKey: [`/api/projects/${projectId}/reports/forecast-as-of`, targetDate],
+    queryFn: () => customFetch<ReportForecastProgress>(
+      `/api/projects/${projectId}/reports/forecast-as-of?targetDate=${encodeURIComponent(targetDate)}`,
+      { method: "GET", cache: "no-store" },
+    ),
+    enabled: enabled && /^\d{4}-\d{2}-\d{2}$/.test(targetDate),
+    staleTime: 0,
+    retry: false,
+    refetchInterval: poll ? 60_000 : false,
+  });
+}
+
 interface Props {
   periodStart: string;
   periodEnd: string;
@@ -45,6 +93,103 @@ interface Props {
   value: number;
   onChange: (value: string) => void;
   onManualChange: () => void;
+}
+
+export function ForecastReportProgressField({
+  targetDate,
+  data,
+  loading,
+  failed,
+}: {
+  targetDate: string;
+  data?: ReportForecastProgress;
+  loading: boolean;
+  failed: boolean;
+}) {
+  return (
+    <FormItem className="sm:col-span-2 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/20">
+      <FormLabel>معاينة مسودة استشرافية</FormLabel>
+      <div className="space-y-1 text-xs text-muted-foreground" aria-live="polite">
+        {!targetDate ? <p>حدد تاريخاً مستقبلياً لمعاينة الجدول.</p>
+          : loading ? <p>جارٍ حساب الخطة المتوقعة وقراءة الإنجاز الموثق...</p>
+          : failed ? <p className="text-destructive">تعذّر تحميل المعاينة؛ لا تُستخدم بيانات اليوم كتوقع أو كتاريخ سابق.</p>
+          : data ? (
+            <>
+              <p>
+                المخطط المتوقع بتاريخ {data.targetDate}: {data.plannedProgress == null
+                  ? "غير متاح لعدم اكتمال الجدول"
+                  : `${formatDisplayPercent(data.plannedProgress)}، محسوب من جدول المشروع`}
+              </p>
+              <p>
+                {data.actualSource === "estimated_history" ? "النسبة من السجل التاريخي التقديري المراجع" : "الإنجاز الفعلي الموثق"}
+                {" "}حتى {data.actualAsOfDate}: {data.actualAvailable && data.actualProgress != null
+                  ? formatDisplayPercent(data.actualProgress)
+                  : "غير متاح؛ لا توجد تغطية تاريخية موثوقة"}
+              </p>
+              {data.actualAvailable && data.actualSource === "approved_report" && (
+                <p className="font-medium text-emerald-700 dark:text-emerald-300">
+                  النسبة محفوظة في التقرير المعتمد رقم {data.actualReportNumber} لنفس التاريخ.
+                </p>
+              )}
+              {data.actualAvailable && data.actualSource === "estimated_history" && (
+                <p className="font-medium text-amber-800 dark:text-amber-300">
+                  المصدر: سجل تاريخي تقديري تمت مراجعته؛ تبقى قيم الإنجاز لكل بند غير مؤكدة.
+                </p>
+              )}
+              <p className="font-medium text-amber-800 dark:text-amber-300">
+                هذه معاينة مستقبلية غير معتمدة. لا تمثل النسبة المخططة إنجازاً فعلياً.
+              </p>
+              {data.activities.length > 0 && (
+                <div className="max-h-64 overflow-auto rounded-lg border bg-background text-foreground">
+                  <table className="w-full min-w-[520px] text-xs">
+                    <thead className="sticky top-0 bg-muted">
+                      <tr>
+                        <th className="p-2 text-right">البند</th>
+                        <th className="p-2 text-center">المخطط المتوقع</th>
+                        <th className="p-2 text-center">الفعلي الموثق</th>
+                        <th className="p-2 text-center">الحالة المتوقعة</th>
+                        <th className="p-2 text-center">الحالة الفعلية المسجلة</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.activities.map(activity => (
+                        <tr key={activity.id} className="border-t">
+                          <td className="p-2">{activity.name}</td>
+                          <td className="p-2 text-center">
+                            {typeof activity.plannedProgress === "number"
+                              ? formatDisplayPercent(activity.plannedProgress)
+                              : "غير متاح"}
+                          </td>
+                          <td className="p-2 text-center">
+                            {!activity.actualHistoricalUnverified && typeof activity.actualProgress === "number"
+                              ? formatDisplayPercent(activity.actualProgress)
+                              : "غير متاح"}
+                          </td>
+                          <td className="p-2 text-center">{forecastStatusLabel(activity.forecastStatus)}</td>
+                          <td className="p-2 text-center">
+                            {activity.actualStatus ? forecastStatusLabel(activity.actualStatus) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          ) : <p>اختر تاريخاً لعرض المعاينة.</p>}
+      </div>
+    </FormItem>
+  );
+}
+
+function forecastStatusLabel(status: string) {
+  return ({
+    not_started: "لم يبدأ",
+    in_progress: "قيد التنفيذ",
+    completed: "مكتمل حسب الجدول",
+    delayed: "متأخر",
+    unknown: "غير متاح",
+  } as Record<string, string>)[status] ?? "غير متاح";
 }
 
 export function NewReportProgressField({ periodStart, periodEnd, data, loading, failed, manual, value, onChange, onManualChange }: Props) {
