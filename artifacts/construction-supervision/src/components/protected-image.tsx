@@ -109,8 +109,10 @@ export async function protectedAssetToPreviewUrl(url: string, owner: Window, kin
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 45_000);
   try {
+    const diagnosticCold = import.meta.env.DEV
+      && new URLSearchParams(window.location.search).get("report-image-diagnostics") === "1";
     const assetUrl = protectedApiAsset
-      ? reportPreviewAssetUrl(url, kind, window.location.origin)
+      ? reportPreviewAssetUrl(url, kind, window.location.origin, diagnosticCold)
       : url;
     const blob = await fetchPreviewBlob(assetUrl, controller.signal, protectedApiAsset);
     if (owner.closed) throw new Error("Report preview was closed");
