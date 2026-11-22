@@ -113,9 +113,19 @@ const PRESET_CATEGORIES: string[] = [
   "الأعمال الإنشائية",
   "الأعمال الكهربائية",
   "الأعمال الميكانيكية",
+  "أعمال التكييف المركزي",
+  "أعمال أنظمة إطفاء الحرائق",
+  "الأعمال الصحية",
   "أعمال السباكة",
   "أعمال الواجهات",
   "التشطيبات",
+  "أعمال العزل",
+  "أعمال الأرضيات",
+  "أعمال الدهانات",
+  "أعمال الألمنيوم والزجاج",
+  "أعمال المصاعد",
+  "أعمال البنية التحتية",
+  "أعمال الموقع العام",
 ];
 
 function AddImageGroupButton({
@@ -1181,7 +1191,15 @@ export default function ProjectReports() {
       savedReportDatesRef.current = null;
     } catch (error) {
       if (!editingId) void periodProgress.refetch();
-      toast({ variant: "destructive", title: "فشل الحفظ", description: error instanceof Error ? error.message : undefined });
+      const errorMessage = error instanceof Error ? error.message : "";
+      const isHtmlError = /<!doctype html|<html[\s>]/i.test(errorMessage);
+      toast({
+        variant: "destructive",
+        title: "فشل الحفظ",
+        description: isHtmlError
+          ? "تعذر الحفظ بسبب خطأ في الخادم. لم يتم حفظ التقرير؛ أعد المحاولة بعد تحديث النظام."
+          : errorMessage || undefined,
+      });
     }
   };
 
