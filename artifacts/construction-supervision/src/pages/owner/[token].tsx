@@ -308,7 +308,7 @@ export default function OwnerPortal() {
 
             <div className="absolute bottom-8 flex items-center gap-2 text-emerald-700/30 text-[11px]">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>إدارة الإشراف والمتابعة</span>
+              <span>ركاز - RIKAZ</span>
             </div>
           </div>
         </div>
@@ -2074,7 +2074,7 @@ export default function OwnerPortal() {
         </Tabs>
 
         <div className="text-center pb-8">
-          <p className="text-xs text-muted-foreground">إدارة الإشراف والمتابعة</p>
+          <p className="text-xs text-muted-foreground">ركاز - RIKAZ</p>
         </div>
       </div>
 

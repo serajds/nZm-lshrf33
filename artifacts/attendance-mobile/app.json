@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "إدارة الإشراف والمتابعة - الجوال",
+    "name": "ركاز - RIKAZ",
     "slug": "attendance-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,7 +9,10 @@
     "supportsRTL": true,
     "userInterfaceStyle": "automatic",
     "splash": {
-      "backgroundColor": "#F5F7F9"
+      "image": "./assets/images/rikaz-lockup.png",
+      "imageWidth": 180,
+      "resizeMode": "contain",
+      "backgroundColor": "#F6F7F5"
     },
     "ios": {
       "supportsTablet": false,
@@ -20,6 +23,10 @@
     },
     "android": {
       "package": "com.constructionsupervision.attendance",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#17354B"
+      },
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -28,6 +35,8 @@
     },
     "web": {
       "favicon": "./assets/images/icon.png",
+      "name": "ركاز - RIKAZ",
+      "shortName": "ركاز",
       "output": "static"
     },
     "plugins": [

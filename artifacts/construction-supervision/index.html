@@ -3,27 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
-    <title>إدارة الإشراف والمتابعة</title>
-    <meta name="description" content="نظام إدارة الإشراف والمتابعة للمشاريع الإنشائية - متابعة التقدم والأنشطة والتقارير" />
+    <title>ركاز - RIKAZ | الإشراف والمتابعة</title>
+    <meta name="description" content="ركاز - RIKAZ لمتابعة المشاريع الإنشائية." />
 
-    <meta name="theme-color" content="#1f4d8b" />
-    <meta name="background-color" content="#ffffff" />
+    <meta name="theme-color" content="#17354B" />
+    <meta name="background-color" content="#F6F7F5" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="الإشراف" />
-    <meta name="application-name" content="إدارة الإشراف والمتابعة" />
+    <meta name="apple-mobile-web-app-title" content="ركاز" />
+    <meta name="application-name" content="ركاز - RIKAZ" />
     <meta name="format-detection" content="telephone=no" />
 
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="إدارة الإشراف والمتابعة" />
-    <meta property="og:description" content="نظام إدارة الإشراف والمتابعة للمشاريع الإنشائية - متابعة التقدم والأنشطة والتقارير" />
+    <meta property="og:title" content="ركاز - RIKAZ" />
+    <meta property="og:description" content="ركاز - RIKAZ لمتابعة المشاريع الإنشائية." />
     <meta property="og:image" content="/opengraph.jpg" />
     <meta property="og:locale" content="ar_SA" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="إدارة الإشراف والمتابعة" />
-    <meta name="twitter:description" content="نظام إدارة الإشراف والمتابعة للمشاريع الإنشائية - متابعة التقدم والأنشطة والتقارير" />
+    <meta name="twitter:title" content="ركاز - RIKAZ" />
+    <meta name="twitter:description" content="ركاز - RIKAZ لمتابعة المشاريع الإنشائية." />
     <meta name="twitter:image" content="/opengraph.jpg" />
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -33,13 +33,13 @@
     <link rel="apple-touch-icon" sizes="152x152" href="/pwa-152x152.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="192x192" href="/pwa-192x192.png" />
-    <link rel="mask-icon" href="/favicon.svg" color="#1f4d8b" />
+    <link rel="mask-icon" href="/favicon.svg" color="#17354B" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <style>
-      html, body { margin: 0; padding: 0; background: #ffffff; }
+      html, body { margin: 0; padding: 0; background: #F6F7F5; }
       #app-splash {
         position: fixed;
         inset: 0;
@@ -49,8 +49,8 @@
         align-items: center;
         justify-content: center;
         gap: 32px;
-        background: #f8fafc;
-        color: #0F7694;
+        background: #F6F7F5;
+        color: #17354B;
         font-family: 'Noto Kufi Arabic', sans-serif;
         transition: opacity 0.3s ease, visibility 0.3s ease;
         padding: 24px;
@@ -61,19 +61,19 @@
         visibility: hidden;
       }
       #app-splash .splash-logo {
-        width: 120px;
-        height: 120px;
-        border-radius: 32px;
-        background: #ffffff;
+        width: 164px;
+        height: 60px;
+        border-radius: 12px;
+        background: #17354B;
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 20px 50px rgba(15, 118, 148, 0.15), inset 0 0 0 1px rgba(15, 118, 148, 0.05);
+        box-shadow: 0 8px 20px rgba(23, 53, 75, 0.14);
         animation: splash-pop 0.8s cubic-bezier(.2,.9,.3,1.2);
       }
       #app-splash .splash-logo img {
-        width: 92px;
-        height: 92px;
+        width: 100%;
+        height: 100%;
         object-fit: contain;
       }
       #app-splash .splash-title {
@@ -81,7 +81,7 @@
         font-weight: 800;
         letter-spacing: -0.5px;
         margin: 0;
-        color: #0F7694;
+        color: #17354B;
         opacity: 0;
         animation: splash-fade 0.6s ease 0.2s forwards;
       }
@@ -89,15 +89,15 @@
         font-size: 14px;
         font-weight: 500;
         opacity: 0;
-        color: rgba(15, 118, 148, 0.6);
+        color: #657783;
         margin: 0;
         animation: splash-fade 0.6s ease 0.4s forwards;
       }
       #app-splash .splash-spinner {
         width: 40px;
         height: 40px;
-        border: 3px solid rgba(15, 118, 148, 0.1);
-        border-top-color: #0F7694;
+        border: 3px solid rgba(23, 53, 75, 0.16);
+        border-top-color: #D4A35A;
         border-radius: 50%;
         animation: splash-spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
         margin-top: 4px;
@@ -119,21 +119,13 @@
 
     <div id="app-splash" role="status" aria-live="polite" aria-label="جاري تحميل التطبيق">
       <div class="splash-logo">
-        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#0F7694" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-building-2">
-          <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/>
-          <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
-          <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/>
-          <path d="M10 6h4"/>
-          <path d="M10 10h4"/>
-          <path d="M10 14h4"/>
-          <path d="M10 18h4"/>
-        </svg>
+        <img src="/rikaz-logo.svg" alt="" />
       </div>
-      <h1 class="splash-title">إدارة الإشراف والمتابعة</h1>
-      <p class="splash-sub">جاري تهيئة بيئة العمل…</p>
+      <h1 class="splash-title">ركاز - RIKAZ</h1>
+      <p class="splash-sub">جاري تهيئة ركاز…</p>
       <div class="splash-spinner" aria-hidden="true"></div>
       <button id="splash-retry" type="button" hidden onclick="window.location.reload()"
-        style="border:0;border-radius:8px;padding:12px 24px;background:#0F7694;color:#fff;font:inherit;cursor:pointer">
+        style="border:0;border-radius:8px;padding:12px 24px;background:#17354B;color:#fff;font:inherit;cursor:pointer">
         إعادة المحاولة
       </button>
     </div>

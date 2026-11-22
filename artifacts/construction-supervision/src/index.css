@@ -89,65 +89,65 @@ html, body, * {
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .06);
 
-  /* Page background — clean soft pearl */
-  --background: 220 27% 97%;
-  --foreground: 222 38% 13%;
-  --border: 216 24% 88%;
+  /* RIKAZ palette: warm white, deep navy and muted gold */
+  --background: 210 20% 97%;
+  --foreground: 207 34% 16%;
+  --border: 210 16% 86%;
 
   /* Cards — pure white */
   --card: 0 0% 100%;
-  --card-foreground: 222 38% 13%;
-  --card-border: 216 24% 88%;
+  --card-foreground: 207 34% 16%;
+  --card-border: 210 16% 86%;
 
   /* Sidebar — premium midnight blue */
-  --sidebar: 224 42% 12%;
-  --sidebar-foreground: 216 28% 82%;
-  --sidebar-border: 224 28% 20%;
-  --sidebar-primary: 188 86% 48%;
-  --sidebar-primary-foreground: 224 42% 10%;
-  --sidebar-accent: 224 31% 19%;
+  --sidebar: 207 42% 19%;
+  --sidebar-foreground: 210 22% 86%;
+  --sidebar-border: 207 32% 28%;
+  --sidebar-primary: 37 58% 59%;
+  --sidebar-primary-foreground: 207 42% 14%;
+  --sidebar-accent: 207 34% 25%;
   --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-ring: 188 86% 48%;
+  --sidebar-ring: 37 58% 59%;
 
   /* Popover */
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 214 32% 91%;
+  --popover-foreground: 207 34% 16%;
+  --popover-border: 210 16% 86%;
 
-  /* Primary — Construction Teal */
-  --primary: 193 83% 36%;
+  /* RIKAZ navy */
+  --primary: 202 54% 29%;
   --primary-foreground: 0 0% 100%;
 
   /* Secondary */
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222 47% 11%;
+  --secondary: 207 20% 93%;
+  --secondary-foreground: 207 34% 16%;
 
   /* Muted */
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
+  --muted: 207 18% 94%;
+  --muted-foreground: 207 13% 42%;
 
-  /* Accent — Warm Amber */
-  --accent: 38 92% 54%;
-  --accent-foreground: 222 38% 13%;
+  /* Logo gold */
+  --accent: 37 58% 59%;
+  --accent-foreground: 207 42% 14%;
 
   /* Destructive */
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
 
-  --input: 214.3 31.8% 88.4%;
-  --ring: 193 83% 44%;
+  --input: 210 16% 86%;
+  --ring: 202 54% 36%;
 
   /* Charts */
-  --chart-1: 221 83% 40%;
-  --chart-2: 43 96% 56%;
-  --chart-3: 158 52% 42%;
-  --chart-4: 270 42% 52%;
+  --chart-1: 202 54% 29%;
+  --chart-2: 37 58% 59%;
+  --chart-3: 164 34% 39%;
+  --chart-4: 213 32% 48%;
   --chart-5: 0 58% 50%;
 
   --app-font-sans: 'Noto Kufi Arabic', 'IBM Plex Sans Arabic', 'Segoe UI', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: 'IBM Plex Mono', Menlo, monospace;
-  --radius: 0.9rem;
+  --radius: 0.75rem;
 
   /* Real subtle shadows */
   --shadow-2xs: 0 1px 2px 0 rgba(0,0,0,0.04);
@@ -193,49 +193,49 @@ html, body, * {
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  --background: 222 47% 7%;
-  --foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
+  --background: 207 31% 10%;
+  --foreground: 210 25% 94%;
+  --border: 207 22% 23%;
   
-  --card: 222 47% 9%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217.2 32.6% 17.5%;
+  --card: 207 29% 13%;
+  --card-foreground: 210 25% 94%;
+  --card-border: 207 22% 23%;
 
-  --sidebar: 222 47% 7%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 217.2 32.6% 17.5%;
-  --sidebar-primary: 221 83% 53.3%;
+  --sidebar: 207 35% 8%;
+  --sidebar-foreground: 210 25% 90%;
+  --sidebar-border: 207 22% 20%;
+  --sidebar-primary: 37 61% 63%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 217.2 32.6% 17.5%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 221 83% 53.3%;
+  --sidebar-accent: 207 27% 16%;
+  --sidebar-accent-foreground: 210 25% 94%;
+  --sidebar-ring: 37 61% 63%;
 
-  --popover: 222 47% 9%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217.2 32.6% 17.5%;
+  --popover: 207 29% 13%;
+  --popover-foreground: 210 25% 94%;
+  --popover-border: 207 22% 23%;
 
-  --primary: 221 83% 53.3%;
-  --primary-foreground: 222.2 47.4% 11.2%;
+  --primary: 37 61% 63%;
+  --primary-foreground: 207 42% 12%;
 
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 207 22% 19%;
+  --secondary-foreground: 210 25% 94%;
 
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
+  --muted: 207 22% 19%;
+  --muted-foreground: 207 13% 69%;
 
-  --accent: 43 96% 56%;
-  --accent-foreground: 222 47% 11%;
+  --accent: 37 61% 63%;
+  --accent-foreground: 207 42% 12%;
 
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 210 40% 98%;
 
-  --input: 217.2 32.6% 17.5%;
-  --ring: 221 83% 53.3%;
+  --input: 207 22% 23%;
+  --ring: 37 61% 63%;
 
-  --chart-1: 221 83% 53.3%;
-  --chart-2: 43 96% 56%;
-  --chart-3: 158 52% 42%;
-  --chart-4: 270 42% 56%;
+  --chart-1: 37 61% 63%;
+  --chart-2: 202 54% 58%;
+  --chart-3: 164 42% 55%;
+  --chart-4: 213 42% 66%;
   --chart-5: 0 58% 54%;
 
   --shadow-2xs: 0 1px 2px 0 rgba(0,0,0,0.2);
@@ -288,7 +288,7 @@ html, body, * {
   }
 
   .page-hero {
-    @apply relative isolate overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 px-5 py-5 text-white shadow-lg shadow-slate-900/10 sm:px-7 sm:py-6;
+    @apply relative isolate overflow-hidden rounded-xl border border-sidebar-border bg-sidebar px-5 py-5 text-sidebar-foreground shadow-sm sm:px-7 sm:py-6;
   }
 
   .section-kicker {
@@ -297,6 +297,15 @@ html, body, * {
 
   .status-dot {
     @apply inline-block h-2 w-2 rounded-full;
+  }
+
+  /* Keep application surfaces flat; exported report/PDF documents are separate. */
+  #root [class*="bg-gradient-to-"],
+  #root [class*="bg-[radial-gradient"],
+  #root [style*="linear-gradient"],
+  #root [style*="radial-gradient"] {
+    background-image: none !important;
+    background-color: hsl(var(--background)) !important;
   }
   
   .hover-card-premium {

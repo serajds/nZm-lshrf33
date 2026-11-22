@@ -231,6 +231,7 @@ function LoadingScreen() {
   return (
     <View style={[styles.loading, { backgroundColor: colors.background }, appInsets(insets.top, insets.bottom)]}>
       <Image source={require("../assets/images/icon.png")} style={styles.loadingLogo} />
+      <Text style={[styles.loadingTitle, { color: colors.foreground }]}>ركاز - RIKAZ</Text>
       <ActivityIndicator color={colors.primary} size="large" />
       <Text style={[styles.mutedText, { color: colors.mutedForeground }]}>جارٍ التحقق من الجلسة…</Text>
     </View>
@@ -277,8 +278,8 @@ function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.loginBrand}>
-          <Image source={require("../assets/images/icon.png")} style={styles.brandLogo} />
-          <Text style={[styles.brandTitle, { color: colors.foreground }]}>إدارة الإشراف والمتابعة</Text>
+          <Image source={require("../assets/images/rikaz-lockup.png")} style={styles.brandLogo} resizeMode="contain" />
+          <Text style={[styles.brandTitle, { color: colors.foreground }]}>ركاز</Text>
           <Text style={[styles.brandSubtitle, { color: colors.mutedForeground }]}>
             سجّل دخولك لمتابعة مشاريعك وحضورك
           </Text>
@@ -557,7 +558,7 @@ function ProjectsScreen({ user }: { user: SessionUser }) {
         <View style={styles.headerBrand}>
           <Image source={require("../assets/images/icon.png")} style={styles.headerLogo} />
           <View style={styles.headerTextWrap}>
-            <Text style={[styles.headerTitle, { color: colors.foreground }]}>مشاريعي</Text>
+            <Text style={[styles.headerTitle, { color: colors.foreground }]}>ركاز · مشاريعي</Text>
             <Text style={[styles.headerDate, { color: colors.mutedForeground }]}>{currentTime}</Text>
           </View>
         </View>
@@ -705,10 +706,11 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },
   loadingLogo: { width: 70, height: 70, borderRadius: 18 },
+  loadingTitle: { fontSize: 18, fontFamily: "NotoKufiArabic_700Bold", textAlign: "center" },
   mutedText: { fontSize: 14, fontFamily: "NotoKufiArabic_400Regular", textAlign: "center" },
   loginScroll: { flexGrow: 1, justifyContent: "center", paddingHorizontal: 22, paddingVertical: 26 },
   loginBrand: { alignItems: "center", marginBottom: 28 },
-  brandLogo: { width: 76, height: 76, borderRadius: 20, marginBottom: 16 },
+  brandLogo: { width: 205, height: 75, borderRadius: 12, marginBottom: 15 },
   brandTitle: { fontSize: 19, fontFamily: "NotoKufiArabic_700Bold", textAlign: "center" },
   brandSubtitle: { fontSize: 13, fontFamily: "NotoKufiArabic_400Regular", marginTop: 8, textAlign: "center" },
   loginPanel: { borderRadius: 19, borderWidth: 1, padding: 20 },

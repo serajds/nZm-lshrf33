@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 110" role="img" aria-labelledby="title">
+  <title id="title">ركاز RIKAZ</title>
+  <g fill="none" stroke="#D4A35A" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M36 76V32h40v44H36Z"/>
+    <path d="M36 53h40M56 32v44"/>
+    <path d="m45 64 9 9 16-23" stroke="#fff"/>
+  </g>
+  <text x="100" y="70" fill="#fff" font-size="48" font-weight="700" font-family="Arial,sans-serif" letter-spacing="3">RIKAZ</text>
+</svg>
