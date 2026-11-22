@@ -65,13 +65,30 @@ function tripoliToday() {
   return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
-export function ProjectProgressHistoryBackfill({ projectId }: { projectId: number }) {
+type ProjectProgressHistoryBackfillProps = {
+  projectId: number;
+  showCard?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+};
+
+export function ProjectProgressHistoryBackfill({
+  projectId,
+  showCard = true,
+  open: controlledOpen,
+  onOpenChange,
+}: ProjectProgressHistoryBackfillProps) {
   const { user } = useAuth();
   const permissions = useMyProjectPermissions(projectId);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const canManage = user?.role === "admin" || permissions.data?.projectRole === "project_manager";
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (value: boolean) => {
+    if (controlledOpen === undefined) setInternalOpen(value);
+    onOpenChange?.(value);
+  };
   const [mode, setMode] = useState<"automatic" | "manual">("automatic");
   const [periodStart, setPeriodStart] = useState("");
   const [realityDate, setRealityDate] = useState(tripoliToday());
@@ -189,7 +206,7 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
 
   return (
     <>
-      <Card className="surface-card">
+      {showCard && <Card className="surface-card">
         <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
           <CardTitle className="flex items-center gap-2 text-base"><History className="h-4 w-4" /> إعدادات السجل التاريخي</CardTitle>
           <div className="flex flex-wrap gap-2">
@@ -232,7 +249,7 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
             ))}
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
       <Dialog open={open} onOpenChange={value => {
         setOpen(value);
@@ -249,6 +266,21 @@ export function ProjectProgressHistoryBackfill({ projectId }: { projectId: numbe
             </p>
           ) : (
             <div className="space-y-5">
+              {mode === "automatic" && !preview && (
+                <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
+                  <p className="text-sm text-muted-foreground">
+                    اختر طريقة إعداد السجل التاريخي. التهيئة التلقائية تعرض معاينة قبل الحفظ، والإعداد اليدوي يتيح مراجعة التواريخ والنقاط.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => void runAutomaticPreview()} disabled={busy}>
+                      {busy ? "جارٍ الفحص..." : "تهيئة تلقائية"}
+                    </Button>
+                    <Button variant="outline" onClick={() => setMode("manual")} disabled={busy}>
+                      إعداد يدوي
+                    </Button>
+                  </div>
+                </div>
+              )}
               {mode === "automatic" && preview && (
                 <div className="space-y-3">
                   <p className="text-sm text-muted-foreground">

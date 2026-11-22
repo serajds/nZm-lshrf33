@@ -75,13 +75,30 @@ function tripoliToday() {
 const historyKey = (projectId: number) => [`/api/projects/${projectId}/progress-history-backfill`];
 const reportKey = (projectId: number) => [`/api/projects/${projectId}/reports/progress-as-of`];
 
-export function LinkedSourceHistoryRepair({ projectId }: { projectId: number }) {
+type LinkedSourceHistoryRepairProps = {
+  projectId: number;
+  showCard?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+};
+
+export function LinkedSourceHistoryRepair({
+  projectId,
+  showCard = true,
+  open: controlledOpen,
+  onOpenChange,
+}: LinkedSourceHistoryRepairProps) {
   const { user } = useAuth();
   const permissions = useMyProjectPermissions(projectId);
   const canManage = user?.role === "admin" || permissions.data?.projectRole === "project_manager";
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (value: boolean) => {
+    if (controlledOpen === undefined) setInternalOpen(value);
+    onOpenChange?.(value);
+  };
   const [periodEnd, setPeriodEnd] = useState(tripoliToday());
   const [preview, setPreview] = useState<Preview | null>(null);
   const [created, setCreated] = useState<CommitResult | null>(null);
@@ -101,7 +118,7 @@ export function LinkedSourceHistoryRepair({ projectId }: { projectId: number }) 
     queryFn: async () => responseJson<BatchPayload>(
       await fetchWithSession(`/api/projects/${projectId}/progress-history-backfill`),
     ),
-    enabled: !!projectId && open,
+    enabled: !!projectId && open && !!availabilityQuery.data?.hasLinkedSources,
   });
 
   const runPreview = async () => {
@@ -173,11 +190,11 @@ export function LinkedSourceHistoryRepair({ projectId }: { projectId: number }) 
       : status === "repair" ? "border-amber-300 bg-amber-50 text-amber-950"
         : "border-rose-300 bg-rose-50 text-rose-900";
 
-  if (!canManage || !availabilityQuery.data?.hasLinkedSources) return null;
+  if (!canManage) return null;
 
   return (
     <div dir="rtl">
-      <Card className="surface-card overflow-hidden">
+      {showCard && availabilityQuery.data?.hasLinkedSources && <Card className="surface-card overflow-hidden">
         <CardHeader className="flex flex-col gap-3 border-b border-border/70 bg-muted/30 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="section-kicker">مصادر المقاول المرتبطة</p>
@@ -218,7 +235,7 @@ export function LinkedSourceHistoryRepair({ projectId }: { projectId: number }) 
           ))}
           {open && batchesQuery.isLoading && <div className="h-10 animate-pulse rounded-md bg-muted" aria-label="جارٍ تحميل الدفعات" />}
         </CardContent>
-      </Card>
+      </Card>}
 
       <Dialog open={open} onOpenChange={value => {
         setOpen(value);
@@ -228,6 +245,11 @@ export function LinkedSourceHistoryRepair({ projectId }: { projectId: number }) 
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><History className="h-5 w-5 text-primary" />مراجعة سجل المصادر المرتبطة</DialogTitle>
           </DialogHeader>
+          {!availabilityQuery.data?.hasLinkedSources ? (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              لا توجد مصادر مقاول مرتبطة بهذا المشروع.
+            </div>
+          ) : (
           <div className="space-y-5">
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
               <p className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4 shrink-0" />تنبيه: الإضافات تقديرية</p>
@@ -343,6 +365,7 @@ export function LinkedSourceHistoryRepair({ projectId }: { projectId: number }) 
               </section>
             )}
           </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
