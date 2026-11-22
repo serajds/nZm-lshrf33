@@ -10,7 +10,11 @@ import { logger } from "./lib/logger";
 import { JWT_SECRET, verifyToken, diagnoseRejectedToken } from "./lib/auth";
 import { canViewAttendancePhoto, verifyAndMaybeRenewToken } from "./middlewares/auth";
 import { streamFromCloud, cloudReportImageSource } from "./lib/fileStorage";
-import { reportImageVariant, type ReportImageVariantDiagnostic } from "./lib/reportImageVariants";
+import {
+  reportImageVariant,
+  shouldUseOriginalForDevelopmentPhotoMiss,
+  type ReportImageVariantDiagnostic,
+} from "./lib/reportImageVariants";
 import {
   findStoredReportImageVariant,
   storeReportImageVariant,
@@ -258,16 +262,18 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
     const variant = req.query.variant;
     void (async () => {
       const developmentImageDiagnostics = process.env.NODE_ENV === "development";
-      const forceColdDiagnostic = developmentImageDiagnostics && req.query.diagnosticCold === "1";
       const variantLookupStarted = developmentImageDiagnostics ? performance.now() : 0;
-      const savedVariant = forceColdDiagnostic
-        ? null
-        : await findStoredReportImageVariant(filename, variant, uploadsDir);
+      const savedVariant = await findStoredReportImageVariant(filename, variant, uploadsDir);
+      const developmentOriginalPhotoFallback = shouldUseOriginalForDevelopmentPhotoMiss(
+        process.env.NODE_ENV,
+        variant,
+        Boolean(savedVariant),
+      );
       const variantLookupMs = developmentImageDiagnostics ? performance.now() - variantLookupStarted : 0;
       if (developmentImageDiagnostics) {
         logger.info({
           variant,
-          forceColdDiagnostic,
+          developmentOriginalPhotoFallback,
           storedVariantFound: Boolean(savedVariant),
           variantLookupMs: Number(variantLookupMs.toFixed(1)),
           ...reportImageVariant.getStatus(),
@@ -304,6 +310,31 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
         key = `cloud:${filename}:${source.version}`;
         read = source.read;
       }
+      if (developmentOriginalPhotoFallback) {
+        const sourceReadStarted = performance.now();
+        const original = await read();
+        const sourceReadMs = performance.now() - sourceReadStarted;
+        if (original.length > 25 * 1024 * 1024) throw new Error("Report image is too large");
+        const extension = path.extname(filename).toLowerCase();
+        const contentType = extension === ".png" ? "image/png"
+          : extension === ".webp" ? "image/webp"
+            : extension === ".jpg" || extension === ".jpeg" ? "image/jpeg"
+              : "application/octet-stream";
+        const memory = process.memoryUsage();
+        logger.info({
+          variant,
+          sourceBytes: original.length,
+          sourceReadMs: Number(sourceReadMs.toFixed(1)),
+          cloudMetadataMs: Number(cloudMetadataMs.toFixed(1)),
+          rssBytes: memory.rss,
+          heapUsedBytes: memory.heapUsed,
+          externalBytes: memory.external,
+          arrayBuffersBytes: memory.arrayBuffers,
+        }, "Development report image original fallback");
+        res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+        res.type(contentType).send(original);
+        return;
+      }
       let sourceReadMs = 0;
       let sourceBytes = 0;
       const processingStarted = developmentImageDiagnostics ? performance.now() : 0;
@@ -329,22 +360,18 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
           arrayBuffersBytes: memory.arrayBuffers,
         }, "Report image variant processing");
       } : undefined;
-      const diagnosticKey = forceColdDiagnostic ? `${key}:cold:${String(req.id)}` : key;
-      const image = await reportImageVariant(diagnosticKey, variant, readSource, onVariantDiagnostic);
+      const image = await reportImageVariant(key, variant, readSource, onVariantDiagnostic);
       const persistStarted = developmentImageDiagnostics ? performance.now() : 0;
-      let persisted = !forceColdDiagnostic;
-      if (!forceColdDiagnostic) {
-        try {
-          await storeReportImageVariant(filename, variant, image, uploadsDir);
-        } catch (error) {
-          persisted = false;
-          logger.warn({ err: error, filename, variant }, "Could not persist report image preview");
-        }
+      let persisted = true;
+      try {
+        await storeReportImageVariant(filename, variant, image, uploadsDir);
+      } catch (error) {
+        persisted = false;
+        logger.warn({ err: error, filename, variant }, "Could not persist report image preview");
       }
       if (developmentImageDiagnostics) {
         logger.info({
           variant,
-          forceColdDiagnostic,
           sourceBytes,
           outputBytes: image.buffer.length,
           sourceReadMs: Number(sourceReadMs.toFixed(1)),
