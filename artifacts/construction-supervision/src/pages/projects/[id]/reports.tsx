@@ -830,6 +830,8 @@ export default function ProjectReports() {
 
   const handlePreview = async (report: Report) => {
     if (!project) return;
+    const forceApiImageDiagnostics = import.meta.env.DEV
+      && new URLSearchParams(window.location.search).get("report-image-diagnostics") === "1";
     const previewWindow = openReportPreviewWindow();
     if (!previewWindow) {
       toast({ title: "يرجى السماح بالنوافذ المنبثقة لفتح معاينة التقرير", variant: "destructive" });
@@ -848,7 +850,7 @@ export default function ProjectReports() {
           if (result.error || !result.data) throw result.error ?? new Error("Missing company logos");
           return result.data;
         },
-        loadSignedAssets: import.meta.env.DEV ? async () => {
+        loadSignedAssets: import.meta.env.DEV && !forceApiImageDiagnostics ? async () => {
           const response = await fetchWithSession(
             `/api/projects/${projectId}/reports/${report.id}/preview-image-links`,
           );
