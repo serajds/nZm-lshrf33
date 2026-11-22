@@ -109,12 +109,12 @@ export default defineConfig({
       },
       manifest: {
         id: basePath,
-        name: "ادارة الاشراف والمتابعة",
-        short_name: "ادارة الاشراف والمتابعة",
+        name: "ركاز - RIKAZ | الإشراف والمتابعة",
+        short_name: "ركاز RIKAZ",
         description:
-          "نظام إدارة الإشراف والمتابعة للمشاريع الإنشائية - متابعة التقدم والأنشطة والتقارير",
-        theme_color: "#1f4d8b",
-        background_color: "#ffffff",
+          "ركاز - RIKAZ لمتابعة تقدم المشاريع والأنشطة والتقارير.",
+        theme_color: "#17354B",
+        background_color: "#F6F7F5",
         display: "standalone",
         display_override: ["standalone", "minimal-ui"],
         orientation: "any",

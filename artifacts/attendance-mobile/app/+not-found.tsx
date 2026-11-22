@@ -1,5 +1,5 @@
 import { Link, Stack } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 
 export default function NotFoundScreen() {
@@ -9,8 +9,10 @@ export default function NotFoundScreen() {
     <>
       <Stack.Screen options={{ title: 'الصفحة غير موجودة' }} />
       <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Image source={require('../assets/images/icon.png')} style={styles.logo} />
+        <Text style={[styles.brand, { color: colors.foreground }]}>ركاز - RIKAZ</Text>
         <Text style={[styles.title, { color: colors.foreground }]}>
-          هذه الصفحة غير موجودة.
+          الصفحة غير موجودة
         </Text>
 
         <Link href="/" style={styles.link}>
@@ -30,9 +32,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
+  logo: {
+    width: 76,
+    height: 76,
+    borderRadius: 20,
+    marginBottom: 14,
+  },
+  brand: {
+    fontSize: 17,
+    fontFamily: 'NotoKufiArabic_700Bold',
+    marginBottom: 14,
+  },
   title: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontFamily: 'NotoKufiArabic_700Bold',
+    textAlign: 'center',
   },
   link: {
     marginTop: 15,
@@ -40,5 +54,6 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 14,
+    fontFamily: 'NotoKufiArabic_600SemiBold',
   },
 });

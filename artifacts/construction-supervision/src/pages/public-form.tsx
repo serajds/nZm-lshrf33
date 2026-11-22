@@ -424,7 +424,7 @@ export default function PublicForm() {
         </Card>
 
         <p className="text-center text-xs text-muted-foreground pb-4">
-          نظام إدارة الإشراف والمتابعة
+          ركاز - RIKAZ
         </p>
       </div>
     </div>

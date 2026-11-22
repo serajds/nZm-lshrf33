@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-const APP_NAME = "إدارة الإشراف والمتابعة";
+const APP_NAME = "ركاز - RIKAZ";
 
 export function usePageTitle(title?: string) {
   useEffect(() => {

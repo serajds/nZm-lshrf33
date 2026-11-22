@@ -143,20 +143,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           borderBottom: "1px solid hsl(var(--sidebar-border))",
         }}
       >
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary-foreground shrink-0 shadow-sm ring-1 ring-white/10">
-          <Building2 className="h-5 w-5 text-primary" strokeWidth={2} />
+        <div className={`flex min-w-0 flex-1 items-center ${collapsed ? "justify-center" : ""}`}>
+          {collapsed ? (
+            <img src="/favicon.svg" alt="ركاز RIKAZ" className="h-9 w-9 shrink-0 rounded-lg" />
+          ) : (
+            <img src="/rikaz-logo.svg" alt="ركاز RIKAZ" className="h-11 w-auto max-w-full object-contain object-right" />
+          )}
         </div>
-
-        {!collapsed && (
-          <div className="flex-1 min-w-0 mr-3">
-            <p
-              className="text-sm font-bold leading-tight truncate"
-              style={{ color: "hsl(var(--sidebar-accent-foreground))" }}
-            >
-              إدارة الإشراف والمتابعة
-            </p>
-          </div>
-        )}
 
         {onClose ? (
           <button
@@ -272,7 +265,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex h-[100dvh] w-full bg-[hsl(var(--sidebar))] text-slate-100 overflow-hidden" dir="rtl">
+    <div className="flex h-[100dvh] w-full bg-sidebar text-sidebar-foreground overflow-hidden" dir="rtl">
 
       {/* ===== DESKTOP SIDEBAR ===== */}
       <aside
@@ -300,7 +293,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         className="fixed inset-y-0 right-0 z-50 flex flex-col md:hidden shadow-2xl"
         style={{
           width: SIDEBAR_FULL,
-          backgroundColor: "#020617",
+          backgroundColor: "hsl(var(--sidebar))",
           borderLeft: "1px solid rgba(255,255,255,0.05)",
           transform: mobileOpen ? "translateX(0)" : "translateX(100%)",
           transition: "transform 280ms cubic-bezier(.4,0,.2,1)",
@@ -330,8 +323,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               className="h-5 w-0.5 rounded-full hidden md:block"
               style={{ backgroundColor: "hsl(var(--primary))", opacity: 0.7 }}
             />
+            <img src="/favicon.svg" alt="" aria-hidden="true" className="h-7 w-7 shrink-0 rounded-md md:hidden" />
             <h1 className="font-semibold text-base text-foreground truncate tracking-wide">
-              {currentPage?.name || "إدارة الإشراف والمتابعة"}
+              {currentPage?.name || "ركاز - RIKAZ"}
             </h1>
             <div className="mr-auto flex items-center gap-2">
               <span className="hidden lg:inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/70 px-3 py-1.5 text-[11px] font-medium text-muted-foreground">

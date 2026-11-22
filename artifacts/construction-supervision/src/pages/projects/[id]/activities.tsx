@@ -1269,9 +1269,88 @@ export default function ProjectActivities() {
   const progressDelta = Math.round((actualProgress - plannedProgress) * 10) / 10;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-[1600px] space-y-5 overflow-x-clip sm:space-y-6">
-      <div className="page-hero flex flex-wrap items-start gap-3">
-        <Button variant="ghost" size="icon" className="relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => setLocation("/projects")}>
+    <div className="rikaz-activities mx-auto w-full min-w-0 max-w-[1600px] space-y-5 overflow-x-clip sm:space-y-6">
+      <style>{`
+        .rikaz-activities {
+          --rikaz-navy: hsl(var(--sidebar));
+          --rikaz-navy-soft: hsl(var(--secondary));
+          --rikaz-gold: hsl(var(--accent));
+          --rikaz-line: hsl(var(--border));
+          --rikaz-ink: hsl(var(--foreground));
+        }
+        .rikaz-activities .rikaz-activity-hero {
+          background: var(--rikaz-navy);
+          border: 1px solid color-mix(in srgb, var(--rikaz-gold) 34%, transparent);
+          border-radius: 1rem;
+          box-shadow: 0 12px 28px rgb(25 43 64 / 10%);
+          padding: 1.2rem 1.4rem;
+        }
+        .rikaz-activities .rikaz-activity-hero::before,
+        .rikaz-activities .rikaz-activity-hero::after { display: none; }
+        .rikaz-activities .rikaz-activity-hero h1 { letter-spacing: -.025em; }
+        .rikaz-activities .rikaz-activity-hero .rikaz-back-button {
+          border: 1px solid rgb(255 255 255 / 16%);
+          background: rgb(255 255 255 / 5%);
+          border-radius: .7rem;
+        }
+        .rikaz-activities .surface-card {
+          border-color: var(--rikaz-line);
+          border-radius: 1rem;
+          box-shadow: 0 2px 8px rgb(30 48 69 / 4%);
+        }
+        .rikaz-activities .surface-card-hover:hover {
+          border-color: color-mix(in srgb, var(--rikaz-gold) 55%, var(--rikaz-line));
+          box-shadow: 0 8px 22px rgb(30 48 69 / 7%);
+        }
+        .rikaz-activities .rikaz-stat-card {
+          border-inline-start: 3px solid var(--rikaz-gold);
+          background: hsl(var(--card));
+        }
+        .rikaz-activities .rikaz-stat-card .rikaz-stat-icon {
+          color: hsl(var(--primary));
+          background: var(--rikaz-navy-soft);
+          border-color: var(--rikaz-line);
+        }
+        .rikaz-activities .rikaz-stat-card .absolute.left-0.top-0 { background: var(--rikaz-gold); }
+        .rikaz-activities .rikaz-workspace {
+          border-top: 2px solid var(--rikaz-gold);
+        }
+        .rikaz-activities .rikaz-workspace-heading { color: hsl(var(--primary)); }
+        .rikaz-activities .rikaz-view-switch {
+          border-radius: .75rem;
+          background: var(--rikaz-navy-soft);
+          border-color: var(--rikaz-line);
+        }
+        .rikaz-activities [role="region"] table { min-width: 920px; }
+        .rikaz-activities [role="region"] thead { background: var(--rikaz-navy); }
+        .rikaz-activities [role="region"] thead th {
+          color: #f4f1e9;
+          font-weight: 600;
+          border-color: rgb(255 255 255 / 12%);
+        }
+        .rikaz-activities [role="region"] tbody tr { transition: background-color 150ms ease; }
+        .rikaz-activities [role="region"] tbody tr:nth-child(even):not([class*="bg-muted"]) {
+          background: color-mix(in srgb, var(--rikaz-navy-soft) 34%, transparent);
+        }
+        .rikaz-activities [role="region"] tbody tr:hover { background: color-mix(in srgb, var(--rikaz-gold) 11%, hsl(var(--card))); }
+        .rikaz-activities [role="region"] tbody tr[class*="bg-muted"] {
+          background: color-mix(in srgb, var(--rikaz-navy-soft) 70%, hsl(var(--card)));
+        }
+        .rikaz-activities .rikaz-mobile-activity {
+          border-color: var(--rikaz-line);
+          border-radius: .85rem;
+          box-shadow: 0 1px 4px rgb(30 48 69 / 4%);
+        }
+        .rikaz-activities input,
+        .rikaz-activities [data-radix-select-trigger] { border-radius: .65rem; }
+        @media (max-width: 640px) {
+          .rikaz-activities .rikaz-activity-hero { padding: 1rem; border-radius: .85rem; }
+          .rikaz-activities .rikaz-stat-card { min-height: 120px; }
+          .rikaz-activities .rikaz-stat-card .rikaz-stat-icon { width: 2.15rem; height: 2.15rem; margin-bottom: .65rem; }
+        }
+      `}</style>
+      <div className="rikaz-activity-hero flex flex-wrap items-start gap-3">
+        <Button variant="ghost" size="icon" className="rikaz-back-button relative z-10 mt-0.5 shrink-0 text-white/80 hover:bg-white/10 hover:text-white" onClick={() => setLocation("/projects")}>
           <ArrowRight className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
@@ -1316,9 +1395,9 @@ export default function ProjectActivities() {
           ].map((stat) => {
             const Icon = stat.icon;
             return (
-              <Card key={stat.label} className="surface-card surface-card-hover min-w-0 overflow-hidden">
+              <Card key={stat.label} className="rikaz-stat-card surface-card surface-card-hover min-w-0 overflow-hidden">
                 <CardContent className="relative min-w-0 p-3 sm:p-5">
-                  <div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-muted/40 ${stat.tone}`}>
+                  <div className={`rikaz-stat-icon mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-muted/40 ${stat.tone}`}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <p className="text-xs font-medium text-muted-foreground">{stat.label}</p>
@@ -1332,7 +1411,7 @@ export default function ProjectActivities() {
         </div>
       </section>
 
-      <Card className="surface-card surface-card-hover min-w-0" dir="rtl">
+      <Card className="rikaz-workspace surface-card surface-card-hover min-w-0" dir="rtl">
         <CardContent className="min-w-0 p-3 sm:p-5">
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1341,7 +1420,7 @@ export default function ProjectActivities() {
                   <SlidersHorizontal className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold">مساحة العمل</p>
+                  <p className="rikaz-workspace-heading text-sm font-semibold">مساحة العمل</p>
                   <p className="break-words text-xs text-muted-foreground">ابحث وفلتر البنود ثم اختر طريقة العرض المناسبة للمراجعة.</p>
                 </div>
               </div>
@@ -1373,7 +1452,7 @@ export default function ProjectActivities() {
                     className="h-10 bg-background pr-9"
                   />
                 </div>
-                <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/30 p-1">
+                <div className="rikaz-view-switch flex items-center gap-1 rounded-lg border border-border bg-muted/30 p-1">
                   <Button
                     type="button"
                     size="sm"
@@ -1762,7 +1841,7 @@ export default function ProjectActivities() {
                                         const w = Math.max(0.5, el - sl);
                                         return (
                                           <div
-                                            className="absolute h-full rounded-full bg-blue-400/70"
+                                            className="absolute h-full rounded-full bg-amber-500/60"
                                             style={{ right: `${sl}%`, width: `${w}%` }}
                                             title={`مخطط: ${fmtDate(a.plannedStartDate!)} → ${fmtDate(a.plannedEndDate!)}`}
                                           />
@@ -1887,7 +1966,7 @@ export default function ProjectActivities() {
         )}
 
         {effectiveViewMode === "list" && !isContractorBase && (
-        <Card ref={activityList} tabIndex={-1} className="surface-card surface-card-hover min-w-0">
+        <Card ref={activityList} tabIndex={-1} className="rikaz-activity-list surface-card surface-card-hover min-w-0">
           <CardHeader className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -2717,7 +2796,7 @@ export default function ProjectActivities() {
                 const managed = isActivelyManagedActivity(a, groups);
                 const source = getLinkedSource(a);
                 return (
-                  <div key={a.id} data-activity-id={a.id} className={`min-w-0 rounded-lg border p-3 space-y-2.5 ${isBusy ? "opacity-60 pointer-events-none" : ""}`}>
+                  <div key={a.id} data-activity-id={a.id} className={`rikaz-mobile-activity min-w-0 rounded-lg border p-3 space-y-2.5 ${isBusy ? "opacity-60 pointer-events-none" : ""}`}>
                     <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
                       <span className="min-w-0 flex-1 break-words text-sm font-medium leading-tight">
                         {a.name}

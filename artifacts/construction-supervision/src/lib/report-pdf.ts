@@ -305,6 +305,8 @@ export function buildPrintHTML(data: ReportPdfData): string {
     align-items: center;
     gap: 8px;
     text-align: center;
+    min-width: 0;
+    max-width: 220px;
   }
   .logo-img-box {
     width: 80px;
@@ -332,10 +334,10 @@ export function buildPrintHTML(data: ReportPdfData): string {
     font-size: 12px;
     font-weight: 700;
     color: #1e293b;
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    max-width: 220px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.45;
   }
 
   /* ── HEADER ── */
@@ -1231,7 +1233,7 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
     border-radius: 10px;
     background: #fff;
   }
-  .logo-item { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; min-width: 0; max-width: 200px; }
+  .logo-item { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; min-width: 0; width: calc((100% - 64px) / 3); max-width: 220px; }
   .logo-img-box {
     width: 80px; height: 80px;
     border-radius: 12px;
@@ -1243,7 +1245,7 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
   }
   .logo-img-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
   .logo-role { font-size: 10px; font-weight: 700; color: #64748b; }
-  .logo-name { font-size: 12px; font-weight: 700; color: #1e293b; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .logo-name { font-size: 12px; font-weight: 700; color: #1e293b; max-width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
 
   .header {
     background: #1e293b;
@@ -1319,7 +1321,7 @@ function buildAttendanceReportHTML(data: AttendanceReportData): string {
     .btn-close { padding: 9px 12px; font-size: 13px; }
 
     .logos-strip { gap: 18px; padding: 14px 12px; }
-    .logo-item { max-width: 130px; }
+    .logo-item { width: calc((100% - 36px) / 3); max-width: 160px; }
     .logo-img-box { width: 64px; height: 64px; }
     .logo-name { font-size: 11px; white-space: normal; line-height: 1.3; }
 

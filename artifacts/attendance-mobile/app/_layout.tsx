@@ -4,6 +4,7 @@ import { I18nManager } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/context/auth-context";
 import { queryClient } from "@/lib/query-client";
@@ -46,6 +47,7 @@ export default function RootLayout() {
           <AuthProvider>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
+              <StatusBar style="auto" />
               <Stack screenOptions={{ headerShown: false }} />
             </KeyboardProvider>
           </GestureHandlerRootView>

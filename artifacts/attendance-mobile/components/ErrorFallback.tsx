@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Modal,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -68,12 +69,12 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
       ) : null}
 
       <View style={styles.content}>
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          Something went wrong
-        </Text>
+        <Image source={require("../assets/images/icon.png")} style={styles.brandLogo} />
+        <Text style={[styles.brandName, { color: colors.foreground }]}>ركاز - RIKAZ</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>حدث خطأ غير متوقع</Text>
 
         <Text style={[styles.message, { color: colors.mutedForeground }]}>
-          Please reload the app to continue.
+          أعد تحميل التطبيق للمتابعة.
         </Text>
 
         <Pressable
@@ -90,7 +91,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           <Text
             style={[styles.buttonText, { color: colors.primaryForeground }]}
           >
-            Try Again
+            إعادة المحاولة
           </Text>
         </Pressable>
       </View>
@@ -185,12 +186,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
+    fontFamily: 'NotoKufiArabic_700Bold',
     textAlign: 'center',
     lineHeight: 40,
   },
   message: {
     fontSize: 16,
+    fontFamily: 'NotoKufiArabic_400Regular',
     textAlign: 'center',
     lineHeight: 24,
   },
@@ -220,9 +222,19 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   buttonText: {
-    fontWeight: '600',
+    fontFamily: 'NotoKufiArabic_700Bold',
     textAlign: 'center',
     fontSize: 16,
+  },
+  brandLogo: {
+    width: 68,
+    height: 68,
+    borderRadius: 18,
+  },
+  brandName: {
+    fontSize: 18,
+    fontFamily: 'NotoKufiArabic_700Bold',
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,

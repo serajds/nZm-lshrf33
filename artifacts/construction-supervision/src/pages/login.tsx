@@ -12,44 +12,18 @@ import {
   FormControl,
   FormField,
   FormItem,
-  FormLabel,
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Loader2, Phone, Lock, Eye, EyeOff, User as UserIcon, ArrowLeft, RefreshCw } from "lucide-react";
-import { clearAuthSession } from "@/lib/auth-session";
-
-/**
- * Rescue hatch for users stuck on a stale/corrupted app version: unregisters
- * every service worker, deletes all Cache Storage entries, and removes local
- * auth state, then does a full reload from the server.
- *
- * Deliberately does NOT touch IndexedDB — the offline attendance queue
- * ("attendance-offline") may hold check-ins that were captured offline and
- * not yet sent; wiping it would silently lose them.
- */
-async function clearCachesAndReload(): Promise<void> {
-  try {
-    if ("serviceWorker" in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(regs.map((r) => r.unregister().catch(() => false)));
-    }
-  } catch { /* non-fatal */ }
-  try {
-    if ("caches" in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k).catch(() => false)));
-    }
-  } catch { /* non-fatal */ }
-  try {
-    clearAuthSession();
-    localStorage.removeItem("auth_user_cache");
-  } catch { /* non-fatal */ }
-  try {
-    sessionStorage.clear();
-  } catch { /* non-fatal */ }
-  window.location.reload();
-}
+import {
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  Lock,
+  Loader2,
+  Phone,
+  User as UserIcon,
+} from "lucide-react";
 
 const loginSchema = z.object({
   phone: z.string().min(1, "رقم الهاتف مطلوب"),
@@ -75,17 +49,6 @@ export default function Login() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [isClearingCache, setIsClearingCache] = useState(false);
-
-  async function onClearCache() {
-    setIsClearingCache(true);
-    try {
-      await clearCachesAndReload();
-    } catch {
-      // If anything unexpected fails, still force a full reload.
-      window.location.reload();
-    }
-  }
 
   useEffect(() => {
     try {
@@ -135,256 +98,230 @@ export default function Login() {
     }
   }
 
+  function switchMode(nextMode: "login" | "register") {
+    setMode(nextMode);
+    setShowPassword(false);
+  }
+
+  const inputClassName =
+    "h-12 rounded-xl border-border/70 bg-muted/30 px-11 text-foreground placeholder:text-muted-foreground/70 shadow-sm transition-colors focus-visible:border-primary/50 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/15";
+
   return (
-    <div className="flex min-h-screen w-full items-center justify-center overflow-hidden bg-background px-4 py-8" dir="rtl">
-
-      <div className="relative z-10 flex w-full max-w-md flex-col items-center">
-      <div className="page-surface-enter surface-card relative w-full overflow-hidden rounded-[2rem] border-border/60 bg-card/95 shadow-2xl shadow-primary/10 backdrop-blur-2xl">
-          {/* Inner Highlight Line */}
-          <div className="absolute inset-x-0 top-0 h-px bg-border/70" />
-          
-          <div className="p-7 sm:p-9 md:p-10">
-            {/* Branding Logo */}
-            <div className="flex flex-col items-center mb-8">
-              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 p-3.5 text-primary shadow-lg shadow-primary/10 transition-transform duration-200 hover:scale-[1.03]">
-                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-building-2 drop-shadow-sm">
-                  <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/>
-                  <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
-                  <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/>
-                  <path d="M10 6h4"/>
-                  <path d="M10 10h4"/>
-                  <path d="M10 14h4"/>
-                  <path d="M10 18h4"/>
-                </svg>
-              </div>
-              <h2 className="text-xl font-black tracking-wide text-foreground text-center sm:text-2xl">
-                إدارة الإشراف والمتابعة
-              </h2>
+    <main className="flex min-h-[100dvh] w-full items-center justify-center bg-background px-4 py-8" dir="rtl">
+      <div className="w-full max-w-md">
+        <section className="surface-card overflow-hidden rounded-2xl shadow-lg shadow-primary/5">
+          <div className="bg-sidebar px-5 py-5 text-sidebar-foreground sm:px-8 sm:py-6">
+            <div className="flex items-center justify-center gap-3 sm:gap-4">
+              <img
+                src="/rikaz-logo.svg"
+                alt="شعار ركاز RIKAZ"
+                className="h-auto w-36 shrink-0 rounded-lg sm:w-40"
+              />
+              <span className="text-2xl font-extrabold tracking-wide text-sidebar-foreground sm:text-3xl">
+                ركاز
+              </span>
             </div>
+          </div>
+          <div className="h-1 bg-sidebar-primary" aria-hidden="true" />
 
-            {/* Form Transitions */}
-            <div className="auth-form-transition">
+          <div className="p-6 sm:p-8">
+            <header className="mb-7 text-right">
+              <h1 className="text-xl font-bold text-foreground sm:text-2xl">
+                {mode === "login" ? "تسجيل الدخول" : "إنشاء حساب جديد"}
+              </h1>
+              <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                {mode === "login"
+                  ? "أدخل بياناتك للمتابعة إلى حسابك."
+                  : "أكمل البيانات التالية لإنشاء حسابك."}
+              </p>
+            </header>
+
+            <div key={mode} className="auth-form-panel-enter">
               {mode === "login" ? (
-                <div key="login" className="auth-form-panel-enter">
-                  <div className="text-center mb-8">
-                    <h3 className="text-xl font-bold text-foreground">مرحباً بعودتك</h3>
-                    <p className="text-sm text-muted-foreground mt-2">يرجى إدخال بيانات الدخول للمتابعة</p>
-                  </div>
-
-                  <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-                      <FormField
-                        control={form.control}
-                        name="phone"
-                        render={({ field }) => (
-                          <FormItem>
-                            <div className="relative group">
-                              <Phone className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
-                              <FormControl>
-                                <Input
-                                  placeholder="رقم الهاتف"
-                                  type="tel"
-                                  autoComplete="tel"
-                                  dir="ltr"
-                                  {...field}
-                                  className="h-14 text-right pr-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
-                                />
-                              </FormControl>
-                            </div>
-                            <FormMessage className="text-rose-500" />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="password"
-                        render={({ field }) => (
-                          <FormItem>
-                            <div className="relative group">
-                              <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
-                              <FormControl>
-                                <Input
-                                  type={showPassword ? "text" : "password"}
-                                  placeholder="كلمة المرور"
-                                  autoComplete="current-password"
-                                  {...field}
-                                  className="h-14 pr-12 pl-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
-                                />
-                              </FormControl>
-                              <button
-                                type="button"
-                                tabIndex={-1}
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors z-10"
-                              >
-                                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                              </button>
-                            </div>
-                            <FormMessage className="text-rose-500" />
-                          </FormItem>
-                        )}
-                      />
-
-                      <Button
-                        type="submit"
-                        className="w-full h-14 font-semibold text-base bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_8px_20px_rgba(var(--primary),0.25)] hover:shadow-[0_12px_25px_rgba(var(--primary),0.35)] rounded-2xl transition-all duration-300"
-                        disabled={isLoggingIn}
-                      >
-                        {isLoggingIn ? (
-                          <Loader2 className="h-6 w-6 animate-spin" />
-                        ) : (
-                          "دخول إلى المنصة"
-                        )}
-                      </Button>
-                    </form>
-                  </Form>
-
-                  <div className="mt-8 text-center">
-                    <button
-                      type="button"
-                      onClick={() => setMode("register")}
-                      className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      ليس لديك حساب؟ <span className="text-primary hover:underline underline-offset-4">إنشاء حساب جديد</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div key="register" className="auth-form-panel-enter">
-                  <div className="flex items-center justify-between mb-8">
-                    <div className="text-right">
-                      <h3 className="text-xl font-bold text-foreground">إنشاء حساب</h3>
-                      <p className="text-sm text-muted-foreground mt-1">سجل بياناتك للانضمام إلينا</p>
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      onClick={() => setMode("login")}
-                      className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-full"
-                    >
-                      <ArrowLeft className="h-5 w-5" />
-                    </Button>
-                  </div>
-
-                  <form onSubmit={regForm.handleSubmit(onRegisterSubmit)} className="space-y-4" noValidate>
-                    <div>
-                      <div className="relative group">
-                        <UserIcon className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
-                        <Input
-                          id="reg-fullName"
-                          placeholder="الاسم الكامل"
-                          autoComplete="name"
-                          className="h-14 pr-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
-                          {...regForm.register("fullName")}
-                        />
-                      </div>
-                      {regForm.formState.errors.fullName && (
-                        <p className="text-[0.8rem] font-medium text-rose-500 mt-1.5 px-2">{regForm.formState.errors.fullName.message}</p>
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+                    <FormField
+                      control={form.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <label htmlFor="login-phone" className="mb-2 block text-sm font-medium text-foreground">
+                            رقم الهاتف
+                          </label>
+                          <div className="group relative">
+                            <Phone aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                            <FormControl>
+                              <Input
+                                id="login-phone"
+                                type="tel"
+                                placeholder="أدخل رقم الهاتف"
+                                autoComplete="tel"
+                                dir="ltr"
+                                {...field}
+                                className={`${inputClassName} text-left`}
+                              />
+                            </FormControl>
+                          </div>
+                          <FormMessage className="pt-1 text-rose-600" />
+                        </FormItem>
                       )}
-                    </div>
+                    />
 
-                    <div>
-                      <div className="relative group">
-                        <Phone className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
-                        <Input
-                          id="reg-phone"
-                          type="tel"
-                          placeholder="رقم الهاتف"
-                          autoComplete="tel"
-                          dir="ltr"
-                          className="h-14 text-right pr-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
-                          {...regForm.register("phone")}
-                        />
-                      </div>
-                      {regForm.formState.errors.phone && (
-                        <p className="text-[0.8rem] font-medium text-rose-500 mt-1.5 px-2">{regForm.formState.errors.phone.message}</p>
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <label htmlFor="login-password" className="mb-2 block text-sm font-medium text-foreground">
+                            كلمة المرور
+                          </label>
+                          <div className="group relative">
+                            <Lock aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                            <FormControl>
+                              <Input
+                                id="login-password"
+                                type={showPassword ? "text" : "password"}
+                                placeholder="أدخل كلمة المرور"
+                                autoComplete="current-password"
+                                {...field}
+                                className={`${inputClassName} pl-11`}
+                              />
+                            </FormControl>
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                              aria-pressed={showPassword}
+                              className="absolute left-2.5 top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            >
+                              {showPassword ? <EyeOff aria-hidden="true" className="h-4 w-4" /> : <Eye aria-hidden="true" className="h-4 w-4" />}
+                            </button>
+                          </div>
+                          <FormMessage className="pt-1 text-rose-600" />
+                        </FormItem>
                       )}
-                    </div>
+                    />
 
-                    <div>
-                      <div className="relative group">
-                        <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
-                        <Input
-                          id="reg-password"
-                          type={showPassword ? "text" : "password"}
-                          placeholder="كلمة المرور (6 أحرف على الأقل)"
-                          autoComplete="new-password"
-                          className="h-14 pr-12 pl-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
-                          {...regForm.register("password")}
-                        />
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors z-10"
-                        >
-                          {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                        </button>
-                      </div>
-                      {regForm.formState.errors.password && (
-                        <p className="text-[0.8rem] font-medium text-rose-500 mt-1.5 px-2">{regForm.formState.errors.password.message}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="relative group">
-                        <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none z-10" />
-                        <Input
-                          id="reg-confirmPassword"
-                          type={showPassword ? "text" : "password"}
-                          placeholder="تأكيد كلمة المرور"
-                          autoComplete="new-password"
-                          className="h-14 pr-12 rounded-2xl border-border/70 bg-muted/30 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/20"
-                          {...regForm.register("confirmPassword")}
-                        />
-                      </div>
-                      {regForm.formState.errors.confirmPassword && (
-                        <p className="text-[0.8rem] font-medium text-rose-500 mt-1.5 px-2">{regForm.formState.errors.confirmPassword.message}</p>
-                      )}
-                    </div>
-
-                    <Button
-                      type="submit"
-                      className="w-full h-14 font-semibold text-base bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_8px_20px_rgba(var(--primary),0.25)] hover:shadow-[0_12px_25px_rgba(var(--primary),0.35)] rounded-2xl transition-all duration-300 mt-2"
-                      disabled={isRegistering}
-                    >
-                      {isRegistering ? (
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                      ) : (
-                        "إنشاء الحساب الموحد"
-                      )}
+                    <Button type="submit" className="mt-2 h-12 w-full rounded-xl text-base font-semibold" disabled={isLoggingIn}>
+                      {isLoggingIn
+                        ? <Loader2 className="h-5 w-5 animate-spin" aria-label="جارٍ تسجيل الدخول" />
+                        : "دخول إلى المنصة"}
                     </Button>
                   </form>
-                </div>
+                </Form>
+              ) : (
+                <form onSubmit={regForm.handleSubmit(onRegisterSubmit)} className="space-y-4" noValidate>
+                  <div>
+                    <label htmlFor="reg-fullName" className="mb-2 block text-sm font-medium text-foreground">الاسم الكامل</label>
+                    <div className="group relative">
+                      <UserIcon aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                      <Input
+                        id="reg-fullName"
+                        placeholder="أدخل الاسم الكامل"
+                        autoComplete="name"
+                        className={inputClassName}
+                        {...regForm.register("fullName")}
+                      />
+                    </div>
+                    {regForm.formState.errors.fullName && <p className="pt-1 text-sm text-rose-600">{regForm.formState.errors.fullName.message}</p>}
+                  </div>
+
+                  <div>
+                    <label htmlFor="reg-phone" className="mb-2 block text-sm font-medium text-foreground">رقم الهاتف</label>
+                    <div className="group relative">
+                      <Phone aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                      <Input
+                        id="reg-phone"
+                        type="tel"
+                        placeholder="أدخل رقم الهاتف"
+                        autoComplete="tel"
+                        dir="ltr"
+                        className={`${inputClassName} text-left`}
+                        {...regForm.register("phone")}
+                      />
+                    </div>
+                    {regForm.formState.errors.phone && <p className="pt-1 text-sm text-rose-600">{regForm.formState.errors.phone.message}</p>}
+                  </div>
+
+                  <div>
+                    <label htmlFor="reg-password" className="mb-2 block text-sm font-medium text-foreground">كلمة المرور</label>
+                    <div className="group relative">
+                      <Lock aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                      <Input
+                        id="reg-password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder="6 أحرف على الأقل"
+                        autoComplete="new-password"
+                        className={`${inputClassName} pl-11`}
+                        {...regForm.register("password")}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                        aria-pressed={showPassword}
+                        className="absolute left-2.5 top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        {showPassword ? <EyeOff aria-hidden="true" className="h-4 w-4" /> : <Eye aria-hidden="true" className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {regForm.formState.errors.password && <p className="pt-1 text-sm text-rose-600">{regForm.formState.errors.password.message}</p>}
+                  </div>
+
+                  <div>
+                    <label htmlFor="reg-confirmPassword" className="mb-2 block text-sm font-medium text-foreground">تأكيد كلمة المرور</label>
+                    <div className="group relative">
+                      <Lock aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                      <Input
+                        id="reg-confirmPassword"
+                        type={showPassword ? "text" : "password"}
+                        placeholder="أعد كتابة كلمة المرور"
+                        autoComplete="new-password"
+                        className={inputClassName}
+                        {...regForm.register("confirmPassword")}
+                      />
+                    </div>
+                    {regForm.formState.errors.confirmPassword && <p className="pt-1 text-sm text-rose-600">{regForm.formState.errors.confirmPassword.message}</p>}
+                  </div>
+
+                  <Button type="submit" className="mt-2 h-12 w-full rounded-xl text-base font-semibold" disabled={isRegistering}>
+                    {isRegistering
+                      ? <Loader2 className="h-5 w-5 animate-spin" aria-label="جارٍ إنشاء الحساب" />
+                      : "إنشاء الحساب"}
+                  </Button>
+                </form>
+              )}
+            </div>
+
+            <div className="mt-7 border-t border-border/70 pt-5 text-center text-sm">
+              {mode === "login" ? (
+                <p className="text-muted-foreground">
+                  ليس لديك حساب؟{" "}
+                  <button type="button" onClick={() => switchMode("register")} className="font-semibold text-primary underline-offset-4 hover:underline">
+                    إنشاء حساب جديد
+                  </button>
+                </p>
+              ) : (
+                <p className="text-muted-foreground">
+                  لديك حساب بالفعل؟{" "}
+                  <button type="button" onClick={() => switchMode("login")} className="font-semibold text-primary underline-offset-4 hover:underline">
+                    العودة إلى تسجيل الدخول
+                  </button>
+                </p>
               )}
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Cache rescue hatch */}
-        <div className="page-surface-enter mt-6 text-center">
-          <button
-            type="button"
-            onClick={onClearCache}
-            disabled={isClearingCache}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60"
-          >
-            {isClearingCache ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            التطبيق لا يعمل بشكل صحيح؟ مسح البيانات المؤقتة وإعادة التحميل
-          </button>
-        </div>
-
-        {/* Developer Credit */}
-        <div className="page-surface-enter mt-8 text-center">
-          <span className="text-muted-foreground text-xs font-medium tracking-widest uppercase cursor-default">
+        <footer className="mt-5 flex flex-col items-center gap-3 text-center">
+          <p className="text-xs font-medium leading-6 text-muted-foreground">
+            مطور خصيصا لصالح شركة المدى للاستشارات الهندسية
+          </p>
+          <span className="text-[11px] font-medium tracking-wide text-muted-foreground/75" dir="ltr">
             Developed By Seraj Elajtel
           </span>
-        </div>
+        </footer>
       </div>
-    </div>
+    </main>
   );
 }
