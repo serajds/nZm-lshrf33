@@ -13,6 +13,15 @@ export type ReportImageVariantDiagnostic = {
   activeJobs: number;
   queuedJobs: number;
 };
+
+export function shouldUseOriginalForDevelopmentPhotoMiss(
+  environment: string | undefined,
+  variant: ReportImageVariant,
+  storedVariantFound: boolean,
+): boolean {
+  return environment === "development" && variant === "report-photo" && !storedVariantFound;
+}
+
 type VariantProcessor = ((
   key: string,
   variant: ReportImageVariant,

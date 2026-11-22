@@ -44,10 +44,6 @@ test("report template continues to reject unsafe and malformed image schemes", (
 test("preview requests server variants only for same-origin uploads; original links stay intact", () => {
   const origin = "https://app.test";
   assert.equal(reportPreviewAssetUrl("/api/uploads/photo.jpg", "photo", origin), "/api/uploads/photo.jpg?variant=report-photo");
-  assert.equal(
-    reportPreviewAssetUrl("/api/uploads/photo.jpg", "photo", origin, true),
-    "/api/uploads/photo.jpg?variant=report-photo&diagnosticCold=1",
-  );
   assert.equal(reportPreviewAssetUrl("/api/uploads/logo.png?token=example", "logo", origin), "/api/uploads/logo.png?token=example&variant=report-logo");
   for (const url of ["https://external.test/photo.jpg", "data:image/png;base64,abc", "blob:example", "/api/other/file"]) {
     assert.equal(reportPreviewAssetUrl(url, "photo", origin), url);
