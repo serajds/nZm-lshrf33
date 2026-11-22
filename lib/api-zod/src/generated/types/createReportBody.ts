@@ -13,8 +13,9 @@ export interface CreateReportBody {
   reportDate: Date;
   periodStart: Date;
   periodEnd: Date;
-  workDescription: string;
-  progressPercentage: number;
+  workDescription?: string;
+  /** @nullable */
+  progressPercentage?: number | null;
   /** @nullable */
   technicalNotes?: string | null;
   /** @nullable */
@@ -22,5 +23,4 @@ export interface CreateReportBody {
   imageUrls?: string[];
   /** @nullable */
   imageGroups?: CreateReportBodyImageGroupsItem[] | null;
-  forecastDraft?: boolean;
 }

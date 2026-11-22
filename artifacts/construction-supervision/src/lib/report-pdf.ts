@@ -6,7 +6,6 @@ export interface ActivityForReport {
   plannedProgress: number;
   actualProgress: number;
   status: string;
-  forecastStatus?: string;
   plannedStartDate?: string | null;
   plannedEndDate?: string | null;
   actualEndDate?: string | null;
@@ -41,7 +40,7 @@ export interface ReportPdfData {
   reportDate: string;
   periodStart: string;
   periodEnd: string;
-  progressPercentage: number;
+  progressPercentage: number | null;
   workDescription: string;
   technicalNotes?: string | null;
   recommendations?: string | null;
@@ -72,9 +71,7 @@ export interface ReportPdfData {
   apiBase?: string;
   reportSignatures?: {id: string, title: string, role: string, name?: string}[] | null;
   reportDisplayMode?: "type_and_number" | "period_only";
-  forecastDraft?: boolean;
   actualProgressUnavailable?: boolean;
-  forecastTargetDate?: string;
   actualAsOfDate?: string;
 }
 
@@ -135,10 +132,11 @@ function hasValidSchedule(startDate: string | null | undefined, endDate: string 
 
 export function buildPrintHTML(data: ReportPdfData): string {
   const typeLbl = reportTypeLabel(data.reportType);
-  const isForecastDraft = data.forecastDraft === true;
   const periodOnly = data.reportDisplayMode === "period_only";
   const periodLabel = `${fmtDate(data.periodStart)} — ${fmtDate(data.periodEnd)}`;
-  const pct = Math.round(Math.min(100, Math.max(0, data.progressPercentage)) * 10) / 10;
+  const pct = data.progressPercentage == null
+    ? null
+    : Math.round(Math.min(100, Math.max(0, data.progressPercentage)) * 10) / 10;
   const snapshotAvailable = data.snapshotAvailable !== false;
   const scheduleAvailable = hasValidSchedule(data.startDate, data.expectedEndDate, data.noSchedule);
   const plannedUnverified = data.plannedHistoricalUnverified === true
@@ -151,10 +149,8 @@ export function buildPrintHTML(data: ReportPdfData): string {
     : null;
   const historicalActual = data.actualProgressUnavailable
     ? null
-    : isForecastDraft
-      ? recordedActual
-      : data.approvedProgress ? pct : data.actualHistoricalUnverified ? null : recordedActual;
-  const comparisonActual = historicalActual ?? (isForecastDraft || data.actualProgressUnavailable ? null : pct);
+    : data.approvedProgress ? pct : data.actualHistoricalUnverified ? null : recordedActual;
+  const comparisonActual = historicalActual ?? (data.actualProgressUnavailable ? null : pct);
   const displayedComparisonActual = comparisonActual == null ? null : Math.round(comparisonActual * 10) / 10;
   const deviation = !plannedUnverified && plannedPct != null && historicalActual != null && data.plannedProgress != null
     ? Math.round((historicalActual - data.plannedProgress) * 10) / 10
@@ -163,7 +159,7 @@ export function buildPrintHTML(data: ReportPdfData): string {
   const totalDuration = scheduleAvailable ? daysBetween(data.startDate, data.expectedEndDate) : null;
   const elapsed = scheduleAvailable ? daysBetween(data.startDate, data.reportDate) : null;
   const remainingRaw = scheduleAvailable ? daysBetween(data.reportDate, data.expectedEndDate) : null;
-  const overrunDays = !isForecastDraft && scheduleAvailable && remainingRaw != null && remainingRaw < 0 && pct < 100 ? -remainingRaw : 0;
+  const overrunDays = scheduleAvailable && remainingRaw != null && remainingRaw < 0 && pct != null && pct < 100 ? -remainingRaw : 0;
   const remaining = remainingRaw != null ? Math.max(0, remainingRaw) : null;
   const elapsedPct = totalDuration && elapsed != null ? Math.min(100, Math.round((elapsed / totalDuration) * 100)) : null;
 
@@ -187,9 +183,9 @@ export function buildPrintHTML(data: ReportPdfData): string {
         <thead>
           <tr>
             <th class="th" style="text-align:right;width:40%">البند</th>
-            <th class="th tc" style="width:12%">${isForecastDraft ? "مخطط متوقع %" : "مخطط %"}</th>
-            <th class="th tc" style="width:12%">${isForecastDraft ? `فعلي حتى ${esc(fmtDate(data.actualAsOfDate))}` : "فعلي %"}</th>
-            <th class="th tc" style="width:16%">${isForecastDraft ? "الحالة المتوقعة" : "الحالة"}</th>
+            <th class="th tc" style="width:12%">مخطط %</th>
+            <th class="th tc" style="width:12%">فعلي %</th>
+            <th class="th tc" style="width:16%">الحالة</th>
             <th class="th" style="width:20%">الإنجاز</th>
           </tr>
         </thead>
@@ -202,9 +198,7 @@ export function buildPrintHTML(data: ReportPdfData): string {
               <td class="td tc" style="font-weight:700">${a.actualValueMissing || !Number.isFinite(a.actualProgress) ? "—" : `${(Math.round(a.actualProgress * 10) / 10).toFixed(1)}%`}</td>
               <td class="td tc">
                 <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;background:${statusBg(a.status)};color:${statusColor(a.status)};border:1px solid ${statusColor(a.status)}">
-                  ${isForecastDraft
-                    ? statusLabel(a.forecastStatus ?? a.status)
-                    : a.actualValueMissing ? "—" : statusLabel(a.status)}
+                  ${a.actualValueMissing ? "—" : statusLabel(a.status)}
                 </span>
               </td>
               <td class="td">
@@ -272,7 +266,7 @@ export function buildPrintHTML(data: ReportPdfData): string {
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>${isForecastDraft ? "مسودة استشرافية" : periodOnly ? `تقرير الفترة ${periodLabel}` : `تقرير ${typeLbl}`} — ${esc(data.projectName)}</title>
+<title>${periodOnly ? `تقرير الفترة ${periodLabel}` : `تقرير ${typeLbl}`} — ${esc(data.projectName)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -484,10 +478,7 @@ ${(() => {
   return `<div class="logos-strip avoid-break">${html}</div>`;
 })()}
 
-${isForecastDraft ? `<div class="section avoid-break" style="background:#fffbeb;border-color:#f59e0b;color:#92400e;font-weight:700;text-align:center">
-  مسودة استشرافية غير معتمدة — المخطط المتوقع حتى ${esc(fmtDate(data.forecastTargetDate ?? data.periodEnd))}. الإنجاز الفعلي، إن توفر، موثق حتى ${esc(fmtDate(data.actualAsOfDate))} فقط.
-</div>` : ""}
-${data.actualProgressUnavailable && !isForecastDraft ? `<div class="section avoid-break" style="background:#fffbeb;border-color:#f59e0b;color:#92400e;font-weight:700;text-align:center">
+${data.actualProgressUnavailable ? `<div class="section avoid-break" style="background:#fffbeb;border-color:#f59e0b;color:#92400e;font-weight:700;text-align:center">
   أصبح هذا تقريراً عادياً غير معتمد. لا يتوفر سجل إنجاز موثوق حتى تاريخ التقرير؛ أدخل النسبة الفعلية الموثقة وراجعها قبل الاعتماد.
 </div>` : ""}
 
@@ -519,24 +510,22 @@ ${data.actualProgressUnavailable && !isForecastDraft ? `<div class="section avoi
 <!-- DUAL PROGRESS -->
 <div class="dual-box avoid-break">
   <div class="dual-head">
-    <span class="dual-title">${isForecastDraft ? "المخطط المتوقع والإنجاز الفعلي الموثق" : "مقارنة الإنجاز"}</span>
+    <span class="dual-title">مقارنة الإنجاز</span>
     ${deviation != null ? `<span class="dev-badge ${deviation >= 0 ? "dev-ok" : "dev-warn"}">${deviation >= 0 ? "+" : ""}${deviation}% ${deviation >= 0 ? "متقدم عن الخطة" : "خلف الخطة"}</span>` : ""}
     ${overrunDays > 0 ? `<span class="dev-badge dev-warn">تجاوز المدة: ${overrunDays} يوم</span>` : ""}
   </div>
   <div class="dp-row">
-    <span class="dp-lbl">${isForecastDraft
-      ? `الفعلي حتى ${esc(fmtDate(data.actualAsOfDate))}`
-      : data.actualProgressUnavailable ? "الإنجاز الفعلي غير متاح" : "الإنجاز حتى نهاية الفترة"}</span>
+    <span class="dp-lbl">${data.actualProgressUnavailable ? "الإنجاز الفعلي غير متاح" : "الإنجاز حتى نهاية الفترة"}</span>
     <div class="dp-track"><div class="dp-fill-blue" style="width:${comparisonActual ?? 0}%"></div></div>
     <span class="dp-val" style="color:#2563eb">${displayedComparisonActual == null ? "—" : `${displayedComparisonActual}%`}</span>
   </div>
   ${plannedPct != null ? `<div class="dp-row">
-    <span class="dp-lbl">${isForecastDraft ? `متوقع حتى ${esc(fmtDate(data.forecastTargetDate ?? data.periodEnd))}` : "المخطط"}</span>
+    <span class="dp-lbl">المخطط</span>
     <div class="dp-track"><div class="dp-fill-gray" style="width:${plannedPct}%"></div></div>
     <span class="dp-val">${plannedPct}%</span>
   </div>` : ""}
   ${data.spi != null && snapshotAvailable && scheduleAvailable && (!data.actualHistoricalUnverified || data.approvedProgress) && !plannedUnverified ? `<div class="dp-row"><span class="dp-lbl">SPI</span><span class="dp-val">${(Math.round(data.spi * 100) / 100).toFixed(2)}</span></div>` : ""}
-    ${!isForecastDraft && historicalActual != null && historicalActual !== pct ? `<div class="reported-progress-note">نسبة الإنجاز المُبلَّغ عنها في التقرير: ${pct}%</div>` : ""}
+    ${historicalActual != null && pct != null && historicalActual !== pct ? `<div class="reported-progress-note">نسبة الإنجاز المُبلَّغ عنها في التقرير: ${pct}%</div>` : ""}
 </div>
 
 <!-- STATS -->
@@ -614,7 +603,7 @@ ${activitiesHTML}
 
 <!-- WORK DESCRIPTION -->
 <div class="section avoid-break">
-    <div class="section-title">📝 ${isForecastDraft ? "الأعمال المخطط تنفيذها خلال الفترة" : "وصف الأعمال المنجزة خلال الفترة"}</div>
+    <div class="section-title">📝 وصف الأعمال المنجزة خلال الفترة</div>
   <p class="body-text">${esc(data.workDescription)}</p>
 </div>
 
@@ -645,7 +634,7 @@ ${(() => {
   
   return `
   <div class="section avoid-break">
-    <div class="section-title">${isForecastDraft ? "المراجعة والتوقيع بعد الاعتماد" : "التوقيعات والاعتماد"}</div>
+    <div class="section-title">التوقيعات والاعتماد</div>
     <div style="display: flex; gap: 10px; margin-top: 10px;">
       ${sigs.map(sig => `
         <div style="flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; text-align: center; height: 100px; display: flex; flex-direction: column; justify-content: space-between;">
