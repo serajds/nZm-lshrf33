@@ -26,13 +26,67 @@ async function fetchProtectedBlob(url: string, signal?: AbortSignal): Promise<Bl
   return response.blob();
 }
 
+function waitBeforePreviewRetry(delayMs: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const timer = window.setTimeout(() => {
+      cleanup();
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      cleanup();
+      reject(signal.reason ?? new Error("Report preview asset request was aborted"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
+}
+
+async function fetchPreviewBlob(url: string, signal: AbortSignal): Promise<Blob> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (signal.aborted) throw signal.reason ?? new Error("Report preview asset request was aborted");
+    let response: Response;
+    try {
+      response = await fetchWithSession(url, {
+        signal,
+        headers: { Accept: "image/*,application/pdf,application/octet-stream" },
+      });
+    } catch (error) {
+      if (signal.aborted || attempt === 2) throw error;
+      lastError = error;
+      await waitBeforePreviewRetry(300 * (2 ** attempt), signal);
+      continue;
+    }
+
+    if (response.ok) {
+      try {
+        return await response.blob();
+      } catch (error) {
+        if (signal.aborted || attempt === 2) throw error;
+        lastError = error;
+        await waitBeforePreviewRetry(300 * (2 ** attempt), signal);
+        continue;
+      }
+    }
+
+    const error = new Error(`Protected asset request failed with HTTP ${response.status}`);
+    const transient = response.status === 429 || response.status >= 500;
+    if (!transient || attempt === 2) throw error;
+    lastError = error;
+    await waitBeforePreviewRetry(300 * (2 ** attempt), signal);
+  }
+  throw lastError instanceof Error ? lastError : new Error("Report preview asset request failed");
+}
+
 /** Preview-owned blob URLs avoid base64 expansion and are released with its window. */
 export async function protectedAssetToPreviewUrl(url: string, owner: Window, kind: "photo" | "logo" = "photo"): Promise<string> {
   if (!isProtectedApiAsset(url)) return url;
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 45_000);
   try {
-    const blob = await fetchProtectedBlob(reportPreviewAssetUrl(url, kind, window.location.origin), controller.signal);
+    const blob = await fetchPreviewBlob(reportPreviewAssetUrl(url, kind, window.location.origin), controller.signal);
     if (owner.closed) throw new Error("Report preview was closed");
     return (owner as Window & typeof globalThis).URL.createObjectURL(blob);
   } finally {
