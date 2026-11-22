@@ -26,3 +26,9 @@ For the Development-only direct-storage preview experiment, mint short-lived sig
 **Why:** Reports with many photos can generate a large number of per-image API authorization requests. Signed storage reads can bypass those repeated API checks, but each URL is a temporary bearer capability.
 
 **How to apply:** Keep the endpoint report-scoped, project-file-scoped, no-store, and short-lived; fetch signed URLs without credentials, convert to preview-owned Blob URLs, and gate both client and server to Development until the user authorizes broader use.
+
+Treat direct signed reads as a transport/load mitigation, not proof of the cause of an API crash. A `SIGKILL` after image requests does not establish OOM unless memory or runtime evidence ties the termination to image processing.
+
+**Why:** Production logs showed successful image responses followed by a process kill, while memory metrics and image-variant cache-hit data were unavailable.
+
+**How to apply:** Before claiming a root fix, measure per-image variant hits/misses, cloud read/encode time, active Sharp jobs, and process RSS in Development using the same report pattern; keep the production termination cause explicitly unconfirmed until evidenced.
