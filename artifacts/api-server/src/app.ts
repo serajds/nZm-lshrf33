@@ -12,7 +12,7 @@ import { canViewAttendancePhoto, verifyAndMaybeRenewToken } from "./middlewares/
 import { streamFromCloud, cloudReportImageSource } from "./lib/fileStorage";
 import {
   reportImageVariant,
-  shouldUseOriginalForDevelopmentPhotoMiss,
+  shouldServeOriginalCompressedSharePhoto,
   type ReportImageVariantDiagnostic,
 } from "./lib/reportImageVariants";
 import {
@@ -264,8 +264,9 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
       const developmentImageDiagnostics = process.env.NODE_ENV === "development";
       const variantLookupStarted = developmentImageDiagnostics ? performance.now() : 0;
       const savedVariant = await findStoredReportImageVariant(filename, variant, uploadsDir);
-      const developmentOriginalPhotoFallback = shouldUseOriginalForDevelopmentPhotoMiss(
+      const originalSharePhotoFallback = shouldServeOriginalCompressedSharePhoto(
         process.env.NODE_ENV,
+        filename,
         variant,
         Boolean(savedVariant),
       );
@@ -273,13 +274,13 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
       if (developmentImageDiagnostics) {
         logger.info({
           variant,
-          developmentOriginalPhotoFallback,
+          originalSharePhotoFallback,
           storedVariantFound: Boolean(savedVariant),
           variantLookupMs: Number(variantLookupMs.toFixed(1)),
           ...reportImageVariant.getStatus(),
         }, "Report image variant lookup");
       }
-      if (savedVariant) {
+      if (savedVariant && !originalSharePhotoFallback) {
         res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
         res.type(savedVariant.contentType);
         savedVariant.stream.on("error", () => {
@@ -310,7 +311,7 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
         key = `cloud:${filename}:${source.version}`;
         read = source.read;
       }
-      if (developmentOriginalPhotoFallback) {
+      if (originalSharePhotoFallback) {
         const sourceReadStarted = performance.now();
         const original = await read();
         const sourceReadMs = performance.now() - sourceReadStarted;
@@ -320,17 +321,19 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
           : extension === ".webp" ? "image/webp"
             : extension === ".jpg" || extension === ".jpeg" ? "image/jpeg"
               : "application/octet-stream";
-        const memory = process.memoryUsage();
-        logger.info({
-          variant,
-          sourceBytes: original.length,
-          sourceReadMs: Number(sourceReadMs.toFixed(1)),
-          cloudMetadataMs: Number(cloudMetadataMs.toFixed(1)),
-          rssBytes: memory.rss,
-          heapUsedBytes: memory.heapUsed,
-          externalBytes: memory.external,
-          arrayBuffersBytes: memory.arrayBuffers,
-        }, "Development report image original fallback");
+        if (developmentImageDiagnostics) {
+          const memory = process.memoryUsage();
+          logger.info({
+            variant,
+            sourceBytes: original.length,
+            sourceReadMs: Number(sourceReadMs.toFixed(1)),
+            cloudMetadataMs: Number(cloudMetadataMs.toFixed(1)),
+            rssBytes: memory.rss,
+            heapUsedBytes: memory.heapUsed,
+            externalBytes: memory.external,
+            arrayBuffersBytes: memory.arrayBuffers,
+          }, "Report image original fallback");
+        }
         res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
         res.type(contentType).send(original);
         return;
