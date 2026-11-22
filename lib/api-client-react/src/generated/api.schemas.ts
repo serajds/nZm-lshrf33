@@ -610,7 +610,6 @@ export type ReportActivitiesSnapshotItem = {
   actualHistoricalUnverified?: boolean;
   plannedAsOfDate?: string;
   plannedHistoricalUnverified?: boolean;
-  forecastStatus?: string;
   /** @nullable */
   actualStatus?: string | null;
 };
@@ -643,7 +642,8 @@ export interface Report {
   periodStart: string;
   periodEnd: string;
   workDescription: string;
-  progressPercentage: number;
+  /** @nullable */
+  progressPercentage: number | null;
   /** @nullable */
   technicalNotes?: string | null;
   /** @nullable */
@@ -653,9 +653,6 @@ export interface Report {
   imageGroups?: ReportImageGroupsItem[] | null;
   /** @nullable */
   activitiesSnapshot?: ReportActivitiesSnapshotItem[] | null;
-  forecastDraft: boolean;
-  forecastMatured?: boolean;
-  actualAvailable?: boolean;
   /** @nullable */
   progressSource?: ReportProgressSource;
   status: ReportStatus;
@@ -689,8 +686,9 @@ export interface CreateReportBody {
   reportDate: string;
   periodStart: string;
   periodEnd: string;
-  workDescription: string;
-  progressPercentage: number;
+  workDescription?: string;
+  /** @nullable */
+  progressPercentage?: number | null;
   /** @nullable */
   technicalNotes?: string | null;
   /** @nullable */
@@ -698,85 +696,6 @@ export interface CreateReportBody {
   imageUrls?: string[];
   /** @nullable */
   imageGroups?: CreateReportBodyImageGroupsItem[] | null;
-  forecastDraft?: boolean;
-}
-
-export type ReportForecastProgressPlannedSource =
-  (typeof ReportForecastProgressPlannedSource)[keyof typeof ReportForecastProgressPlannedSource];
-
-export const ReportForecastProgressPlannedSource = {
-  project_schedule: "project_schedule",
-  unavailable: "unavailable",
-} as const;
-
-export type ReportForecastProgressActualSource =
-  (typeof ReportForecastProgressActualSource)[keyof typeof ReportForecastProgressActualSource];
-
-export const ReportForecastProgressActualSource = {
-  history: "history",
-  estimated_history: "estimated_history",
-  approved_report: "approved_report",
-  unavailable: "unavailable",
-} as const;
-
-/**
- * @nullable
- */
-export type ReportForecastProgressManualSuggestion = {
-  reportNumber: number;
-  progressPercentage: number;
-  actualAsOfDate: string;
-  reportDate: string;
-} | null;
-
-export type ReportForecastProgressActivitiesItem = {
-  id: number;
-  name: string;
-  /** @nullable */
-  groupId: number | null;
-  /** @nullable */
-  plannedStartDate: string | null;
-  /** @nullable */
-  plannedEndDate: string | null;
-  /** @nullable */
-  actualStartDate: string | null;
-  /** @nullable */
-  actualEndDate: string | null;
-  /** @nullable */
-  externalSourceGroupId: number | null;
-  /** @nullable */
-  plannedProgress: number | null;
-  /** @nullable */
-  actualProgress: number | null;
-  weight: number;
-  status: string;
-  forecastStatus: string;
-  /** @nullable */
-  actualStatus: string | null;
-  sortOrder: number;
-  actualAsOfDate: string;
-  actualHistoricalUnverified: boolean;
-  plannedAsOfDate: string;
-  plannedHistoricalUnverified: boolean;
-};
-
-export interface ReportForecastProgress {
-  forecastDraft: boolean;
-  targetDate: string;
-  today: string;
-  actualAsOfDate: string;
-  actualAvailable: boolean;
-  /** @nullable */
-  actualProgress: number | null;
-  /** @nullable */
-  plannedProgress: number | null;
-  plannedSource: ReportForecastProgressPlannedSource;
-  actualSource: ReportForecastProgressActualSource;
-  /** @nullable */
-  actualReportNumber: number | null;
-  /** @nullable */
-  manualSuggestion: ReportForecastProgressManualSuggestion;
-  activities: ReportForecastProgressActivitiesItem[];
 }
 
 export type ReportAuditLogEntryAction =
@@ -1592,10 +1511,6 @@ export type ListReportsParams = {
    * @nullable
    */
   dateTo?: string | null;
-};
-
-export type GetReportForecastProgressParams = {
-  targetDate: string;
 };
 
 export type CreateReportImageGroupShare201 = {

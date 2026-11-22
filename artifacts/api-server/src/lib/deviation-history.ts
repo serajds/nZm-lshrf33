@@ -2,7 +2,7 @@ import { utcDay } from "./progress";
 
 type SavedReport = {
   id: number; reportDate: string; periodEnd: string; activitiesSnapshot: unknown;
-  createdAt: Date | string; progressPercentage: number;
+  createdAt: Date | string; progressPercentage: number | null;
   progressSource?: string | null; progressAsOfDate?: string | null;
 };
 export type HistoryPoint = {

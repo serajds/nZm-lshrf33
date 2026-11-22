@@ -55,50 +55,21 @@ test("legacy reference shows work and schedule without presenting missing progre
   assert.doesNotMatch(html, /70\.0%/);
 });
 
-test("forecast draft print labels projections and keeps unknown actuals unavailable", () => {
+test("incomplete draft print leaves missing actual progress blank rather than showing zero", () => {
   const html = buildPrintHTML({
     ...report,
-    forecastDraft: true,
-    forecastTargetDate: "2026-11-10",
-    actualAsOfDate: "2026-10-24",
-    progressPercentage: 0,
-    plannedProgress: 100,
-    actualProgress: null,
-    spi: null,
-    activities: [{
-      name: "بند متوقع", plannedProgress: 100, actualProgress: 0,
-      status: "completed", forecastStatus: "completed",
-      actualValueMissing: true, plannedValueMissing: false,
-    }],
-  });
-  assert.match(html, /مسودة استشرافية غير معتمدة/);
-  assert.match(html, /الحالة المتوقعة/);
-  assert.match(html, /مخطط متوقع/);
-  assert.match(html, /فعلي حتى 2026\/10\/24/);
-  assert.match(html, /بند متوقع/);
-  assert.match(html, /مكتمل/);
-  assert.doesNotMatch(html, /SPI/);
-});
-
-test("matured ordinary draft print leaves missing actual progress blank", () => {
-  const html = buildPrintHTML({
-    ...report,
-    forecastDraft: false,
     actualProgressUnavailable: true,
-    progressPercentage: 0,
+    progressPercentage: null,
     actualProgress: null,
-    plannedProgress: 70,
+    plannedProgress: null,
     spi: null,
-    activities: [{
-      name: "بند بلا سجل فعلي", plannedProgress: 70, actualProgress: 0,
-      status: "completed", actualValueMissing: true,
-    }],
+    snapshotAvailable: false,
+    activities: [],
   });
   assert.match(html, /أصبح هذا تقريراً عادياً غير معتمد/);
   assert.match(html, /الإنجاز الفعلي غير متاح/);
-  assert.match(html, /فعلي غير متاح/);
   assert.doesNotMatch(html, /نسبة الإنجاز المُبلَّغ عنها في التقرير: 0/);
-  assert.doesNotMatch(html, /فعلي 0\.0%/);
+  assert.doesNotMatch(html, /0\.0%/);
 });
 
 test("saved planned and actual values remain visible despite internal provenance warnings", () => {

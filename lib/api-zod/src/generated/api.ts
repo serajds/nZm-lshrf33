@@ -668,7 +668,7 @@ export const ListReportsResponseItem = zod.object({
   periodStart: zod.coerce.date(),
   periodEnd: zod.coerce.date(),
   workDescription: zod.string(),
-  progressPercentage: zod.number(),
+  progressPercentage: zod.number().nullable(),
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
@@ -707,14 +707,10 @@ export const ListReportsResponseItem = zod.object({
         actualHistoricalUnverified: zod.boolean().optional(),
         plannedAsOfDate: zod.coerce.date().optional(),
         plannedHistoricalUnverified: zod.boolean().optional(),
-        forecastStatus: zod.string().optional(),
         actualStatus: zod.string().nullish(),
       }),
     )
     .nullish(),
-  forecastDraft: zod.boolean(),
-  forecastMatured: zod.boolean().optional(),
-  actualAvailable: zod.boolean().optional(),
   progressSource: zod
     .union([zod.literal("history"), zod.literal("manual"), zod.literal(null)])
     .nullish(),
@@ -739,8 +735,8 @@ export const CreateReportBody = zod.object({
   reportDate: zod.coerce.date(),
   periodStart: zod.coerce.date(),
   periodEnd: zod.coerce.date(),
-  workDescription: zod.string(),
-  progressPercentage: zod.number(),
+  workDescription: zod.string().optional(),
+  progressPercentage: zod.number().nullish(),
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()).optional(),
@@ -753,67 +749,6 @@ export const CreateReportBody = zod.object({
       }),
     )
     .nullish(),
-  forecastDraft: zod.boolean().optional(),
-});
-
-/**
- * @summary Preview a report draft from the schedule without forecasting actual progress
- */
-export const GetReportForecastProgressParams = zod.object({
-  projectId: zod.coerce.number(),
-});
-
-export const GetReportForecastProgressQueryParams = zod.object({
-  targetDate: zod.date(),
-});
-
-export const GetReportForecastProgressResponse = zod.object({
-  forecastDraft: zod.boolean(),
-  targetDate: zod.coerce.date(),
-  today: zod.coerce.date(),
-  actualAsOfDate: zod.coerce.date(),
-  actualAvailable: zod.boolean(),
-  actualProgress: zod.number().nullable(),
-  plannedProgress: zod.number().nullable(),
-  plannedSource: zod.enum(["project_schedule", "unavailable"]),
-  actualSource: zod.enum([
-    "history",
-    "estimated_history",
-    "approved_report",
-    "unavailable",
-  ]),
-  actualReportNumber: zod.number().nullable(),
-  manualSuggestion: zod
-    .object({
-      reportNumber: zod.number(),
-      progressPercentage: zod.number(),
-      actualAsOfDate: zod.coerce.date(),
-      reportDate: zod.coerce.date(),
-    })
-    .nullable(),
-  activities: zod.array(
-    zod.object({
-      id: zod.number(),
-      name: zod.string(),
-      groupId: zod.number().nullable(),
-      plannedStartDate: zod.coerce.date().nullable(),
-      plannedEndDate: zod.coerce.date().nullable(),
-      actualStartDate: zod.coerce.date().nullable(),
-      actualEndDate: zod.coerce.date().nullable(),
-      externalSourceGroupId: zod.number().nullable(),
-      plannedProgress: zod.number().nullable(),
-      actualProgress: zod.number().nullable(),
-      weight: zod.number(),
-      status: zod.string(),
-      forecastStatus: zod.string(),
-      actualStatus: zod.string().nullable(),
-      sortOrder: zod.number(),
-      actualAsOfDate: zod.coerce.date(),
-      actualHistoricalUnverified: zod.boolean(),
-      plannedAsOfDate: zod.coerce.date(),
-      plannedHistoricalUnverified: zod.boolean(),
-    }),
-  ),
 });
 
 /**
@@ -833,7 +768,7 @@ export const GetReportResponse = zod.object({
   periodStart: zod.coerce.date(),
   periodEnd: zod.coerce.date(),
   workDescription: zod.string(),
-  progressPercentage: zod.number(),
+  progressPercentage: zod.number().nullable(),
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
@@ -872,14 +807,10 @@ export const GetReportResponse = zod.object({
         actualHistoricalUnverified: zod.boolean().optional(),
         plannedAsOfDate: zod.coerce.date().optional(),
         plannedHistoricalUnverified: zod.boolean().optional(),
-        forecastStatus: zod.string().optional(),
         actualStatus: zod.string().nullish(),
       }),
     )
     .nullish(),
-  forecastDraft: zod.boolean(),
-  forecastMatured: zod.boolean().optional(),
-  actualAvailable: zod.boolean().optional(),
   progressSource: zod
     .union([zod.literal("history"), zod.literal("manual"), zod.literal(null)])
     .nullish(),
@@ -951,7 +882,7 @@ export const UpdateReportResponse = zod.object({
   periodStart: zod.coerce.date(),
   periodEnd: zod.coerce.date(),
   workDescription: zod.string(),
-  progressPercentage: zod.number(),
+  progressPercentage: zod.number().nullable(),
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
@@ -990,14 +921,10 @@ export const UpdateReportResponse = zod.object({
         actualHistoricalUnverified: zod.boolean().optional(),
         plannedAsOfDate: zod.coerce.date().optional(),
         plannedHistoricalUnverified: zod.boolean().optional(),
-        forecastStatus: zod.string().optional(),
         actualStatus: zod.string().nullish(),
       }),
     )
     .nullish(),
-  forecastDraft: zod.boolean(),
-  forecastMatured: zod.boolean().optional(),
-  actualAvailable: zod.boolean().optional(),
   progressSource: zod
     .union([zod.literal("history"), zod.literal("manual"), zod.literal(null)])
     .nullish(),
@@ -1071,7 +998,7 @@ export const UpdateReportStatusResponse = zod.object({
   periodStart: zod.coerce.date(),
   periodEnd: zod.coerce.date(),
   workDescription: zod.string(),
-  progressPercentage: zod.number(),
+  progressPercentage: zod.number().nullable(),
   technicalNotes: zod.string().nullish(),
   recommendations: zod.string().nullish(),
   imageUrls: zod.array(zod.string()),
@@ -1110,14 +1037,10 @@ export const UpdateReportStatusResponse = zod.object({
         actualHistoricalUnverified: zod.boolean().optional(),
         plannedAsOfDate: zod.coerce.date().optional(),
         plannedHistoricalUnverified: zod.boolean().optional(),
-        forecastStatus: zod.string().optional(),
         actualStatus: zod.string().nullish(),
       }),
     )
     .nullish(),
-  forecastDraft: zod.boolean(),
-  forecastMatured: zod.boolean().optional(),
-  actualAvailable: zod.boolean().optional(),
   progressSource: zod
     .union([zod.literal("history"), zod.literal("manual"), zod.literal(null)])
     .nullish(),
@@ -1711,7 +1634,7 @@ export const VerifyOwnerAccessResponse = zod.object({
       periodStart: zod.coerce.date(),
       periodEnd: zod.coerce.date(),
       workDescription: zod.string(),
-      progressPercentage: zod.number(),
+      progressPercentage: zod.number().nullable(),
       technicalNotes: zod.string().nullish(),
       recommendations: zod.string().nullish(),
       imageUrls: zod.array(zod.string()),
@@ -1752,14 +1675,10 @@ export const VerifyOwnerAccessResponse = zod.object({
             actualHistoricalUnverified: zod.boolean().optional(),
             plannedAsOfDate: zod.coerce.date().optional(),
             plannedHistoricalUnverified: zod.boolean().optional(),
-            forecastStatus: zod.string().optional(),
             actualStatus: zod.string().nullish(),
           }),
         )
         .nullish(),
-      forecastDraft: zod.boolean(),
-      forecastMatured: zod.boolean().optional(),
-      actualAvailable: zod.boolean().optional(),
       progressSource: zod
         .union([
           zod.literal("history"),

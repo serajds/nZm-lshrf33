@@ -272,7 +272,7 @@ export async function readBackfillState(projectId: number) {
       const { id, ...anchor } = report;
       hashPart("report", { id, ...anchor });
       const date = report.progressAsOfDate ?? report.periodEnd;
-      if (Number.isFinite(report.progressPercentage)) {
+      if (typeof report.progressPercentage === "number" && Number.isFinite(report.progressPercentage)) {
         reportPoints.push({ date, progress: report.progressPercentage });
       }
       if (Array.isArray(report.activitiesSnapshot)) {

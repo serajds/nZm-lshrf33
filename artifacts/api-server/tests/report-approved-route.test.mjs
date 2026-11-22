@@ -4,12 +4,10 @@ import fs from "node:fs";
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 
-test("owner portal and PDF exports only include approved reports, regardless of forecast date", () => {
+test("owner portal and PDF exports only include explicitly approved reports", () => {
   const ownerSource = fs.readFileSync(new URL("../src/routes/owner.ts", import.meta.url), "utf8");
   const pdfSource = fs.readFileSync(new URL("../src/routes/pdf.ts", import.meta.url), "utf8");
 
-  // Forecast drafts may be past-dated and matured, but they remain drafts until
-  // explicitly approved. Keep the owner query independent of report dates.
   assert.match(
     ownerSource,
     /\.where\(and\(eq\(reportsTable\.projectId, project\.id\), eq\(reportsTable\.status, "approved"\)\)\)/,
@@ -38,15 +36,6 @@ const compiled = await build({
           globalThis.approvedHistoryFixture?.(...args) ?? {available:false,activities:null};
           export const validReportDay = value => typeof value === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(value);`,
       }));
-      b.onResolve({ filter: /\/report-forecast$/ }, () => ({ path: "forecast", namespace: "forecast-fixture" }));
-      b.onLoad({ filter: /.*/, namespace: "forecast-fixture" }, () => ({
-        contents: `export const getReportForecastProgress = async (...args) =>
-          globalThis.approvedForecastFixture?.(...args) ?? {
-            forecastDraft:true, targetDate:args[1], today:"2026-11-22",
-            actualAsOfDate:args[1], actualAvailable:false, actualProgress:null,
-            plannedProgress:60, plannedSource:"project_schedule", actualSource:"unavailable", activities:[],
-          };`,
-      }));
       b.onResolve({ filter: /\/lib\/audit$/ }, () => ({ path: "audit", namespace: "audit-fixture" }));
       b.onLoad({ filter: /.*/, namespace: "audit-fixture" }, () => ({
         contents: "export const logAudit = async () => {};",
@@ -57,6 +46,7 @@ const compiled = await build({
           export const db = new Proxy({}, {get: (_, key) => key === "select"
             ? (...args) => globalThis.approvedDbSelectFixture ? globalThis.approvedDbSelectFixture(...args) : fail()
             : key === "update" ? (...args) => globalThis.approvedDbUpdateFixture?.(...args) ?? fail()
+            : key === "insert" ? (...args) => globalThis.approvedDbInsertFixture?.(...args) ?? fail()
             : fail});
           export const pool = { query: fail };
           export const measurePhase = (_name, run) => run();
@@ -71,10 +61,12 @@ const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
 const dir = await mkdtemp(new URL("../node_modules/.approved-route-", import.meta.url));
 const path = `${dir}/route.mjs`;
 await writeFile(path, compiled.outputFiles[0].text);
-let handler, patchHandler, statusHandler, reportsListHandler;
+let handler, createHandler, patchHandler, statusHandler, reportsListHandler;
 try {
   const { default: router } = await import(path);
   handler = router.stack.find(layer => layer.route?.path === "/projects/:projectId/reports/ai-draft")
+    .route.stack.at(-1).handle;
+  createHandler = router.stack.find(layer => layer.route?.path === "/projects/:projectId/reports" && layer.route.methods.post)
     .route.stack.at(-1).handle;
   patchHandler = router.stack.find(layer => layer.route?.path === "/projects/:projectId/reports/:id" && layer.route.methods.patch)
     .route.stack.at(-1).handle;
@@ -128,29 +120,48 @@ async function invokeReportsList(report) {
     delete globalThis.approvedDbSelectFixture;
   }
 }
-async function invokePatchMaturedForecast(body, storedPeriodEnd = "2026-10-20", source = null) {
+async function invokeCreate(body) {
+  let inserted;
+  globalThis.approvedDbSelectFixture = () => ({
+    from: () => ({ where: async () => [{ maxNum: 2 }] }),
+  });
+  globalThis.approvedDbInsertFixture = () => ({
+    values: data => {
+      inserted = data;
+      return { returning: async () => [{ id: 12, projectId: 1, reportNumber: 3, status: "draft", ...data }] };
+    },
+  });
+  const res = { code: 200, status(code) { this.code = code; return this; }, json(value) { this.body = value; return this; } };
+  try {
+    await createHandler({ params: { projectId: "1" }, body, user: { userId: 1 } }, res, () => {});
+    return { response: res, inserted };
+  } finally {
+    delete globalThis.approvedDbSelectFixture;
+    delete globalThis.approvedDbInsertFixture;
+  }
+}
+async function invokePatch(body, saved = {}) {
   let update;
   globalThis.approvedDbSelectFixture = () => ({
     from: () => ({ where: async () => [{
-      source, periodEnd: storedPeriodEnd, reportDate: storedPeriodEnd,
-      percentage: 0, forecastDraft: true, status: "draft",
+      source: null,
+      periodStart: "2099-12-01",
+      periodEnd: "2099-12-20",
+      reportDate: "2099-12-20",
+      percentage: null,
+      status: "draft",
+      ...saved,
     }] }),
   });
   globalThis.approvedDbUpdateFixture = () => ({
     set: data => {
       update = data;
-      return {
-        where: () => ({ returning: async () => [{ id: 1, projectId: 1, reportNumber: 6, reportDate: body.reportDate ?? "2026-10-20", periodEnd: body.periodEnd ?? storedPeriodEnd, status: "draft", ...data }] }),
-      };
+      return { where: () => ({ returning: async () => [{ id: 4, projectId: 1, status: "draft", ...saved, ...data }] }) };
     },
   });
   const res = { code: 200, status(code) { this.code = code; return this; }, json(value) { this.body = value; return this; } };
   try {
-    await patchHandler({
-      params: { projectId: "1", id: "6" },
-      body,
-      user: { userId: 1 },
-    }, res, () => {});
+    await patchHandler({ params: { projectId: "1", id: "4" }, body, user: { userId: 1 } }, res, () => {});
     return { response: res, update };
   } finally {
     delete globalThis.approvedDbSelectFixture;
@@ -162,149 +173,127 @@ test("approved route requires explicit valid percentage and period work", async 
     assert.equal((await invoke({ ...base, ...patch })).code, 400);
   }
 });
-test("future forecast drafts cannot be approved before their target date", async () => {
+test("a future report draft saves without work text, percentage, or a projected snapshot", async () => {
+  const { response, inserted } = await invokeCreate({
+    type: "period",
+    reportDate: "2099-12-20",
+    periodStart: "2099-12-01",
+    periodEnd: "2099-12-20",
+  });
+  assert.equal(response.code, 201);
+  assert.equal(inserted.workDescription, "");
+  assert.equal(inserted.progressPercentage, null);
+  assert.equal(inserted.activitiesSnapshot, null);
+  assert.equal(response.body.progressPercentage, null);
+  assert.equal(response.body.activitiesSnapshot, null);
+  assert.equal("forecastDraft" in response.body, false);
+});
+test("an ordinary report can be saved without work text but cannot be approved until completed", async () => {
+  const { response, inserted } = await invokeCreate({
+    type: "period",
+    reportDate: "2000-01-02",
+    periodStart: "2000-01-01",
+    periodEnd: "2000-01-02",
+    progressSource: "manual",
+    progressPercentage: 42,
+    workDescription: "   ",
+  });
+  assert.equal(response.code, 201);
+  assert.equal(inserted.workDescription, "");
+  assert.equal(response.body.status, "draft");
+  assert.equal(response.body.progressPercentage, 42);
+
+  const approval = await invokeStatus("approved", {
+    status: "draft",
+    reportDate: "2000-01-02",
+    periodStart: "2000-01-01",
+    periodEnd: "2000-01-02",
+    workDescription: "",
+    progressPercentage: 42,
+  });
+  assert.equal(approval.code, 409);
+  assert.match(approval.body.error, /أكمل تواريخ الفترة ووصف الأعمال ونسبة الإنجاز/);
+});
+test("future report drafts cannot be approved until dates and report data are complete", async () => {
   const response = await invokeStatus("approved", {
-    status: "draft", forecastDraft: true, periodEnd: "2026-12-20", progressSource: null,
+    status: "draft", reportDate: "2099-12-20", periodStart: "2099-12-01",
+    periodEnd: "2099-12-20", workDescription: "", progressPercentage: null,
   });
   assert.equal(response.code, 409);
-  assert.match(response.body.error, /توقع وليست تقرير إنجاز فعلياً/);
+  assert.match(response.body.error, /قبل حلول تاريخه/);
 });
-test("matured forecast drafts approve with historical actuals and become ordinary reports", async () => {
-  globalThis.approvedForecastFixture = async (_projectId, targetDate) => ({
-    forecastDraft: true, targetDate, today: "2026-11-22",
-    actualAsOfDate: targetDate, actualAvailable: true, actualProgress: 47,
-    plannedProgress: 70, plannedSource: "project_schedule", actualSource: "history", activities: [{ id: 1, actualProgress: 47 }],
-  });
-  try {
-    const response = await invokeStatus("approved", {
-      status: "draft", forecastDraft: true, periodEnd: "2026-10-20", progressSource: null,
-    });
-    assert.equal(response.code, 200);
-    assert.equal(response.body.progressPercentage, 47);
-    assert.equal(response.body.progressSource, "history");
-    assert.equal(response.body.forecastDraft, false);
-    assert.equal(response.body.status, "approved");
-  } finally {
-    delete globalThis.approvedForecastFixture;
-  }
-});
-test("matured forecast approval preserves reviewed estimated-history provenance", async () => {
-  globalThis.approvedForecastFixture = async (_projectId, targetDate) => ({
-    forecastDraft: true, targetDate, today: "2026-11-22",
-    actualAsOfDate: targetDate, actualAvailable: true, actualProgress: 39.6,
-    plannedProgress: null, plannedSource: "project_schedule", actualSource: "estimated_history",
-    activities: [{ id: 1, actualProgress: null, actualHistoricalUnverified: true }],
-  });
-  try {
-    const response = await invokeStatus("approved", {
-      status: "draft", forecastDraft: true, periodEnd: "2026-10-20", progressSource: null,
-    });
-    assert.equal(response.code, 200);
-    assert.equal(response.body.progressPercentage, 39.6);
-    assert.equal(response.body.progressSource, "history");
-    assert.equal(response.body.progressHistorySource, "estimated");
-    assert.equal(response.body.activitiesSnapshot[0].actualProgress, null);
-    assert.equal(response.body.forecastDraft, false);
-  } finally {
-    delete globalThis.approvedForecastFixture;
-  }
-});
-
-test("matured forecast drafts require documented input when historical actuals are unavailable", async () => {
+test("an incomplete ordinary draft remains blocked after dates are no longer future", async () => {
   const response = await invokeStatus("approved", {
-    status: "draft", forecastDraft: true, periodEnd: "2026-10-20", progressSource: null,
+    status: "draft", reportDate: "2000-01-02", periodStart: "2000-01-01",
+    periodEnd: "2000-01-02", workDescription: "", progressPercentage: null,
   });
   assert.equal(response.code, 409);
-  assert.match(response.body.error, /أدخل النسبة الفعلية الموثقة/);
+  assert.match(response.body.error, /أكمل تواريخ الفترة ووصف الأعمال ونسبة الإنجاز/);
 });
-test("matured forecast appears as a normal draft with its dated historical percentage", async () => {
-  globalThis.approvedForecastFixture = async (_projectId, targetDate) => ({
-    forecastDraft: true, targetDate, today: "2026-11-22",
-    actualAsOfDate: targetDate, actualAvailable: true, actualProgress: 47,
-    plannedProgress: 70, plannedSource: "project_schedule", actualSource: "history", activities: [],
-  });
-  try {
-    const response = await invokeReportsList({
-      id: 1, projectId: 1, reportNumber: 4, type: "period",
-      reportDate: "2026-10-20", periodStart: "2026-10-01", periodEnd: "2026-10-20",
-      workDescription: "أعمال الفترة", progressPercentage: 0,
-      imageGroups: null, forecastDraft: true, progressSource: null, status: "draft",
-    });
-    assert.equal(response.code, 200);
-    assert.equal(response.body[0].forecastDraft, false);
-    assert.equal(response.body[0].forecastMatured, true);
-    assert.equal(response.body[0].actualAvailable, true);
-    assert.equal(response.body[0].progressPercentage, 47);
-    assert.equal(response.body[0].progressSource, "history");
-    assert.equal(response.body[0].status, "draft");
-  } finally {
-    delete globalThis.approvedForecastFixture;
-  }
-});
-test("matured forecast list preserves a reviewed estimated aggregate and its source", async () => {
-  globalThis.approvedForecastFixture = async (_projectId, targetDate) => ({
-    forecastDraft: true, targetDate, today: "2026-11-22",
-    actualAsOfDate: targetDate, actualAvailable: true, actualProgress: 39.6,
-    plannedProgress: null, plannedSource: "unavailable", actualSource: "estimated_history", activities: [],
-  });
-  try {
-    const response = await invokeReportsList({
-      id: 1, projectId: 1, reportNumber: 5, type: "period",
-      reportDate: "2026-11-20", periodStart: "2026-09-22", periodEnd: "2026-11-20",
-      workDescription: "أعمال الفترة", progressPercentage: 0,
-      imageGroups: null, forecastDraft: true, progressSource: null, status: "draft",
-    });
-    assert.equal(response.code, 200);
-    assert.equal(response.body[0].forecastDraft, false);
-    assert.equal(response.body[0].actualAvailable, true);
-    assert.equal(response.body[0].progressPercentage, 39.6);
-    assert.equal(response.body[0].progressHistorySource, "estimated");
-  } finally {
-    delete globalThis.approvedForecastFixture;
-  }
-});
-
-test("matured forecast with no history stays a normal draft marked for actual entry", async () => {
-  const response = await invokeReportsList({
-    id: 1, projectId: 1, reportNumber: 5, type: "period",
-    reportDate: "2026-10-20", periodStart: "2026-10-01", periodEnd: "2026-10-20",
-    workDescription: "أعمال الفترة", progressPercentage: 0,
-    imageGroups: null, forecastDraft: true, progressSource: null, status: "draft",
+test("a complete current or past ordinary draft can be explicitly approved", async () => {
+  const response = await invokeStatus("approved", {
+    status: "draft", reportDate: "2000-01-02", periodStart: "2000-01-01",
+    periodEnd: "2000-01-02", workDescription: "أعمال الفترة", progressPercentage: 42,
   });
   assert.equal(response.code, 200);
-  assert.equal(response.body[0].forecastDraft, false);
-  assert.equal(response.body[0].forecastMatured, true);
-  assert.equal(response.body[0].actualAvailable, false);
-  assert.equal(response.body[0].progressPercentage, 0);
+  assert.equal(response.body.status, "approved");
+  assert.equal(response.body.progressPercentage, 42);
 });
-test("matured forecast accepts a documented percentage through ordinary report editing", async () => {
-  const { response, update } = await invokePatchMaturedForecast({
-    progressPercentage: 42, progressSource: "manual", workDescription: "الأعمال المنفذة فعلياً",
+test("a future draft can be dated back and completed through ordinary manual progress entry", async () => {
+  const { response, update } = await invokePatch({
+    reportDate: "2000-01-02",
+    periodStart: "2000-01-01",
+    periodEnd: "2000-01-02",
+    workDescription: "الأعمال المنفذة فعلياً",
+    progressPercentage: 42,
+    progressSource: "manual",
   });
   assert.equal(response.code, 200);
+  assert.equal(update.reportDate, "2000-01-02");
+  assert.equal(update.periodEnd, "2000-01-02");
   assert.equal(update.progressPercentage, 42);
   assert.equal(update.progressSource, "manual");
-  assert.equal(update.forecastDraft, undefined);
+  assert.equal(update.activitiesSnapshot, undefined);
 });
-test("a future draft edited to a past date uses the ordinary documented-progress path", async () => {
-  const targetDate = "2026-10-20";
-  const { response, update } = await invokePatchMaturedForecast({
-    reportDate: targetDate, periodEnd: targetDate,
-    progressPercentage: 42, progressSource: "manual", workDescription: "الأعمال المنفذة فعلياً",
-  }, "2026-12-20");
+test("a report with a future period end cannot store a manual percentage or snapshot", async () => {
+  const { response, update } = await invokePatch({
+    reportDate: "2000-01-02",
+    periodEnd: "2099-12-20",
+    workDescription: "أعمال مستقبلية",
+    progressPercentage: 42,
+    progressSource: "manual",
+  }, { periodStart: "2000-01-01", periodEnd: "2099-12-20" });
   assert.equal(response.code, 200);
-  assert.equal(update.progressPercentage, 42);
-  assert.equal(update.progressSource, "manual");
-});
-test("changing a matured draft date clears manual actuals when the new date has no history", async () => {
-  const targetDate = "2026-10-20";
-  const { response, update } = await invokePatchMaturedForecast({
-    reportDate: targetDate, periodEnd: targetDate,
-    workDescription: "تحديث الفترة",
-  }, "2026-10-10", "manual");
-  assert.equal(response.code, 200);
-  assert.equal(update.progressPercentage, 0);
+  assert.equal(update.progressPercentage, null);
   assert.equal(update.progressSource, null);
+  assert.equal(update.activitiesSnapshot, null);
+
+  const snapshotAttempt = await invokePatch({
+    reportDate: "2000-01-02",
+    periodEnd: "2099-12-20",
+    activitiesSnapshot: [{ id: 1, actualProgress: 100, status: "completed" }],
+  }, { periodStart: "2000-01-01", periodEnd: "2099-12-20" });
+  assert.equal(snapshotAttempt.response.code, 409);
+});
+test("future drafts in the reports list retain missing progress without forecast fields", async () => {
+  const response = await invokeReportsList({
+    id: 4, projectId: 1, reportNumber: 3, type: "period",
+    reportDate: "2099-12-20", periodStart: "2099-12-01", periodEnd: "2099-12-20",
+    workDescription: "", progressPercentage: null, imageGroups: null, status: "draft",
+  });
+  assert.equal(response.code, 200);
+  assert.equal(response.body[0].progressPercentage, null);
+  assert.equal(response.body[0].status, "draft");
+  assert.equal("forecastDraft" in response.body[0], false);
+});
+test("migration converts only legacy draft forecasts and clears projected values", () => {
+  const migration = fs.readFileSync(new URL("../../../lib/db/migrations/0016_future_report_drafts.sql", import.meta.url), "utf8");
+  assert.match(migration, /WHERE forecast_draft = true\s+AND status = 'draft'/);
+  assert.match(migration, /WHEN progress_source = 'manual'/);
+  assert.match(migration, /progress_percentage IS NOT NULL/);
+  assert.match(migration, /progress_percentage = CASE/);
+  assert.match(migration, /activities_snapshot = NULL/);
+  assert.doesNotMatch(migration, /UPDATE activities/i);
 });
 test("missing history still permits documented work without reading today's activities", async t => {
   const originalFetch = globalThis.fetch;
@@ -374,7 +363,10 @@ test("saved report uses its own dated snapshot, not new history or current proje
   await withPromptCapture(async prompts => {
     globalThis.approvedHistoryFixture = () => { throw new Error("Saved report must not read newer history"); };
     globalThis.approvedDbSelectFixture = () => ({
-      from: () => ({ where: async () => [{ id: 3, periodEnd: base.periodEnd, snapshot: historicalRows }] }),
+      from: () => ({ where: async () => [{
+        id: 3, reportDate: base.reportDate, periodStart: base.periodStart,
+        periodEnd: base.periodEnd, snapshot: historicalRows,
+      }] }),
     });
     const res = await invoke({ ...base, reportId: 3, workDescription: "" });
     if (res.code === 503) { t.skip("No provider configured"); return; }
@@ -382,6 +374,24 @@ test("saved report uses its own dated snapshot, not new history or current proje
     assert.ok(prompts[0].includes('"actualProgressAsOfPeriodEnd":40'));
     const wrongPeriod = await invoke({ ...base, reportId: 3, periodEnd: "2026-10-01" });
     assert.equal(wrongPeriod.code, 409);
+  });
+});
+test("AI drafting rejects report dates that have not been saved yet", async t => {
+  await withPromptCapture(async prompts => {
+    globalThis.approvedDbSelectFixture = () => ({
+      from: () => ({ where: async () => [{
+        id: 3,
+        reportDate: base.reportDate,
+        periodStart: base.periodStart,
+        periodEnd: base.periodEnd,
+        snapshot: historicalRows,
+      }] }),
+    });
+    const res = await invoke({ ...base, reportId: 3, periodStart: "2026-09-02" });
+    if (res.code === 503) { t.skip("No provider configured"); return; }
+    assert.equal(res.code, 409);
+    assert.match(res.body.error, /احفظ التواريخ قبل الصياغة/);
+    assert.equal(prompts.length, 0);
   });
 });
 test("unverified or missing historical activity values cannot replace missing work description", async t => {
@@ -402,7 +412,10 @@ test("unverified or missing historical activity values cannot replace missing wo
 test("legacy report without a snapshot analyses audit reconstruction without requiring a historical aggregate", async t => {
   await withPromptCapture(async prompts => {
     globalThis.approvedDbSelectFixture = () => ({
-      from: () => ({ where: async () => [{ id: 3, periodEnd: base.periodEnd, snapshot: null }] }),
+      from: () => ({ where: async () => [{
+        id: 3, reportDate: base.reportDate, periodStart: base.periodStart,
+        periodEnd: base.periodEnd, snapshot: null,
+      }] }),
     });
     globalThis.approvedHistoryFixture = async () => ({
       available: false, overallProgress: null,
@@ -419,7 +432,10 @@ test("legacy report without a snapshot analyses audit reconstruction without req
 test("manual period approval feeds AI even for a missing historical value and keeps plan unknown", async t => {
   await withPromptCapture(async prompts => {
     globalThis.approvedDbSelectFixture = () => ({
-      from: () => ({ where: async () => [{ id: 3, periodEnd: base.periodEnd, snapshot: null }] }),
+      from: () => ({ where: async () => [{
+        id: 3, reportDate: base.reportDate, periodStart: base.periodStart,
+        periodEnd: base.periodEnd, snapshot: null,
+      }] }),
     });
     globalThis.approvedHistoryFixture = async () => ({
       available: false, activities: [{

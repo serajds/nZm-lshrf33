@@ -26,7 +26,6 @@ export type ReportActivitiesSnapshotItem = {
   actualHistoricalUnverified?: boolean;
   plannedAsOfDate?: Date;
   plannedHistoricalUnverified?: boolean;
-  forecastStatus?: string;
   /** @nullable */
   actualStatus?: string | null;
 };

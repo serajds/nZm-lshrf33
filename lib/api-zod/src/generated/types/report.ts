@@ -20,7 +20,8 @@ export interface Report {
   periodStart: Date;
   periodEnd: Date;
   workDescription: string;
-  progressPercentage: number;
+  /** @nullable */
+  progressPercentage: number | null;
   /** @nullable */
   technicalNotes?: string | null;
   /** @nullable */
@@ -30,9 +31,6 @@ export interface Report {
   imageGroups?: ReportImageGroupsItem[] | null;
   /** @nullable */
   activitiesSnapshot?: ReportActivitiesSnapshotItem[] | null;
-  forecastDraft: boolean;
-  forecastMatured?: boolean;
-  actualAvailable?: boolean;
   /** @nullable */
   progressSource?: ReportProgressSource;
   status: ReportStatus;

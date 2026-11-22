@@ -599,37 +599,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Report"
 
-  /projects/{projectId}/reports/forecast-as-of:
-    get:
-      operationId: getReportForecastProgress
-      tags: [reports]
-      summary: Preview a report draft from the schedule without forecasting actual progress
-      parameters:
-        - name: projectId
-          in: path
-          required: true
-          schema:
-            type: integer
-        - name: targetDate
-          in: query
-          required: true
-          schema:
-            type: string
-            format: date
-      responses:
-        "200":
-          description: Planned schedule values and separately dated verified actual progress
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReportForecastProgress"
-        "400":
-          description: Invalid target date
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /projects/{projectId}/reports/{id}:
     get:
       operationId: getReport
@@ -2620,7 +2589,7 @@ components:
         workDescription:
           type: string
         progressPercentage:
-          type: number
+          type: ["number", "null"]
         technicalNotes:
           type: ["string", "null"]
         recommendations:
@@ -2691,16 +2660,8 @@ components:
                 format: date
               plannedHistoricalUnverified:
                 type: boolean
-              forecastStatus:
-                type: string
               actualStatus:
                 type: ["string", "null"]
-        forecastDraft:
-          type: boolean
-        forecastMatured:
-          type: boolean
-        actualAvailable:
-          type: boolean
         progressSource:
           type: ["string", "null"]
           enum: [history, manual, null]
@@ -2730,7 +2691,6 @@ components:
         - workDescription
         - progressPercentage
         - imageUrls
-        - forecastDraft
         - status
         - createdAt
         - updatedAt
@@ -2753,7 +2713,7 @@ components:
         workDescription:
           type: string
         progressPercentage:
-          type: number
+          type: ["number", "null"]
         technicalNotes:
           type: ["string", "null"]
         recommendations:
@@ -2778,145 +2738,11 @@ components:
             required:
               - category
               - urls
-        forecastDraft:
-          type: boolean
       required:
         - type
         - reportDate
         - periodStart
         - periodEnd
-        - workDescription
-        - progressPercentage
-
-    ReportForecastProgress:
-      type: object
-      properties:
-        forecastDraft:
-          type: boolean
-        targetDate:
-          type: string
-          format: date
-        today:
-          type: string
-          format: date
-        actualAsOfDate:
-          type: string
-          format: date
-        actualAvailable:
-          type: boolean
-        actualProgress:
-          type: ["number", "null"]
-        plannedProgress:
-          type: ["number", "null"]
-        plannedSource:
-          type: string
-          enum: [project_schedule, unavailable]
-        actualSource:
-          type: string
-          enum: [history, estimated_history, approved_report, unavailable]
-        actualReportNumber:
-          type: ["integer", "null"]
-        manualSuggestion:
-          type: ["object", "null"]
-          properties:
-            reportNumber:
-              type: integer
-            progressPercentage:
-              type: number
-            actualAsOfDate:
-              type: string
-              format: date
-            reportDate:
-              type: string
-              format: date
-          required:
-            - reportNumber
-            - progressPercentage
-            - actualAsOfDate
-            - reportDate
-        activities:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: integer
-              name:
-                type: string
-              groupId:
-                type: ["integer", "null"]
-              plannedStartDate:
-                type: ["string", "null"]
-                format: date
-              plannedEndDate:
-                type: ["string", "null"]
-                format: date
-              actualStartDate:
-                type: ["string", "null"]
-                format: date
-              actualEndDate:
-                type: ["string", "null"]
-                format: date
-              externalSourceGroupId:
-                type: ["integer", "null"]
-              plannedProgress:
-                type: ["number", "null"]
-              actualProgress:
-                type: ["number", "null"]
-              weight:
-                type: number
-              status:
-                type: string
-              forecastStatus:
-                type: string
-              actualStatus:
-                type: ["string", "null"]
-              sortOrder:
-                type: integer
-              actualAsOfDate:
-                type: string
-                format: date
-              actualHistoricalUnverified:
-                type: boolean
-              plannedAsOfDate:
-                type: string
-                format: date
-              plannedHistoricalUnverified:
-                type: boolean
-            required:
-              - id
-              - name
-              - groupId
-              - plannedStartDate
-              - plannedEndDate
-              - actualStartDate
-              - actualEndDate
-              - externalSourceGroupId
-              - plannedProgress
-              - actualProgress
-              - weight
-              - status
-              - forecastStatus
-              - actualStatus
-              - sortOrder
-              - actualAsOfDate
-              - actualHistoricalUnverified
-              - plannedAsOfDate
-              - plannedHistoricalUnverified
-      required:
-        - forecastDraft
-        - targetDate
-        - today
-        - actualAsOfDate
-        - actualAvailable
-        - actualProgress
-        - plannedProgress
-        - plannedSource
-        - actualSource
-        - actualReportNumber
-        - manualSuggestion
-        - activities
-
     ReportAuditLogEntry:
       type: object
       properties:
