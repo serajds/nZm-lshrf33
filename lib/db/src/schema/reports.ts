@@ -41,6 +41,8 @@ export const reportImageSharesTable = pgTable("report_image_shares", {
   groupId: text("group_id").notNull(),
   tokenHash: text("token_hash").notNull(),
   status: text("status", { enum: ["pending", "uploading", "completed", "cancelled"] }).notNull().default("pending"),
+  uploadedCount: integer("uploaded_count").notNull().default(0),
+  maxImages: integer("max_images").notNull().default(20),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdById: integer("created_by_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

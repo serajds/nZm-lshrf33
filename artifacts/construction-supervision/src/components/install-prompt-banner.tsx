@@ -137,7 +137,7 @@ export function InstallPromptBanner() {
           <ol className="space-y-3 text-sm">
             <li className="flex items-start gap-3">
               <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground font-bold text-xs shrink-0">
-                ١
+                1
               </span>
               <span className="leading-6">
                 اضغط زر المشاركة <Share className="h-4 w-4 inline text-blue-600" /> في شريط Safari السفلي
@@ -145,7 +145,7 @@ export function InstallPromptBanner() {
             </li>
             <li className="flex items-start gap-3">
               <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground font-bold text-xs shrink-0">
-                ٢
+                2
               </span>
               <span className="leading-6">
                 اختر "إضافة إلى الشاشة الرئيسية" <Plus className="h-4 w-4 inline" />

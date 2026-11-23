@@ -57,7 +57,7 @@ export function ProjectActivityReminder({ projectId, canViewActivities }: {
   };
   const lastUpdate = reminder?.lastUpdatedAt ? new Date(reminder.lastUpdatedAt) : null;
   const formattedUpdate = lastUpdate && Number.isFinite(lastUpdate.getTime())
-    ? lastUpdate.toLocaleString("ar-LY", { timeZone: "Africa/Tripoli", dateStyle: "medium", timeStyle: "short" })
+    ? lastUpdate.toLocaleString("ar-LY-u-nu-latn", { timeZone: "Africa/Tripoli", dateStyle: "medium", timeStyle: "short" })
     : null;
 
   return (

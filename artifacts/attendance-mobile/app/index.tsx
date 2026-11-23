@@ -70,7 +70,7 @@ function formatDate(iso?: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("ar-LY", {
+  return new Intl.DateTimeFormat("ar-LY-u-nu-latn", {
     timeZone: "Africa/Tripoli",
     day: "numeric",
     month: "short",
@@ -541,7 +541,7 @@ function ProjectsScreen({ user }: { user: SessionUser }) {
     attendanceMutation.mutate({ project, type });
   }
 
-  const currentTime = new Intl.DateTimeFormat("ar-LY", {
+  const currentTime = new Intl.DateTimeFormat("ar-LY-u-nu-latn", {
     timeZone: "Africa/Tripoli",
     weekday: "long",
     day: "numeric",

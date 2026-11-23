@@ -82,13 +82,13 @@ function IosInstructions() {
         <Smartphone className="h-4 w-4" /> iPhone / iPad — Safari
       </div>
       <ol className="space-y-3 text-sm">
-        <Step n="١">
+        <Step n="1">
           اضغط زر المشاركة <Share className="h-4 w-4 inline text-blue-600" /> في شريط Safari السفلي
         </Step>
-        <Step n="٢">
+        <Step n="2">
           اختر "إضافة إلى الشاشة الرئيسية" <Plus className="h-4 w-4 inline" />
         </Step>
-        <Step n="٣">اضغط "إضافة" في الأعلى</Step>
+        <Step n="3">اضغط "إضافة" في الأعلى</Step>
       </ol>
       <p className="text-xs text-muted-foreground pt-2 border-t">
         يجب فتح الموقع داخل تطبيق Safari (وليس داخل واتساب أو أي تطبيق آخر).
@@ -104,11 +104,11 @@ function AndroidInstructions() {
         <Smartphone className="h-4 w-4" /> Android — Chrome
       </div>
       <ol className="space-y-3 text-sm">
-        <Step n="١">
+        <Step n="1">
           اضغط زر القائمة (ثلاث نقاط) <MoreVertical className="h-4 w-4 inline" /> أعلى يمين Chrome
         </Step>
-        <Step n="٢">اختر "تثبيت التطبيق" أو "Install app" أو "إضافة إلى الشاشة الرئيسية"</Step>
-        <Step n="٣">اضغط "تثبيت"</Step>
+        <Step n="2">اختر "تثبيت التطبيق" أو "Install app" أو "إضافة إلى الشاشة الرئيسية"</Step>
+        <Step n="3">اضغط "تثبيت"</Step>
       </ol>
       <p className="text-xs text-muted-foreground pt-2 border-t">
         إذا لم يظهر الخيار، تأكد من تحديث Chrome، وأن تفتح الموقع داخل Chrome مباشرة.
@@ -124,11 +124,11 @@ function DesktopChromeInstructions() {
         <Monitor className="h-4 w-4" /> الكمبيوتر — Chrome / Edge / Brave
       </div>
       <ol className="space-y-3 text-sm">
-        <Step n="١">
+        <Step n="1">
           ابحث عن أيقونة التثبيت <Download className="h-4 w-4 inline" /> على يسار شريط العنوان
         </Step>
-        <Step n="٢">أو افتح القائمة (ثلاث نقاط) واختر "تثبيت إدارة الإشراف..."</Step>
-        <Step n="٣">اضغط "تثبيت"</Step>
+        <Step n="2">أو افتح القائمة (ثلاث نقاط) واختر "تثبيت إدارة الإشراف..."</Step>
+        <Step n="3">اضغط "تثبيت"</Step>
       </ol>
       <p className="text-xs text-muted-foreground pt-2 border-t">
         إذا لم تظهر الأيقونة، تنقّل قليلاً داخل التطبيق ثم أعد فتح القائمة. بعض المتصفحات تطلب

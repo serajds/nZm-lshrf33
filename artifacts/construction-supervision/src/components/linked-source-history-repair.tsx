@@ -222,7 +222,7 @@ export function LinkedSourceHistoryRepair({
               <div className="flex items-start gap-2 text-sm">
                 <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                 <span>
-                  دفعة #{batch.id} · {new Intl.DateTimeFormat("ar-LY", { timeZone: "Africa/Tripoli", dateStyle: "medium", timeStyle: "short" }).format(new Date(batch.createdAt))}
+                  دفعة #{batch.id} · {new Intl.DateTimeFormat("ar-LY-u-nu-latn", { timeZone: "Africa/Tripoli", dateStyle: "medium", timeStyle: "short" }).format(new Date(batch.createdAt))}
                   <span className="mr-2 text-muted-foreground">{batch.revertedAt ? "تم التراجع" : "فعّالة"}</span>
                 </span>
               </div>

@@ -1,4 +1,5 @@
 export * from "./generated/api";
+export * from "./report-image-share";
 
 export * from "./generated/types/activity";
 export * from "./generated/types/activityDeviation";

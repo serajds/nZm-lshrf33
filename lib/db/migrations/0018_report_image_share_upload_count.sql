@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE report_image_shares
+  ADD COLUMN IF NOT EXISTS uploaded_count INTEGER NOT NULL DEFAULT 0;
+
+COMMIT;
