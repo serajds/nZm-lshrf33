@@ -239,7 +239,7 @@ export function ProjectProgressHistoryBackfill({
             )}
             {(payload?.batches ?? []).map(batch => (
               <div key={batch.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
-                <span>دفعة #{batch.id} · {new Date(batch.createdAt).toLocaleString("ar-LY")} · {batch.revertedAt ? "تم التراجع" : "فعّالة"}</span>
+                <span>دفعة #{batch.id} · {new Date(batch.createdAt).toLocaleString("ar-LY-u-nu-latn")} · {batch.revertedAt ? "تم التراجع" : "فعّالة"}</span>
                 {!batch.revertedAt && (
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => void revertBatch(batch.id)}>
                     <RotateCcw className="ml-1 h-4 w-4" /> تراجع

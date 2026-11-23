@@ -88,7 +88,7 @@ export function NewReportProgressField({ periodStart, periodEnd, data, loading, 
             </>
           ) : <p className="text-amber-700 dark:text-amber-400">{data?.reason}</p>}
         {data?.trackingStartedAt && (
-          <p>بداية السجل المتاح: {new Intl.DateTimeFormat("ar-LY", { timeZone: "Africa/Tripoli", dateStyle: "medium" }).format(new Date(data.trackingStartedAt))}.</p>
+          <p>بداية السجل المتاح: {new Intl.DateTimeFormat("ar-LY-u-nu-latn", { timeZone: "Africa/Tripoli", dateStyle: "medium" }).format(new Date(data.trackingStartedAt))}.</p>
         )}
         {manual && <p>أدخل الإنجاز التراكمي حتى نهاية الفترة، لا إنجاز الفترة وحدها. تُحفظ النسبة في هذا التقرير فقط، ولا تغيّر إنجاز المشروع أو نسب بنوده.</p>}
       </div>

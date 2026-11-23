@@ -4,7 +4,7 @@ export function fmtLibyaDateTime(iso: string | Date | null | undefined): string 
   if (!iso) return "—";
   const d = typeof iso === "string" ? new Date(iso) : iso;
   if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("ar-LY", {
+  return new Intl.DateTimeFormat("ar-LY-u-nu-latn", {
     timeZone: TZ,
     year: "numeric",
     month: "2-digit",

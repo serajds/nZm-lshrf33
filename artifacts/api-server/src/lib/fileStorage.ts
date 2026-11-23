@@ -126,10 +126,14 @@ export async function streamFromCloud(filename: string): Promise<{ stream: NodeJ
   }
 }
 
-export async function deleteFromCloud(filename: string): Promise<void> {
+export async function deleteFromCloudStrict(filename: string): Promise<void> {
   if (!BUCKET_ID) return;
+  await getBucket().file(UPLOADS_PREFIX + filename).delete({ ignoreNotFound: true });
+}
+
+export async function deleteFromCloud(filename: string): Promise<void> {
   try {
-    await getBucket().file(UPLOADS_PREFIX + filename).delete({ ignoreNotFound: true });
+    await deleteFromCloudStrict(filename);
   } catch (err) {
     console.error("Cloud delete failed for", filename, err);
   }

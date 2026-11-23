@@ -2,12 +2,13 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Camera, CheckCircle2, ImagePlus, Loader2, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES,
+  REPORT_IMAGE_MAX_BYTES,
+  isJpgReportImageUpload,
+} from "@workspace/api-zod";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
-const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
-const ALLOWED_TYPES = new Set([
-  "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/tiff",
-]);
 
 type PublicShare = {
   category: string;
@@ -15,6 +16,8 @@ type PublicShare = {
   status: "pending" | "uploading" | "completed";
   periodStart: string;
   periodEnd: string;
+  uploadedCount: number;
+  maxImages: number;
 };
 
 type UploadProgress = {
@@ -29,12 +32,16 @@ type UploadProgress = {
 function formatReportDate(value: string): string {
   const date = new Date(`${value}T00:00:00.000Z`);
   if (!Number.isFinite(date.getTime())) return value;
-  return new Intl.DateTimeFormat("ar-LY", {
+  return new Intl.DateTimeFormat("ar-LY-u-nu-latn", {
     year: "numeric",
     month: "short",
     day: "numeric",
     timeZone: "UTC",
   }).format(date);
+}
+
+function formatCount(value: number): string {
+  return new Intl.NumberFormat("ar-LY-u-nu-latn").format(value);
 }
 
 async function fileToBase64(file: File): Promise<string> {
@@ -61,7 +68,7 @@ function uploadImage(
   file: File,
   imageBase64: string,
   onProgress: (ratio: number) => void,
-): Promise<void> {
+): Promise<{ uploadedCount?: number; maxImages?: number }> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", `${API_BASE}/public/report-image-shares/upload`);
@@ -82,7 +89,7 @@ function uploadImage(
         }
       }
       if (request.status >= 200 && request.status < 300) {
-        resolve();
+        resolve(data as { uploadedCount?: number; maxImages?: number });
       } else {
         reject(new Error(typeof data.error === "string" ? data.error : "تعذّر رفع الصورة. أعد المحاولة."));
       }
@@ -112,6 +119,9 @@ export default function PublicReportImageUpload() {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const remainingImages = share
+    ? Math.max(0, share.maxImages - share.uploadedCount)
+    : 0;
 
   useEffect(() => {
     document.title = "رفع صور القسم";
@@ -130,23 +140,37 @@ export default function PublicReportImageUpload() {
       .finally(() => setLoading(false));
   }, [token]);
 
+  const refreshShare = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/public/report-image-shares?token=${encodeURIComponent(token)}`, { cache: "no-store" });
+      const data = await readJson(response);
+      if (response.ok) setShare(data as PublicShare);
+    } catch {
+      // Keep the last confirmed count visible if the refresh cannot connect.
+    }
+  };
+
   const uploadFiles = async (files: File[]) => {
     if (!token || files.length === 0 || uploading || completed) return;
     setError("");
     setNotice("");
 
     const validationErrors: string[] = [];
-    const validFiles = files.filter(file => {
-      if (!ALLOWED_TYPES.has(file.type)) {
-        validationErrors.push(`نوع الصورة غير مدعوم: ${file.name}`);
+    const acceptedFiles = files.filter(file => {
+      if (!isJpgReportImageUpload(file.name, file.type)) {
+        validationErrors.push(`يُسمح فقط بالصور ذات الامتداد JPG: ${file.name}`);
         return false;
       }
-      if (file.size <= 0 || file.size > MAX_IMAGE_BYTES) {
-        validationErrors.push(`يجب ألا يتجاوز حجم الصورة 15 ميغابايت: ${file.name}`);
+      if (file.size <= 0 || file.size > REPORT_IMAGE_MAX_BYTES) {
+        validationErrors.push(`يجب ألا يتجاوز حجم الصورة 5 ميغابايت: ${file.name}`);
         return false;
       }
       return true;
     });
+    if (acceptedFiles.length > remainingImages) {
+      validationErrors.push(`يمكنك اختيار ${formatCount(remainingImages)} صورة إضافية فقط؛ الحد الذي اختاره منشئ الرابط ${formatCount(share?.maxImages ?? REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES)} صورة.`);
+    }
+    const validFiles = acceptedFiles.slice(0, remainingImages);
     setError(validationErrors.join("\n"));
     if (validFiles.length === 0) {
       if (fileInput.current) fileInput.current.value = "";
@@ -156,6 +180,7 @@ export default function PublicReportImageUpload() {
     const totalBytes = validFiles.reduce((total, file) => total + file.size, 0);
     let loadedBytes = 0;
     let uploadedCount = 0;
+    let requestFailed = false;
     setUploading(true);
     setUploadProgress({
       loadedBytes: 0,
@@ -176,7 +201,7 @@ export default function PublicReportImageUpload() {
           fileName: file.name,
         });
         const imageBase64 = await fileToBase64(file);
-        await uploadImage(token, file, imageBase64, ratio => {
+        const result = await uploadImage(token, file, imageBase64, ratio => {
           setUploadProgress({
             loadedBytes: Math.min(totalBytes, loadedBytes + Math.floor(file.size * ratio)),
             totalBytes,
@@ -188,6 +213,12 @@ export default function PublicReportImageUpload() {
         });
         loadedBytes += file.size;
         uploadedCount += 1;
+        setShare(current => current ? {
+          ...current,
+          status: "uploading",
+          uploadedCount: result.uploadedCount ?? current.uploadedCount + 1,
+          maxImages: result.maxImages ?? current.maxImages,
+        } : current);
         setUploadProgress({
           loadedBytes,
           totalBytes,
@@ -196,15 +227,16 @@ export default function PublicReportImageUpload() {
           uploadedFiles: uploadedCount,
           fileName: file.name,
         });
-        setShare(current => current ? { ...current, status: "uploading" } : current);
       } catch (err) {
+        requestFailed = true;
         validationErrors.push(err instanceof Error ? err.message : "تعذّر رفع الصورة. أعد المحاولة.");
         setError(validationErrors.join("\n"));
       }
     }
+    if (requestFailed) await refreshShare();
     setUploading(false);
     if (uploadedCount > 0) {
-      setNotice(`تم رفع ${uploadedCount} صورة وإضافتها إلى القسم. مهم: اضغط «إنهاء الرفع» بعد إضافة جميع الصور لتأكيد اكتمال القسم.`);
+      setNotice(`تم رفع ${formatCount(uploadedCount)} صورة عبر هذا الطلب. مهم: اضغط «إنهاء الرفع» بعد إضافة جميع الصور لتأكيد اكتمال القسم.`);
     }
     if (fileInput.current) fileInput.current.value = "";
   };
@@ -212,7 +244,7 @@ export default function PublicReportImageUpload() {
   const handleDragEnter = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    if (uploading || completing || completed) return;
+    if (uploading || completing || completed || remainingImages === 0) return;
     dragDepth.current += 1;
     setDragActive(true);
   };
@@ -220,7 +252,7 @@ export default function PublicReportImageUpload() {
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    event.dataTransfer.dropEffect = uploading || completing || completed ? "none" : "copy";
+    event.dataTransfer.dropEffect = uploading || completing || completed || remainingImages === 0 ? "none" : "copy";
   };
 
   const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
@@ -235,7 +267,7 @@ export default function PublicReportImageUpload() {
     event.stopPropagation();
     dragDepth.current = 0;
     setDragActive(false);
-    if (uploading || completing || completed) return;
+    if (uploading || completing || completed || remainingImages === 0) return;
     void uploadFiles(Array.from(event.dataTransfer.files));
   };
 
@@ -303,6 +335,21 @@ export default function PublicReportImageUpload() {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-3 gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-center text-sm">
+                  <div>
+                    <div className="text-xs text-muted-foreground">الحد الأقصى</div>
+                    <div className="mt-1 font-bold tabular-nums">{formatCount(share.maxImages)} صورة</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">المرفوع عبر الرابط</div>
+                    <div className="mt-1 font-bold tabular-nums">{formatCount(share.uploadedCount)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">المتبقي</div>
+                    <div className="mt-1 font-bold tabular-nums">{formatCount(remainingImages)}</div>
+                  </div>
+                </div>
+
                 <div className="rounded-lg border bg-white px-4 py-3 text-sm">
                   {completed ? (
                     <span className="inline-flex items-center gap-2 font-semibold text-emerald-800">
@@ -319,7 +366,7 @@ export default function PublicReportImageUpload() {
                   )}
                   {!completed && (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      ينتهي الرابط في {new Date(share.expiresAt).toLocaleDateString("ar-SA")}
+                      ينتهي الرابط في {new Date(share.expiresAt).toLocaleDateString("ar-SA-u-nu-latn")}
                     </p>
                   )}
                 </div>
@@ -329,11 +376,11 @@ export default function PublicReportImageUpload() {
                     <input
                       ref={fileInput}
                       type="file"
-                      accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/tiff"
+                      accept=".jpg,image/jpeg"
                       multiple
                       className="sr-only"
                       onChange={event => void uploadFiles(Array.from(event.currentTarget.files ?? []))}
-                      disabled={uploading || completing}
+                      disabled={uploading || completing || remainingImages === 0}
                     />
                     {uploadProgress && (
                       <div className="space-y-2 rounded-lg border bg-white px-4 py-3" aria-live="polite">
@@ -382,9 +429,9 @@ export default function PublicReportImageUpload() {
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Button type="button" variant="outline" className="h-11 gap-2"
-                        disabled={uploading || completing} onClick={() => fileInput.current?.click()}>
+                        disabled={uploading || completing || remainingImages === 0} onClick={() => fileInput.current?.click()}>
                         {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                        {uploading ? "جارٍ رفع الصور..." : "اختيار الصور"}
+                        {uploading ? "جارٍ رفع الصور..." : remainingImages === 0 ? "اكتمل الحد الأقصى" : "اختيار الصور"}
                       </Button>
                       <Button type="button" className="h-11 gap-2" disabled={uploading || completing}
                         onClick={() => void finishUpload()}>
@@ -393,7 +440,7 @@ export default function PublicReportImageUpload() {
                       </Button>
                     </div>
                     <p className="text-xs leading-6 text-muted-foreground">
-                      الصور فقط، وبحد أقصى 15 ميغابايت للصورة. لا يتيح هذا الرابط مشاهدة التقرير أو الصور الموجودة.
+                      صور JPG فقط، بحد أقصى {formatCount(share.maxImages)} صورة لهذا الرابط و5 ميغابايت للصورة.
                     </p>
                   </>
                 )}

@@ -23,6 +23,12 @@ import {
   processFetchResponse,
 } from "@workspace/api-client-react";
 import type { ReportAuditLogEntry } from "@workspace/api-client-react";
+import {
+  REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES,
+  REPORT_IMAGE_SHARE_MAX_LIMIT,
+  REPORT_IMAGE_MAX_BYTES,
+  isJpgReportImageUpload,
+} from "@workspace/api-zod";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
 import type { Report, Activity, CreateReportBody, UpdateReportBody, ReportActivitiesSnapshotItem, UpdateReportBodyActivitiesSnapshotItem } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -501,6 +507,21 @@ export default function ProjectReports() {
   const [uploadProgress, setUploadProgress] = useState<Record<number, GroupUploadState>>({});
   const [dragOverGroupIdx, setDragOverGroupIdx] = useState<number | null>(null);
   const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
+  const [pendingImageGroupDeletion, setPendingImageGroupDeletion] = useState<{
+    index: number;
+    category: string;
+    urls: string[];
+  } | null>(null);
+  const [deleteImageUrls, setDeleteImageUrls] = useState<string[]>([]);
+  const [pendingGroupShare, setPendingGroupShare] = useState<
+    | { mode: "copy"; reportId: number; groupIndex: number; shareStatus?: ImageGroup["shareStatus"] }
+    | { mode: "whatsapp"; report: Report; groupIndex: number; group: ImageGroup }
+    | null
+  >(null);
+  const [groupShareMaxImages, setGroupShareMaxImages] = useState(
+    String(REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES),
+  );
+  const [isCreatingGroupShare, setIsCreatingGroupShare] = useState(false);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
   type ImageOptimizationJob = {
@@ -516,7 +537,7 @@ export default function ProjectReports() {
   };
   const [imageOptimizationJob, setImageOptimizationJob] = useState<ImageOptimizationJob | null>(null);
   const [startingImageOptimization, setStartingImageOptimization] = useState(false);
-  const groupShareLinks = useRef(new Map<string, { url: string; expiresAt: number }>());
+  const groupShareLinks = useRef(new Map<string, { url: string; expiresAt: number; maxImages: number }>());
   const isAnyUploading = Object.keys(uploadProgress).length > 0;
 
   // Editable copy of the report's activities snapshot. Populated when
@@ -751,6 +772,8 @@ export default function ProjectReports() {
   const handleEdit = async (r: Report, opener?: HTMLElement) => {
     editOpenerRef.current = opener ?? null;
     setSelectedReportId(null);
+    setDeleteImageUrls([]);
+    setPendingImageGroupDeletion(null);
     setEditingId(r.id);
     const listDates = {
       reportDate: String(r.reportDate).slice(0, 10),
@@ -1073,9 +1096,13 @@ export default function ProjectReports() {
   };
 
   const handleImageUpload = async (files: File[], groupIndex: number) => {
-    const fileList = files.filter(file => file.type.startsWith("image/"));
-    if (fileList.length !== files.length) {
-      toast({ variant: "destructive", title: "يمكن إضافة ملفات الصور فقط" });
+    const jpgFiles = files.filter(file => isJpgReportImageUpload(file.name, file.type));
+    const fileList = jpgFiles.filter(file => file.size > 0 && file.size <= REPORT_IMAGE_MAX_BYTES);
+    if (jpgFiles.length !== files.length) {
+      toast({ variant: "destructive", title: "يُسمح فقط برفع الصور بامتداد JPG" });
+    }
+    if (fileList.length !== jpgFiles.length) {
+      toast({ variant: "destructive", title: "الحد الأقصى لحجم الصورة 5 ميغابايت" });
     }
     if (fileList.length === 0) return;
     setOpenGroupIdx(groupIndex);
@@ -1226,11 +1253,12 @@ export default function ProjectReports() {
             status: r.status ?? "not_started",
             actualManuallyApproved: r.actualManuallyApproved === true,
           }));
-        const updateBody: UpdateReportBody = {
+        const updateBody: UpdateReportBody & { deleteImageUrls?: string[] } = {
           ...rest,
           ...(futureDraft ? { progressPercentage: null } : {}),
           imageUrls: flatImageUrls,
           imageGroups: groupsForApi,
+          ...(deleteImageUrls.length > 0 ? { deleteImageUrls } : {}),
         };
         if (editingIncompleteDraft && !futureDraft && values.progressPercentage !== undefined) {
           const progressSource = editingProgressManual
@@ -1253,7 +1281,11 @@ export default function ProjectReports() {
         await updateReport.mutateAsync({ projectId, id: editingId, data: updateBody });
         queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, editingId) });
         queryClient.invalidateQueries({ queryKey: getGetReportAuditLogQueryKey(projectId, editingId) });
-        toast({ title: "تم التحديث" });
+        toast({
+          title: deleteImageUrls.length > 0
+            ? "تم تحديث التقرير وحذف الصور من النظام"
+            : "تم التحديث",
+        });
       } else {
         if (!futureDraft) {
           if (newReportManual ? !manualProgressEntered : !periodProgress.data?.available || periodProgress.isFetching) {
@@ -1286,6 +1318,8 @@ export default function ProjectReports() {
       queryClient.invalidateQueries({ queryKey: getListReportsQueryKey(projectId) });
       setIsDialogOpen(false);
       form.reset();
+      setDeleteImageUrls([]);
+      setPendingImageGroupDeletion(null);
       setEditingId(null);
       setEditingIncompleteDraft(false);
       setEditingProgressManual(false);
@@ -1312,15 +1346,21 @@ export default function ProjectReports() {
 
   const groupShareCacheKey = (reportId: number, groupIndex: number) => `${reportId}:${groupIndex}`;
 
-  const createGroupShareLink = async (reportId: number, groupIndex: number) => {
+  const createGroupShareLink = async (reportId: number, groupIndex: number, maxImages: number) => {
     const response = await fetchWithSession(
       `/api/projects/${projectId}/reports/${reportId}/image-groups/${groupIndex}/share`,
-      { method: "POST" },
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxImages }),
+      },
     );
     const result = await response.json().catch(() => ({})) as {
       publicToken?: string;
       expiresAt?: string;
       error?: string;
+      uploadedCount?: number;
+      maxImages?: number;
     };
     if (!response.ok || !result.publicToken || !result.expiresAt) {
       throw new Error(result.error || "تعذّر إنشاء رابط القسم");
@@ -1330,6 +1370,7 @@ export default function ProjectReports() {
     groupShareLinks.current.set(groupShareCacheKey(reportId, groupIndex), {
       url: link,
       expiresAt: new Date(result.expiresAt).getTime(),
+      maxImages: result.maxImages ?? maxImages,
     });
     refreshReportLists(reportId);
     return link;
@@ -1338,75 +1379,108 @@ export default function ProjectReports() {
   const getOrCreateGroupShareLink = async (
     reportId: number,
     groupIndex: number,
+    maxImages: number,
     shareStatus?: ImageGroup["shareStatus"],
   ) => {
     const key = groupShareCacheKey(reportId, groupIndex);
     const cached = groupShareLinks.current.get(key);
-    if (cached && cached.expiresAt > Date.now() && shareStatus !== "completed") return cached.url;
-    return createGroupShareLink(reportId, groupIndex);
+    if (cached && cached.expiresAt > Date.now() && cached.maxImages === maxImages && shareStatus !== "completed") {
+      return cached.url;
+    }
+    return createGroupShareLink(reportId, groupIndex, maxImages);
   };
 
   const createGroupShare = async (reportId: number, groupIndex: number, shareStatus?: ImageGroup["shareStatus"]) => {
+    setGroupShareMaxImages(String(REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES));
+    setPendingGroupShare({ mode: "copy", reportId, groupIndex, shareStatus });
+  };
+
+  const shareGroupViaWhatsApp = (
+    report: Report,
+    groupIndex: number,
+    group: ImageGroup,
+  ) => {
+    setGroupShareMaxImages(String(REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES));
+    setPendingGroupShare({ mode: "whatsapp", report, groupIndex, group });
+  };
+
+  const confirmGroupShareCreation = async () => {
+    const pending = pendingGroupShare;
+    const maxImages = Number(groupShareMaxImages);
+    if (!pending) return;
+    if (!Number.isSafeInteger(maxImages) || maxImages < 1 || maxImages > REPORT_IMAGE_SHARE_MAX_LIMIT) {
+      toast({
+        title: "قيمة الحد غير صالحة",
+        description: `أدخل عدداً صحيحاً من 1 إلى ${REPORT_IMAGE_SHARE_MAX_LIMIT}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsCreatingGroupShare(true);
+    const popup = pending.mode === "whatsapp" ? window.open("about:blank", "_blank") : null;
+    if (popup) popup.opener = null;
     try {
-      const link = await getOrCreateGroupShareLink(reportId, groupIndex, shareStatus);
-      try {
-        await navigator.clipboard.writeText(link);
-        toast({ title: "تم إنشاء الرابط ونسخه", description: "الرابط صالح لمدة 7 أيام، ويمكن إلغاؤه من التقرير." });
-      } catch {
-        window.prompt("انسخ رابط رفع الصور للقسم", link);
+      const link = pending.mode === "copy"
+        ? await getOrCreateGroupShareLink(pending.reportId, pending.groupIndex, maxImages, pending.shareStatus)
+        : await getOrCreateGroupShareLink(pending.report.id, pending.groupIndex, maxImages, pending.group.shareStatus);
+      setPendingGroupShare(null);
+      const limitText = maxImages.toLocaleString("en-US");
+      if (pending.mode === "copy") {
+        try {
+          await navigator.clipboard.writeText(link);
+          toast({
+            title: "تم إنشاء الرابط ونسخه",
+            description: `يسمح الرابط برفع ${limitText} صورة كحد أقصى، وصلاحيته 7 أيام ويمكن إلغاؤه من التقرير.`,
+          });
+        } catch {
+          window.prompt("انسخ رابط رفع الصور للقسم", link);
+          toast({
+            title: "تم إنشاء رابط القسم",
+            description: `يسمح الرابط برفع ${limitText} صورة كحد أقصى، وصلاحيته 7 أيام ويمكن إلغاؤه من التقرير.`,
+          });
+        }
+      } else {
+        const report = pending.report;
+        const group = pending.group;
+        const message = [
+          "السلام عليكم،",
+          `يرجى رفع صور قسم «${group.category}» في التقرير.`,
+          `يسمح هذا الرابط برفع ${limitText} صورة كحد أقصى.`,
+          `فترة التقرير من ${fmtDate(report.periodStart)} إلى ${fmtDate(report.periodEnd)}.`,
+          "",
+          "طريقة الرفع:",
+          "1. افتح الرابط أدناه.",
+          "2. اسحب الصور وأفلتها أو اخترها من جهازك.",
+          "3. بعد رفع جميع الصور اضغط «إنهاء الرفع» لتأكيد اكتمال القسم.",
+          "",
+          `رابط رفع الصور: ${link}`,
+        ].join("\n");
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+        if (popup) {
+          popup.location.href = whatsappUrl;
+          toast({ title: "جهزت رسالة المشاركة عبر واتساب" });
+        } else {
+          try {
+            await navigator.clipboard.writeText(message);
+            toast({
+              title: "تعذّر فتح واتساب تلقائياً",
+              description: "نسخت رسالة المشاركة كاملة؛ افتح واتساب والصقها.",
+            });
+          } catch {
+            window.prompt("انسخ رسالة المشاركة إلى واتساب", message);
+          }
+        }
       }
     } catch (error) {
+      popup?.close();
+      setPendingGroupShare(null);
       toast({
         title: "تعذّر إنشاء رابط القسم",
         description: error instanceof Error ? error.message : "تحقق من الاتصال ثم حاول مرة أخرى.",
         variant: "destructive",
       });
-    }
-  };
-
-  const shareGroupViaWhatsApp = async (
-    report: Report,
-    groupIndex: number,
-    group: ImageGroup,
-  ) => {
-    const popup = window.open("about:blank", "_blank");
-    if (popup) popup.opener = null;
-    try {
-      const link = await getOrCreateGroupShareLink(report.id, groupIndex, group.shareStatus);
-      const message = [
-        "السلام عليكم،",
-        `يرجى رفع صور قسم «${group.category}» في التقرير.`,
-        `فترة التقرير من ${fmtDate(report.periodStart)} إلى ${fmtDate(report.periodEnd)}.`,
-        "",
-        "طريقة الرفع:",
-        "1. افتح الرابط أدناه.",
-        "2. اسحب الصور وأفلتها أو اخترها من جهازك.",
-        "3. بعد رفع جميع الصور اضغط «إنهاء الرفع» لتأكيد اكتمال القسم.",
-        "",
-        `رابط رفع الصور: ${link}`,
-      ].join("\n");
-      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-      if (popup) {
-        popup.location.href = whatsappUrl;
-        toast({ title: "جهزت رسالة المشاركة عبر واتساب" });
-      } else {
-        try {
-          await navigator.clipboard.writeText(message);
-          toast({
-            title: "تعذّر فتح واتساب تلقائياً",
-            description: "نسخت رسالة المشاركة كاملة؛ افتح واتساب والصقها.",
-          });
-        } catch {
-          window.prompt("انسخ رسالة المشاركة إلى واتساب", message);
-        }
-      }
-    } catch (error) {
-      popup?.close();
-      toast({
-        title: "تعذّر تجهيز مشاركة واتساب",
-        description: error instanceof Error ? error.message : "تحقق من الاتصال ثم حاول مرة أخرى.",
-        variant: "destructive",
-      });
+    } finally {
+      setIsCreatingGroupShare(false);
     }
   };
 
@@ -1465,6 +1539,27 @@ export default function ProjectReports() {
     const current = form.getValues("imageGroups") ?? [];
     const updated = current.filter((_, i) => i !== groupIndex);
     form.setValue("imageGroups", updated, { shouldDirty: true });
+  };
+
+  const requestImageGroupDeletion = (groupIndex: number) => {
+    const group = (form.getValues("imageGroups") ?? [])[groupIndex];
+    if (!group || uploadProgress[groupIndex]) return;
+    if (group.urls.length === 0) {
+      removeImageGroup(groupIndex);
+      return;
+    }
+    setPendingImageGroupDeletion({
+      index: groupIndex,
+      category: group.category,
+      urls: [...group.urls],
+    });
+  };
+
+  const confirmImageGroupDeletion = () => {
+    if (!pendingImageGroupDeletion) return;
+    setDeleteImageUrls(current => [...new Set([...current, ...pendingImageGroupDeletion.urls])]);
+    removeImageGroup(pendingImageGroupDeletion.index);
+    setPendingImageGroupDeletion(null);
   };
 
   const removeImageFromGroup = (groupIndex: number, imageIndex: number) => {
@@ -1649,6 +1744,8 @@ export default function ProjectReports() {
             setOpenGroupIdx(0);
             if (!open) {
               form.reset();
+        setDeleteImageUrls([]);
+        setPendingImageGroupDeletion(null);
               setEditingId(null);
               setEditingIncompleteDraft(false);
               setEditingProgressManual(false);
@@ -1661,6 +1758,8 @@ export default function ProjectReports() {
             <DialogTrigger asChild>
               <Button className="gap-2" onClick={() => {
               if (!editingId) {
+                setDeleteImageUrls([]);
+                setPendingImageGroupDeletion(null);
                 setNewReportManual(false);
                 setEditingIncompleteDraft(false);
                 setEditingProgressManual(false);
@@ -2134,7 +2233,7 @@ export default function ProjectReports() {
                                 : 0;
                               const isOpen = openGroupIdx === gIdx;
                               const isEmpty = group.urls.length === 0;
-                              const canDelete = isEmpty && !isThisUploading;
+                              const canDelete = !isThisUploading && (isEmpty || editingId !== null);
                               return (
                                 <Collapsible
                                   key={gIdx}
@@ -2154,7 +2253,7 @@ export default function ProjectReports() {
                                       <label className="cursor-pointer">
                                         <input
                                           type="file"
-                                          accept="image/*"
+                                          accept=".jpg,image/jpeg"
                                           multiple
                                           className="hidden"
                                           onChange={(e) => {
@@ -2177,19 +2276,19 @@ export default function ProjectReports() {
                                           variant="ghost"
                                           size="icon"
                                           className="h-8 w-8 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10"
-                                          title="حذف هذا القسم الفارغ"
-                                          onClick={() => removeImageGroup(gIdx)}
+                                           title={isEmpty ? "حذف هذا القسم الفارغ" : "حذف القسم وصوره نهائياً"}
+                                           onClick={() => requestImageGroupDeletion(gIdx)}
                                         >
                                           <Trash2 className="h-4 w-4" />
                                         </Button>
                                       )}
-                                      {!isEmpty && groups.length > 1 && (
+                                      {!isEmpty && groups.length > 1 && editingId === null && (
                                         <Button
                                           type="button"
                                           variant="ghost"
                                           size="icon"
                                           className="h-8 w-8 rounded-lg text-muted-foreground/40 cursor-not-allowed"
-                                          title="احذف الصور أولاً ثم يمكنك حذف القسم"
+                                          title="احفظ التقرير أولاً لتتمكن من حذف القسم وصوره"
                                           disabled
                                         >
                                           <Trash2 className="h-4 w-4" />
@@ -2233,7 +2332,7 @@ export default function ProjectReports() {
                                       {isEmpty ? (
                                         <div className="text-center p-6 border-2 border-dashed rounded-xl bg-background/50 text-muted-foreground/60 flex flex-col items-center gap-2">
                                           <ImagePlus className="h-8 w-8 opacity-50" />
-                                          <p className="text-xs font-medium">اسحب وأفلت الصور هنا أو انقر على "إضافة صور للقسم"</p>
+                                          <p className="text-xs font-medium">أضف صور JPG فقط بالسحب والإفلات أو بالنقر على «إضافة صور للقسم»</p>
                                         </div>
                                       ) : (
                                         <div className="flex flex-wrap gap-3">
@@ -2894,6 +2993,73 @@ export default function ProjectReports() {
           </>
         );
       })()}
+      <Dialog
+        open={!!pendingGroupShare}
+        onOpenChange={(open) => { if (!open && !isCreatingGroupShare) setPendingGroupShare(null); }}
+      >
+        <DialogContent className="sm:max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>اختيار حد الصور للرابط</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              الحد المختار ينطبق على الرابط الجديد فقط؛ الروابط السابقة تحتفظ بالحد الذي سُجّل عند إنشائها.
+            </p>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="group-share-max-images" className="text-sm font-medium">
+              الحد الأقصى لعدد الصور
+            </label>
+            <Input
+              id="group-share-max-images"
+              type="number"
+              inputMode="numeric"
+              lang="en"
+              min={1}
+              max={REPORT_IMAGE_SHARE_MAX_LIMIT}
+              step={1}
+              dir="ltr"
+              value={groupShareMaxImages}
+              onChange={(event) => setGroupShareMaxImages(event.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              اختر من 1 إلى {REPORT_IMAGE_SHARE_MAX_LIMIT} صورة. القيمة المبدئية {REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES}.
+            </p>
+          </div>
+          <div className="flex flex-row-reverse gap-2">
+            <Button onClick={() => void confirmGroupShareCreation()} disabled={isCreatingGroupShare}>
+              {isCreatingGroupShare ? <Loader2 className="h-4 w-4 animate-spin" /> : "إنشاء الرابط"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setPendingGroupShare(null)}
+              disabled={isCreatingGroupShare}
+            >
+              إلغاء
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={!!pendingImageGroupDeletion}
+        onOpenChange={(open) => { if (!open) setPendingImageGroupDeletion(null); }}
+      >
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد حذف القسم وصوره</AlertDialogTitle>
+            <AlertDialogDescription>
+              سيُحذف قسم «{pendingImageGroupDeletion?.category}» وصوره ({pendingImageGroupDeletion?.urls.length ?? 0}) نهائياً من النظام عند حفظ التعديلات. ستُحذف الصور أيضاً من أي تقرير آخر يستخدمها، ولا يمكن التراجع عن ذلك.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2">
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmImageGroupDeletion}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              حذف القسم والصور
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>

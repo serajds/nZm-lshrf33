@@ -22,6 +22,11 @@ import { createReportImageOptimizationJobs } from "../lib/report-image-optimizat
 import { createReportImageOptimizationJobStore } from "../lib/report-image-optimization-job-store";
 import { reportImageVariant, REPORT_PRINT_IMAGE_MAX_BYTES } from "../lib/reportImageVariants";
 import {
+  REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES,
+  REPORT_IMAGE_SHARE_MAX_LIMIT,
+} from "@workspace/api-zod";
+import { permanentlyDeleteReportImages } from "../lib/report-image-cleanup";
+import {
   reportPrintImageExists,
   signReportPrintImage,
   storeReportPrintImage,
@@ -604,6 +609,13 @@ router.post(
       res.status(400).json({ error: "بيانات القسم غير صالحة" });
       return;
     }
+    const maxImages = req.body?.maxImages === undefined
+      ? REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES
+      : Number(req.body.maxImages);
+    if (!Number.isSafeInteger(maxImages) || maxImages < 1 || maxImages > REPORT_IMAGE_SHARE_MAX_LIMIT) {
+      res.status(400).json({ error: `يجب أن يكون الحد بين 1 و${REPORT_IMAGE_SHARE_MAX_LIMIT} صورة` });
+      return;
+    }
 
     const rawToken = randomBytes(32).toString("base64url");
     const tokenHash = shareTokenHash(rawToken);
@@ -641,10 +653,11 @@ router.post(
         groupId: group.id,
         tokenHash,
         status: "pending",
+        maxImages,
         expiresAt,
         createdById: req.user?.userId ?? null,
       }).returning({ id: reportImageSharesTable.id });
-      return { id: share.id, category: group.category };
+      return { id: share.id, category: group.category, maxImages };
     });
 
     if (!created) {
@@ -660,6 +673,8 @@ router.post(
       publicToken: rawToken,
       expiresAt: expiresAt.toISOString(),
       category: created.category,
+      uploadedCount: 0,
+      maxImages: created.maxImages,
     });
   },
 );
@@ -731,6 +746,8 @@ router.get("/public/report-image-shares", async (req, res): Promise<void> => {
     status: active.share.status,
     periodStart: active.periodStart,
     periodEnd: active.periodEnd,
+    uploadedCount: active.share.uploadedCount,
+    maxImages: active.share.maxImages,
   });
 });
 
@@ -1118,6 +1135,16 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
 
   const updateData: Record<string, unknown> = {};
   const body = req.body;
+  if (body.deleteImageUrls !== undefined
+    && (!Array.isArray(body.deleteImageUrls)
+      || body.deleteImageUrls.length > 1000
+      || body.deleteImageUrls.some((url: unknown) => typeof url !== "string"))) {
+    res.status(400).json({ error: "قائمة الصور المراد حذفها غير صالحة" });
+    return;
+  }
+  const deleteImageUrls = Array.isArray(body.deleteImageUrls)
+    ? [...new Set(body.deleteImageUrls as string[])]
+    : [];
   const [progressMeta] = await db.select({
     source: reportsTable.progressSource,
     periodStart: reportsTable.periodStart,
@@ -1298,6 +1325,16 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
   if (!report) {
     res.status(404).json({ error: "التقرير غير موجود" });
     return;
+  }
+
+  if (deleteImageUrls.length > 0) {
+    try {
+      await permanentlyDeleteReportImages(projectId, deleteImageUrls);
+    } catch (error) {
+      req.log.error({ error, projectId, reportId: id }, "Could not permanently delete report section images");
+      res.status(500).json({ error: "حُفظ التقرير، لكن تعذّر حذف بعض الصور نهائياً؛ أعد حفظ التعديلات لإكمال الحذف" });
+      return;
+    }
   }
 
   const { logAudit: logAudit2 } = await import("../lib/audit");
