@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, real, integer, date, jsonb, index, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, integer, date, jsonb, index, boolean, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -39,7 +39,7 @@ export const reportImageSharesTable = pgTable("report_image_shares", {
   projectId: integer("project_id").notNull(),
   reportId: integer("report_id").notNull().references(() => reportsTable.id, { onDelete: "cascade" }),
   groupId: text("group_id").notNull(),
-  tokenHash: text("token_hash").notNull().unique(),
+  tokenHash: text("token_hash").notNull(),
   status: text("status", { enum: ["pending", "uploading", "completed", "cancelled"] }).notNull().default("pending"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdById: integer("created_by_id"),
@@ -48,6 +48,7 @@ export const reportImageSharesTable = pgTable("report_image_shares", {
 }, (t) => [
   index("report_image_shares_report_group_idx").on(t.reportId, t.groupId, t.createdAt),
   index("report_image_shares_expiry_idx").on(t.expiresAt),
+  unique("report_image_shares_token_hash_key").on(t.tokenHash),
 ]);
 
 export const insertReportSchema = createInsertSchema(reportsTable).omit({ id: true, createdAt: true, updatedAt: true });
