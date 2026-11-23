@@ -8,7 +8,8 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "migrate:legacy-data": "pnpm run build && node --enable-source-maps ./dist/migrate-legacy-data.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:system-image-compression:restart": "NODE_ENV=development SYSTEM_IMAGE_COMPRESSION_RESTART_TEST=1 node --import ../../scripts/node_modules/tsx/dist/loader.mjs --test tests/system-image-compression-restart.integration.mjs"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
