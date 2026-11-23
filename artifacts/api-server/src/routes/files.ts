@@ -16,6 +16,7 @@ import { reportsTable, reportImageSharesTable } from "@workspace/db";
 import {
   createAndStoreReportImageVariant,
   deleteStoredReportImageVariants,
+  storeReportPrintImage,
 } from "../lib/reportImageVariantStorage";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
@@ -117,7 +118,8 @@ export async function persistUploadedFile(
   }
   if (category === "image" && isImageFile(finalFilename)) {
     try {
-      await createAndStoreReportImageVariant(finalFilename, "report-photo", uploadsDir);
+      const printImage = await createAndStoreReportImageVariant(finalFilename, "report-photo", uploadsDir);
+      await storeReportPrintImage(finalFilename, printImage);
     } catch (err) {
       console.warn("Report preview copy could not be prepared during upload:", err);
     }

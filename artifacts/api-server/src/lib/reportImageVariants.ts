@@ -38,6 +38,34 @@ type VariantProcessor = ((
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 const MAX_CACHE_BYTES = 32 * 1024 * 1024;
 const TTL = 10 * 60 * 1000;
+export const REPORT_PRINT_IMAGE_MAX_BYTES = 100 * 1024;
+export const REPORT_PRINT_IMAGE_MAX_EDGE = 1000;
+
+async function encodePrintImage(source: Buffer, options: { limitInputPixels: number }): Promise<ImageResult> {
+  const dimensions = [1000, 900, 800, 700, 600, 500, 400, 320];
+  const qualities = [78, 70, 62, 54, 46];
+  let smallest: Buffer | null = null;
+
+  for (const quality of qualities) {
+    for (const edge of dimensions) {
+      const output = await sharp(source, options)
+        .rotate()
+        .flatten({ background: "#ffffff" })
+        .resize({ width: edge, height: edge, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality, mozjpeg: true, progressive: true })
+        .toBuffer();
+      if (!smallest || output.length < smallest.length) smallest = output;
+      if (output.length <= REPORT_PRINT_IMAGE_MAX_BYTES) {
+        return { buffer: output, contentType: "image/jpeg" };
+      }
+    }
+  }
+
+  if (!smallest || smallest.length > REPORT_PRINT_IMAGE_MAX_BYTES) {
+    throw new Error("Could not fit report image under 100 KB");
+  }
+  return { buffer: smallest, contentType: "image/jpeg" };
+}
 
 /** Server-only derived bytes; callers MUST authorize before even consulting it. */
 export function createReportImageVariants() {
@@ -83,7 +111,34 @@ export function createReportImageVariants() {
         const metadataStarted = onDiagnostic ? performance.now() : 0;
         const metadata = await sharp(source, options).metadata();
         const metadataMs = onDiagnostic ? performance.now() - metadataStarted : undefined;
-        const edge = variant === "report-logo" ? 1000 : variant === "report-thumbnail" ? 640 : 1600;
+        const edge = variant === "report-logo" ? 1000 : variant === "report-thumbnail" ? 640 : REPORT_PRINT_IMAGE_MAX_EDGE;
+        if (variant === "report-photo") {
+          const canReuseJpeg = source.length <= REPORT_PRINT_IMAGE_MAX_BYTES
+            && metadata.format === "jpeg";
+          const encodeStarted = onDiagnostic ? performance.now() : 0;
+          const result = canReuseJpeg
+            ? { buffer: source, contentType: "image/jpeg" }
+            : await encodePrintImage(source, options);
+          const encodeMs = onDiagnostic ? performance.now() - encodeStarted : undefined;
+          if (onDiagnostic) onDiagnostic({
+            state: "processed",
+            sourceBytes: source.length,
+            width: metadata.width,
+            height: metadata.height,
+            metadataMs,
+            encodeMs,
+            outputBytes: result.buffer.length,
+            activeJobs: active,
+            queuedJobs: queue.length,
+          });
+          const expires = Date.now() + TTL;
+          while (bytes + result.buffer.length > MAX_CACHE_BYTES && cache.size) evict(cache.keys().next().value!);
+          if (result.buffer.length <= MAX_CACHE_BYTES) {
+            cache.set(cacheKey, { ...result, expires });
+            bytes += result.buffer.length;
+          }
+          return result;
+        }
         const png = variant === "report-logo" || metadata.hasAlpha;
         let pipeline = sharp(source, options).rotate().resize({
           width: edge, height: edge, fit: "inside", withoutEnlargement: true,

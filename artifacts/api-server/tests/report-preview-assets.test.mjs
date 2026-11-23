@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
+import { readFile } from "node:fs/promises";
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 
@@ -66,4 +67,30 @@ test("signed URL creation can be bounded to avoid a burst to the storage signer"
   });
   assert.equal(peak, 2);
   assert.deepEqual(results, [2, 4, 6, 8, 10]);
+});
+
+test("report image links remain report-scoped and use stored 100 KB derivatives when available", async () => {
+  const source = await readFile(new URL("../src/routes/reports.ts", import.meta.url), "utf8");
+  const start = source.indexOf('"/projects/:projectId/reports/:id/preview-image-links"');
+  const end = source.indexOf('"/projects/:projectId/reports/image-optimization"', start);
+  const route = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(route, /requireProjectAccess\("projectId"\).*requireTabView\("reports"\)/s);
+  assert.match(route, /authorizedReportImageFilenames\(/);
+  assert.match(route, /signReportPrintImage\(filename, 900\)/);
+  assert.match(route, /createSignedUploadReadUrl\(filename, 900\)/);
+  assert.match(route, /NODE_ENV !== "development"/);
+});
+
+test("legacy image optimization is manager-only and never mutates report or source-file rows", async () => {
+  const source = await readFile(new URL("../src/routes/reports.ts", import.meta.url), "utf8");
+  const start = source.indexOf('"/projects/:projectId/reports/image-optimization"');
+  const end = source.indexOf('"/projects/:projectId/reports/image-optimization"', start + 1);
+  const route = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(route, /requireProjectManager\("projectId"\)/);
+  assert.match(route, /NODE_ENV !== "development"/);
+  assert.match(route, /reportImageOptimizationJobs\.start/);
+  assert.match(route, /storeReportPrintImage\(/);
+  assert.doesNotMatch(route, /db\.(?:insert|update|delete)\(/);
 });

@@ -38,3 +38,9 @@ Adding derivative generation to the upload path does not create derivatives for 
 **Why:** Older shared-report photos were uploaded before derivative persistence was added, so the first preview invoked lazy Sharp transforms against the API process.
 
 **How to apply:** Test a cold report with many old images before deployment. Use bounded, observable backfill or serve the original safely while derivatives are prepared; verify hits/misses and RSS before declaring the issue resolved.
+
+The approved image-optimization target is a separate JPEG copy no larger than 100 KB for small-grid print layouts. Preserve original uploads, report records, and snapshots; legacy backfill is opt-in and Development-gated.
+
+**Why:** The user wants existing and future report photos to load and print lightly without changing historical source data, and only approved testing in Development so far.
+
+**How to apply:** For legacy photos, add environment-scoped derivatives and leave source URLs and database rows unchanged. Generate the same bounded copy for future uploads. Keep signed-link delivery and the legacy backfill action Development-only until the user separately authorizes Production behavior.

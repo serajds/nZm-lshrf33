@@ -14,18 +14,42 @@ const module = { exports: {} };
 new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
 const { createReportImageVariants, shouldServeOriginalCompressedSharePhoto } = module.exports;
 
-test("large photos are smaller, bounded for printing, and originals are untouched", async () => {
+test("photos already under 100 KB retain their detail and original bytes", async () => {
   const source = await sharp({ create: { width: 3600, height: 2400, channels: 3, background: "#bb845d" } })
     .jpeg({ quality: 100 }).toBuffer();
   const original = Buffer.from(source);
   const variant = await createReportImageVariants()("photo", "report-photo", async () => source);
   const metadata = await sharp(variant.buffer).metadata();
-  assert.equal(metadata.width, 1600);
-  assert.equal(metadata.height, 1067);
   assert.equal(variant.contentType, "image/jpeg");
-  assert.ok(variant.buffer.length < source.length);
+  assert.ok(variant.buffer.length <= 100 * 1024);
+  if (source.length > 100 * 1024) {
+    assert.ok(metadata.width <= 1000);
+    assert.ok(metadata.height <= 1000);
+    assert.ok(variant.buffer.length < source.length);
+  } else {
+    assert.deepEqual(variant.buffer, source);
+  }
   assert.deepEqual(source, original);
   console.log(`Synthetic photo: ${source.length} -> ${variant.buffer.length} bytes (${(100 * (1 - variant.buffer.length/source.length)).toFixed(1)}% smaller)`);
+});
+
+test("high-detail print photos always fit within the 100 KB cap", async () => {
+  const width = 800;
+  const height = 600;
+  const raw = Buffer.alloc(width * height * 3);
+  let seed = 73;
+  for (let index = 0; index < raw.length; index += 1) {
+    seed = (seed * 48271) % 2147483647;
+    raw[index] = seed & 0xff;
+  }
+  const source = await sharp(raw, { raw: { width, height, channels: 3 } }).jpeg({ quality: 100 }).toBuffer();
+  const before = Buffer.from(source);
+  const variant = await createReportImageVariants()("detailed-photo", "report-photo", async () => source);
+  const metadata = await sharp(variant.buffer).metadata();
+  assert.ok(variant.buffer.length <= 100 * 1024);
+  assert.ok(metadata.width >= 320, `print width was too small: ${metadata.width}`);
+  assert.equal(variant.contentType, "image/jpeg");
+  assert.deepEqual(source, before);
 });
 
 test("screen thumbnails are much smaller and capped at 640 pixels", async () => {

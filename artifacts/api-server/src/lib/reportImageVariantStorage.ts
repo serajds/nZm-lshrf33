@@ -2,7 +2,15 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
-import { deleteFromCloud, streamFromCloud, uploadToCloud } from "./fileStorage";
+import { createHash } from "node:crypto";
+import {
+  createSignedUploadObjectReadUrl,
+  deleteFromCloud,
+  getUploadObjectSize,
+  streamFromCloud,
+  uploadToCloud,
+  uploadBufferToCloud,
+} from "./fileStorage";
 import { reportImageVariant, type ReportImageVariant } from "./reportImageVariants";
 
 type StoredVariant = {
@@ -16,7 +24,39 @@ type VariantBytes = {
 };
 
 const isProduction = process.env.NODE_ENV === "production";
+const isDevelopment = process.env.NODE_ENV === "development";
 const persistInFlight = new Map<string, Promise<void>>();
+
+export function reportPrintImageObjectName(originalFilename: string): string {
+  assertSafeFilename(originalFilename);
+  const environment = isProduction ? "production" : "development";
+  const digest = createHash("sha256").update(originalFilename).digest("hex");
+  return `report-print-100kb/${environment}/${digest}.jpg`;
+}
+
+export async function storeReportPrintImage(
+  originalFilename: string,
+  image: VariantBytes,
+): Promise<void> {
+  if (image.contentType !== "image/jpeg" || image.buffer.length > 100 * 1024) {
+    throw new Error("Report print image must be JPEG and no larger than 100 KB");
+  }
+  await uploadBufferToCloud(reportPrintImageObjectName(originalFilename), image.buffer, image.contentType);
+}
+
+export async function reportPrintImageExists(originalFilename: string): Promise<boolean> {
+  const size = await getUploadObjectSize(reportPrintImageObjectName(originalFilename));
+  return size !== null && size <= 100 * 1024;
+}
+
+export async function signReportPrintImage(
+  originalFilename: string,
+  ttlSec = 300,
+): Promise<string | null> {
+  const objectName = reportPrintImageObjectName(originalFilename);
+  if (!await reportPrintImageExists(originalFilename)) return null;
+  return createSignedUploadObjectReadUrl(objectName, ttlSec);
+}
 
 function assertSafeFilename(filename: string): void {
   if (!filename || path.basename(filename) !== filename) {
@@ -64,10 +104,9 @@ export async function findStoredReportImageVariant(
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
 
-    // Development stores derived copies locally. Only a published runtime
-    // reads/writes them in Object Storage.
-    if (isProduction) {
-      const stored = await streamFromCloud(candidate.filename);
+    if (isProduction || (isDevelopment && variant === "report-photo")) {
+      const cloudFilename = cloudVariantFilename(originalFilename, variant, candidate);
+      const stored = await streamFromCloud(cloudFilename);
       if (stored) {
         return {
           stream: stored.stream,
@@ -77,6 +116,18 @@ export async function findStoredReportImageVariant(
     }
   }
   return null;
+}
+
+function cloudVariantFilename(
+  originalFilename: string,
+  variant: ReportImageVariant,
+  candidate: { filename: string; contentType: string },
+): string {
+  if (isDevelopment) {
+    const extension = path.extname(candidate.filename);
+    return `report-preview-dev-${variant}-${originalFilename}${extension}`;
+  }
+  return candidate.filename;
 }
 
 async function persistVariant(
@@ -99,9 +150,9 @@ async function persistVariant(
     await fsp.writeFile(tempPath, image.buffer, { flag: "wx" });
     try {
       let cloudError: unknown;
-      if (isProduction) {
+      if (isProduction || (isDevelopment && variant === "report-photo")) {
         try {
-          await uploadToCloud(tempPath, candidate.filename);
+          await uploadToCloud(tempPath, cloudVariantFilename(originalFilename, variant, candidate));
         } catch (error) {
           cloudError = error;
         }
@@ -124,13 +175,14 @@ export async function createAndStoreReportImageVariant(
   originalFilename: string,
   variant: ReportImageVariant,
   uploadsDir: string,
-): Promise<void> {
+): Promise<VariantBytes> {
   assertSafeFilename(originalFilename);
   const sourcePath = path.join(uploadsDir, originalFilename);
   const stat = await fsp.stat(sourcePath);
   const key = `local:${originalFilename}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
   const result = await reportImageVariant(key, variant, () => fsp.readFile(sourcePath));
   await persistVariant(originalFilename, variant, result, uploadsDir);
+  return result;
 }
 
 export async function storeReportImageVariant(
@@ -157,4 +209,11 @@ export async function deleteStoredReportImageVariants(
     await fsp.unlink(path.join(uploadsDir, filename)).catch(() => {});
     if (isProduction) await deleteFromCloud(filename);
   }));
+  if (isDevelopment) {
+    await Promise.all(candidateVariantFilenames(originalFilename, "report-photo")
+      .map(candidate => deleteFromCloud(cloudVariantFilename(originalFilename, "report-photo", candidate))));
+  }
+  if (isProduction || isDevelopment) {
+    await deleteFromCloud(reportPrintImageObjectName(originalFilename));
+  }
 }

@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { db, reportImageSharesTable } from "@workspace/db";
 import { reportsTable, activitiesTable, projectsTable, activityGroupsTable, projectFilesTable, attendanceRecordsTable } from "@workspace/db";
 import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
@@ -11,8 +13,18 @@ import { buildReportAiContext, reportAiSnapshotFingerprint } from "../lib/report
 import { buildReportAiPrompt, reportEditorInstruction } from "../lib/report-ai-prompt";
 import { approvedReportFingerprint, buildApprovedReportPrompt, parseApprovedReportDraft, validApprovedProgress } from "../lib/report-approved-inputs";
 import { buildReportActivityAnalysis } from "../lib/report-activity-analysis";
-import { createSignedUploadReadUrl } from "../lib/fileStorage";
+import {
+  cloudReportImageSource,
+  createSignedUploadReadUrl,
+} from "../lib/fileStorage";
 import { authorizedReportImageFilenames, mapWithConcurrency, reportUploadFilenames } from "../lib/report-preview-assets";
+import { createReportImageOptimizationJobs } from "../lib/report-image-optimization-jobs";
+import { reportImageVariant, REPORT_PRINT_IMAGE_MAX_BYTES } from "../lib/reportImageVariants";
+import {
+  reportPrintImageExists,
+  signReportPrintImage,
+  storeReportPrintImage,
+} from "../lib/reportImageVariantStorage";
 
 type ImageGroup = {
   id?: string;
@@ -181,6 +193,8 @@ async function attachImageShareStatus<T extends { id: number; imageGroups: unkno
 }
 
 const router: IRouter = Router();
+const reportImageOptimizationJobs = createReportImageOptimizationJobs();
+const reportUploadsDir = path.join(process.cwd(), "uploads");
 
 router.get("/projects/:projectId/reports/progress-as-of", requireProjectAccess("projectId"), rejectContractor, requireTabView("reports"), async (req, res): Promise<void> => {
   if (!validReportDay(req.query.periodEnd)) {
@@ -869,14 +883,14 @@ router.post("/projects/:projectId/reports/:id/duplicate", requireProjectAccess("
   res.status(201).json(copy);
 });
 
-// Development-only experiment: issue short-lived direct object-storage links
-// so report photos do not each pass through the API's upload authorization path.
+// Issue short-lived, report-scoped object-storage links so report images do
+// not pass through the API's image-processing and byte-transfer path.
 router.get(
   "/projects/:projectId/reports/:id/preview-image-links",
   requireProjectAccess("projectId"), rejectContractor, requireTabView("reports"),
   async (req, res): Promise<void> => {
     if (process.env.NODE_ENV !== "development") {
-      res.sendStatus(404);
+      res.status(404).json({ error: "هذه المعاينة التجريبية متاحة في بيئة التطوير فقط" });
       return;
     }
     const projectId = Number(req.params.projectId);
@@ -931,19 +945,125 @@ router.get(
     );
 
     try {
-      const signed = await mapWithConcurrency(authorized, 8, async filename => [
-        `/api/uploads/${encodeURIComponent(filename)}`,
-        await createSignedUploadReadUrl(filename, 300),
-      ] as const);
+      const signed = await mapWithConcurrency(authorized, 4, async filename => {
+        const originalKey = `/api/uploads/${encodeURIComponent(filename)}`;
+        return [
+          originalKey,
+          await signReportPrintImage(filename, 900)
+            ?? await createSignedUploadReadUrl(filename, 900),
+        ] as const;
+      });
       res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
       res.json({
         assets: Object.fromEntries(signed),
-        expiresAt: new Date(Date.now() + 300_000).toISOString(),
+        expiresAt: new Date(Date.now() + 900_000).toISOString(),
       });
     } catch (error) {
       req.log.error({ error, projectId, reportId, imageCount: authorized.length }, "Could not sign report preview images");
       res.status(503).json({ error: "تعذّر تجهيز روابط صور التقرير؛ حاول مرة أخرى" });
     }
+  },
+);
+
+router.post(
+  "/projects/:projectId/reports/image-optimization",
+  requireProjectManager("projectId"), requireTabEdit("reports"),
+  async (req, res): Promise<void> => {
+    if (process.env.NODE_ENV !== "development") {
+      res.status(404).json({ error: "تهيئة الصور القديمة متاحة في بيئة التطوير فقط" });
+      return;
+    }
+    const projectId = Number(req.params.projectId);
+    if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+      res.status(400).json({ error: "معرف المشروع غير صالح" });
+      return;
+    }
+    const otherActiveProjectId = reportImageOptimizationJobs.getActiveProjectId();
+    if (otherActiveProjectId !== null && otherActiveProjectId !== projectId) {
+      res.status(409).json({ error: "تجري تهيئة صور مشروع آخر؛ انتظر اكتمالها ثم أعد المحاولة" });
+      return;
+    }
+
+    const reportRows = await db.select({
+      imageUrls: reportsTable.imageUrls,
+      imageGroups: reportsTable.imageGroups,
+    }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
+    const reportUrls = reportRows.flatMap(report => {
+      const groups = Array.isArray(report.imageGroups) ? report.imageGroups as ImageGroup[] : [];
+      const groupUrls = groups.flatMap(group => Array.isArray(group.urls) ? group.urls : []);
+      return groupUrls.length ? groupUrls : Array.isArray(report.imageUrls) ? report.imageUrls : [];
+    });
+    const referenced = reportUploadFilenames(reportUrls);
+    if (referenced.length > 5000) {
+      res.status(413).json({ error: "عدد صور المشروع يتجاوز حد المعالجة الآمنة؛ قسّم العمل على مشاريع أصغر" });
+      return;
+    }
+    const [files, attendance] = referenced.length ? await Promise.all([
+      db.select({
+        filename: projectFilesTable.filename,
+        projectId: projectFilesTable.projectId,
+        category: projectFilesTable.category,
+        fileSize: projectFilesTable.fileSize,
+      }).from(projectFilesTable).where(inArray(projectFilesTable.filename, referenced)),
+      db.select({ filename: attendanceRecordsTable.selfieFilename })
+        .from(attendanceRecordsTable).where(inArray(attendanceRecordsTable.selfieFilename, referenced)),
+    ]) : [[], []];
+    const authorized = authorizedReportImageFilenames(
+      referenced,
+      files,
+      attendance.map(row => row.filename).filter((filename): filename is string => typeof filename === "string"),
+      projectId,
+    );
+    const sizes = new Map(files.map(file => [file.filename, Number(file.fileSize ?? 0)]));
+
+    const result = reportImageOptimizationJobs.start(projectId, authorized, async filename => {
+      if (await reportPrintImageExists(filename)) return "skipped";
+      if (sizes.get(filename)! > 0 && sizes.get(filename)! <= REPORT_PRINT_IMAGE_MAX_BYTES) return "skipped";
+
+      const localPath = path.join(reportUploadsDir, filename);
+      let key: string;
+      let readSource: () => Promise<Buffer>;
+      try {
+        const stat = await fs.promises.stat(localPath);
+        if (stat.size > 25 * 1024 * 1024) throw new Error("حجم الصورة يتجاوز 25 ميغابايت");
+        key = `local:${filename}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
+        readSource = () => fs.promises.readFile(localPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        const source = await cloudReportImageSource(filename);
+        if (!source) throw new Error("الصورة الأصلية غير موجودة في التخزين");
+        key = `cloud:${filename}:${source.version}`;
+        readSource = source.read;
+      }
+
+      const image = await reportImageVariant(key, "report-photo", readSource);
+      await storeReportPrintImage(filename, image);
+      return "optimized";
+    });
+
+    if (result.blockedByOtherProject) {
+      res.status(409).json({ error: "تجري تهيئة صور مشروع آخر؛ انتظر اكتمالها ثم أعد المحاولة" });
+      return;
+    }
+    res.status(202).json(result.job);
+  },
+);
+
+router.get(
+  "/projects/:projectId/reports/image-optimization",
+  requireProjectManager("projectId"), requireTabView("reports"),
+  async (req, res): Promise<void> => {
+    if (process.env.NODE_ENV !== "development") {
+      res.status(404).json({ error: "حالة تهيئة الصور متاحة في بيئة التطوير فقط" });
+      return;
+    }
+    const projectId = Number(req.params.projectId);
+    if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+      res.status(400).json({ error: "معرف المشروع غير صالح" });
+      return;
+    }
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(reportImageOptimizationJobs.get(projectId));
   },
 );
 
