@@ -545,9 +545,10 @@ export default function ProjectReports() {
   const { canEdit: canEditReports, isHidden } = useTabAccess(projectId, "reports", { redirectIfHidden: true });
   const isViewer = !canEditReports;
   const canApprove = myPermissions?.projectRole === "admin" || myPermissions?.projectRole === "project_manager";
+  const canOptimizeReportImages = import.meta.env.DEV;
 
   useEffect(() => {
-    if (!projectId || !canApprove) return;
+    if (!projectId || !canApprove || !canOptimizeReportImages) return;
     let mounted = true;
     const refreshStatus = async () => {
       try {
@@ -568,7 +569,7 @@ export default function ProjectReports() {
       mounted = false;
       if (interval !== null) window.clearInterval(interval);
     };
-  }, [projectId, canApprove, imageOptimizationJob?.status]);
+  }, [projectId, canApprove, canOptimizeReportImages, imageOptimizationJob?.status]);
 
   const startImageOptimization = async () => {
     setStartingImageOptimization(true);
@@ -1625,7 +1626,7 @@ export default function ProjectReports() {
         
         {canEditReports && (
         <div className="flex flex-wrap items-center gap-2">
-          {canApprove && canEditReports && (
+          {canApprove && canEditReports && canOptimizeReportImages && (
             <Button
               type="button"
               variant="outline"
@@ -2299,7 +2300,7 @@ export default function ProjectReports() {
         </Dialog>
         </div>
         )}
-        {canApprove && canEditReports && imageOptimizationJob && (
+        {canApprove && canEditReports && canOptimizeReportImages && imageOptimizationJob && (
           <div className="rounded-xl border border-border/70 bg-muted/25 p-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-medium">

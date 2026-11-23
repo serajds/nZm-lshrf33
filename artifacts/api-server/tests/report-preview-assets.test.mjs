@@ -82,7 +82,7 @@ test("report image links remain report-scoped and use stored 100 KB derivatives 
   assert.doesNotMatch(route, /NODE_ENV !== "development"/);
 });
 
-test("legacy image optimization is manager-only and never mutates report or source-file rows", async () => {
+test("legacy image optimization is disabled in production and never mutates source rows", async () => {
   const source = await readFile(new URL("../src/routes/reports.ts", import.meta.url), "utf8");
   const storeSource = await readFile(new URL("../src/lib/report-image-optimization-job-store.ts", import.meta.url), "utf8");
   const start = source.indexOf('"/projects/:projectId/reports/image-optimization"');
@@ -90,12 +90,18 @@ test("legacy image optimization is manager-only and never mutates report or sour
   const route = source.slice(start, end);
   assert.ok(start >= 0 && end > start);
   assert.match(route, /requireProjectManager\("projectId"\)/);
-  assert.doesNotMatch(route, /NODE_ENV !== "development"/);
+  assert.match(route, /if \(!reportImageOptimizationEnabled\)[\s\S]*?res\.status\(503\)/);
+  assert.match(source, /reportImageOptimizationEnabled = process\.env\.NODE_ENV !== "production"/);
+  assert.match(source, /\{ autoStart: reportImageOptimizationEnabled \}/);
   assert.match(route, /reportImageOptimizationJobs\.start/);
   assert.match(source, /storeReportPrintImage\(/);
   assert.doesNotMatch(route, /db\.(?:insert|update|delete)\(/);
   assert.match(storeSource, /tx\.insert\(reportImageOptimizationJobsTable\)/);
   assert.doesNotMatch(storeSource, /reportsTable|projectFilesTable/);
+
+  const web = await readFile(new URL("../../construction-supervision/src/pages/projects/[id]/reports.tsx", import.meta.url), "utf8");
+  assert.match(web, /canOptimizeReportImages = import\.meta\.env\.DEV/);
+  assert.match(web, /canApprove && canEditReports && canOptimizeReportImages/);
 });
 
 test("future report image uploads persist a separate print copy", async () => {

@@ -195,6 +195,7 @@ async function attachImageShareStatus<T extends { id: number; imageGroups: unkno
 
 const router: IRouter = Router();
 const reportUploadsDir = path.join(process.cwd(), "uploads");
+const reportImageOptimizationEnabled = process.env.NODE_ENV !== "production";
 const reportImageOptimizationJobs = createReportImageOptimizationJobs(
   createReportImageOptimizationJobStore(),
   async (projectId, item) => {
@@ -230,6 +231,7 @@ const reportImageOptimizationJobs = createReportImageOptimizationJobs(
   await storeReportPrintImage(item.filename, image);
   return "optimized";
   },
+  { autoStart: reportImageOptimizationEnabled },
 );
 
 router.get("/projects/:projectId/reports/progress-as-of", requireProjectAccess("projectId"), rejectContractor, requireTabView("reports"), async (req, res): Promise<void> => {
@@ -1013,6 +1015,10 @@ router.post(
   "/projects/:projectId/reports/image-optimization",
   requireProjectManager("projectId"), requireTabEdit("reports"),
   async (req, res): Promise<void> => {
+    if (!reportImageOptimizationEnabled) {
+      res.status(503).json({ error: "تهيئة الصور القديمة متوقفة مؤقتًا في الإنتاج" });
+      return;
+    }
     const projectId = Number(req.params.projectId);
     if (!Number.isSafeInteger(projectId) || projectId <= 0) {
       res.status(400).json({ error: "معرف المشروع غير صالح" });
