@@ -28,6 +28,7 @@ const {
   createAndStoreReportImageVariant,
   deleteStoredReportImageVariants,
   findStoredReportImageVariant,
+  reportPrintImageObjectName,
 } = module.exports;
 
 async function streamToBuffer(stream) {
@@ -35,6 +36,15 @@ async function streamToBuffer(stream) {
   for await (const chunk of stream) chunks.push(Buffer.from(chunk));
   return Buffer.concat(chunks);
 }
+
+test("print derivatives use separate environment-scoped keys and preserve source naming", () => {
+  const original = "report-share-abc-compressed.jpg";
+  const first = reportPrintImageObjectName(original);
+  const second = reportPrintImageObjectName("report-share-other-compressed.jpg");
+  assert.match(first, /^report-print-100kb\/development\/[a-f0-9]{64}\.jpg$/);
+  assert.notEqual(first, second);
+  assert.doesNotMatch(first, /report-share/);
+});
 
 test("report screen thumbnails and print copies are stored and deleted with their original", async () => {
   const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "report-preview-"));
@@ -59,7 +69,9 @@ test("report screen thumbnails and print copies are stored and deleted with thei
     const thumbnailBytes = await streamToBuffer(thumbnail.stream);
     const metadata = await sharp(previewBytes).metadata();
     const thumbnailMetadata = await sharp(thumbnailBytes).metadata();
-    assert.equal(metadata.width, 1600);
+    assert.ok(previewBytes.length <= 100 * 1024);
+    if (source.length > 100 * 1024) assert.ok(metadata.width <= 1000);
+    else assert.equal(metadata.width, 2600);
     assert.equal(thumbnailMetadata.width, 640);
     assert.deepEqual(await readFile(originalPath), source);
 
@@ -118,7 +130,7 @@ test("small JPEG and WebP company logos can be stored without conversion", async
   }
 });
 
-test("small WebP photos keep their supported format in the stored preview copy", async () => {
+test("WebP photos get a printable JPEG derivative while the original stays unchanged", async () => {
   const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "report-webp-preview-"));
   const originalFilename = "small-photo.webp";
   const source = await sharp({
@@ -131,8 +143,9 @@ test("small WebP photos keep their supported format in the stored preview copy",
 
     const saved = await findStoredReportImageVariant(originalFilename, "report-photo", uploadsDir);
     assert.ok(saved);
-    assert.equal(saved.contentType, "image/webp");
-    assert.deepEqual(await streamToBuffer(saved.stream), source);
+      assert.equal(saved.contentType, "image/jpeg");
+      assert.ok((await streamToBuffer(saved.stream)).length <= 100 * 1024);
+      assert.deepEqual(await readFile(path.join(uploadsDir, originalFilename)), source);
   } finally {
     await rm(uploadsDir, { recursive: true, force: true });
   }

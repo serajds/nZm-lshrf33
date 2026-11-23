@@ -34,6 +34,58 @@ export async function createSignedUploadReadUrl(filename: string, ttlSec = 300):
   });
 }
 
+export async function createSignedUploadObjectReadUrl(objectName: string, ttlSec = 300): Promise<string> {
+  if (!BUCKET_ID) throw new Error("Object storage bucket is not configured");
+  const segments = objectName.split("/");
+  if (!objectName || objectName.startsWith("/") || segments.some(segment =>
+    !segment || segment === "." || segment === ".." || segment.includes("\\") || segment.includes("\0")
+  )) {
+    throw new Error("Invalid upload object name");
+  }
+  return signObjectURL({
+    bucketName: BUCKET_ID,
+    objectName: UPLOADS_PREFIX + objectName,
+    method: "GET",
+    ttlSec,
+  });
+}
+
+export async function uploadBufferToCloud(
+  objectName: string,
+  buffer: Buffer,
+  contentType: string,
+): Promise<void> {
+  if (!BUCKET_ID) throw new Error("Object storage bucket is not configured");
+  const segments = objectName.split("/");
+  if (!objectName || objectName.startsWith("/") || segments.some(segment =>
+    !segment || segment === "." || segment === ".." || segment.includes("\\") || segment.includes("\0")
+  )) {
+    throw new Error("Invalid upload object name");
+  }
+  await getBucket().file(UPLOADS_PREFIX + objectName).save(buffer, {
+    resumable: false,
+    metadata: { contentType, cacheControl: "private, max-age=300" },
+  });
+}
+
+export async function getUploadObjectSize(objectName: string): Promise<number | null> {
+  if (!BUCKET_ID) throw new Error("Object storage bucket is not configured");
+  const segments = objectName.split("/");
+  if (!objectName || objectName.startsWith("/") || segments.some(segment =>
+    !segment || segment === "." || segment === ".." || segment.includes("\\") || segment.includes("\0")
+  )) {
+    throw new Error("Invalid upload object name");
+  }
+  try {
+    const [metadata] = await getBucket().file(UPLOADS_PREFIX + objectName).getMetadata();
+    const size = Number(metadata.size);
+    return Number.isFinite(size) && size >= 0 ? size : null;
+  } catch (error) {
+    if ((error as { code?: number }).code === 404) return null;
+    throw error;
+  }
+}
+
 export async function streamFromCloud(filename: string): Promise<{ stream: NodeJS.ReadableStream; contentType: string | undefined } | null> {
   if (!BUCKET_ID) return null;
   try {

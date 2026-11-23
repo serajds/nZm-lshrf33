@@ -9,6 +9,36 @@ type ImageGroup = {
 type ReportImages = { imageUrls?: string[] | null; imageGroups?: unknown };
 export type ReportPreviewImageVariant = "thumbnail" | "photo";
 
+export function applySignedReportImageLinks(
+  imageUrls: string[],
+  imageGroups: ImageGroup[] | null,
+  assets: Record<string, string>,
+  origin: string,
+): { imageUrls: string[]; imageGroups: ImageGroup[] | null } {
+  const resolve = (value: string): string => {
+    let parsed: URL;
+    try {
+      parsed = new URL(value, origin);
+    } catch {
+      return value;
+    }
+    if (parsed.origin !== new URL(origin).origin) return value;
+    const match = /^\/api\/uploads\/([^/]+)$/.exec(parsed.pathname);
+    if (!match) return value;
+    let filename: string;
+    try {
+      filename = decodeURIComponent(match[1]);
+    } catch {
+      return value;
+    }
+    return assets[`/api/uploads/${encodeURIComponent(filename)}`] ?? value;
+  };
+  return {
+    imageUrls: imageUrls.map(resolve),
+    imageGroups: imageGroups?.map(group => ({ ...group, urls: group.urls.map(resolve) })) ?? null,
+  };
+}
+
 /**
  * Load report metadata and the small company logos only.
  * Photos remain as protected URLs until the preview window needs them.
@@ -16,6 +46,7 @@ export type ReportPreviewImageVariant = "thumbnail" | "photo";
 export async function loadReportPreview<T extends ReportImages>(options: {
   loadReport: () => Promise<T>;
   loadLogos: () => Promise<Record<string, ReportLogo>>;
+  loadSignedAssets?: (report: T) => Promise<Record<string, string>>;
   loadAsset: (url: string) => Promise<string>;
   loadLogoAsset?: (url: string) => Promise<string>;
 }) {
@@ -23,7 +54,11 @@ export async function loadReportPreview<T extends ReportImages>(options: {
   const logosTask = options.loadLogos().then(logos =>
     prepareReportLogos(logos, options.loadLogoAsset ?? options.loadAsset),
   );
-  const [report, companyLogos] = await Promise.all([reportTask, logosTask]);
+  const report = await reportTask;
+  const signedAssetsTask = options.loadSignedAssets
+    ? options.loadSignedAssets(report)
+    : Promise.resolve({});
+  const [companyLogos, signedAssets] = await Promise.all([logosTask, signedAssetsTask]);
   const groups = report.imageGroups as ImageGroup[] | null | undefined;
   const imageGroups = groups?.length
     ? groups.map(group => ({
@@ -35,7 +70,14 @@ export async function loadReportPreview<T extends ReportImages>(options: {
   const imageUrls = imageGroups
     ? []
     : Array.isArray(report.imageUrls) ? report.imageUrls : [];
-  return { report, imageGroups, imageUrls, companyLogos };
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://report-preview.invalid";
+  const resolved = applySignedReportImageLinks(imageUrls, imageGroups, signedAssets, origin);
+  return {
+    report,
+    imageGroups: resolved.imageGroups,
+    imageUrls: resolved.imageUrls,
+    companyLogos,
+  };
 }
 
 export function attachProgressiveReportImages(options: {
@@ -53,6 +95,7 @@ export function attachProgressiveReportImages(options: {
     total: number;
     printing: boolean;
   }) => void;
+  sameVariantForPrint?: boolean;
 }): () => void {
   const { owner, imageUrls } = options;
   const popup = owner as Window & typeof globalThis;
@@ -243,7 +286,7 @@ export function attachProgressiveReportImages(options: {
       const image = entry.target as HTMLImageElement;
       const index = Number(image.dataset.reportImageIndex);
       observer?.unobserve(image);
-      void ensureImage(index, "thumbnail").catch(() => undefined);
+      void ensureImage(index, options.sameVariantForPrint ? "photo" : "thumbnail").catch(() => undefined);
     }
   };
 
@@ -253,7 +296,7 @@ export function attachProgressiveReportImages(options: {
     for (const image of images.values()) observer.observe(image);
   } else {
     for (const index of images.keys()) {
-      void ensureImage(index, "thumbnail").catch(() => undefined);
+      void ensureImage(index, options.sameVariantForPrint ? "photo" : "thumbnail").catch(() => undefined);
     }
   }
 

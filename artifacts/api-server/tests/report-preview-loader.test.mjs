@@ -7,132 +7,82 @@ const result = await build({
   entryPoints: [fileURLToPath(new URL("../../construction-supervision/src/lib/report-preview-loader.ts", import.meta.url))],
   bundle: true, write: false, platform: "node", format: "esm",
 });
-const { loadReportPreview, openReportPreviewWindow, updateReportPreviewStatus } =
+const { loadReportPreview, applySignedReportImageLinks, openReportPreviewWindow, updateReportPreviewStatus } =
   await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 
-test("report and logo requests start together; photos do not wait for slow logos", async () => {
+test("report metadata and logos load in parallel without fetching report photos", async () => {
   let resolveReport, resolveLogos;
   const started = [];
-  const loaded = [];
+  const loadedAssets = [];
   const pending = loadReportPreview({
     loadReport: () => { started.push("report"); return new Promise(resolve => { resolveReport = resolve; }); },
     loadLogos: () => { started.push("logos"); return new Promise(resolve => { resolveLogos = resolve; }); },
-    loadAsset: async url => { loaded.push(url); return `data:${url}`; },
-    onProgress: () => {},
+    loadAsset: async url => { loadedAssets.push(url); return `blob:${url}`; },
   });
   assert.deepEqual(started, ["report", "logos"]);
-  resolveReport({ imageGroups: [{ category: "صور", urls: ["photo"] }], imageUrls: ["photo"] });
-  await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(loaded, ["photo"]);
-  resolveLogos({ owner: { name: "مالك", logoUrl: "logo" } });
+  resolveReport({ imageGroups: [{ category: "صور", urls: ["/api/uploads/photo.jpg"] }] });
+  resolveLogos({ owner: { name: "مالك", logoUrl: "/api/uploads/logo.png" } });
   const preview = await pending;
-  assert.deepEqual(preview.imageUrls, []);
-  assert.deepEqual(preview.imageGroups[0].urls, ["data:photo"]);
-  assert.equal(preview.companyLogos.owner.logoUrl, "data:logo");
+  assert.deepEqual(loadedAssets, ["/api/uploads/logo.png"]);
+  assert.deepEqual(preview.imageGroups[0].urls, ["/api/uploads/photo.jpg"]);
+  assert.equal(preview.companyLogos.owner.logoUrl, "blob:/api/uploads/logo.png");
 });
 
-test("duplicate assets load once per preview without retaining a cross-session cache", async () => {
-  let count = 0;
-  const progress = [];
-  const options = {
-    loadReport: async () => ({ imageUrls: ["same", "same"] }),
-    loadLogos: async () => ({ owner: { name: "مالك", logoUrl: "same" } }),
-    loadAsset: async () => { count++; return "data:image"; },
-    onProgress: (done, total) => progress.push([done, total]),
-  };
-  const preview = await loadReportPreview(options);
-  assert.equal(count, 1);
-  assert.deepEqual(preview.imageUrls, ["data:image", "data:image"]);
-  assert.deepEqual(progress.at(-1), [1, 1]);
-  await loadReportPreview(options);
-  assert.equal(count, 2);
-});
-
-test("logos use their lossless variant separately from report photos", async () => {
-  const result = await loadReportPreview({
-    loadReport: async () => ({ imageUrls: ["same"] }),
-    loadLogos: async () => ({ owner: { name: "مالك", logoUrl: "same" } }),
-    loadAsset: async () => "blob:photo",
-    loadLogoAsset: async () => "blob:lossless-logo",
-    onProgress: () => {},
-  });
-  assert.deepEqual(result.imageUrls, ["blob:photo"]);
-  assert.equal(result.companyLogos.owner.logoUrl, "blob:lossless-logo");
-});
-
-test("development signed image links replace per-image API fetches", async () => {
-  const sourceUrls = ["/api/uploads/a.jpg", "/api/uploads/b.jpg"];
-  const loaded = [];
-  let signRequests = 0;
-  const result = await loadReportPreview({
+test("one signed-link manifest maps images and keeps order without fetching them through the API", async () => {
+  const sourceUrls = ["/api/uploads/a.jpg", "/api/uploads/b.jpg", "/api/uploads/a.jpg"];
+  let manifestRequests = 0;
+  let assetRequests = 0;
+  const preview = await loadReportPreview({
     loadReport: async () => ({ imageGroups: [{ category: "صور", urls: sourceUrls }] }),
     loadLogos: async () => ({}),
     loadSignedAssets: async () => {
-      signRequests++;
+      manifestRequests++;
       return {
-        [sourceUrls[0]]: "https://storage.example/signed-a",
-        [sourceUrls[1]]: "https://storage.example/signed-b",
+        "/api/uploads/a.jpg": "https://storage.googleapis.com/bucket/a?X-Goog-Signature=x",
+        "/api/uploads/b.jpg": "https://storage.googleapis.com/bucket/b?X-Goog-Signature=y",
       };
     },
-    loadAsset: async url => {
-      loaded.push(url);
-      return url;
-    },
-    onProgress: () => {},
+    loadAsset: async url => { assetRequests++; return url; },
   });
-  assert.equal(signRequests, 1);
-  assert.deepEqual(loaded, ["https://storage.example/signed-a", "https://storage.example/signed-b"]);
-  assert.deepEqual(result.imageGroups[0].urls, loaded);
+  assert.equal(manifestRequests, 1);
+  assert.equal(assetRequests, 0);
+  assert.deepEqual(preview.imageGroups[0].urls, [
+    "https://storage.googleapis.com/bucket/a?X-Goog-Signature=x",
+    "https://storage.googleapis.com/bucket/b?X-Goog-Signature=y",
+    "https://storage.googleapis.com/bucket/a?X-Goog-Signature=x",
+  ]);
 });
 
-test("failed photos and logos reject instead of silently issuing an incomplete report", async () => {
-  for (const failure of ["photo", "logo"]) {
-    await assert.rejects(loadReportPreview({
-      loadReport: async () => ({ imageUrls: ["photo"] }),
-      loadLogos: async () => ({ owner: { name: "مالك", logoUrl: "logo" } }),
-      loadAsset: async url => { if (url === failure) throw new Error("offline"); return "data:image"; },
-      onProgress: () => {},
-    }), /offline/);
-  }
-});
-
-test("large reports use at most two downloads and preserve all 61 assets in order", async () => {
-  let active = 0;
-  let peak = 0;
-  const urls = Array.from({ length: 60 }, (_, i) => `photo-${i}`);
-  const progress = [];
-  const result = await loadReportPreview({
-    loadReport: async () => ({ imageGroups: [{ category: "الموقع", urls }] }),
-    loadLogos: async () => ({ owner: { name: "مالك", logoUrl: "logo" } }),
-    loadAsset: async url => {
-      active++;
-      peak = Math.max(peak, active);
-      await new Promise(resolve => setTimeout(resolve, 2));
-      active--;
-      return `blob:${url}`;
+test("signed report links only replace same-origin upload URLs and preserve external assets", () => {
+  const urls = [
+    "/api/uploads/photo%20one.jpg?variant=report-photo",
+    "https://example.org/image.jpg",
+    "https://app.example/api/uploads/second.jpg",
+  ];
+  const resolved = applySignedReportImageLinks(
+    urls,
+    [{ category: "صور", urls }],
+    {
+      "/api/uploads/photo%20one.jpg": "https://storage.googleapis.com/a?X-Goog-Signature=x",
+      "/api/uploads/second.jpg": "https://storage.googleapis.com/b?X-Goog-Signature=y",
     },
-    onProgress: (done, total) => progress.push([done, total]),
-  });
-  assert.equal(peak, 2);
-  assert.deepEqual(result.imageGroups[0].urls, urls.map(url => `blob:${url}`));
-  assert.equal(result.companyLogos.owner.logoUrl, "blob:logo");
-  assert.deepEqual(progress.at(-1), [61, 61]);
+    "https://app.example",
+  );
+  assert.deepEqual(resolved.imageUrls, [
+    "https://storage.googleapis.com/a?X-Goog-Signature=x",
+    "https://example.org/image.jpg",
+    "https://storage.googleapis.com/b?X-Goog-Signature=y",
+  ]);
+  assert.equal(resolved.imageGroups[0].urls[0], resolved.imageUrls[0]);
 });
 
-test("failed preparation stops queued downloads instead of continuing the entire report", async () => {
-  let started = 0;
+test("signed-link errors fail explicitly instead of silently falling back to image relay", async () => {
   await assert.rejects(loadReportPreview({
-    loadReport: async () => ({ imageUrls: Array.from({ length: 61 }, (_, i) => `photo-${i}`) }),
+    loadReport: async () => ({ imageUrls: ["/api/uploads/photo.jpg"] }),
     loadLogos: async () => ({}),
-    loadAsset: async () => {
-      started++;
-      await new Promise(resolve => setTimeout(resolve, 2));
-      throw new Error("offline");
-    },
-    onProgress: () => {},
-  }), /offline/);
-  await new Promise(resolve => setTimeout(resolve, 30));
-  assert.ok(started <= 7, `too many downloads started: ${started}`);
+    loadSignedAssets: async () => { throw new Error("storage unavailable"); },
+    loadAsset: async url => url,
+  }), /storage unavailable/);
 });
 
 test("preview window opens synchronously and progress is plain text", () => {

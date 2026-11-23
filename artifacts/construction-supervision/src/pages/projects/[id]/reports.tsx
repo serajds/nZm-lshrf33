@@ -503,6 +503,19 @@ export default function ProjectReports() {
   const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
+  type ImageOptimizationJob = {
+    id: string;
+    status: "running" | "completed" | "completed_with_errors";
+    total: number;
+    processed: number;
+    optimized: number;
+    skipped: number;
+    failed: number;
+    current: string | null;
+    lastError: string | null;
+  };
+  const [imageOptimizationJob, setImageOptimizationJob] = useState<ImageOptimizationJob | null>(null);
+  const [startingImageOptimization, setStartingImageOptimization] = useState(false);
   const groupShareLinks = useRef(new Map<string, { url: string; expiresAt: number }>());
   const isAnyUploading = Object.keys(uploadProgress).length > 0;
 
@@ -532,6 +545,56 @@ export default function ProjectReports() {
   const { canEdit: canEditReports, isHidden } = useTabAccess(projectId, "reports", { redirectIfHidden: true });
   const isViewer = !canEditReports;
   const canApprove = myPermissions?.projectRole === "admin" || myPermissions?.projectRole === "project_manager";
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !projectId || !canApprove) return;
+    let mounted = true;
+    const refreshStatus = async () => {
+      try {
+        const response = await fetchWithSession(`${API_BASE}/projects/${projectId}/reports/image-optimization`);
+        if (!response.ok) return;
+        const job = await response.json() as ImageOptimizationJob | null;
+        if (mounted) setImageOptimizationJob(job);
+      } catch {
+        // The opt-in tool is ancillary to the report list; a temporary status
+        // failure must not block report use.
+      }
+    };
+    void refreshStatus();
+    const interval = imageOptimizationJob?.status === "running"
+      ? window.setInterval(() => void refreshStatus(), 1500)
+      : null;
+    return () => {
+      mounted = false;
+      if (interval !== null) window.clearInterval(interval);
+    };
+  }, [projectId, canApprove, imageOptimizationJob?.status]);
+
+  const startImageOptimization = async () => {
+    if (!import.meta.env.DEV) return;
+    setStartingImageOptimization(true);
+    try {
+      const response = await fetchWithSession(
+        `${API_BASE}/projects/${projectId}/reports/image-optimization`,
+        { method: "POST" },
+      );
+      const body = await response.json().catch(() => null) as ImageOptimizationJob & { error?: string } | null;
+      if (!response.ok || !body) throw new Error(body?.error || "تعذّر بدء تهيئة الصور");
+      setImageOptimizationJob(body);
+      toast({
+        title: body.total === 0 ? "لا توجد صور تقارير تحتاج إلى فحص" : "بدأ تجهيز نسخ الطباعة الخفيفة",
+        description: "لن تتغير الصور الأصلية أو بيانات التقارير.",
+      });
+    } catch (error) {
+      toast({
+        title: "تعذّر بدء تهيئة الصور",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setStartingImageOptimization(false);
+    }
+  };
 
   const { refetch: refetchCompanyLogos } = useQuery<Record<string, CompanyLogo>>({
     queryKey: ["project-company-logos", projectId],
@@ -855,6 +918,17 @@ export default function ProjectReports() {
           if (result.error || !result.data) throw result.error ?? new Error("Missing company logos");
           return result.data;
         },
+        ...(import.meta.env.DEV ? { loadSignedAssets: async () => {
+          const response = await fetchWithSession(
+            `${API_BASE}/projects/${projectId}/reports/${report.id}/preview-image-links`,
+          );
+          if (!response.ok) {
+            const body = await response.json().catch(() => null) as { error?: string } | null;
+            throw new Error(body?.error || "تعذّر تجهيز روابط صور التقرير");
+          }
+          const body = await response.json() as { assets?: Record<string, string> };
+          return body.assets ?? {};
+        } } : {}),
         loadAsset: url => protectedAssetToPreviewUrl(url, previewWindow),
         loadLogoAsset: async url => {
           const objectUrl = await protectedAssetToPreviewUrl(url, previewWindow, "logo");
@@ -977,6 +1051,7 @@ export default function ProjectReports() {
       loadAsset: (url, variant, signal) =>
         protectedAssetToPreviewUrl(url, previewWindow, variant, signal),
       onProgress: progress => updateReportPreviewImages(previewWindow, progress),
+      sameVariantForPrint: true,
     });
     } catch {
       for (const objectUrl of logoObjectUrls) {
@@ -1546,7 +1621,24 @@ export default function ProjectReports() {
         </div>
         
         {canEditReports && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {import.meta.env.DEV && canApprove && (
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2"
+              onClick={() => void startImageOptimization()}
+              disabled={startingImageOptimization || imageOptimizationJob?.status === "running"}
+              title="تجهيز نسخ منفصلة لا تتجاوز 100 كيلوبايت لصور تقارير هذا المشروع"
+            >
+              {startingImageOptimization || imageOptimizationJob?.status === "running"
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <ImagePlus className="h-4 w-4" />}
+              {imageOptimizationJob?.status === "running"
+                ? "جاري تجهيز الصور..."
+                : "تهيئة صور المشروع للطباعة"}
+            </Button>
+          )}
           {canApprove && <ReportSettingsDialog projectId={projectId} />}
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
@@ -2203,6 +2295,34 @@ export default function ProjectReports() {
           </DialogContent>
         </Dialog>
         </div>
+        )}
+        {import.meta.env.DEV && canApprove && imageOptimizationJob && (
+          <div className="rounded-xl border border-border/70 bg-muted/25 p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-medium">
+                {imageOptimizationJob.status === "running"
+                  ? `جاري فحص الصور: ${imageOptimizationJob.processed} من ${imageOptimizationJob.total}`
+                  : imageOptimizationJob.status === "completed_with_errors"
+                    ? "اكتمل فحص الصور مع تعذّر تجهيز بعض الملفات"
+                    : `اكتمل فحص ${imageOptimizationJob.total} صورة`}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                نسخ جاهزة: {imageOptimizationJob.optimized} · لم تحتج معالجة: {imageOptimizationJob.skipped} · تعذّر: {imageOptimizationJob.failed}
+              </span>
+            </div>
+            {imageOptimizationJob.status === "running" && (
+              <Progress
+                value={imageOptimizationJob.total > 0
+                  ? (imageOptimizationJob.processed / imageOptimizationJob.total) * 100
+                  : 100}
+                className="mt-2 h-2"
+              />
+            )}
+            <p className="mt-2 text-xs text-muted-foreground">
+              صور تقارير هذا المشروع فقط. لا تتغير الصور الأصلية أو بيانات التقارير؛ تُضاف نسخ منفصلة بحد أقصى 100 كيلوبايت.
+              {imageOptimizationJob.lastError ? ` آخر خطأ: ${imageOptimizationJob.lastError}` : ""}
+            </p>
+          </div>
         )}
       </div>
 
