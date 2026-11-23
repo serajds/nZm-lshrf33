@@ -1542,6 +1542,7 @@ export default function ProjectReports() {
   };
 
   const requestImageGroupDeletion = (groupIndex: number) => {
+    if (pendingImageGroupDeletion) return;
     const group = (form.getValues("imageGroups") ?? [])[groupIndex];
     if (!group || uploadProgress[groupIndex]) return;
     if (group.urls.length === 0) {
@@ -1740,10 +1741,6 @@ export default function ProjectReports() {
           )}
           {canApprove && <ReportSettingsDialog projectId={projectId} />}
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
-            // The image-delete confirmation is rendered in its own portal.
-            // Ignore its outside-dismiss signal so confirming a section delete
-            // cannot close and reset the unsaved report editor.
-            if (!open && pendingImageGroupDeletion) return;
             setIsDialogOpen(open);
             setOpenGroupIdx(0);
             if (!open) {
@@ -1796,9 +1793,6 @@ export default function ProjectReports() {
           <DialogContent
             className="sm:max-w-[750px] max-h-[90vh] overflow-hidden p-0"
             dir="rtl"
-            onInteractOutside={(event) => {
-              if (pendingImageGroupDeletion) event.preventDefault();
-            }}
             onCloseAutoFocus={(event) => {
               const opener = editOpenerRef.current;
               editOpenerRef.current = null;
@@ -2369,6 +2363,38 @@ export default function ProjectReports() {
                                 </Collapsible>
                               );
                             })}
+
+                            {pendingImageGroupDeletion && (
+                              <div
+                                role="alertdialog"
+                                aria-labelledby="delete-image-group-title"
+                                aria-describedby="delete-image-group-description"
+                                className="rounded-xl border border-destructive/30 bg-destructive/5 p-4"
+                              >
+                                <h4 id="delete-image-group-title" className="font-semibold text-destructive">
+                                  تأكيد حذف القسم وصوره
+                                </h4>
+                                <p id="delete-image-group-description" className="mt-1 text-sm text-muted-foreground">
+                                  سيُحذف قسم «{pendingImageGroupDeletion.category}» وصوره ({pendingImageGroupDeletion.urls.length}) عند حفظ التعديلات. ستُحذف الصور أيضاً من أي تقرير آخر يستخدمها.
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setPendingImageGroupDeletion(null)}
+                                  >
+                                    إلغاء
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="destructive"
+                                    onClick={confirmImageGroupDeletion}
+                                  >
+                                    حذف القسم والصور
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
 
                             <div className="pt-2">
                               <AddImageGroupButton
@@ -3045,28 +3071,6 @@ export default function ProjectReports() {
           </div>
         </DialogContent>
       </Dialog>
-      <AlertDialog
-        open={!!pendingImageGroupDeletion}
-        onOpenChange={(open) => { if (!open) setPendingImageGroupDeletion(null); }}
-      >
-        <AlertDialogContent dir="rtl">
-          <AlertDialogHeader>
-            <AlertDialogTitle>تأكيد حذف القسم وصوره</AlertDialogTitle>
-            <AlertDialogDescription>
-              سيُحذف قسم «{pendingImageGroupDeletion?.category}» وصوره ({pendingImageGroupDeletion?.urls.length ?? 0}) نهائياً من النظام عند حفظ التعديلات. ستُحذف الصور أيضاً من أي تقرير آخر يستخدمها، ولا يمكن التراجع عن ذلك.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-row-reverse gap-2">
-            <AlertDialogCancel>إلغاء</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmImageGroupDeletion}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              حذف القسم والصور
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
