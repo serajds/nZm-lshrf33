@@ -33,11 +33,11 @@ Treat direct signed reads as a transport/load mitigation, not proof of the cause
 
 **How to apply:** Before claiming a root fix, measure per-image variant hits/misses, cloud read/encode time, active Sharp jobs, and process RSS in Development using the same report pattern; keep the production termination cause explicitly unconfirmed until evidenced.
 
-Adding derivative generation to the upload path does not create derivatives for files that already exist. Do not synchronously transform a batch of legacy report images in the API during preview; account for cold-cache files separately.
+Adding derivative generation to the upload path does not create derivatives for files that already exist. Do not run legacy image batches or heavy transforms in the request-serving API, even as a persisted background job; a database queue alone does not isolate CPU or memory failures from API availability.
 
-**Why:** Older shared-report photos were uploaded before derivative persistence was added, so the first preview invoked lazy Sharp transforms against the API process.
+**Why:** Older shared-report photos were uploaded before derivative persistence. A persisted legacy batch later correlated with an API SIGKILL; resource exhaustion was plausible but not proven because deployment metrics were unavailable.
 
-**How to apply:** Test a cold report with many old images before deployment. Use bounded, observable backfill or serve the original safely while derivatives are prepared; verify hits/misses and RSS before declaring the issue resolved.
+**How to apply:** Isolate bulk image processing from request serving, bound source pixels and transform retries, and keep progress durable. Test a cold report with many old images; verify CPU/RSS and recovery before enabling the batch in Production.
 
 The approved image-optimization target is a separate JPEG copy no larger than 100 KB for small-grid print layouts. Preserve original uploads, report records, and snapshots; legacy backfill is opt-in and resumable.
 
