@@ -44,10 +44,28 @@ test("report template continues to reject unsafe and malformed image schemes", (
 test("preview requests server variants only for same-origin uploads; original links stay intact", () => {
   const origin = "https://app.test";
   assert.equal(reportPreviewAssetUrl("/api/uploads/photo.jpg", "photo", origin), "/api/uploads/photo.jpg?variant=report-photo");
+  assert.equal(reportPreviewAssetUrl("/api/uploads/photo.jpg", "thumbnail", origin), "/api/uploads/photo.jpg?variant=report-thumbnail");
   assert.equal(reportPreviewAssetUrl("/api/uploads/logo.png?token=example", "logo", origin), "/api/uploads/logo.png?token=example&variant=report-logo");
   for (const url of ["https://external.test/photo.jpg", "data:image/png;base64,abc", "blob:example", "/api/other/file"]) {
     assert.equal(reportPreviewAssetUrl(url, "photo", origin), url);
   }
+});
+
+test("progressive report HTML keeps protected photo URLs out until each image is requested", () => {
+  const html = buildPrintHTML({
+    projectName: "اختبار المعاينة", reportType: "weekly", reportId: 10,
+    reportDate: "2026-11-03", periodStart: "2026-11-01", periodEnd: "2026-11-03",
+    progressPercentage: 40, workDescription: "أعمال",
+    progressiveImages: true,
+    imageGroups: [{ category: "الموقع", urls: ["/api/uploads/secret-a.jpg", "/api/uploads/secret-b.jpg"] }],
+  });
+
+  assert.match(html, /data-report-image-index="0"/);
+  assert.match(html, /data-report-image-index="1"/);
+  assert.match(html, /data-report-image-placeholder="0"/);
+  assert.match(html, /id="report-print-button"/);
+  assert.match(html, /الصور تُحمّل عند عرضها/);
+  assert.doesNotMatch(html, /secret-[ab]\.jpg/);
 });
 
 test("all three protected logos are resolved before printing without mutating company data", async () => {

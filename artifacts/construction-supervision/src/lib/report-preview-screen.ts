@@ -66,17 +66,17 @@ body.is-error .meter,body.is-error .steps{display:none}
 </div>
 </div>
 <div class="body">
-<p id="preview-status" role="status" aria-live="polite">جارٍ تحميل بيانات التقرير والصور والشعارات…</p>
+<p id="preview-status" role="status" aria-live="polite">جارٍ تحميل بيانات التقرير والشعارات…</p>
 <div class="meter">
 <progress id="preview-progress" max="100" aria-label="تقدم تجهيز المعاينة"></progress>
 <span id="preview-count" aria-hidden="true"></span>
 </div>
 <ul class="steps" aria-hidden="true">
 <li>بيانات التقرير</li>
-<li>صور الموقع</li>
+<li>صور التقرير عند الحاجة</li>
 <li>شعارات الجهات</li>
 </ul>
-<p class="note">ستظهر المعاينة في هذه النافذة تلقائيًا فور اكتمال التحميل. يُرجى عدم إغلاقها.</p>
+<p class="note">ستظهر المعاينة بعد تجهيز بيانات التقرير؛ وتُحمّل الصور عند عرضها.</p>
 </div>
 </main>
 </body>

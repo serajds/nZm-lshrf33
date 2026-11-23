@@ -69,7 +69,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { Progress } from "@/components/ui/progress";
 import { previewReport, type ActivityForReport, type CompanyLogo } from "@/lib/report-pdf";
-import { loadReportPreview, openReportPreviewWindow, updateReportPreviewStatus, showReportPreviewError } from "@/lib/report-preview-loader";
+import {
+  attachProgressiveReportImages,
+  loadReportPreview,
+  openReportPreviewWindow,
+  updateReportPreviewImages,
+  showReportPreviewError,
+} from "@/lib/report-preview-loader";
 import { getAuthToken } from "@/lib/auth-session";
 import {
   ProtectedImage,
@@ -830,14 +836,13 @@ export default function ProjectReports() {
 
   const handlePreview = async (report: Report) => {
     if (!project) return;
-    const useSignedPreviewLinks = import.meta.env.DEV
-      && new URLSearchParams(window.location.search).get("report-preview-transport") === "signed";
     const previewWindow = openReportPreviewWindow();
     if (!previewWindow) {
       toast({ title: "يرجى السماح بالنوافذ المنبثقة لفتح معاينة التقرير", variant: "destructive" });
       return;
     }
     setPreviewLoadingId(report.id);
+    const logoObjectUrls: string[] = [];
     try {
       const { report: fullReport, companyLogos: previewLogos, imageUrls, imageGroups } = await loadReportPreview({
         loadReport: () => queryClient.fetchQuery({
@@ -850,22 +855,12 @@ export default function ProjectReports() {
           if (result.error || !result.data) throw result.error ?? new Error("Missing company logos");
           return result.data;
         },
-        loadSignedAssets: useSignedPreviewLinks ? async () => {
-          const response = await fetchWithSession(
-            `/api/projects/${projectId}/reports/${report.id}/preview-image-links`,
-          );
-          if (!response.ok) throw new Error(`تعذّر تجهيز روابط صور التقرير (${response.status})`);
-          const payload = await response.json() as { assets?: Record<string, string> };
-          if (!payload.assets || typeof payload.assets !== "object") {
-            throw new Error("استجابة روابط صور التقرير غير صالحة");
-          }
-          return payload.assets;
-        } : undefined,
         loadAsset: url => protectedAssetToPreviewUrl(url, previewWindow),
-        loadLogoAsset: url => protectedAssetToPreviewUrl(url, previewWindow, "logo"),
-        onProgress: (done, total) => updateReportPreviewStatus(
-          previewWindow, "جارٍ تحميل صور التقرير والشعارات", done, total,
-        ),
+        loadLogoAsset: async url => {
+          const objectUrl = await protectedAssetToPreviewUrl(url, previewWindow, "logo");
+          if (objectUrl.startsWith("blob:")) logoObjectUrls.push(objectUrl);
+          return objectUrl;
+        },
       });
     // A historical report without a saved snapshot cannot be reconstructed
     // from today's activities; show that limitation instead of implying that
@@ -970,8 +965,23 @@ export default function ProjectReports() {
       reportSignatures: (project as any).reportSignatures ?? null,
       reportDisplayMode: project.reportDisplayMode,
       actualProgressUnavailable: fullReport.progressPercentage == null,
+      progressiveImages: true,
     }, previewWindow);
+    const previewImageUrls = imageGroups?.length
+      ? imageGroups.flatMap(group => group.urls ?? [])
+      : imageUrls;
+    attachProgressiveReportImages({
+      owner: previewWindow,
+      imageUrls: previewImageUrls,
+      initialObjectUrls: logoObjectUrls,
+      loadAsset: (url, variant, signal) =>
+        protectedAssetToPreviewUrl(url, previewWindow, variant, signal),
+      onProgress: progress => updateReportPreviewImages(previewWindow, progress),
+    });
     } catch {
+      for (const objectUrl of logoObjectUrls) {
+        (previewWindow as Window & typeof globalThis).URL.revokeObjectURL(objectUrl);
+      }
       showReportPreviewError(previewWindow);
       toast({
         title: "تعذّر تجهيز معاينة التقرير",

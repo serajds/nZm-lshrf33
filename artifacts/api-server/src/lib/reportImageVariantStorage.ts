@@ -150,6 +150,7 @@ export async function deleteStoredReportImageVariants(
   assertSafeFilename(originalFilename);
   const variants = [
     ...candidateVariantFilenames(originalFilename, "report-photo"),
+    ...candidateVariantFilenames(originalFilename, "report-thumbnail"),
     ...candidateVariantFilenames(originalFilename, "report-logo"),
   ];
   await Promise.all(variants.map(async ({ filename }) => {
