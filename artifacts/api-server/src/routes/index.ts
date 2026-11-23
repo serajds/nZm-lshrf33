@@ -26,6 +26,7 @@ import attendanceRouter from "./attendance";
 import pushRouter from "./push";
 import progressHistoryBackfillRouter from "./progress-history-backfill";
 import linkedSourceHistoryRepairRouter from "./linked-source-history-repair";
+import systemImageCompressionRouter from "./system-image-compression";
 
 const router: IRouter = Router();
 
@@ -56,5 +57,6 @@ router.use(attendanceRouter);
 router.use(pushRouter);
 router.use(progressHistoryBackfillRouter);
 router.use(linkedSourceHistoryRepairRouter);
+router.use(systemImageCompressionRouter);
 
 export default router;

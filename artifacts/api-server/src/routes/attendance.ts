@@ -10,6 +10,7 @@ import { haversineDistanceMeters } from "../lib/geo";
 import { logAudit } from "../lib/audit";
 import { pairAttendanceSessions, type AttendanceSession } from "../lib/attendance-sessions";
 import { uploadToCloud, streamFromCloud } from "../lib/fileStorage";
+import { getSystemImageContentType } from "../lib/system-image-content-types";
 import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
 import multer from "multer";
 import path from "path";
@@ -1165,8 +1166,42 @@ router.get("/attendance/records/:recordId/photo", async (req: Request, res: Resp
   const localPath = path.join(uploadsDir, filename);
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
 
+  const compressedContentType = getSystemImageContentType(filename);
+  const extension = path.extname(filename).toLowerCase();
+  const forceCloudRead = process.env.NODE_ENV === "production"
+    && (extension === ".heic" || extension === ".heif");
+  if (forceCloudRead) {
+    try {
+      const result = await streamFromCloud(filename);
+      if (!result) {
+        res.status(404).json({ error: "الصورة غير موجودة" });
+        return;
+      }
+      if (compressedContentType || result.contentType) {
+        res.setHeader("Content-Type", compressedContentType ?? result.contentType!);
+      }
+      const readable = result.stream as NodeJS.ReadableStream;
+      readable.on("error", () => {
+        if (!res.headersSent) res.status(500).json({ error: "خطأ في قراءة الملف" });
+        else res.end();
+      });
+      readable.pipe(res);
+    } catch {
+      res.status(500).json({ error: "خطأ في قراءة الملف" });
+    }
+    return;
+  }
+
   if (fs.existsSync(localPath)) {
-    res.sendFile(localPath);
+    if (compressedContentType) {
+      res.setHeader("Content-Type", compressedContentType);
+      fs.createReadStream(localPath).on("error", () => {
+        if (!res.headersSent) res.status(500).json({ error: "خطأ في قراءة الملف" });
+        else res.end();
+      }).pipe(res);
+    } else {
+      res.sendFile(localPath);
+    }
     return;
   }
 
