@@ -1740,6 +1740,10 @@ export default function ProjectReports() {
           )}
           {canApprove && <ReportSettingsDialog projectId={projectId} />}
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
+            // The image-delete confirmation is rendered in its own portal.
+            // Ignore its outside-dismiss signal so confirming a section delete
+            // cannot close and reset the unsaved report editor.
+            if (!open && pendingImageGroupDeletion) return;
             setIsDialogOpen(open);
             setOpenGroupIdx(0);
             if (!open) {
@@ -1792,6 +1796,9 @@ export default function ProjectReports() {
           <DialogContent
             className="sm:max-w-[750px] max-h-[90vh] overflow-hidden p-0"
             dir="rtl"
+            onInteractOutside={(event) => {
+              if (pendingImageGroupDeletion) event.preventDefault();
+            }}
             onCloseAutoFocus={(event) => {
               const opener = editOpenerRef.current;
               editOpenerRef.current = null;
