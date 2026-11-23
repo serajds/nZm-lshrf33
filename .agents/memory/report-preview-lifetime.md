@@ -21,11 +21,11 @@ Validate image transport changes through the actual report HTML builder, includi
 
 **How to apply:** Assert expected photo and logo counts and successful decoding after rendering the real report, with both grouped and legacy photo inputs. Keep unsafe URL schemes rejected.
 
-For the Development-only direct-storage preview experiment, mint short-lived signed GET URLs only after checking access to the report and confirming each image filename belongs uniquely to that same project. Do not send the user's app bearer token to object storage, persist signed URLs, or enable this path in production without explicit approval.
+The user has explicitly approved preparing direct-storage report previews and opt-in legacy image backfill for Production, after the button was hidden there. This authorizes code preparation only, not publishing or starting a Production backfill.
 
 **Why:** Reports with many photos can generate a large number of per-image API authorization requests. Signed storage reads can bypass those repeated API checks, but each URL is a temporary bearer capability.
 
-**How to apply:** Keep the endpoint report-scoped, project-file-scoped, no-store, and short-lived; fetch signed URLs without credentials, convert to preview-owned Blob URLs, and gate both client and server to Development until the user authorizes broader use.
+**How to apply:** Keep the endpoint report-scoped, project-file-scoped, no-store, and short-lived; fetch signed URLs without credentials and convert to preview-owned Blob URLs. Keep the legacy batch opt-in, persisted across process restarts, globally serialized, and manager-only.
 
 Treat direct signed reads as a transport/load mitigation, not proof of the cause of an API crash. A `SIGKILL` after image requests does not establish OOM unless memory or runtime evidence ties the termination to image processing.
 
@@ -39,8 +39,8 @@ Adding derivative generation to the upload path does not create derivatives for 
 
 **How to apply:** Test a cold report with many old images before deployment. Use bounded, observable backfill or serve the original safely while derivatives are prepared; verify hits/misses and RSS before declaring the issue resolved.
 
-The approved image-optimization target is a separate JPEG copy no larger than 100 KB for small-grid print layouts. Preserve original uploads, report records, and snapshots; legacy backfill is opt-in and Development-gated.
+The approved image-optimization target is a separate JPEG copy no larger than 100 KB for small-grid print layouts. Preserve original uploads, report records, and snapshots; legacy backfill is opt-in and resumable.
 
-**Why:** The user wants existing and future report photos to load and print lightly without changing historical source data, and only approved testing in Development so far.
+**Why:** The user wants existing and future report photos to load and print lightly without changing historical source data, and approved production readiness after the development-only button was absent after publish.
 
-**How to apply:** For legacy photos, add environment-scoped derivatives and leave source URLs and database rows unchanged. Generate the same bounded copy for future uploads. Keep signed-link delivery and the legacy backfill action Development-only until the user separately authorizes Production behavior.
+**How to apply:** For legacy photos, add environment-scoped derivatives and leave source URLs and database rows unchanged. Generate the same bounded copy for future uploads. Publishing and initiating the first Production batch remain explicit user actions.

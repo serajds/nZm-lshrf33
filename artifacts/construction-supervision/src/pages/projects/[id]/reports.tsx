@@ -547,7 +547,7 @@ export default function ProjectReports() {
   const canApprove = myPermissions?.projectRole === "admin" || myPermissions?.projectRole === "project_manager";
 
   useEffect(() => {
-    if (!import.meta.env.DEV || !projectId || !canApprove) return;
+    if (!projectId || !canApprove) return;
     let mounted = true;
     const refreshStatus = async () => {
       try {
@@ -562,7 +562,7 @@ export default function ProjectReports() {
     };
     void refreshStatus();
     const interval = imageOptimizationJob?.status === "running"
-      ? window.setInterval(() => void refreshStatus(), 1500)
+      ? window.setInterval(() => void refreshStatus(), 5000)
       : null;
     return () => {
       mounted = false;
@@ -571,7 +571,6 @@ export default function ProjectReports() {
   }, [projectId, canApprove, imageOptimizationJob?.status]);
 
   const startImageOptimization = async () => {
-    if (!import.meta.env.DEV) return;
     setStartingImageOptimization(true);
     try {
       const response = await fetchWithSession(
@@ -582,7 +581,11 @@ export default function ProjectReports() {
       if (!response.ok || !body) throw new Error(body?.error || "تعذّر بدء تهيئة الصور");
       setImageOptimizationJob(body);
       toast({
-        title: body.total === 0 ? "لا توجد صور تقارير تحتاج إلى فحص" : "بدأ تجهيز نسخ الطباعة الخفيفة",
+        title: body.total === 0
+          ? "لا توجد صور تقارير تحتاج إلى فحص"
+          : body.status === "completed"
+            ? "صور هذا المشروع جاهزة للطباعة الخفيفة"
+            : "بدأ تجهيز نسخ الطباعة الخفيفة",
         description: "لن تتغير الصور الأصلية أو بيانات التقارير.",
       });
     } catch (error) {
@@ -918,7 +921,7 @@ export default function ProjectReports() {
           if (result.error || !result.data) throw result.error ?? new Error("Missing company logos");
           return result.data;
         },
-        ...(import.meta.env.DEV ? { loadSignedAssets: async () => {
+        loadSignedAssets: async () => {
           const response = await fetchWithSession(
             `${API_BASE}/projects/${projectId}/reports/${report.id}/preview-image-links`,
           );
@@ -928,7 +931,7 @@ export default function ProjectReports() {
           }
           const body = await response.json() as { assets?: Record<string, string> };
           return body.assets ?? {};
-        } } : {}),
+        },
         loadAsset: url => protectedAssetToPreviewUrl(url, previewWindow),
         loadLogoAsset: async url => {
           const objectUrl = await protectedAssetToPreviewUrl(url, previewWindow, "logo");
@@ -1622,7 +1625,7 @@ export default function ProjectReports() {
         
         {canEditReports && (
         <div className="flex flex-wrap items-center gap-2">
-          {import.meta.env.DEV && canApprove && (
+          {canApprove && canEditReports && (
             <Button
               type="button"
               variant="outline"
@@ -2296,7 +2299,7 @@ export default function ProjectReports() {
         </Dialog>
         </div>
         )}
-        {import.meta.env.DEV && canApprove && imageOptimizationJob && (
+        {canApprove && canEditReports && imageOptimizationJob && (
           <div className="rounded-xl border border-border/70 bg-muted/25 p-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-medium">

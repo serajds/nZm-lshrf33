@@ -7,6 +7,7 @@ export * from "./activity_group_categories";
 export * from "./reports";
 export * from "./project_progress_history";
 export * from "./report_comments";
+export * from "./report_image_optimization_jobs";
 export * from "./project_files";
 export * from "./project_extensions";
 export * from "./project_suspensions";
