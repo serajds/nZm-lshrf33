@@ -20,6 +20,7 @@ import {
   storeReportImageVariant,
 } from "./lib/reportImageVariantStorage";
 import { resolveTabPermissions } from "./lib/tab-permissions";
+import { getSystemImageContentType } from "./lib/system-image-content-types";
 import { db, requestMetrics, newRequestMetrics } from "@workspace/db";
 import { usersTable, userCompaniesTable, projectMembersTable, projectsTable, projectFilesTable, attendanceRecordsTable } from "@workspace/db";
 import { eq, count, inArray, and } from "drizzle-orm";
@@ -295,12 +296,30 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
 
       let key: string;
       let read: () => Promise<Buffer>;
+      let sourceContentType: string | null = null;
       let cloudMetadataMs = 0;
       try {
-        const stat = await fs.promises.stat(localPath);
-        if (stat.size > 25 * 1024 * 1024) throw new Error("Report image is too large");
-        key = `local:${filename}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
-        read = () => fs.promises.readFile(localPath);
+        const contentTypeOverride = getSystemImageContentType(filename);
+        const extension = path.extname(filename).toLowerCase();
+        const forceCloudRead = process.env.NODE_ENV === "production"
+          && (extension === ".heic" || extension === ".heif");
+        if (forceCloudRead) {
+          const cloudMetadataStarted = developmentImageDiagnostics ? performance.now() : 0;
+          const source = await cloudReportImageSource(filename);
+          if (developmentImageDiagnostics) cloudMetadataMs = performance.now() - cloudMetadataStarted;
+          if (!source) {
+            res.status(404).json({ error: "الملف غير موجود" });
+            return;
+          }
+          key = `cloud:${filename}:${source.version}`;
+          sourceContentType = source.contentType;
+          read = source.read;
+        } else {
+          const stat = await fs.promises.stat(localPath);
+          if (stat.size > 25 * 1024 * 1024) throw new Error("Report image is too large");
+          key = `local:${filename}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
+          read = () => fs.promises.readFile(localPath);
+        }
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
         const cloudMetadataStarted = developmentImageDiagnostics ? performance.now() : 0;
@@ -311,6 +330,7 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
           return;
         }
         key = `cloud:${filename}:${source.version}`;
+        sourceContentType = source.contentType;
         read = source.read;
       }
       if (originalSharePhotoFallback) {
@@ -319,10 +339,10 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
         const sourceReadMs = performance.now() - sourceReadStarted;
         if (original.length > 25 * 1024 * 1024) throw new Error("Report image is too large");
         const extension = path.extname(filename).toLowerCase();
-        const contentType = extension === ".png" ? "image/png"
+        const contentType = getSystemImageContentType(filename) ?? sourceContentType ?? (extension === ".png" ? "image/png"
           : extension === ".webp" ? "image/webp"
             : extension === ".jpg" || extension === ".jpeg" ? "image/jpeg"
-              : "application/octet-stream";
+              : "application/octet-stream");
         if (developmentImageDiagnostics) {
           const memory = process.memoryUsage();
           logger.info({
@@ -407,6 +427,37 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
 
   if (fs.existsSync(localPath)) {
     const isPublicLogo = filename.startsWith("logo-");
+    const contentTypeOverride = getSystemImageContentType(filename);
+    const extension = path.extname(filename).toLowerCase();
+    const forceCloudRead = process.env.NODE_ENV === "production"
+      && (extension === ".heic" || extension === ".heif");
+    if (contentTypeOverride || forceCloudRead) {
+      const cacheControl = isPublicLogo
+        ? "public, max-age=2592000, immutable"
+        : "private, no-store, no-cache, must-revalidate";
+      if (process.env.NODE_ENV === "production") {
+        void streamFromCloud(filename).then((result) => {
+          if (!result) {
+            res.status(404).json({ error: "الملف غير موجود" });
+            return;
+          }
+          res.setHeader("Cache-Control", cacheControl);
+          res.setHeader("Content-Type", contentTypeOverride ?? result.contentType ?? "application/octet-stream");
+          (result.stream as NodeJS.ReadableStream).pipe(res);
+        }).catch((error) => {
+          logger.warn({ err: error, filename }, "Compressed upload could not be read from object storage");
+          if (!res.headersSent) res.status(500).json({ error: "تعذّر تحميل الصورة" });
+        });
+      } else {
+        res.setHeader("Cache-Control", cacheControl);
+        res.setHeader("Content-Type", contentTypeOverride ?? "application/octet-stream");
+        fs.createReadStream(localPath).on("error", () => {
+          if (!res.headersSent) res.status(500).json({ error: "تعذّر تحميل الصورة" });
+          else res.end();
+        }).pipe(res);
+      }
+      return;
+    }
     return express.static(uploadsDir, {
       setHeaders: (res) => {
         res.setHeader(

@@ -86,6 +86,31 @@ export async function getUploadObjectSize(objectName: string): Promise<number | 
   }
 }
 
+export async function listUploadedImageObjects(): Promise<Array<{
+  filename: string;
+  size: number;
+  contentType: string | null;
+}>> {
+  if (!BUCKET_ID) return [];
+  const [files] = await getBucket().getFiles({ prefix: UPLOADS_PREFIX, autoPaginate: true });
+  const imageExtension = /\.(?:jpe?g|png|webp|gif|tiff?|heic|heif|avif|bmp|svg)$/i;
+  const results: Array<{ filename: string; size: number; contentType: string | null }> = [];
+  for (const file of files) {
+    if (!file.name.startsWith(UPLOADS_PREFIX)) continue;
+    const filename = file.name.slice(UPLOADS_PREFIX.length);
+    // These are derived previews/print copies, not uploaded source images.
+    if (filename.includes("/") || filename.startsWith("report-preview-")) continue;
+    if (!imageExtension.test(filename)) continue;
+    const size = Number(file.metadata?.size);
+    results.push({
+      filename,
+      size: Number.isFinite(size) && size > 0 ? size : 0,
+      contentType: file.metadata?.contentType ?? null,
+    });
+  }
+  return results;
+}
+
 export async function streamFromCloud(filename: string): Promise<{ stream: NodeJS.ReadableStream; contentType: string | undefined } | null> {
   if (!BUCKET_ID) return null;
   try {
@@ -113,6 +138,8 @@ export async function deleteFromCloud(filename: string): Promise<void> {
 /** Metadata is checked per request, so replaced objects never reuse an old variant. */
 export async function cloudReportImageSource(filename: string): Promise<{
   version: string;
+  size: number;
+  contentType: string | null;
   read: () => Promise<Buffer>;
 } | null> {
   if (!BUCKET_ID) return null;
@@ -122,6 +149,8 @@ export async function cloudReportImageSource(filename: string): Promise<{
     if (Number(metadata.size) > 25 * 1024 * 1024) throw new Error("Report image is too large");
     return {
       version: `${metadata.generation}:${metadata.metageneration}`,
+      size: Number(metadata.size) || 0,
+      contentType: typeof metadata.contentType === "string" ? metadata.contentType : null,
       // Pin to the inspected generation if the original is replaced concurrently.
       read: async () => {
         const [buffer] = await getBucket().file(UPLOADS_PREFIX + filename, {

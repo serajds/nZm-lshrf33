@@ -12,6 +12,7 @@ import {
   createAndStoreReportImageVariant,
   deleteStoredReportImageVariants,
 } from "../lib/reportImageVariantStorage";
+import { compressImageBuffer } from "../lib/image-compression-core";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -39,6 +40,21 @@ const upload = multer({
 const router: IRouter = Router();
 const companyTypes = ["owner", "contractor", "supervisor"] as const;
 type CompanyType = (typeof companyTypes)[number];
+
+async function compressUploadedLogo(filename: string): Promise<void> {
+  const filePath = path.join(uploadsDir, filename);
+  const original = await fsp.readFile(filePath);
+  const result = await compressImageBuffer(original, ["company_logo"]);
+  if (result.status !== "compressed") return;
+  const temporaryPath = `${filePath}.compress-${process.pid}-${Date.now()}`;
+  try {
+    await fsp.writeFile(temporaryPath, result.buffer, { flag: "wx" });
+    await fsp.rename(temporaryPath, filePath);
+  } finally {
+    await fsp.rm(temporaryPath, { force: true }).catch(() => undefined);
+  }
+}
+
 const memberCompanyFields = {
   id: companiesTable.id,
   name: companiesTable.name,
@@ -173,6 +189,13 @@ router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, r
   let logoUrl: string | null = null;
   if (req.file) {
     try {
+      await compressUploadedLogo(req.file.filename);
+    } catch {
+      await fsp.unlink(path.join(uploadsDir, req.file.filename)).catch(() => undefined);
+      res.status(400).json({ error: "تعذر قراءة الشعار أو ضغطه بأمان" });
+      return;
+    }
+    try {
       await uploadToCloud(path.join(uploadsDir, req.file.filename), req.file.filename);
     } catch (err) {
       console.error("Cloud upload failed for logo, saved locally only:", err);
@@ -255,6 +278,13 @@ router.patch("/companies/:id", requireAdminOrPM, async (req, res, next): Promise
   if (body.address !== undefined) updateData.address = body.address || null;
 
   if (req.file) {
+    try {
+      await compressUploadedLogo(req.file.filename);
+    } catch {
+      await fsp.unlink(path.join(uploadsDir, req.file.filename)).catch(() => undefined);
+      res.status(400).json({ error: "تعذر قراءة الشعار أو ضغطه بأمان" });
+      return;
+    }
     try {
       await uploadToCloud(path.join(uploadsDir, req.file.filename), req.file.filename);
     } catch (err) {

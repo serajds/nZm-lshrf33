@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seed } from "./seed";
+import { loadSystemImageContentTypes } from "./lib/system-image-content-types";
 
 const rawPort = process.env["PORT"];
 
@@ -15,6 +16,8 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+await loadSystemImageContentTypes();
 
 app.listen(port, async (err) => {
   if (err) {
