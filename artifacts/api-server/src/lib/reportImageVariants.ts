@@ -1,6 +1,6 @@
 import sharp from "sharp";
 
-export type ReportImageVariant = "report-photo" | "report-logo";
+export type ReportImageVariant = "report-photo" | "report-thumbnail" | "report-logo";
 type ImageResult = { buffer: Buffer; contentType: string };
 export type ReportImageVariantDiagnostic = {
   state: "memory_hit" | "coalesced" | "processed";
@@ -83,14 +83,14 @@ export function createReportImageVariants() {
         const metadataStarted = onDiagnostic ? performance.now() : 0;
         const metadata = await sharp(source, options).metadata();
         const metadataMs = onDiagnostic ? performance.now() - metadataStarted : undefined;
-        const edge = variant === "report-logo" ? 1000 : 1600;
+        const edge = variant === "report-logo" ? 1000 : variant === "report-thumbnail" ? 640 : 1600;
         const png = variant === "report-logo" || metadata.hasAlpha;
         let pipeline = sharp(source, options).rotate().resize({
           width: edge, height: edge, fit: "inside", withoutEnlargement: true,
         });
         pipeline = png
           ? pipeline.png({ compressionLevel: 9, adaptiveFiltering: true })
-          : pipeline.jpeg({ quality: 82, mozjpeg: true });
+          : pipeline.jpeg({ quality: variant === "report-thumbnail" ? 68 : 82, mozjpeg: true });
         const encodeStarted = onDiagnostic ? performance.now() : 0;
         let buffer = await pipeline.toBuffer();
         const encodeMs = onDiagnostic ? performance.now() - encodeStarted : undefined;

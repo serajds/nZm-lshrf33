@@ -28,6 +28,17 @@ test("large photos are smaller, bounded for printing, and originals are untouche
   console.log(`Synthetic photo: ${source.length} -> ${variant.buffer.length} bytes (${(100 * (1 - variant.buffer.length/source.length)).toFixed(1)}% smaller)`);
 });
 
+test("screen thumbnails are much smaller and capped at 640 pixels", async () => {
+  const source = await sharp({ create: { width: 3600, height: 2400, channels: 3, background: "#bb845d" } })
+    .jpeg({ quality: 100 }).toBuffer();
+  const result = await createReportImageVariants()("thumbnail", "report-thumbnail", async () => source);
+  const metadata = await sharp(result.buffer).metadata();
+  assert.equal(metadata.width, 640);
+  assert.equal(metadata.height, 427);
+  assert.equal(result.contentType, "image/jpeg");
+  assert.ok(result.buffer.length < source.length / 2);
+});
+
 test("transparent logos retain transparency and readable resolution", async () => {
   const source = await sharp({ create: { width: 1800, height: 900, channels: 4, background: { r: 40, g: 80, b: 100, alpha: 0.4 } } })
     .png().toBuffer();
@@ -106,5 +117,6 @@ test("corrupt input fails explicitly and does not poison reuse", async () => {
 test("derivatives remain behind the unchanged authorization gate and no-store", async () => {
   const source = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
   assert.ok(source.indexOf("canAccessPrivateUpload(reqPath, token, res)") < source.indexOf('req.query.variant === "report-photo"'));
+  assert.ok(source.includes('req.query.variant === "report-thumbnail"'));
   assert.match(source.slice(source.indexOf('req.query.variant === "report-photo"')), /Cache-Control", "private, no-store, no-cache, must-revalidate"/);
 });

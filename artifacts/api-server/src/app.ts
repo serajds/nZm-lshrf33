@@ -258,7 +258,9 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
   const localPath = path.join(uploadsDir, filename);
 
   // Deliberately after the unchanged upload authorization middleware.
-  if (req.query.variant === "report-photo" || req.query.variant === "report-logo") {
+  if (req.query.variant === "report-photo"
+    || req.query.variant === "report-thumbnail"
+    || req.query.variant === "report-logo") {
     const variant = req.query.variant;
     void (async () => {
       const developmentImageDiagnostics = process.env.NODE_ENV === "development";

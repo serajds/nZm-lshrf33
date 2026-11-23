@@ -1,10 +1,13 @@
 export type ReportLogo = { name: string; logoUrl: string | null };
 
-export function reportPreviewAssetUrl(url: string, kind: "photo" | "logo", origin: string): string {
+export function reportPreviewAssetUrl(url: string, kind: "photo" | "thumbnail" | "logo", origin: string): string {
   try {
     const parsed = new URL(url, origin);
     if (parsed.origin !== origin || !/^\/api\/uploads\/[^/]+$/.test(parsed.pathname)) return url;
-    parsed.searchParams.set("variant", kind === "logo" ? "report-logo" : "report-photo");
+    const variant = kind === "logo"
+      ? "report-logo"
+      : kind === "thumbnail" ? "report-thumbnail" : "report-photo";
+    parsed.searchParams.set("variant", variant);
     return `${parsed.pathname}${parsed.search}`;
   } catch {
     return url;

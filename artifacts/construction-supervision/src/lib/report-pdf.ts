@@ -73,6 +73,7 @@ export interface ReportPdfData {
   reportDisplayMode?: "type_and_number" | "period_only";
   actualProgressUnavailable?: boolean;
   actualAsOfDate?: string;
+  progressiveImages?: boolean;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -224,11 +225,21 @@ export function buildPrintHTML(data: ReportPdfData): string {
 
   const renderImageGrid = (urls: string[], total: number, startIdx: number): string => `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      ${urls.map((url, i) => { const safe = escAttr(url); return safe ? `
-        <div class="avoid-break" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#f8fafc">
-          <img src="${safe}" style="width:100%;height:200px;object-fit:cover;display:block" onerror="this.parentNode.style.display='none'" />
-          <div style="font-size:11px;color:#64748b;text-align:center;padding:6px;background:#f1f5f9">صورة ${startIdx + i + 1} من ${total}</div>
-        </div>` : ""; }).join("")}
+      ${urls.map((url, i) => {
+        const index = startIdx + i;
+        const safe = data.progressiveImages
+          ? "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
+          : escAttr(url);
+        return safe ? `
+        <div class="avoid-break" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#f8fafc;position:relative">
+          <img ${data.progressiveImages ? `data-report-image-index="${index}" loading="lazy"` : ""}
+            src="${safe}" alt="صورة ${index + 1} من ${total}"
+            style="width:100%;height:200px;object-fit:cover;display:block;background:#e2e8f0"
+            ${data.progressiveImages ? "" : `onerror="this.parentNode.style.display='none'"`} />
+          ${data.progressiveImages ? `<div data-report-image-placeholder="${index}" style="position:absolute;inset:0 0 29px;display:grid;place-items:center;background:#f1f5f9;color:#64748b;font-size:12px">تُحمّل الصورة عند عرضها</div>` : ""}
+          <div style="font-size:11px;color:#64748b;text-align:center;padding:6px;background:#f1f5f9">صورة ${index + 1} من ${total}</div>
+        </div>` : "";
+      }).join("")}
     </div>`;
 
   const groups = (data.imageGroups ?? []).filter(g => g && Array.isArray(g.urls));
@@ -443,17 +454,24 @@ export function buildPrintHTML(data: ReportPdfData): string {
   /* ── TOOLBAR ── */
   .toolbar { position: sticky; top: 0; left: 0; right: 0; background: #1e293b; padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
   .btn-print { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .btn-print:disabled { opacity: .65; cursor: wait; }
   .btn-print:hover { background: #1d4ed8; }
   .btn-close { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
   .btn-close:hover { background: rgba(255,255,255,0.25); }
+  .report-image-status { max-width: 260px; color: #cbd5e1; font-size: 11px; text-align: center; }
 
   @media print {
     .toolbar { display: none !important; }
+    [data-report-image-placeholder] { display: none !important; }
   }
   @media screen {
     body { max-width: 210mm; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
   }
   @media screen and (max-width: 480px) {
+    .toolbar { flex-wrap: wrap; gap: 6px; padding: 8px; }
+    .btn-print { padding: 9px 12px; font-size: 12px; }
+    .btn-close { padding: 9px 12px; font-size: 12px; }
+    .report-image-status { flex: 1 1 100%; max-width: none; order: 3; }
     .logos-strip { gap: 10px; padding: 12px; }
     .logo-item { flex-basis: calc((100% - 10px) / 2); width: calc((100% - 10px) / 2); max-width: none; }
     .logo-img-box { width: 64px; height: 64px; }
@@ -464,7 +482,8 @@ export function buildPrintHTML(data: ReportPdfData): string {
 <body>
 
 <div class="toolbar">
-  <button class="btn-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+  <button class="btn-print" id="report-print-button">🖨️ طباعة / حفظ PDF</button>
+  ${data.progressiveImages ? `<span id="report-image-status" class="report-image-status" role="status" aria-live="polite">الصور تُحمّل عند عرضها</span>` : ""}
   <button class="btn-close" onclick="window.close()">✕ إغلاق</button>
 </div>
 
@@ -682,6 +701,9 @@ export function previewReport(data: ReportPdfData, targetWindow?: Window): void 
   win.document.open();
   win.document.write(html);
   win.document.close();
+  if (!data.progressiveImages) {
+    win.document.getElementById("report-print-button")?.addEventListener("click", () => win.print());
+  }
 }
 
 export interface ExecutiveSummaryAI {

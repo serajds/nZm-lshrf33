@@ -121,6 +121,11 @@ export async function persistUploadedFile(
     } catch (err) {
       console.warn("Report preview copy could not be prepared during upload:", err);
     }
+    try {
+      await createAndStoreReportImageVariant(finalFilename, "report-thumbnail", uploadsDir);
+    } catch (err) {
+      console.warn("Report thumbnail could not be prepared during upload:", err);
+    }
   }
 
   const fileUrl = `/api/uploads/${finalFilename}`;

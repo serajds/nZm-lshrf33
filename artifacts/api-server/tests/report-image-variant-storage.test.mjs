@@ -36,7 +36,7 @@ async function streamToBuffer(stream) {
   return Buffer.concat(chunks);
 }
 
-test("report preview copies are generated once locally and deleted with their original", async () => {
+test("report screen thumbnails and print copies are stored and deleted with their original", async () => {
   const uploadsDir = await mkdtemp(path.join(os.tmpdir(), "report-preview-"));
   const originalFilename = "upload-123-compressed.jpg";
   const source = await sharp({
@@ -47,13 +47,20 @@ test("report preview copies are generated once locally and deleted with their or
   try {
     await writeFile(originalPath, source);
     await createAndStoreReportImageVariant(originalFilename, "report-photo", uploadsDir);
+    await createAndStoreReportImageVariant(originalFilename, "report-thumbnail", uploadsDir);
 
     const saved = await findStoredReportImageVariant(originalFilename, "report-photo", uploadsDir);
+    const thumbnail = await findStoredReportImageVariant(originalFilename, "report-thumbnail", uploadsDir);
     assert.ok(saved);
+    assert.ok(thumbnail);
     assert.equal(saved.contentType, "image/jpeg");
+    assert.equal(thumbnail.contentType, "image/jpeg");
     const previewBytes = await streamToBuffer(saved.stream);
+    const thumbnailBytes = await streamToBuffer(thumbnail.stream);
     const metadata = await sharp(previewBytes).metadata();
+    const thumbnailMetadata = await sharp(thumbnailBytes).metadata();
     assert.equal(metadata.width, 1600);
+    assert.equal(thumbnailMetadata.width, 640);
     assert.deepEqual(await readFile(originalPath), source);
 
     await deleteStoredReportImageVariants(originalFilename, uploadsDir);

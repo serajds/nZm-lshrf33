@@ -99,7 +99,12 @@ function isSignedObjectUrl(url: string): boolean {
 }
 
 /** Preview-owned blob URLs avoid base64 expansion and are released with its window. */
-export async function protectedAssetToPreviewUrl(url: string, owner: Window, kind: "photo" | "logo" = "photo"): Promise<string> {
+export async function protectedAssetToPreviewUrl(
+  url: string,
+  owner: Window,
+  kind: "photo" | "thumbnail" | "logo" = "photo",
+  signal?: AbortSignal,
+): Promise<string> {
   const protectedApiAsset = isProtectedApiAsset(url);
   const signedObjectUrl = isSignedObjectUrl(url);
   if (!protectedApiAsset && !signedObjectUrl) {
@@ -107,7 +112,10 @@ export async function protectedAssetToPreviewUrl(url: string, owner: Window, kin
     return url;
   }
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 45_000);
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abortFromCaller, { once: true });
+  if (signal?.aborted) abortFromCaller();
+  const timeout = window.setTimeout(() => controller.abort(new Error("Report preview image timed out")), 45_000);
   try {
     const assetUrl = protectedApiAsset
       ? reportPreviewAssetUrl(url, kind, window.location.origin)
@@ -117,6 +125,7 @@ export async function protectedAssetToPreviewUrl(url: string, owner: Window, kin
     return (owner as Window & typeof globalThis).URL.createObjectURL(blob);
   } finally {
     window.clearTimeout(timeout);
+    signal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
