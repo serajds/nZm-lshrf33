@@ -5,6 +5,10 @@ import path from "path";
 const BUCKET_ID = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID || "";
 const UPLOADS_PREFIX = "uploads/";
 
+export function isCloudStorageConfigured(): boolean {
+  return Boolean(BUCKET_ID);
+}
+
 function getBucket() {
   return objectStorageClient.bucket(BUCKET_ID);
 }

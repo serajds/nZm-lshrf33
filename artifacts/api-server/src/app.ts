@@ -21,6 +21,7 @@ import {
 } from "./lib/reportImageVariantStorage";
 import { resolveTabPermissions } from "./lib/tab-permissions";
 import { getSystemImageContentType } from "./lib/system-image-content-types";
+import { createReportShareUploadAdmission } from "./lib/report-share-upload-admission";
 import { db, requestMetrics, newRequestMetrics } from "@workspace/db";
 import { usersTable, userCompaniesTable, projectMembersTable, projectsTable, projectFilesTable, attendanceRecordsTable } from "@workspace/db";
 import { eq, count, inArray, and } from "drizzle-orm";
@@ -97,6 +98,10 @@ app.use(cors({ exposedHeaders: ["X-Renewed-Token"] }));
 // members, files, reports) by 5-10x, which is the single biggest perceived
 // win on slow connections.
 app.use(compression({ threshold: 1024 }));
+// Keep base64 share-photo bodies from accumulating in memory when clients send
+// several concurrent uploads. A database advisory lock in the upload route
+// provides the corresponding cross-instance limit.
+app.use(createReportShareUploadAdmission());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Mobile clients (React Native) cannot reliably send Origin/Referer headers,

@@ -9,7 +9,8 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "migrate:legacy-data": "pnpm run build && node --enable-source-maps ./dist/migrate-legacy-data.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:system-image-compression:restart": "NODE_ENV=development SYSTEM_IMAGE_COMPRESSION_RESTART_TEST=1 node --import ../../scripts/node_modules/tsx/dist/loader.mjs --test tests/system-image-compression-restart.integration.mjs"
+    "test:system-image-compression:restart": "NODE_ENV=development SYSTEM_IMAGE_COMPRESSION_RESTART_TEST=1 node --import ../../scripts/node_modules/tsx/dist/loader.mjs --test tests/system-image-compression-restart.integration.mjs",
+    "test:report-share-upload": "NODE_ENV=development REPORT_SHARE_UPLOAD_LOCK_TESTS=1 LOG_LEVEL=silent node --import ../../scripts/node_modules/tsx/dist/loader.mjs --test tests/report-share-upload.test.mjs"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",

@@ -68,6 +68,7 @@ function uploadImage(
   file: File,
   imageBase64: string,
   onProgress: (ratio: number) => void,
+  attempt = 0,
 ): Promise<{ uploadedCount?: number; maxImages?: number }> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
@@ -90,6 +91,13 @@ function uploadImage(
       }
       if (request.status >= 200 && request.status < 300) {
         resolve(data as { uploadedCount?: number; maxImages?: number });
+      } else if (request.status === 429 && attempt < 3) {
+        const retryAfter = Number(request.getResponseHeader("Retry-After"));
+        const delayMs = Math.min(5000, Math.max(1000, Number.isFinite(retryAfter) ? retryAfter * 1000 : 2000));
+        window.setTimeout(() => {
+          onProgress(0);
+          uploadImage(token, file, imageBase64, onProgress, attempt + 1).then(resolve, reject);
+        }, delayMs + Math.floor(Math.random() * 500));
       } else {
         reject(new Error(typeof data.error === "string" ? data.error : "تعذّر رفع الصورة. أعد المحاولة."));
       }

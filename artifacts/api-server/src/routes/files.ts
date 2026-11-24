@@ -10,11 +10,15 @@ import fs from "fs";
 import { promises as fsp } from "fs";
 import { randomUUID, createHash } from "node:crypto";
 import sharp from "sharp";
-import { uploadToCloud, deleteFromCloud } from "../lib/fileStorage";
+import { uploadToCloud, deleteFromCloud, isCloudStorageConfigured } from "../lib/fileStorage";
 import { isValidBase64String } from "../lib/base64-validation";
 import { reportsTable, reportImageSharesTable } from "@workspace/db";
 import {
   REPORT_IMAGE_MAX_BYTES,
+  REPORT_IMAGE_MAX_PIXELS,
+  type ReportShareImageGroup,
+  appendReportShareImage,
+  isAllowedReportImageDimensions,
   isJpgReportImageUpload,
   nextReportImageShareUploadCount,
 } from "@workspace/api-zod";
@@ -24,6 +28,11 @@ import {
   storeReportPrintImage,
 } from "../lib/reportImageVariantStorage";
 import { permanentlyDeleteReportImages } from "../lib/report-image-cleanup";
+import { tryAcquireReportShareUploadLock } from "../lib/report-share-upload-lock";
+import {
+  ReportShareImageValidationError,
+  validateReportShareImageBuffer,
+} from "../lib/report-share-image-validation";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -70,7 +79,7 @@ async function compressImage(filePath: string): Promise<{ size: number; filename
   const compressedName = baseName + "-compressed.jpg";
   const compressedPath = path.join(path.dirname(filePath), compressedName);
 
-  let pipeline = sharp(filePath).rotate();
+  let pipeline = sharp(filePath, { limitInputPixels: REPORT_IMAGE_MAX_PIXELS }).rotate();
 
   pipeline = pipeline.jpeg({ quality: IMAGE_QUALITY, mozjpeg: true });
   await pipeline.toFile(compressedPath);
@@ -106,12 +115,26 @@ router.get("/projects/:projectId/files", requireProjectAccess("projectId"), reje
 // upload endpoint AND the report-images upload endpoint below. Centralized
 // so the two entry points stay in sync (compression rules, storage layout,
 // DB columns) — the only thing that differs is which tab gates the route.
+type PersistedProjectFile = typeof projectFilesTable.$inferSelect;
+type ProjectFileInsert = typeof projectFilesTable.$inferInsert;
+type PersistUploadedFileOptions = {
+  insertProjectFile?: (values: ProjectFileInsert) => Promise<PersistedProjectFile>;
+  requireCloudStorage?: boolean;
+};
+
+async function cleanupUncommittedUpload(filename: string): Promise<void> {
+  await fsp.unlink(path.join(uploadsDir, filename)).catch(() => {});
+  await deleteFromCloud(filename);
+  await deleteStoredReportImageVariants(filename, uploadsDir);
+}
+
 export async function persistUploadedFile(
   file: Express.Multer.File,
   projectId: number,
   category: "image" | "pdf" | "test_result" | "document" | "other",
   description: string | null,
-) {
+  options: PersistUploadedFileOptions = {},
+): Promise<PersistedProjectFile> {
   let finalFilename = file.filename;
   let finalSize = file.size;
   let finalMimeType = file.mimetype;
@@ -130,9 +153,17 @@ export async function persistUploadedFile(
     }
   }
 
+  if (options.requireCloudStorage && !isCloudStorageConfigured()) {
+    await cleanupUncommittedUpload(finalFilename);
+    throw new Error("Object storage is not configured");
+  }
   try {
     await uploadToCloud(path.join(uploadsDir, finalFilename), finalFilename);
   } catch (err) {
+    if (options.requireCloudStorage) {
+      await cleanupUncommittedUpload(finalFilename);
+      throw new Error("Cloud upload failed", { cause: err });
+    }
     console.error("Cloud upload failed, file saved locally only:", err);
   }
   if (category === "image" && isImageFile(finalFilename)) {
@@ -151,7 +182,7 @@ export async function persistUploadedFile(
 
   const fileUrl = `/api/uploads/${finalFilename}`;
 
-  const [row] = await db.insert(projectFilesTable).values({
+  const values: ProjectFileInsert = {
     projectId,
     filename: finalFilename,
     originalName: file.originalname,
@@ -160,9 +191,15 @@ export async function persistUploadedFile(
     fileSize: finalSize,
     mimeType: finalMimeType,
     description: description ?? null,
-  }).returning();
-
-  return row;
+  };
+  try {
+    if (options.insertProjectFile) return await options.insertProjectFile(values);
+    const [row] = await db.insert(projectFilesTable).values(values).returning();
+    return row;
+  } catch (error) {
+    await cleanupUncommittedUpload(finalFilename);
+    throw error;
+  }
 }
 
 const REPORT_SHARE_MAX_BYTES = REPORT_IMAGE_MAX_BYTES;
@@ -172,23 +209,15 @@ async function persistReportShareImage(
   originalName: string,
   projectId: number,
   mimeType: string,
-) {
-  if (!isJpgReportImageUpload(originalName, mimeType)) {
-    throw new Error("يُسمح فقط برفع الصور بامتداد JPG");
-  }
+  insertProjectFile: (values: ProjectFileInsert) => Promise<PersistedProjectFile>,
+): Promise<{ file: PersistedProjectFile; width: number; height: number }> {
   const extension = ".jpg";
-  if (buffer.length === 0 || buffer.length > REPORT_SHARE_MAX_BYTES) {
-    throw new Error("حجم الصورة غير مقبول");
-  }
-  const metadata = await sharp(buffer, { limitInputPixels: 100_000_000 }).metadata();
-  if (metadata.format !== "jpeg") {
-    throw new Error("محتوى الملف ليس صورة JPG صالحة");
-  }
+  const { width, height } = await validateReportShareImageBuffer(buffer, originalName, mimeType);
   const filename = `report-share-${randomUUID()}${extension}`;
   const filepath = path.join(uploadsDir, filename);
-  await fsp.writeFile(filepath, buffer, { flag: "wx" });
   try {
-    const row = await persistUploadedFile({
+    await fsp.writeFile(filepath, buffer, { flag: "wx" });
+    const file = await persistUploadedFile({
       fieldname: "file",
       originalname: path.basename(originalName || `صورة${extension}`).slice(0, 180),
       encoding: "7bit",
@@ -199,8 +228,14 @@ async function persistReportShareImage(
       size: buffer.length,
       buffer,
       stream: undefined,
-    } as unknown as Express.Multer.File, projectId, "image", "صورة قسم تقرير");
-    return row;
+    } as unknown as Express.Multer.File, projectId, "image", "صورة قسم تقرير", {
+      insertProjectFile,
+      // Production report-share uploads must not be acknowledged when their
+      // durable object-storage write failed. Development can still exercise
+      // the flow with local storage.
+      requireCloudStorage: process.env.NODE_ENV === "production",
+    });
+    return { file, width, height };
   } catch (error) {
     await fsp.unlink(filepath).catch(() => {});
     throw error;
@@ -217,65 +252,67 @@ async function discardPersistedReportImage(fileId: number, filename: string): Pr
 const reportShareTokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
 
 router.post("/public/report-image-shares/upload", async (req, res): Promise<void> => {
+  const startedAt = performance.now();
   const token = req.body?.token;
   if (typeof token !== "string" || !/^[A-Za-z0-9_-]{40,100}$/.test(token)) {
     res.status(410).json({ error: "الرابط غير صالح أو انتهت صلاحيته" });
     return;
   }
-  const [share] = await db.select().from(reportImageSharesTable)
-    .where(eq(reportImageSharesTable.tokenHash, reportShareTokenHash(token)))
-    .limit(1);
-  if (!share || share.status === "completed" || share.status === "cancelled" || share.expiresAt <= new Date()) {
-    res.status(410).json({ error: "انتهت صلاحية الرابط أو تم إلغاؤه أو إكمال الرفع" });
-    return;
-  }
-  if (nextReportImageShareUploadCount(share.uploadedCount, share.maxImages) === null) {
-    res.status(409).json({
-      error: `بلغ هذا الرابط الحد الذي اختاره منشئ الرابط وهو ${share.maxImages} صورة`,
-      uploadedCount: share.uploadedCount,
-      maxImages: share.maxImages,
-    });
-    return;
-  }
   const base64 = req.body?.imageBase64;
   const mimeType = req.body?.mimeType;
-  const originalName = typeof req.body?.fileName === "string" ? req.body.fileName : "صورة";
-  if (typeof base64 !== "string" || base64.length === 0 || base64.length > Math.ceil(REPORT_SHARE_MAX_BYTES * 4 / 3) + 8
-    || !isValidBase64String(base64)) {
+  const originalName = typeof req.body?.fileName === "string" ? req.body.fileName : "صورة.jpg";
+  if (!isJpgReportImageUpload(originalName, typeof mimeType === "string" ? mimeType : "")) {
+    res.status(400).json({ error: "يُسمح فقط برفع الصور بامتداد JPG" });
+    return;
+  }
+  if (typeof base64 !== "string" || base64.length === 0 || !isValidBase64String(base64)) {
     res.status(400).json({ error: "بيانات الصورة غير صالحة أو تجاوزت الحجم المسموح" });
     return;
   }
-  let buffer: Buffer;
-  try {
-    buffer = Buffer.from(base64, "base64");
-  } catch {
-    res.status(400).json({ error: "تعذّر قراءة الصورة" });
-    return;
-  }
-  if (buffer.length > REPORT_SHARE_MAX_BYTES) {
+  if (base64.length > Math.ceil(REPORT_SHARE_MAX_BYTES * 4 / 3) + 8) {
     res.status(413).json({ error: "الحد الأقصى لحجم الصورة 5 ميغابايت" });
     return;
   }
 
-  let file: Awaited<ReturnType<typeof persistReportShareImage>>;
-  try {
-    file = await persistReportShareImage(buffer, originalName, share.projectId, mimeType);
-  } catch (error) {
-    const message = error instanceof Error && /حجم الصورة|امتداد JPG|محتوى الملف/.test(error.message)
-      ? error.message : "تعذّر رفع الصورة؛ تحقق من الملف وحاول مرة أخرى";
-    res.status(400).json({ error: message });
+  const [candidate] = await db.select({
+    id: reportImageSharesTable.id,
+    reportId: reportImageSharesTable.reportId,
+    projectId: reportImageSharesTable.projectId,
+  }).from(reportImageSharesTable)
+    .where(eq(reportImageSharesTable.tokenHash, reportShareTokenHash(token)))
+    .limit(1);
+  if (!candidate) {
+    res.status(410).json({ error: "انتهت صلاحية الرابط أو تم إلغاؤه أو إكمال الرفع" });
     return;
   }
-
+  const persistedFiles: PersistedProjectFile[] = [];
+  let imageWidth = 0;
+  let imageHeight = 0;
   let attachment: { kind: "attached"; uploadedCount: number; maxImages: number }
     | { kind: "limit"; uploadedCount: number; maxImages: number }
-    | { kind: "unavailable" };
+    | { kind: "unavailable" }
+    | { kind: "busy" };
   try {
     attachment = await db.transaction(async (tx) => {
+      // The lock is transaction-scoped and shared across API instances. It
+      // protects both the image-processing budget and the share's image cap.
+      if (!await tryAcquireReportShareUploadLock(query => tx.execute(query))) {
+        return { kind: "busy" as const };
+      }
+
+      // Match the report -> share lock order used when shares are created.
+      const [report] = await tx.select().from(reportsTable)
+        .where(and(
+          eq(reportsTable.id, candidate.reportId),
+          eq(reportsTable.projectId, candidate.projectId),
+        )).for("update");
       const [lockedShare] = await tx.select().from(reportImageSharesTable)
-        .where(eq(reportImageSharesTable.id, share.id)).for("update");
+        .where(eq(reportImageSharesTable.id, candidate.id)).for("update");
       if (!lockedShare || lockedShare.status === "completed" || lockedShare.status === "cancelled"
-        || lockedShare.expiresAt <= new Date()) return { kind: "unavailable" as const };
+        || lockedShare.expiresAt <= new Date()
+        || lockedShare.reportId !== candidate.reportId || lockedShare.projectId !== candidate.projectId) {
+        return { kind: "unavailable" as const };
+      }
       const uploadedCount = nextReportImageShareUploadCount(lockedShare.uploadedCount, lockedShare.maxImages);
       if (uploadedCount === null) {
         return {
@@ -284,32 +321,74 @@ router.post("/public/report-image-shares/upload", async (req, res): Promise<void
           maxImages: lockedShare.maxImages,
         };
       }
-      const [report] = await tx.select().from(reportsTable)
-        .where(and(
-          eq(reportsTable.id, lockedShare.reportId),
-          eq(reportsTable.projectId, lockedShare.projectId),
-        )).for("update");
       if (!report || !Array.isArray(report.imageGroups)) return { kind: "unavailable" as const };
-      const groups = (report.imageGroups as Array<{ id?: string; category: string; urls: string[] }>)
+      const groups = (report.imageGroups as ReportShareImageGroup[])
         .map(group => ({ ...group, urls: Array.isArray(group.urls) ? group.urls : [] }));
-      const target = groups.find(group => group.id === lockedShare.groupId);
-      if (!target) return { kind: "unavailable" as const };
-      target.urls = [...target.urls, file.fileUrl];
-      const allUrls = [...new Set(groups.flatMap(group => group.urls))];
-      await tx.update(reportsTable).set({ imageGroups: groups, imageUrls: allUrls })
+      if (!groups.some(group => group.id === lockedShare.groupId)) return { kind: "unavailable" as const };
+
+      let buffer: Buffer;
+      try {
+        buffer = Buffer.from(base64, "base64");
+      } catch {
+        throw new ReportShareImageValidationError("تعذّر قراءة الصورة", 400);
+      }
+      if (buffer.length === 0) throw new ReportShareImageValidationError("تعذّر قراءة الصورة", 400);
+      if (buffer.length > REPORT_SHARE_MAX_BYTES) {
+        throw new ReportShareImageValidationError("الحد الأقصى لحجم الصورة 5 ميغابايت", 413);
+      }
+
+      const persisted = await persistReportShareImage(
+        buffer,
+        originalName,
+        lockedShare.projectId,
+        mimeType,
+        async values => {
+          const [row] = await tx.insert(projectFilesTable).values(values).returning();
+          return row;
+        },
+      );
+      persistedFiles.push(persisted.file);
+      imageWidth = persisted.width;
+      imageHeight = persisted.height;
+
+      const appended = appendReportShareImage(
+        groups,
+        lockedShare.groupId,
+        persisted.file.fileUrl,
+        Array.isArray(report.imageUrls) ? report.imageUrls : [],
+      );
+      if (!appended) return { kind: "unavailable" as const };
+      await tx.update(reportsTable).set({
+        imageGroups: appended.groups,
+        imageUrls: appended.imageUrls,
+      })
         .where(eq(reportsTable.id, report.id));
       await tx.update(reportImageSharesTable).set({ status: "uploading", uploadedCount })
         .where(eq(reportImageSharesTable.id, lockedShare.id));
       return { kind: "attached" as const, uploadedCount, maxImages: lockedShare.maxImages };
     });
   } catch (error) {
-    await discardPersistedReportImage(file.id, file.filename);
+    const persistedFile = persistedFiles[0];
+    if (persistedFile) await discardPersistedReportImage(persistedFile.id, persistedFile.filename);
+    if (error instanceof ReportShareImageValidationError) {
+      res.status(error.statusCode).json({ error: error.message });
+      return;
+    }
     req.log.error({ error }, "Could not attach report image from a share link");
-    res.status(500).json({ error: "تعذّر ربط الصورة بالقسم؛ حاول مرة أخرى" });
+    res.status(500).json({ error: "تعذّر رفع الصورة وربطها؛ حاول مرة أخرى" });
+    return;
+  }
+  if (attachment.kind === "busy") {
+    res.setHeader("Retry-After", "2");
+    res.status(429).json({
+      error: "النظام يعالج صورة أخرى الآن. أعد المحاولة بعد لحظات.",
+      retryable: true,
+    });
     return;
   }
   if (attachment.kind !== "attached") {
-    await discardPersistedReportImage(file.id, file.filename);
+    const persistedFile = persistedFiles[0];
+    if (persistedFile) await discardPersistedReportImage(persistedFile.id, persistedFile.filename);
     if (attachment.kind === "limit") {
       res.status(409).json({
         error: `بلغ هذا الرابط الحد الذي اختاره منشئ الرابط وهو ${attachment.maxImages} صورة`,
@@ -320,6 +399,17 @@ router.post("/public/report-image-shares/upload", async (req, res): Promise<void
     }
     res.status(410).json({ error: "انتهت صلاحية الرابط أو لم يعد القسم متاحاً" });
     return;
+  }
+  if (process.env.NODE_ENV === "development") {
+    const memory = process.memoryUsage();
+    req.log.info({
+      uploadBytes: Buffer.byteLength(base64, "base64"),
+      imageWidth,
+      imageHeight,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      rssBytes: memory.rss,
+      externalBytes: memory.external,
+    }, "Report-share image upload completed");
   }
   res.status(201).json({
     uploaded: true,
@@ -381,10 +471,19 @@ router.post(
       return;
     }
     try {
-      const metadata = await sharp(req.file.path, { limitInputPixels: 100_000_000 }).metadata();
+      const metadata = await sharp(req.file.path, { limitInputPixels: REPORT_IMAGE_MAX_PIXELS }).metadata();
       if (metadata.format !== "jpeg") throw new Error("invalid jpeg");
-    } catch {
+      if (!isAllowedReportImageDimensions(metadata.width, metadata.height)) {
+        await fsp.unlink(req.file.path).catch(() => {});
+        res.status(413).json({ error: "أبعاد الصورة تتجاوز الحد الآمن وهو 40 ميغابكسل" });
+        return;
+      }
+    } catch (error) {
       await fsp.unlink(req.file.path).catch(() => {});
+      if (error instanceof Error && /pixel limit|exceeds.*limit/i.test(error.message)) {
+        res.status(413).json({ error: "أبعاد الصورة تتجاوز الحد الآمن وهو 40 ميغابكسل" });
+        return;
+      }
       res.status(400).json({ error: "محتوى الملف ليس صورة JPG صالحة" });
       return;
     }
