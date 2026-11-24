@@ -54,7 +54,7 @@ channel = "stable-25_05"
 packages = ["freetype", "gumbo", "harfbuzz", "jbig2dec", "libjpeg_turbo", "mupdf", "openjpeg", "swig", "xcbuild"]
 
 [objectStorage]
-defaultBucketID = "replit-objstore-00882a2c-029a-43e4-a48b-d11f747e167a"
+defaultBucketID = "replit-objstore-e2a8d32d-ff8d-4db4-8adf-cea8f1ff447b"
 
 [workflows]
 runButton = "Project"
