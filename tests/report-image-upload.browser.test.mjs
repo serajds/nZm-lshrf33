@@ -388,6 +388,8 @@ test("signed-in browser exercises report-photo batches and preview through 50 im
           "opening preview should not eagerly fetch every thumbnail");
       }
       assert.equal(networkBeforeZoom.photo.requestCount, 0, "normal preview must not fetch report-photo variants");
+      // The preview uses a 500px observer margin, so nearby thumbnails may
+      // preload. Check reuse per asset rather than requiring a fixed total.
       const initialCountsByPath = new Map();
       for (const row of networkBeforeZoom.thumbnail.responseDetails) {
         initialCountsByPath.set(row.path, (initialCountsByPath.get(row.path) ?? 0) + 1);
