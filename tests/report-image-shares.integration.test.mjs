@@ -144,6 +144,15 @@ test("report image sections persist empty groups and public links upload only in
     assert.equal(publicInfo.periodStart, "2026-11-16");
     assert.equal(publicInfo.periodEnd, "2026-11-20");
 
+    const emptyCompletionResponse = await fetch(`${base}/public/report-image-shares/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ token: shareCreated.publicToken }),
+    });
+    assert.equal(emptyCompletionResponse.status, 409, "empty sections cannot be marked completed");
+    assert.equal((await emptyCompletionResponse.json()).code, "report_image_share_empty");
+    assert.equal((await fetch(publicUrl)).status, 200, "an empty rejected completion keeps the share usable");
+
     const largeNonImageBase64 = Buffer.alloc(6 * 1024 * 1024).toString("base64");
     const largeRejectedResponse = await fetch(`${base}/public/report-image-shares/upload`, {
       method: "POST",
