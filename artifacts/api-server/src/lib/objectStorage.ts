@@ -232,11 +232,13 @@ export async function signObjectURL({
   objectName,
   method,
   ttlSec,
+  signal,
 }: {
   bucketName: string;
   objectName: string;
   method: "GET" | "PUT" | "DELETE" | "HEAD";
   ttlSec: number;
+  signal?: AbortSignal;
 }): Promise<string> {
   const request = {
     bucket_name: bucketName,
@@ -252,7 +254,7 @@ export async function signObjectURL({
         "Content-Type": "application/json",
       },
       body: JSON.stringify(request),
-      signal: AbortSignal.timeout(30_000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
     }
   );
   if (!response.ok) {

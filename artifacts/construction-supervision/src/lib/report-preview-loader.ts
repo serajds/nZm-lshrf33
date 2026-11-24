@@ -95,7 +95,6 @@ export function attachProgressiveReportImages(options: {
     total: number;
     printing: boolean;
   }) => void;
-  sameVariantForPrint?: boolean;
 }): () => void {
   const { owner, imageUrls } = options;
   const popup = owner as Window & typeof globalThis;
@@ -115,6 +114,8 @@ export function attachProgressiveReportImages(options: {
   const failedImages = new Set<number>();
   const pending = new Map<string, Promise<void>>();
   const controllers = new Map<AbortController, ReportPreviewImageVariant>();
+  const zoomHandlers = new Map<HTMLImageElement, { click: (event: MouseEvent) => void; keydown: (event: KeyboardEvent) => void }>();
+  const zoomOverlays = new Set<HTMLElement>();
   const objectUrls = new Set((options.initialObjectUrls ?? []).filter(url => url.startsWith("blob:")));
   const queue: Array<{
     variant: ReportPreviewImageVariant;
@@ -194,6 +195,9 @@ export function attachProgressiveReportImages(options: {
       const onError = () => finish(new Error("تعذّر عرض صورة التقرير"));
       image.addEventListener("load", onLoad, { once: true });
       image.addEventListener("error", onError, { once: true });
+      // Native lazy loading may never start an offscreen image. Print/zoom
+      // variants are explicitly requested work and must settle their queue slot.
+      image.loading = "eager";
       image.src = src;
       if (image.complete && image.naturalWidth > 0) finish();
     });
@@ -286,7 +290,7 @@ export function attachProgressiveReportImages(options: {
       const image = entry.target as HTMLImageElement;
       const index = Number(image.dataset.reportImageIndex);
       observer?.unobserve(image);
-      void ensureImage(index, options.sameVariantForPrint ? "photo" : "thumbnail").catch(() => undefined);
+      void ensureImage(index, "thumbnail").catch(() => undefined);
     }
   };
 
@@ -296,8 +300,64 @@ export function attachProgressiveReportImages(options: {
     for (const image of images.values()) observer.observe(image);
   } else {
     for (const index of images.keys()) {
-      void ensureImage(index, options.sameVariantForPrint ? "photo" : "thumbnail").catch(() => undefined);
+      void ensureImage(index, "thumbnail").catch(() => undefined);
     }
+  }
+
+  const closeZoom = (overlay: HTMLElement, image: HTMLImageElement) => {
+    overlay.remove();
+    zoomOverlays.delete(overlay);
+    image.focus();
+  };
+  for (const [index, image] of images) {
+    image.tabIndex = 0;
+    image.setAttribute("role", "button");
+    image.setAttribute("aria-label", "تكبير صورة التقرير");
+    image.style.cursor = "zoom-in";
+    const openZoom = () => {
+      void ensureImage(index, "photo").then(() => {
+        if (disposed || owner.closed) return;
+        const overlay = owner.document.createElement("div");
+        overlay.dataset.reportImageZoom = "true";
+        overlay.setAttribute("role", "dialog");
+        overlay.setAttribute("aria-modal", "true");
+        overlay.setAttribute("aria-label", "صورة التقرير بالحجم المحسن");
+        Object.assign(overlay.style, {
+          position: "fixed", inset: "0", zIndex: "10000", background: "rgba(15, 23, 42, 0.94)",
+          display: "grid", placeItems: "center", padding: "24px", cursor: "zoom-out",
+        });
+        const largeImage = image.cloneNode(false) as HTMLImageElement;
+        largeImage.removeAttribute("data-report-image-index");
+        Object.assign(largeImage.style, {
+          width: "auto", height: "auto", maxWidth: "96vw", maxHeight: "92vh",
+          objectFit: "contain", cursor: "default", background: "#ffffff",
+        });
+        const close = owner.document.createElement("button");
+        close.type = "button"; close.textContent = "إغلاق";
+        close.setAttribute("aria-label", "إغلاق صورة التقرير");
+        Object.assign(close.style, {
+          position: "absolute", top: "16px", insetInlineEnd: "16px", color: "#ffffff",
+          background: "#334155", border: "1px solid #94a3b8", borderRadius: "6px",
+          padding: "8px 14px", cursor: "pointer",
+        });
+        const dismiss = () => closeZoom(overlay, image);
+        overlay.addEventListener("click", dismiss);
+        largeImage.addEventListener("click", event => event.stopPropagation());
+        close.addEventListener("click", event => { event.stopPropagation(); dismiss(); });
+        overlay.append(largeImage, close);
+        owner.document.body.appendChild(overlay);
+        zoomOverlays.add(overlay);
+        close.focus();
+      }).catch(() => undefined);
+    };
+    const click = (event: MouseEvent) => { event.preventDefault(); openZoom(); };
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault(); openZoom();
+    };
+    image.addEventListener("click", click);
+    image.addEventListener("keydown", keydown);
+    zoomHandlers.set(image, { click, keydown });
   }
 
   const printButton = owner.document.getElementById("report-print-button") as HTMLButtonElement | null;
@@ -323,17 +383,27 @@ export function attachProgressiveReportImages(options: {
       Array.from(images.keys(), index => ensureImage(index, "photo")),
     ).then(() => {
       if (disposed || owner.closed) return;
-      if (failedImages.size > 0
-        && !owner.confirm(`تعذّر تجهيز ${failedImages.size} صورة للطباعة. هل تريد متابعة الطباعة بالصور المتاحة؟`)) return;
+      if (failedImages.size > 0) {
+        const status = owner.document.getElementById("report-image-status");
+        if (status) status.textContent = `لم يُنشأ PDF: تعذّر تجهيز ${failedImages.size} صورة. تحقق من الاتصال ثم اضغط إعادة المحاولة.`;
+        if (printButton) printButton.textContent = "إعادة المحاولة / حفظ PDF";
+        return;
+      }
       owner.focus();
       owner.print();
     }).finally(() => {
       printing = false;
       if (printButton && !disposed) {
         printButton.disabled = false;
-        printButton.textContent = "🖨️ طباعة / حفظ PDF";
+        printButton.textContent = failedImages.size > 0
+          ? "إعادة المحاولة / حفظ PDF"
+          : "🖨️ طباعة / حفظ PDF";
       }
       updateProgress();
+      if (failedImages.size > 0 && !disposed) {
+        const status = owner.document.getElementById("report-image-status");
+        if (status) status.textContent = `لم يُنشأ PDF: تعذّر تجهيز ${failedImages.size} صورة. تحقق من الاتصال ثم اضغط إعادة المحاولة.`;
+      }
     });
   };
   printButton?.addEventListener("click", onPrint);
@@ -347,6 +417,13 @@ export function attachProgressiveReportImages(options: {
     for (const queued of queue.splice(0)) queued.cancel();
     for (const url of objectUrls) popup.URL.revokeObjectURL(url);
     objectUrls.clear();
+    for (const [image, handlers] of zoomHandlers) {
+      image.removeEventListener("click", handlers.click);
+      image.removeEventListener("keydown", handlers.keydown);
+    }
+    zoomHandlers.clear();
+    for (const overlay of zoomOverlays) overlay.remove();
+    zoomOverlays.clear();
     printButton?.removeEventListener("click", onPrint);
     owner.removeEventListener("pagehide", cleanup);
     owner.removeEventListener("beforeunload", cleanup);
@@ -388,7 +465,7 @@ export function updateReportPreviewImages(
   if (!status) return;
   if (progress.printing) {
     status.textContent = progress.failed > 0
-      ? `تجهيز الصور للطباعة: ${progress.loaded} من ${progress.total}؛ تعذّر ${progress.failed}`
+      ? `جارٍ تجهيز الصور: ${progress.loaded} من ${progress.total}؛ لم يُنشأ PDF، تعذّر ${progress.failed}. ستظهر إعادة المحاولة عند الانتهاء.`
       : `تجهيز الصور للطباعة: ${progress.loaded} من ${progress.total}`;
   } else if (progress.failed > 0) {
     status.textContent = `تم تحميل ${progress.loaded} من ${progress.total} صورة؛ تعذّر ${progress.failed}`;

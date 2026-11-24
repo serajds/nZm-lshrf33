@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { REPORT_IMAGE_MAX_PIXELS } from "@workspace/api-zod";
+import { IMAGE_POLICY_VERSION, IMAGE_PROFILES, REPORT_IMAGE_MAX_PIXELS } from "@workspace/api-zod";
 
 export type ReportImageVariant = "report-photo" | "report-thumbnail" | "report-logo";
 type ImageResult = { buffer: Buffer; contentType: string };
@@ -39,31 +39,28 @@ type VariantProcessor = ((
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 const MAX_CACHE_BYTES = 32 * 1024 * 1024;
 const TTL = 10 * 60 * 1000;
-export const REPORT_PRINT_IMAGE_MAX_BYTES = 100 * 1024;
-export const REPORT_PRINT_IMAGE_MAX_EDGE = 1000;
+export const REPORT_PRINT_IMAGE_MAX_BYTES = IMAGE_PROFILES.report_technical.maxOutputBytes;
+export const REPORT_PRINT_IMAGE_MAX_EDGE = IMAGE_PROFILES.report.maxEdge;
 
 async function encodePrintImage(source: Buffer, options: { limitInputPixels: number }): Promise<ImageResult> {
-  const dimensions = [1000, 900, 800, 700, 600, 500, 400, 320];
-  const qualities = [78, 70, 62, 54, 46];
+  const qualities = [90, 86, 82];
   let smallest: Buffer | null = null;
 
   for (const quality of qualities) {
-    for (const edge of dimensions) {
-      const output = await sharp(source, options)
-        .rotate()
-        .flatten({ background: "#ffffff" })
-        .resize({ width: edge, height: edge, fit: "inside", withoutEnlargement: true })
-        .jpeg({ quality, mozjpeg: true, progressive: true })
-        .toBuffer();
-      if (!smallest || output.length < smallest.length) smallest = output;
-      if (output.length <= REPORT_PRINT_IMAGE_MAX_BYTES) {
-        return { buffer: output, contentType: "image/jpeg" };
-      }
+    const output = await sharp(source, options)
+      .rotate()
+      .flatten({ background: "#ffffff" })
+      .resize({ width: REPORT_PRINT_IMAGE_MAX_EDGE, height: REPORT_PRINT_IMAGE_MAX_EDGE, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality, mozjpeg: true, progressive: true })
+      .toBuffer();
+    if (!smallest || output.length < smallest.length) smallest = output;
+    if (output.length <= REPORT_PRINT_IMAGE_MAX_BYTES) {
+      return { buffer: output, contentType: "image/jpeg" };
     }
   }
 
   if (!smallest || smallest.length > REPORT_PRINT_IMAGE_MAX_BYTES) {
-    throw new Error("Could not fit report image under 100 KB");
+    throw new Error("Report image exceeds the 1.5 MB quality-preserving limit");
   }
   return { buffer: smallest, contentType: "image/jpeg" };
 }
@@ -81,7 +78,7 @@ export function createReportImageVariants() {
     cache.delete(key);
   };
   const getVariant: VariantProcessor = async (key, variant, readSource, onDiagnostic) => {
-    const cacheKey = `${key}:${variant}:v1`;
+    const cacheKey = `${key}:${variant}:v${IMAGE_POLICY_VERSION}`;
     const now = Date.now();
     for (const [k, value] of cache) if (value.expires <= now) evict(k);
     const hit = cache.get(cacheKey);
@@ -112,10 +109,14 @@ export function createReportImageVariants() {
         const metadataStarted = onDiagnostic ? performance.now() : 0;
         const metadata = await sharp(source, options).metadata();
         const metadataMs = onDiagnostic ? performance.now() - metadataStarted : undefined;
-        const edge = variant === "report-logo" ? 1000 : variant === "report-thumbnail" ? 640 : REPORT_PRINT_IMAGE_MAX_EDGE;
+        const edge = variant === "report-logo" ? IMAGE_PROFILES.logo.maxEdge
+          : variant === "report-thumbnail" ? IMAGE_PROFILES.thumbnail.maxEdge : REPORT_PRINT_IMAGE_MAX_EDGE;
         if (variant === "report-photo") {
           const canReuseJpeg = source.length <= REPORT_PRINT_IMAGE_MAX_BYTES
-            && metadata.format === "jpeg";
+            && metadata.format === "jpeg"
+            && (metadata.width ?? Infinity) <= REPORT_PRINT_IMAGE_MAX_EDGE
+            && (metadata.height ?? Infinity) <= REPORT_PRINT_IMAGE_MAX_EDGE
+            && !metadata.orientation && !metadata.exif && !metadata.icc && !metadata.xmp && !metadata.iptc;
           const encodeStarted = onDiagnostic ? performance.now() : 0;
           const result = canReuseJpeg
             ? { buffer: source, contentType: "image/jpeg" }

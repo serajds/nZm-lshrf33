@@ -305,7 +305,13 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
     ? (body.noSchedule === true || body.noSchedule === "true")
     : undefined;
 
-  const [existingProject] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
+  const needsScheduleContext = (willBeNoSchedule === undefined
+    && (body.startDate !== undefined || body.expectedEndDate !== undefined))
+    || (willBeNoSchedule === false
+      && (body.startDate === undefined || body.expectedEndDate === undefined));
+  const [existingProject] = needsScheduleContext
+    ? await db.select().from(projectsTable).where(eq(projectsTable.id, id))
+    : [undefined];
   const effectiveNoSchedule = willBeNoSchedule ?? existingProject?.noSchedule ?? false;
 
   if (isTogglingNoSchedule) updateData.noSchedule = willBeNoSchedule;
@@ -393,8 +399,9 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
 
   let project: typeof projectsTable.$inferSelect | undefined;
   try {
+    // The database trigger takes the portfolio lock only for parent-link changes.
+    // Unrelated edits should not serialize across every project.
     const updateProject = () => db.transaction(async tx => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(731924614)`);
       return tx.update(projectsTable).set(updateData).where(eq(projectsTable.id, id)).returning();
     });
     [project] = body.linkCode !== undefined
@@ -416,7 +423,12 @@ router.patch("/projects/:id", requireProjectAccess("id"), async (req, res): Prom
     return;
   }
 
-  await captureProjectProgressHistory(project.id);
+  // Progress snapshots contain the schedule fields and activity/group state,
+  // not project naming, location, company, or attendance settings. Avoid
+  // rebuilding a project-wide snapshot for unrelated project edits.
+  if (["noSchedule", "startDate", "expectedEndDate"].some(key => Object.hasOwn(updateData, key))) {
+    await captureProjectProgressHistory(project.id);
+  }
   const { logAudit } = await import("../lib/audit");
   const auditDetails = { ...updateData };
   delete auditDetails.linkCode;

@@ -14,12 +14,16 @@ import {
   createSystemImageCompressionJobStore,
   type CompressionAsset,
 } from "../lib/system-image-compression-job-store";
-import { imageCompressionFailureLabels } from "../lib/system-image-compression";
-import { systemImageCompressionWorker } from "../lib/system-image-compression-worker";
+import { imageCompressionFailureLabels } from "../lib/system-image-compression-labels";
 import { listUploadedImageObjects } from "../lib/fileStorage";
 
 const router: IRouter = Router();
 const store = createSystemImageCompressionJobStore();
+if (process.env.NODE_ENV === "development" && process.env.REPLIT_DEPLOYMENT !== "1") {
+  void store.pauseForUnifiedPipeline().then(count => {
+    if (count) console.info("Paused legacy system-image jobs", { jobsPaused: count });
+  }).catch(() => console.warn("Could not pause legacy system-image jobs"));
+}
 const allowedKinds = new Set<SystemImageAssetKind>([
   "project_file",
   "report_photo",
@@ -188,63 +192,13 @@ router.get("/admin/system-image-compression", async (_req, res) => {
   }
 });
 
-router.post("/admin/system-image-compression/start", async (req, res) => {
-  try {
-    if (req.body?.replaceOriginals !== true) {
-      res.status(400).json({ error: "يلزم تأكيد استبدال الصور الأصلية" });
-      return;
-    }
-    const assets = await collectAssets();
-    if (!assets.length) {
-      res.status(400).json({ error: "لم يتم العثور على صور مرتبطة بالنظام" });
-      return;
-    }
-    const userId = req.user?.userId;
-    if (!userId) {
-      res.status(401).json({ error: "غير مصرح" });
-      return;
-    }
-    const result = await store.start(userId, assets);
-    if (result.alreadyActive) {
-      res.status(409).json({
-        error: result.job.status === "paused"
-          ? "توجد عملية متوقفة مؤقتاً؛ استأنفها أو اتركها متوقفة قبل بدء عملية جديدة"
-          : "توجد عملية ضغط صور قيد التنفيذ",
-        job: presentJob(await store.getLatest()),
-      });
-      return;
-    }
-    systemImageCompressionWorker.kick();
-    res.status(201).json({ job: presentJob(await store.getLatest()) });
-  } catch {
-    res.status(500).json({ error: "تعذر بدء ضغط الصور" });
-  }
-});
-
-router.post("/admin/system-image-compression/pause", async (_req, res) => {
-  try {
-    const job = await systemImageCompressionWorker.pause();
-    if (!job) {
-      res.status(409).json({ error: "لا توجد عملية قيد التنفيذ لإيقافها مؤقتاً" });
-      return;
-    }
-    res.json({ job: presentJob(await store.getLatest()) });
-  } catch {
-    res.status(500).json({ error: "تعذر إيقاف العملية مؤقتاً" });
-  }
-});
-
-router.post("/admin/system-image-compression/resume", async (_req, res) => {
-  try {
-    const job = await systemImageCompressionWorker.resume();
-    if (!job) {
-      res.status(409).json({ error: "لا توجد عملية متوقفة مؤقتاً لاستئنافها" });
-      return;
-    }
-    res.json({ job: presentJob(await store.getLatest()) });
-  } catch {
-    res.status(500).json({ error: "تعذر استئناف العملية" });
-  }
-});
+const retiredWorker = (_req: Request, res: Response) => {
+  res.status(410).json({
+    error: "توقفت أداة الضغط القديمة لأنها تستبدل الأصول خارج السياسة الموحدة. لم تُحذف بيانات المهام.",
+  });
+};
+router.post("/admin/system-image-compression/start", retiredWorker);
+router.post("/admin/system-image-compression/pause", retiredWorker);
+router.post("/admin/system-image-compression/resume", retiredWorker);
 
 export default router;

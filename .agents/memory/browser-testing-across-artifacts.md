@@ -56,3 +56,9 @@ In a shared create/edit dialog opened programmatically from a row, explicitly re
 **Why:** Default dialog focus restoration can target the creation trigger above the list, producing a jump that users perceive as a full page refresh even when the document and row never remount.
 
 **How to apply:** Diagnose document loads, internal scrolling, row identity, and focus separately. Preserve normal creation-trigger behavior and continue refreshing live data; do not mask a focus bug by disabling refetches.
+
+For report previews opened in a popup, image requests may run in the opener and become `blob:` URLs in the popup; measure network timing and bytes in the opener.
+
+**Why:** A signed-in popup test rendered all 50 prepared print images and invoked printing, while counting API requests from the popup returned fewer than 50 because the fetch callback belonged to the opener.
+
+**How to apply:** Assert preview text, thumbnail readiness, zoom dimensions, and successful print preparation in the popup; measure resource entries from the opener and verify variant URL construction/server profile selection with focused unit/API tests.

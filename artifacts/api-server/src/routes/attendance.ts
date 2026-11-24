@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { randomUUID } from "node:crypto";
 import { db } from "@workspace/db";
-import { attendanceRecordsTable, projectsTable, usersTable, projectMembersTable, userCompaniesTable } from "@workspace/db";
-import { eq, and, desc, gte, lte, inArray, sql } from "drizzle-orm";
+import { attendanceRecordsTable, imageAssetsTable, projectsTable, usersTable, projectMembersTable, userCompaniesTable } from "@workspace/db";
+import { eq, and, desc, gte, lte, inArray, sql, ne } from "drizzle-orm";
 import { canViewAttendancePhoto, requireAuth, requireProjectAccess, verifyAndMaybeRenewToken } from "../middlewares/auth";
 import { loadEffectiveTabPermissions, requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import { parseAttendanceEventTime } from "../lib/attendance-event-time";
@@ -9,13 +10,20 @@ import { resolveTabPermissions } from "../lib/tab-permissions";
 import { haversineDistanceMeters } from "../lib/geo";
 import { logAudit } from "../lib/audit";
 import { pairAttendanceSessions, type AttendanceSession } from "../lib/attendance-sessions";
-import { uploadToCloud, streamFromCloud } from "../lib/fileStorage";
+import { streamFromCloud, deleteImageObjectStrict } from "../lib/fileStorage";
 import { getSystemImageContentType } from "../lib/system-image-content-types";
 import { sendPushToUsers, getProjectSupervisorIds } from "../lib/push";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import sharp from "sharp";
+import { IMAGE_SOURCE_MAX_BYTES, hasSupportedImageSignature } from "@workspace/api-zod";
+import { createImageLifecycle } from "../lib/image-lifecycle";
+import { createImageUploadRequestMiddleware, imageUploadRequest } from "../lib/image-upload-request";
+import { sendImageUploadError } from "../lib/image-upload-errors";
+import { ImageProcessingError } from "../lib/image-processing";
+import { imageObjectName, isLifecycleImageFilename } from "../lib/image-asset-keys";
+import { resolveStoredImageForRead } from "../lib/image-read-reference";
+import { streamStoredImage } from "../lib/image-object-stream";
 
 // Africa/Tripoli is GMT+2 with no DST. Convert a YYYY-MM-DD Libya-local date
 // into the corresponding UTC instants for inclusive day-range queries.
@@ -28,19 +36,18 @@ function libyaDayEndUtc(dateStr: string): Date {
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+const imageLifecycle = createImageLifecycle();
+const imageIngress = createImageUploadRequestMiddleware({ temporaryRoot: uploadsDir });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, "att-" + uniqueSuffix + path.extname(file.originalname || ".jpg"));
-  },
+  filename: (_req, file, cb) => cb(null, `incoming-image-${randomUUID()}${path.extname(file.originalname || ".jpg")}`),
 });
 const ALLOWED_SELFIE_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"]);
 
 const upload = multer({
   storage,
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { fileSize: IMAGE_SOURCE_MAX_BYTES },
   fileFilter: (_req, file, cb) => {
     if (!ALLOWED_SELFIE_MIME.has(file.mimetype.toLowerCase())) {
       cb(new Error("INVALID_MIME"));
@@ -49,34 +56,6 @@ const upload = multer({
     cb(null, true);
   },
 });
-
-async function compressSelfie(filePath: string): Promise<{ size: number; filename: string }> {
-  const baseName = path.basename(filePath, path.extname(filePath));
-  const dir = path.dirname(filePath);
-  const finalName = baseName + ".jpg";
-  const finalPath = path.join(dir, finalName);
-  // Always write to a distinct temp path so sharp never reads/writes the same file.
-  const tempPath = path.join(dir, baseName + ".compressing.jpg");
-
-  // Verify content is actually a decodable image (defense-in-depth: MIME header
-  // can be spoofed). Sharp will throw on non-image input.
-  const meta = await sharp(filePath).metadata();
-  if (!meta.format) throw new Error("INVALID_IMAGE_CONTENT");
-
-  await sharp(filePath)
-    .rotate()
-    .resize({ width: 800, withoutEnlargement: true })
-    .jpeg({ quality: 78, mozjpeg: true })
-    .toFile(tempPath);
-
-  // Replace original (or sibling) with the compressed version.
-  if (fs.existsSync(finalPath) && finalPath !== filePath) fs.unlinkSync(finalPath);
-  if (filePath !== finalPath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  fs.renameSync(tempPath, finalPath);
-
-  const stats = fs.statSync(finalPath);
-  return { size: stats.size, filename: finalName };
-}
 
 // Accept the selfie either as a multipart "selfie" file OR as a base64 string
 // inside a JSON body sent with Content-Type: text/plain. The base64/text-plain
@@ -103,29 +82,28 @@ async function decodeBase64Selfie(req: Request, res: Response, next: NextFunctio
     res.status(400).json({ error: "صورة غير صالحة" });
     return;
   }
-  if (buf.length === 0 || buf.length > 15 * 1024 * 1024) {
+  if (buf.length === 0 || buf.length > IMAGE_SOURCE_MAX_BYTES) {
     res.status(400).json({ error: "صورة غير صالحة" });
     return;
   }
-  // Defense-in-depth: confirm the bytes are a decodable image (mirrors the
-  // multipart fileFilter MIME gate).
-  try {
-    const meta = await sharp(buf).metadata();
-    if (!meta.format) throw new Error("not-image");
-  } catch {
+  // Signature checks are cheap here. The shared isolated image worker performs
+  // decoder/dimension checks once, before publishing the stored asset.
+  if (!hasSupportedImageSignature(buf)) {
     res.status(400).json({ error: "نوع الصورة غير مدعوم" });
     return;
   }
-  const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-  const filename = "att-" + uniqueSuffix + ".jpg";
+  const filename = `incoming-image-${randomUUID()}.jpg`;
   const filePath = path.join(uploadsDir, filename);
   try {
+    imageUploadRequest(res)?.trackIncoming(filePath);
     await fs.promises.writeFile(filePath, buf);
   } catch {
     res.status(500).json({ error: "تعذّر حفظ الصورة" });
     return;
   }
-  req.file = { path: filePath, filename, mimetype: "image/jpeg" } as unknown as Express.Multer.File;
+  req.file = {
+    path: filePath, filename, originalname: "attendance-selfie.jpg", mimetype: "image/jpeg",
+  } as unknown as Express.Multer.File;
   next();
 }
 
@@ -143,6 +121,7 @@ function selfieUpload(req: Request, res: Response, next: NextFunction): void {
         res.status(400).json({ error: msg });
         return;
       }
+      if (req.file) imageUploadRequest(res)?.trackIncoming(req.file.path);
       next();
     });
     return;
@@ -342,6 +321,7 @@ router.post(
   "/attendance/projects/:projectId/check-in",
   requireProjectAccess("projectId"),
   requireTabEdit("attendance"),
+  imageIngress,
   selfieUpload,
   async (req: Request, res: Response): Promise<void> => {
     await recordAttendance(req, res, "check_in");
@@ -353,6 +333,7 @@ router.post(
   "/attendance/projects/:projectId/check-out",
   requireProjectAccess("projectId"),
   requireTabEdit("attendance"),
+  imageIngress,
   selfieUpload,
   async (req: Request, res: Response): Promise<void> => {
     await recordAttendance(req, res, "check_out");
@@ -495,44 +476,67 @@ async function recordAttendance(req: Request, res: Response, type: "check_in" | 
     }
   }
 
-  let selfieFilename: string;
+  const context = imageUploadRequest(res);
+  if (!context) {
+    sendImageUploadError(res, new ImageProcessingError("image_request_unavailable"));
+    return;
+  }
+  const imageClientId = clientId ?? randomUUID();
+  let committedRecord: typeof attendanceRecordsTable.$inferSelect | undefined;
   try {
-    const compressed = await compressSelfie(req.file.path);
-    selfieFilename = compressed.filename;
-    try {
-      await uploadToCloud(path.join(uploadsDir, selfieFilename), selfieFilename);
-    } catch (err) {
-      console.warn("Selfie cloud upload failed, kept locally:", err);
-    }
-  } catch (err) {
-    console.warn("Selfie compression failed, using original:", err);
-    selfieFilename = req.file.filename;
+    await context.run(async () => {
+      await imageLifecycle.upload({
+        principal: `user:${userId}`,
+        authorizedScope: `project:${projectId}:attendance`,
+        projectId,
+        userId,
+        clientKey: imageClientId,
+        profile: "attendance",
+        sourcePath: req.file!.path,
+        signal: context.signal,
+        lease: context.lease,
+        onCommit: async (tx, asset) => {
+          const selfieFilename = imageObjectName(asset.storageKey!);
+          const [inserted] = await tx.insert(attendanceRecordsTable).values({
+            projectId,
+            userId,
+            type,
+            ...(eventTime.recordedAt ? { recordedAt: eventTime.recordedAt } : {}),
+            latitude: lat,
+            longitude: lng,
+            accuracyMeters: Number.isNaN(acc) ? null : acc,
+            distanceMeters: distance,
+            outOfRange,
+            selfieFilename,
+            selfieUrl: "/api/attendance/records/__ID__/photo",
+            notes,
+            clientId: imageClientId,
+          }).returning();
+          if (!inserted) throw new ImageProcessingError("attendance_record_commit_failed");
+          const [updated] = await tx.update(attendanceRecordsTable)
+            .set({ selfieUrl: `/api/attendance/records/${inserted.id}/photo` })
+            .where(eq(attendanceRecordsTable.id, inserted.id)).returning();
+          if (!updated) throw new ImageProcessingError("attendance_record_commit_failed");
+          committedRecord = updated;
+          return null;
+        },
+      });
+    });
+  } catch (error) {
+    sendImageUploadError(res, error);
+    return;
   }
 
-  const [record] = await db.insert(attendanceRecordsTable).values({
-    projectId,
-    userId,
-    type,
-    ...(eventTime.recordedAt ? { recordedAt: eventTime.recordedAt } : {}),
-    latitude: lat,
-    longitude: lng,
-    accuracyMeters: Number.isNaN(acc) ? null : acc,
-    distanceMeters: distance,
-    outOfRange,
-    selfieFilename,
-    selfieUrl: `/api/attendance/records/__ID__/photo`, // placeholder; real URL is built per-request
-    notes,
-    clientId,
-  }).returning();
-
-  // Patch in correct id-based URL
-  if (record) {
-    const realUrl = `/api/attendance/records/${record.id}/photo`;
-    await db.update(attendanceRecordsTable)
-      .set({ selfieUrl: realUrl })
-      .where(eq(attendanceRecordsTable.id, record.id));
-    record.selfieUrl = realUrl;
+  if (!committedRecord) {
+    const [duplicate] = await db.select().from(attendanceRecordsTable).where(and(
+      eq(attendanceRecordsTable.userId, userId),
+      eq(attendanceRecordsTable.clientId, imageClientId),
+    )).limit(1);
+    if (duplicate) { res.status(200).json(duplicate); return; }
+    sendImageUploadError(res, new ImageProcessingError("image_reference_removed"));
+    return;
   }
+  const record = committedRecord;
 
   logAudit({
     userId,
@@ -1095,14 +1099,43 @@ router.delete("/attendance/records/:recordId", requireAuth, async (req, res): Pr
     return;
   }
 
-  await db.delete(attendanceRecordsTable).where(eq(attendanceRecordsTable.id, recordId));
-
-  // Best-effort cleanup of selfie file (cloud copy is not removed; orphan files
-  // are tolerated and can be cleaned by a separate maintenance task).
-  if (existing.selfieFilename) {
+  let managedAssetId: string | null = null;
+  if (existing.selfieFilename && isLifecycleImageFilename(existing.selfieFilename)) {
+    const [asset] = await db.select().from(imageAssetsTable).where(and(
+      eq(imageAssetsTable.storageKey, `uploads/${existing.selfieFilename}`),
+      eq(imageAssetsTable.projectId, existing.projectId),
+    ));
+    if (!asset || asset.profile !== "attendance" || !asset.storageBucket || !asset.storageKey) {
+      res.status(500).json({ error: "بيانات صورة الحضور غير مكتملة؛ لم يُحذف السجل" });
+      return;
+    }
+    const [anotherReference] = await db.select({ id: attendanceRecordsTable.id })
+      .from(attendanceRecordsTable).where(and(
+        eq(attendanceRecordsTable.selfieFilename, existing.selfieFilename),
+        ne(attendanceRecordsTable.id, recordId),
+      )).limit(1);
+    if (!anotherReference) {
+      try {
+        for (const key of [asset.storageKey, asset.thumbnailKey, asset.printKey]) {
+          if (key) await deleteImageObjectStrict(imageObjectName(key), asset.storageBucket);
+        }
+      } catch {
+        res.status(500).json({ error: "تعذّر حذف صورة الحضور من التخزين؛ لم يُحذف السجل" });
+        return;
+      }
+      managedAssetId = asset.id;
+      await fs.promises.unlink(path.join(uploadsDir, existing.selfieFilename)).catch(() => {});
+    }
+  } else if (existing.selfieFilename) {
+    // Historical images remain on their existing cleanup path.
     const localPath = path.join(uploadsDir, existing.selfieFilename);
     fs.unlink(localPath, () => {});
   }
+
+  await db.transaction(async tx => {
+    await tx.delete(attendanceRecordsTable).where(eq(attendanceRecordsTable.id, recordId));
+    if (managedAssetId) await tx.delete(imageAssetsTable).where(eq(imageAssetsTable.id, managedAssetId!));
+  });
 
   logAudit({
     userId: req.user!.userId,
@@ -1165,6 +1198,26 @@ router.get("/attendance/records/:recordId/photo", async (req: Request, res: Resp
   const filename = record.selfieFilename;
   const localPath = path.join(uploadsDir, filename);
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+
+  if (isLifecycleImageFilename(filename)) {
+    const controller = new AbortController();
+    res.once("close", () => controller.abort());
+    try {
+      const reference = await resolveStoredImageForRead(filename, "primary", record.projectId);
+      if (reference.kind !== "ready") {
+        res.status(reference.kind === "missing" ? 404 : 503).json({ error: "الصورة غير متاحة حاليًا" });
+        return;
+      }
+      const result = await streamStoredImage(reference.filename, reference.bucketId, controller.signal);
+      res.setHeader("Content-Type", reference.mimeType);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      result.stream.on("error", () => res.destroy()).pipe(res);
+    } catch {
+      if (!res.destroyed && !res.headersSent) res.status(503).json({ error: "تعذّر تحميل الصورة" });
+      else if (!res.destroyed) res.destroy();
+    }
+    return;
+  }
 
   const compressedContentType = getSystemImageContentType(filename);
   const extension = path.extname(filename).toLowerCase();

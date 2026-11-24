@@ -4,6 +4,8 @@ import { usePageTitle } from "@/hooks/use-page-title";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { NewReportProgressField, useReportPeriodProgress } from "@/components/report-period-progress";
 import { reportTypeLabel, suggestedReportPeriodEnd } from "@/lib/report-types";
+import { createReportImageUploadQueue, type ReportImageJob } from "@/lib/report-image-upload-queue";
+import { reportThumbnailUrl } from "@/lib/prepare-report-image";
 import { 
   useListReports, 
   useCreateReport, 
@@ -27,9 +29,9 @@ import type { ReportAuditLogEntry } from "@workspace/api-client-react";
 import {
   REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES,
   REPORT_IMAGE_SHARE_MAX_LIMIT,
-  REPORT_IMAGE_MAX_BYTES,
-  isJpgReportImageUpload,
+  IMAGE_SOURCE_MAX_BYTES,
 } from "@workspace/api-zod";
+import type { ReportImageProfile } from "@workspace/api-zod/image-policy";
 import { useTabAccess, useMyProjectPermissions } from "@/hooks/use-tab-access";
 import type { Report, Activity, CreateReportBody, UpdateReportBody, ReportActivitiesSnapshotItem, UpdateReportBodyActivitiesSnapshotItem } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -504,8 +506,17 @@ export default function ProjectReports() {
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
-  type GroupUploadState = { loaded: number; total: number; doneCount: number; totalCount: number };
-  const [uploadProgress, setUploadProgress] = useState<Record<number, GroupUploadState>>({});
+  type UploadJobState = {
+    id: string; groupId: string; fileName: string; loaded: number; total: number;
+    status: "queued" | "preparing" | "uploading" | "retrying" | "failed" | "cancelled";
+    error?: string; attempt: number;
+  };
+  const [uploadJobs, setUploadJobs] = useState<UploadJobState[]>([]);
+  const [imageQualityByGroup, setImageQualityByGroup] = useState<Record<string, ReportImageProfile>>({});
+  const uploadQueueRef = useRef<ReturnType<typeof createReportImageUploadQueue> | null>(null);
+  const ignoredUploadJobIdsRef = useRef(new Set<string>());
+  const groupImageOrderRef = useRef(new Map<string, Map<string, number>>());
+  const imageSequenceRef = useRef(0);
   const [dragOverGroupIdx, setDragOverGroupIdx] = useState<number | null>(null);
   const [openGroupIdx, setOpenGroupIdx] = useState<number | null>(0);
   const [pendingImageGroupDeletion, setPendingImageGroupDeletion] = useState<{
@@ -525,21 +536,8 @@ export default function ProjectReports() {
   const [isCreatingGroupShare, setIsCreatingGroupShare] = useState(false);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
-  type ImageOptimizationJob = {
-    id: string;
-    status: "running" | "completed" | "completed_with_errors";
-    total: number;
-    processed: number;
-    optimized: number;
-    skipped: number;
-    failed: number;
-    current: string | null;
-    lastError: string | null;
-  };
-  const [imageOptimizationJob, setImageOptimizationJob] = useState<ImageOptimizationJob | null>(null);
-  const [startingImageOptimization, setStartingImageOptimization] = useState(false);
   const groupShareLinks = useRef(new Map<string, { url: string; expiresAt: number; maxImages: number }>());
-  const isAnyUploading = Object.keys(uploadProgress).length > 0;
+  const isAnyUploading = uploadJobs.some(job => !["failed", "cancelled"].includes(job.status));
 
   // Editable copy of the report's activities snapshot. Populated when
   // opening an existing report's edit dialog (see `handleEdit`). Edits
@@ -567,60 +565,6 @@ export default function ProjectReports() {
   const { canEdit: canEditReports, isHidden } = useTabAccess(projectId, "reports", { redirectIfHidden: true });
   const isViewer = !canEditReports;
   const canApprove = myPermissions?.projectRole === "admin" || myPermissions?.projectRole === "project_manager";
-  const canOptimizeReportImages = import.meta.env.DEV;
-
-  useEffect(() => {
-    if (!projectId || !canApprove || !canOptimizeReportImages) return;
-    let mounted = true;
-    const refreshStatus = async () => {
-      try {
-        const response = await fetchWithSession(`${API_BASE}/projects/${projectId}/reports/image-optimization`);
-        if (!response.ok) return;
-        const job = await response.json() as ImageOptimizationJob | null;
-        if (mounted) setImageOptimizationJob(job);
-      } catch {
-        // The opt-in tool is ancillary to the report list; a temporary status
-        // failure must not block report use.
-      }
-    };
-    void refreshStatus();
-    const interval = imageOptimizationJob?.status === "running"
-      ? window.setInterval(() => void refreshStatus(), 5000)
-      : null;
-    return () => {
-      mounted = false;
-      if (interval !== null) window.clearInterval(interval);
-    };
-  }, [projectId, canApprove, canOptimizeReportImages, imageOptimizationJob?.status]);
-
-  const startImageOptimization = async () => {
-    setStartingImageOptimization(true);
-    try {
-      const response = await fetchWithSession(
-        `${API_BASE}/projects/${projectId}/reports/image-optimization`,
-        { method: "POST" },
-      );
-      const body = await response.json().catch(() => null) as ImageOptimizationJob & { error?: string } | null;
-      if (!response.ok || !body) throw new Error(body?.error || "تعذّر بدء تهيئة الصور");
-      setImageOptimizationJob(body);
-      toast({
-        title: body.total === 0
-          ? "لا توجد صور تقارير تحتاج إلى فحص"
-          : body.status === "completed"
-            ? "صور هذا المشروع جاهزة للطباعة الخفيفة"
-            : "بدأ تجهيز نسخ الطباعة الخفيفة",
-        description: "لن تتغير الصور الأصلية أو بيانات التقارير.",
-      });
-    } catch (error) {
-      toast({
-        title: "تعذّر بدء تهيئة الصور",
-        description: error instanceof Error ? error.message : undefined,
-        variant: "destructive",
-      });
-    } finally {
-      setStartingImageOptimization(false);
-    }
-  };
 
   const { refetch: refetchCompanyLogos } = useQuery<Record<string, CompanyLogo>>({
     queryKey: ["project-company-logos", projectId],
@@ -1079,7 +1023,6 @@ export default function ProjectReports() {
       loadAsset: (url, variant, signal) =>
         protectedAssetToPreviewUrl(url, previewWindow, variant, signal),
       onProgress: progress => updateReportPreviewImages(previewWindow, progress),
-      sameVariantForPrint: true,
     });
     } catch {
       for (const objectUrl of logoObjectUrls) {
@@ -1097,128 +1040,78 @@ export default function ProjectReports() {
   };
 
   const handleImageUpload = async (files: File[], groupIndex: number) => {
-    const jpgFiles = files.filter(file => isJpgReportImageUpload(file.name, file.type));
-    const fileList = jpgFiles.filter(file => file.size > 0 && file.size <= REPORT_IMAGE_MAX_BYTES);
-    if (jpgFiles.length !== files.length) {
-      toast({ variant: "destructive", title: "يُسمح فقط برفع الصور بامتداد JPG" });
-    }
-    if (fileList.length !== jpgFiles.length) {
-      toast({ variant: "destructive", title: "الحد الأقصى لحجم الصورة 5 ميغابايت" });
-    }
-    if (fileList.length === 0) return;
-    setOpenGroupIdx(groupIndex);
-    const token = getAuthToken();
-    const totalBytes = fileList.reduce((s, f) => s + f.size, 0);
-
-    // Track per-file loaded bytes so the aggregated progress for this
-    // group reflects every file in the batch. Uploads from different
-    // groups run independently — a slow upload in one tab never blocks
-    // adding photos to another tab.
-    const perFileLoaded = new Array(fileList.length).fill(0);
-    setUploadProgress(prev => ({
-      ...prev,
-      [groupIndex]: {
-        loaded: (prev[groupIndex]?.loaded ?? 0),
-        total: (prev[groupIndex]?.total ?? 0) + totalBytes,
-        doneCount: (prev[groupIndex]?.doneCount ?? 0),
-        totalCount: (prev[groupIndex]?.totalCount ?? 0) + fileList.length,
-      },
-    }));
-
-    const uploadOne = (file: File, idx: number): Promise<string | null> =>
-      new Promise<string | null>((resolve) => {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("description", "صورة تقرير");
-        const xhr = new XMLHttpRequest();
-        // Dedicated report-uploads endpoint that's gated by the "reports"
-        // tab permission. Engineers who can edit reports but don't have
-        // edit access to the "files" tab were getting a 403 from the old
-        // /files endpoint.
-        xhr.open("POST", `/api/projects/${projectId}/reports/uploads`);
-        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-        xhr.upload.onprogress = (ev) => {
-          if (!ev.lengthComputable) return;
-          const delta = ev.loaded - perFileLoaded[idx];
-          perFileLoaded[idx] = ev.loaded;
-          setUploadProgress(prev => {
-            const cur = prev[groupIndex];
-            if (!cur) return prev;
-            return { ...prev, [groupIndex]: { ...cur, loaded: cur.loaded + delta } };
-          });
-        };
-        xhr.onload = async () => {
-          if (xhr.status >= 200 && xhr.status <= 599) {
-            const responseHeaders = new Headers();
-            const renewed = xhr.getResponseHeader("X-Renewed-Token");
-            if (renewed) responseHeaders.set("X-Renewed-Token", renewed);
-            await processFetchResponse(
-              new Response(xhr.responseText, {
-                status: xhr.status,
-                statusText: xhr.statusText,
-                headers: responseHeaders,
-              }),
-              token,
-            );
-          }
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const data = JSON.parse(xhr.responseText) as { fileUrl?: string };
-              resolve(data.fileUrl ?? null);
-            } catch {
-              resolve(null);
-            }
-          } else {
-            toast({ variant: "destructive", title: `فشل رفع ${file.name}` });
-            resolve(null);
-          }
-        };
-        xhr.onerror = () => {
-          toast({ variant: "destructive", title: `خطأ في رفع ${file.name}` });
-          resolve(null);
-        };
-        xhr.send(formData);
-      }).then((url) => {
-        // Push each finished URL into the form immediately so the user
-        // sees thumbnails appear as files complete instead of waiting
-        // for the whole batch.
-        if (url) {
-          const groups = [...(form.getValues("imageGroups") ?? [])];
-          if (groups[groupIndex]) {
-            groups[groupIndex] = {
-              ...groups[groupIndex],
-              urls: [...(groups[groupIndex].urls ?? []), url],
-            };
-            form.setValue("imageGroups", groups, { shouldDirty: true });
-          }
-        }
-        setUploadProgress(prev => {
-          const cur = prev[groupIndex];
-          if (!cur) return prev;
-          return { ...prev, [groupIndex]: { ...cur, doneCount: cur.doneCount + 1 } };
-        });
-        return url;
-      });
-
-    await Promise.all(fileList.map((f, i) => uploadOne(f, i)));
-
-    // Clear this group's progress once everything for this batch finished.
-    // If another batch was queued in the meantime its own state entry
-    // will already exist with the additional totals; we only clear when
-    // the counters caught up with the totals.
-    setUploadProgress(prev => {
-      const cur = prev[groupIndex];
-      if (!cur) return prev;
-      if (cur.doneCount >= cur.totalCount) {
-        const { [groupIndex]: _drop, ...rest } = prev;
-        return rest;
-      }
-      return prev;
+    const supported = new Set(["jpg", "jpeg", "png", "webp", "heic", "heif", "tif", "tiff", "avif", "gif", "svg"]);
+    const accepted = files.filter(file => {
+      const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+      return supported.has(extension) && file.size > 0 && file.size <= IMAGE_SOURCE_MAX_BYTES;
     });
+    if (accepted.length !== files.length) {
+      toast({ variant: "destructive", title: "اختر صورًا صالحة لا يتجاوز حجم كل منها 20 ميغابايت" });
+    }
+    if (!accepted.length) return;
+    const groups = [...(form.getValues("imageGroups") ?? [])], group = groups[groupIndex];
+    if (!group) return;
+    const groupId = group.id ?? crypto.randomUUID();
+    const qualityProfile = imageQualityByGroup[groupId] ?? imageQualityByGroup[`image-group-${groupIndex}`] ?? "report";
+    if (!group.id) {
+      groups[groupIndex] = { ...group, id: groupId };
+      form.setValue("imageGroups", groups, { shouldDirty: true });
+      setImageQualityByGroup(current => {
+        const selected = current[`image-group-${groupIndex}`];
+        if (!selected) return current;
+        const next = { ...current, [groupId]: selected };
+        delete next[`image-group-${groupIndex}`];
+        return next;
+      });
+    }
+    setOpenGroupIdx(groupIndex);
+    let imageOrder = groupImageOrderRef.current.get(groupId);
+    if (!imageOrder) { imageOrder = new Map(); groupImageOrderRef.current.set(groupId, imageOrder); }
+    if (!uploadQueueRef.current) {
+      uploadQueueRef.current = createReportImageUploadQueue({
+        projectId,
+        onChange: (job, id) => {
+          if (ignoredUploadJobIdsRef.current.has(id)) {
+            if (!job) ignoredUploadJobIdsRef.current.delete(id);
+            return;
+          }
+          setUploadJobs(current => job
+            ? [...current.filter(item => item.id !== id), job as UploadJobState]
+            : current.filter(item => item.id !== id));
+        },
+        onSuccess: (job: ReportImageJob, url) => {
+          if (ignoredUploadJobIdsRef.current.has(job.id)) { ignoredUploadJobIdsRef.current.delete(job.id); return; }
+          const current = [...(form.getValues("imageGroups") ?? [])];
+          const index = current.findIndex(item => item.id === job.groupId);
+          if (index < 0) return; // A removed group is never recreated by a late response.
+          const order = groupImageOrderRef.current.get(job.groupId);
+          if (!order) return;
+          order.set(url, job.order);
+          const existing = current[index].urls.filter(existingUrl => !order.has(existingUrl));
+          const selected = [...new Set(current[index].urls.filter(existingUrl => order.has(existingUrl)).concat(url))]
+            .sort((a, b) => (order.get(a) ?? Number.MAX_SAFE_INTEGER) - (order.get(b) ?? Number.MAX_SAFE_INTEGER));
+          current[index] = { ...current[index], urls: [...existing, ...selected] };
+          form.setValue("imageGroups", current, { shouldDirty: true });
+        },
+      });
+    }
+    await Promise.all(accepted.map(file => {
+      const sequence = ++imageSequenceRef.current;
+      return uploadQueueRef.current!.add(file, groupId, sequence, qualityProfile).promise;
+    }));
+    if (uploadJobs.some(job => job.groupId === groupId && job.status === "failed")) {
+      toast({ variant: "destructive", title: "تعذر رفع بعض الصور. يمكنك إعادة محاولة الصور الفاشلة." });
+    }
   };
+  const hasUnresolvedImageUploads = uploadJobs.some(job => ["failed", "cancelled"].includes(job.status));
+  useEffect(() => () => uploadQueueRef.current?.dispose(), []);
 
   const onSubmit = async (values: ReportFormValues) => {
     try {
+      if (hasUnresolvedImageUploads) {
+        toast({ variant: "destructive", title: "أعد محاولة الصور الفاشلة أو احذفها من قائمة الرفع قبل حفظ التقرير" });
+        return;
+      }
       const futureDraft = values.reportDate > tripoliToday || values.periodEnd > tripoliToday;
       if (!futureDraft && (values.progressPercentage === undefined
         || !Number.isFinite(values.progressPercentage)
@@ -1552,6 +1445,17 @@ export default function ProjectReports() {
 
   const removeImageGroup = (groupIndex: number) => {
     const current = form.getValues("imageGroups") ?? [];
+    const groupId = current[groupIndex]?.id;
+    if (groupId) {
+      uploadQueueRef.current?.cancelGroup(groupId);
+      for (const job of uploadJobs) {
+        if (job.groupId === groupId) {
+          ignoredUploadJobIdsRef.current.add(job.id);
+          uploadQueueRef.current?.discard(job.id);
+        }
+      }
+      setUploadJobs(jobs => jobs.filter(job => job.groupId !== groupId));
+    }
     const updated = current.filter((_, i) => i !== groupIndex);
     form.setValue("imageGroups", updated, { shouldDirty: true });
   };
@@ -1559,7 +1463,7 @@ export default function ProjectReports() {
   const requestImageGroupDeletion = (groupIndex: number) => {
     if (pendingImageGroupDeletion) return;
     const group = (form.getValues("imageGroups") ?? [])[groupIndex];
-    if (!group || uploadProgress[groupIndex]) return;
+    if (!group || uploadJobs.some(job => job.groupId === group.id && !["failed", "cancelled"].includes(job.status))) return;
     if (group.urls.length === 0) {
       removeImageGroup(groupIndex);
       return;
@@ -1737,28 +1641,15 @@ export default function ProjectReports() {
         
         {canEditReports && (
         <div className="flex flex-wrap items-center gap-2">
-          {canApprove && canEditReports && canOptimizeReportImages && (
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-2"
-              onClick={() => void startImageOptimization()}
-              disabled={startingImageOptimization || imageOptimizationJob?.status === "running"}
-              title="تجهيز نسخ منفصلة لا تتجاوز 100 كيلوبايت لصور تقارير هذا المشروع"
-            >
-              {startingImageOptimization || imageOptimizationJob?.status === "running"
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <ImagePlus className="h-4 w-4" />}
-              {imageOptimizationJob?.status === "running"
-                ? "جاري تجهيز الصور..."
-                : "تهيئة صور المشروع للطباعة"}
-            </Button>
-          )}
           {canApprove && <ReportSettingsDialog projectId={projectId} />}
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
             setOpenGroupIdx(0);
             if (!open) {
+              for (const job of uploadJobs) ignoredUploadJobIdsRef.current.add(job.id);
+              uploadQueueRef.current?.dispose();
+              uploadQueueRef.current = null;
+              setUploadJobs([]);
               form.reset();
         setDeleteImageUrls([]);
         setPendingImageGroupDeletion(null);
@@ -2242,11 +2133,13 @@ export default function ProjectReports() {
                           </FormLabel>
                           <div className="space-y-3 mt-3">
                             {groups.map((group, gIdx) => {
-                              const groupProgress = uploadProgress[gIdx];
-                              const isThisUploading = !!groupProgress;
-                              const progressPct = groupProgress && groupProgress.total > 0
-                                ? Math.min(100, Math.round((groupProgress.loaded / groupProgress.total) * 100))
-                                : 0;
+              const groupId = group.id ?? `image-group-${gIdx}`;
+              const groupJobs = uploadJobs.filter(job => job.groupId === groupId);
+              const activeJobs = groupJobs.filter(job => !["failed", "cancelled"].includes(job.status));
+              const isThisUploading = activeJobs.length > 0;
+              const loadedBytes = activeJobs.reduce((sum, job) => sum + job.loaded, 0);
+              const totalBytes = activeJobs.reduce((sum, job) => sum + job.total, 0);
+              const progressPct = totalBytes > 0 ? Math.min(100, Math.round(loadedBytes / totalBytes * 100)) : 0;
                               const isOpen = openGroupIdx === gIdx;
                               const isEmpty = group.urls.length === 0;
                               const canDelete = !isThisUploading && (isEmpty || editingId !== null);
@@ -2266,10 +2159,27 @@ export default function ProjectReports() {
                                       </button>
                                     </CollapsibleTrigger>
                                     <div className="flex items-center gap-2 shrink-0">
+                                      <Select
+                                        value={imageQualityByGroup[groupId] ?? "report"}
+                                        onValueChange={(value) => {
+                                          if (value === "report" || value === "report_detail" || value === "report_technical") {
+                                            setImageQualityByGroup(current => ({ ...current, [groupId]: value }));
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger className="h-8 w-[160px] text-xs" aria-label="جودة صور التقرير">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent dir="rtl">
+                                          <SelectItem value="report">عادية · 150–350 ك.ب</SelectItem>
+                                          <SelectItem value="report_detail">تفاصيل دقيقة · 350–600 ك.ب</SelectItem>
+                                          <SelectItem value="report_technical">استثنائية · حتى 1.5 م.ب</SelectItem>
+                                        </SelectContent>
+                                      </Select>
                                       <label className="cursor-pointer">
                                         <input
                                           type="file"
-                                          accept=".jpg,image/jpeg"
+                                          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/avif,image/gif,image/svg+xml,.tif,.tiff"
                                           multiple
                                           className="hidden"
                                           onChange={(e) => {
@@ -2280,7 +2190,7 @@ export default function ProjectReports() {
                                         />
                                         <span className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 hover:border-primary/30 font-medium transition-all shadow-sm">
                                           {isThisUploading ? (
-                                            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> إضافة المزيد</>
+                                            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> جارٍ التجهيز</>
                                           ) : (
                                             <><ImagePlus className="h-3.5 w-3.5" /> إضافة صور للقسم</>
                                           )}
@@ -2312,16 +2222,38 @@ export default function ProjectReports() {
                                       )}
                                     </div>
                                   </div>
-                                  {isThisUploading && (
+                                  {groupJobs.length > 0 && (
                                     <div className="px-4 pb-4 -mt-1">
                                       <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1.5">
                                         <span className="flex items-center gap-1.5 font-medium">
-                                          <Loader2 className="h-3.5 w-3.5 text-primary animate-spin" />
-                                          جاري رفع {groupProgress.doneCount} / {groupProgress.totalCount}
+                                          {isThisUploading && <Loader2 className="h-3.5 w-3.5 text-primary animate-spin" />}
+                                          {activeJobs.length > 0
+                                            ? `تجهيز/رفع ${activeJobs.length} صورة`
+                                            : `تعذّر رفع ${groupJobs.length} صورة`}
                                         </span>
-                                        <span className="font-mono text-primary font-semibold">{progressPct}%</span>
+                                        <div className="flex items-center gap-2">
+                                          {isThisUploading && <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => uploadQueueRef.current?.cancelGroup(groupId ?? "")}>إلغاء</Button>}
+                                          <span className="font-mono text-primary font-semibold">{progressPct}%</span>
+                                        </div>
                                       </div>
                                       <Progress value={progressPct} className="h-2 bg-primary/10" />
+                                      <div className="mt-2 space-y-1">
+                                        {groupJobs.map(job => (
+                                          <div key={job.id} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                            <span className="truncate">{job.fileName} — {{
+                                              queued: "في قائمة الانتظار", preparing: "يجري تجهيزها محليًا",
+                                              uploading: "يجري رفعها", retrying: "إعادة المحاولة",
+                                              failed: job.error ?? "فشل الرفع", cancelled: "أُلغي الرفع",
+                                            }[job.status]}</span>
+                                            {["failed", "cancelled"].includes(job.status) && (
+                                              <div className="flex shrink-0 gap-1">
+                                                <Button type="button" variant="outline" size="sm" className="h-6 px-2" onClick={() => uploadQueueRef.current?.retry(job.id)}>إعادة المحاولة</Button>
+                                                <Button type="button" variant="ghost" size="sm" className="h-6 px-2" onClick={() => uploadQueueRef.current?.discard(job.id)}>حذف</Button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
                                     </div>
                                   )}
                                   <CollapsibleContent>
@@ -2348,19 +2280,23 @@ export default function ProjectReports() {
                                       {isEmpty ? (
                                         <div className="text-center p-6 border-2 border-dashed rounded-xl bg-background/50 text-muted-foreground/60 flex flex-col items-center gap-2">
                                           <ImagePlus className="h-8 w-8 opacity-50" />
-                                          <p className="text-xs font-medium">أضف صور JPG فقط بالسحب والإفلات أو بالنقر على «إضافة صور للقسم»</p>
+                                          <p className="text-xs font-medium">أضف صورًا حتى 20 ميغابايت؛ يجري تجهيزها محليًا قبل الرفع</p>
                                         </div>
                                       ) : (
                                         <div className="flex flex-wrap gap-3">
                                           {group.urls.map((url, idx) => (
                                             <div key={idx} className="relative group w-24 h-24 rounded-xl overflow-hidden border-2 border-transparent hover:border-primary/50 shadow-sm transition-all">
                                               <ProtectedImage
-                                                src={url}
+                                                src={reportThumbnailUrl(url)}
                                                 alt={`صورة ${idx + 1}`}
                                                 loading="lazy"
                                                 decoding="async"
                                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                onError={(e) => {
+                                                  const image = e.target as HTMLImageElement;
+                                                  if (image.src !== new URL(url, window.location.origin).href) image.src = url;
+                                                  else image.style.display = "none";
+                                                }}
                                               />
                                               <button
                                                 type="button"
@@ -2446,34 +2382,6 @@ export default function ProjectReports() {
           </DialogContent>
         </Dialog>
         </div>
-        )}
-        {canApprove && canEditReports && canOptimizeReportImages && imageOptimizationJob && (
-          <div className="rounded-xl border border-border/70 bg-muted/25 p-3 text-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-medium">
-                {imageOptimizationJob.status === "running"
-                  ? `جاري فحص الصور: ${imageOptimizationJob.processed} من ${imageOptimizationJob.total}`
-                  : imageOptimizationJob.status === "completed_with_errors"
-                    ? "اكتمل فحص الصور مع تعذّر تجهيز بعض الملفات"
-                    : `اكتمل فحص ${imageOptimizationJob.total} صورة`}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                نسخ جاهزة: {imageOptimizationJob.optimized} · لم تحتج معالجة: {imageOptimizationJob.skipped} · تعذّر: {imageOptimizationJob.failed}
-              </span>
-            </div>
-            {imageOptimizationJob.status === "running" && (
-              <Progress
-                value={imageOptimizationJob.total > 0
-                  ? (imageOptimizationJob.processed / imageOptimizationJob.total) * 100
-                  : 100}
-                className="mt-2 h-2"
-              />
-            )}
-            <p className="mt-2 text-xs text-muted-foreground">
-              صور تقارير هذا المشروع فقط. لا تتغير الصور الأصلية أو بيانات التقارير؛ تُضاف نسخ منفصلة بحد أقصى 100 كيلوبايت.
-              {imageOptimizationJob.lastError ? ` آخر خطأ: ${imageOptimizationJob.lastError}` : ""}
-            </p>
-          </div>
         )}
       </div>
 

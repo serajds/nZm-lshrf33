@@ -1,0 +1,15 @@
+export const imageCompressionFailureLabels: Record<string, string> = {
+  invalid_filename: "اسم ملف غير صالح",
+  source_too_large: "حجم الصورة يتجاوز حد المعالجة الآمن",
+  source_missing: "الملف غير موجود في التخزين",
+  unreadable_image: "تعذر قراءة الصورة",
+  invalid_dimensions: "أبعاد الصورة غير صالحة",
+  pixel_limit: "أبعاد الصورة تتجاوز حد المعالجة الآمن",
+  unsupported_format: "صيغة الصورة غير مدعومة للضغط الآمن",
+  animated_image: "صورة متحركة؛ تم تجاوزها للحفاظ على الحركة",
+  conversion_failed: "فشل ضغط الصورة",
+  verification_failed: "تعذر التحقق من النسخة المضغوطة",
+  storage_or_database_error: "تعذر حفظ الصورة أو تحديث بياناتها",
+  already_compact: "الصورة صغيرة ومضغوطة بالفعل",
+  no_size_saving: "لم ينتج الضغط حجماً أصغر، فتم الاحتفاظ بالأصل",
+};

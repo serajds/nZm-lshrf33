@@ -774,16 +774,23 @@ paths:
       operationId: uploadPublicReportImage
       tags: [reports]
       summary: Add one validated image to the section named by its limited upload token
+      parameters:
+        - in: query
+          name: token
+          required: false
+          schema:
+            type: string
+          description: Preferred token location; legacy clients may still send it in the request body.
       requestBody:
         required: true
         content:
           text/plain:
             schema:
               type: string
-              description: JSON-encoded object with token, fileName, mimeType, and imageBase64.
+              description: JSON envelope with clientKey, fileName, mimeType, and base64. Legacy imageBase64 and body token are accepted.
       responses:
         "201":
-          description: Image attached to the shared section
+          description: Image stored and attached to the shared section
           content:
             application/json:
               schema:
@@ -791,6 +798,23 @@ paths:
                 properties:
                   uploaded:
                     type: boolean
+                  uploadedCount:
+                    type: integer
+                  maxImages:
+                    type: integer
+        "200":
+          description: Idempotent retry of an already stored image
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploaded:
+                    type: boolean
+                  uploadedCount:
+                    type: integer
+                  maxImages:
+                    type: integer
         "400":
           description: Invalid or unsupported image
           content:
@@ -799,6 +823,22 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "410":
           description: Link expired, cancelled, or completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Encoded request or image exceeds the five mebibyte limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Shared image admission is busy
+          headers:
+            Retry-After:
+              schema:
+                type: integer
           content:
             application/json:
               schema:
@@ -915,6 +955,101 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   # Files
+  /projects/{projectId}/reports/uploads:
+    post:
+      operationId: uploadReportImage
+      tags: [reports]
+      summary: Upload a report image using the shared image lifecycle
+      description: The same JSON envelope is accepted as application/json or text/plain. Existing multipart clients remain supported by the server, but new clients should use this envelope.
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreparedReportImagePacket"
+          text/plain:
+            schema:
+              $ref: "#/components/schemas/PreparedReportImagePacket"
+      responses:
+        "201":
+          description: Durable image and required derivatives confirmed; idempotent retries reuse the file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportImageUploadResult"
+        "409":
+          description: The idempotency key was previously used for different content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Image exceeds the central size or pixel policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "415":
+          description: Invalid image content or envelope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Capacity busy; Retry-After applies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Durable storage or required processing could not be confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /projects/{projectId}/reports/uploads/status:
+    get:
+      operationId: getReportImageUploadStatus
+      tags: [reports]
+      summary: Recover upload state after losing its response without resending image bytes
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: clientKey
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Persistent state of this user's upload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportImageUploadStatus"
+        "404":
+          description: Upload not found for this user and project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: The uploaded file reference was removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /projects/{projectId}/files:
     get:
       operationId: listFiles
@@ -2870,6 +3005,113 @@ components:
               - id
 
     # Files
+    PreparedReportImagePacket:
+      type: object
+      additionalProperties: false
+      description: Limits, output targets, and policy version come from the shared image policy.
+      properties:
+        mode:
+          type: string
+          enum: [prepared, source]
+        clientKey:
+          type: string
+        batchKey:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        qualityProfile:
+          type: string
+          enum: [report, report_detail, report_technical]
+        fileName:
+          type: string
+        mimeType:
+          type: string
+        encoding:
+          type: string
+          enum: [webp, jpeg]
+        base64:
+          type: string
+          description: Canonical Base64 without data URL or whitespace; request-only, never returned or persisted.
+      required: [mode, clientKey, fileName, base64]
+
+    ManagedReportImage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profile:
+          type: string
+          enum: [report, report_detail, report_technical]
+        policyVersion:
+          type: integer
+        state:
+          type: string
+          enum: [ready]
+        storageKey:
+          type: string
+        thumbnailKey:
+          type: string
+        printKey:
+          type: string
+        mimeType:
+          type: string
+        byteSize:
+          type: integer
+        width:
+          type: integer
+        height:
+          type: integer
+      required: [id, profile, policyVersion, state, storageKey, thumbnailKey, printKey, mimeType, byteSize, width, height]
+
+    ReportImageException:
+      type: object
+      properties:
+        variant:
+          type: string
+        code:
+          type: string
+      required: [variant, code]
+
+    ReportImageUploadResult:
+      allOf:
+        - $ref: "#/components/schemas/ProjectFile"
+        - type: object
+          properties:
+            image:
+              $ref: "#/components/schemas/ManagedReportImage"
+            exceptions:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReportImageException"
+          required: [image, exceptions]
+
+    ReportImageUploadStatus:
+      type: object
+      properties:
+        state:
+          type: string
+          enum: [processing, uploading, ready, failed]
+        imageId:
+          type: string
+          format: uuid
+        policyVersion:
+          type: integer
+        image:
+          $ref: "#/components/schemas/ManagedReportImage"
+        file:
+          $ref: "#/components/schemas/ProjectFile"
+        exceptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportImageException"
+        errorCode:
+          type: ["string", "null"]
+        retryable:
+          type: boolean
+      required: [state, imageId, policyVersion]
+
     ProjectFile:
       type: object
       properties:

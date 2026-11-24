@@ -5,8 +5,6 @@ import {
   CheckCircle2,
   Image,
   Loader2,
-  Pause,
-  Play,
   RefreshCw,
 } from "lucide-react";
 
@@ -56,9 +54,7 @@ const statusLabels: Record<CompressionJob["status"], string> = {
 export function AdminImageCompressionPanel() {
   const [preflight, setPreflight] = useState<Preflight | null>(null);
   const [job, setJob] = useState<CompressionJob | null>(null);
-  const [confirmedReplace, setConfirmedReplace] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadPreflight = useCallback(async () => {
@@ -98,38 +94,7 @@ export function AdminImageCompressionPanel() {
     return () => window.clearInterval(timer);
   }, [job?.status, loadStatus]);
 
-  const postAction = async (action: "start" | "pause" | "resume") => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await customFetch<{ job: CompressionJob }>(
-        `/api/admin/system-image-compression/${action}`,
-        {
-          method: "POST",
-          ...(action === "start"
-            ? { body: JSON.stringify({ replaceOriginals: true }) }
-            : {}),
-        },
-      );
-      setJob(result.job);
-      if (action === "start") {
-        setConfirmedReplace(false);
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "تعذر تنفيذ الإجراء");
-      await loadStatus();
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const progress = job?.total ? Math.min(100, Math.round((job.processed / job.total) * 100)) : 0;
-  const active = job?.status === "running" || job?.status === "pausing" || job?.status === "paused";
-  const canStart = Boolean(preflight?.uniqueFiles)
-    && !active
-    && !loading
-    && confirmedReplace
-    && !busy;
 
   return (
     <section className="rounded-2xl border border-amber-200 bg-card p-4 shadow-sm sm:p-5" aria-labelledby="image-compression-title">
@@ -141,14 +106,14 @@ export function AdminImageCompressionPanel() {
           <div className="min-w-0">
             <h2 id="image-compression-title" className="font-bold text-foreground">ضغط صور النظام</h2>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              صور المشاريع والتقارير والحضور والشعارات. تُعالج صورة واحدة كل 20 ثانية، ويمكن إيقاف العملية واستئنافها.
+              جرد وسجل تاريخي للصور فقط. معالج الضغط القديم متوقف.
             </p>
           </div>
         </div>
         <button
           type="button"
           onClick={() => void loadPreflight()}
-          disabled={loading || busy}
+          disabled={loading}
           className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -190,7 +155,10 @@ export function AdminImageCompressionPanel() {
       )}
 
       <p className="mt-3 text-xs leading-5 text-muted-foreground">
-        {preflight?.note ?? "اضغط «فحص» لحصر الصور قبل بدء أي تعديل. الفحص لا يغيّر الملفات."}
+        {preflight?.note ?? "اضغط «فحص» لحصر الصور. الفحص لا يغيّر الملفات."}
+      </p>
+      <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
+        أُوقفت أداة الضغط القديمة لأنها كانت تستبدل الملفات مباشرة خارج السياسة الموحدة. يمكنك فحص السجل فقط؛ لم تُحذف المهام أو الأصول السابقة.
       </p>
 
       {job && (
@@ -245,60 +213,8 @@ export function AdminImageCompressionPanel() {
 
       {error && <p role="alert" className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
 
-      {!active && (
-        <label className="mt-4 flex cursor-pointer items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs leading-5 text-amber-950">
-          <input
-            type="checkbox"
-            checked={confirmedReplace}
-            onChange={(event) => setConfirmedReplace(event.target.checked)}
-            disabled={busy || !preflight?.uniqueFiles}
-            className="mt-1 h-4 w-4 accent-amber-700"
-          />
-          <span>أؤكد استبدال أصل الصورة بالنسخة المضغوطة عند نجاح التحقق منها. الصور غير المدعومة أو التي لا ينخفض حجمها ستبقى دون تغيير.</span>
-        </label>
-      )}
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {job?.status === "running" ? (
-          <button
-            type="button"
-            onClick={() => void postAction("pause")}
-            disabled={busy}
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
-            إيقاف مؤقت
-          </button>
-        ) : job?.status === "paused" ? (
-          <button
-            type="button"
-            onClick={() => void postAction("resume")}
-            disabled={busy}
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            استئناف
-          </button>
-        ) : job?.status === "pausing" ? (
-          <button type="button" disabled className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-4 text-sm font-semibold opacity-60">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            ينتظر اكتمال الصورة الحالية
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void postAction("start")}
-            disabled={!canStart}
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Image className="h-4 w-4" />}
-            بدء ضغط الصور
-          </button>
-        )}
-      </div>
-      <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
-        تعمل المعالجة داخل خادم API نفسه وقد تؤثر على استجابة النظام؛ شغّلها وقت انخفاض الاستخدام. لا تُحذف الصور، والأصل يُستبدل فقط بعد التحقق من النسخة الجديدة.
-        الصور المتحركة أو غير المدعومة والملفات التي تتجاوز الحد الآمن ستُسجل دون تغيير الأصل.
+      <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
+        يعرض هذا القسم الجرد وسجل المهام السابقة فقط. لا يبدأ ضغطًا أو يستبدل أي أصل.
       </p>
     </section>
   );

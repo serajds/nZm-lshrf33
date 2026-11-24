@@ -14,17 +14,18 @@ const module = { exports: {} };
 new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
 const { createReportImageVariants, shouldServeOriginalCompressedSharePhoto } = module.exports;
 
-test("photos already under 100 KB retain their detail and original bytes", async () => {
+test("legacy report photos retain detail within the 1.5 MB safety ceiling", async () => {
   const source = await sharp({ create: { width: 3600, height: 2400, channels: 3, background: "#bb845d" } })
     .jpeg({ quality: 100 }).toBuffer();
   const original = Buffer.from(source);
   const variant = await createReportImageVariants()("photo", "report-photo", async () => source);
   const metadata = await sharp(variant.buffer).metadata();
+  const originalMetadata = await sharp(source).metadata();
   assert.equal(variant.contentType, "image/jpeg");
-  assert.ok(variant.buffer.length <= 100 * 1024);
-  if (source.length > 100 * 1024) {
-    assert.ok(metadata.width <= 1000);
-    assert.ok(metadata.height <= 1000);
+  assert.ok(variant.buffer.length <= 1536 * 1024);
+  if (originalMetadata.width > 1600 || originalMetadata.height > 1600) {
+    assert.ok(metadata.width <= 1600);
+    assert.ok(metadata.height <= 1600);
     assert.ok(variant.buffer.length < source.length);
   } else {
     assert.deepEqual(variant.buffer, source);
@@ -33,7 +34,7 @@ test("photos already under 100 KB retain their detail and original bytes", async
   console.log(`Synthetic photo: ${source.length} -> ${variant.buffer.length} bytes (${(100 * (1 - variant.buffer.length/source.length)).toFixed(1)}% smaller)`);
 });
 
-test("high-detail print photos always fit within the 100 KB cap", async () => {
+test("high-detail legacy print photos are not shrunk below the report edge", async () => {
   const width = 800;
   const height = 600;
   const raw = Buffer.alloc(width * height * 3);
@@ -46,19 +47,20 @@ test("high-detail print photos always fit within the 100 KB cap", async () => {
   const before = Buffer.from(source);
   const variant = await createReportImageVariants()("detailed-photo", "report-photo", async () => source);
   const metadata = await sharp(variant.buffer).metadata();
-  assert.ok(variant.buffer.length <= 100 * 1024);
-  assert.ok(metadata.width >= 320, `print width was too small: ${metadata.width}`);
+  assert.ok(variant.buffer.length <= 1536 * 1024);
+  assert.equal(metadata.width, 800);
+  assert.equal(metadata.height, 600);
   assert.equal(variant.contentType, "image/jpeg");
   assert.deepEqual(source, before);
 });
 
-test("screen thumbnails are much smaller and capped at 640 pixels", async () => {
+test("screen thumbnails are much smaller and capped at 400 pixels", async () => {
   const source = await sharp({ create: { width: 3600, height: 2400, channels: 3, background: "#bb845d" } })
     .jpeg({ quality: 100 }).toBuffer();
   const result = await createReportImageVariants()("thumbnail", "report-thumbnail", async () => source);
   const metadata = await sharp(result.buffer).metadata();
-  assert.equal(metadata.width, 640);
-  assert.equal(metadata.height, 427);
+  assert.equal(metadata.width, 400);
+  assert.equal(metadata.height, 267);
   assert.equal(result.contentType, "image/jpeg");
   assert.ok(result.buffer.length < source.length / 2);
 });
@@ -117,7 +119,7 @@ test("reports cache state, source dimensions and active processor counts", async
   assert.equal(get.getStatus().pendingJobs, 0);
 });
 
-test("compressed shared photos avoid Sharp in Development and on production cache misses", async () => {
+test("compressed shared-photo policy remains stable and report reads never invoke Sharp", async () => {
   const filename = "report-share-56f8a6e3-06bc-43f4-a627-e473c5aa6dca-compressed.jpg";
   assert.equal(shouldServeOriginalCompressedSharePhoto("development", filename, "report-photo", true), true);
   assert.equal(shouldServeOriginalCompressedSharePhoto("development", filename, "report-photo", false), true);
@@ -126,9 +128,8 @@ test("compressed shared photos avoid Sharp in Development and on production cach
   assert.equal(shouldServeOriginalCompressedSharePhoto("development", "other.jpg", "report-photo", false), false);
   assert.equal(shouldServeOriginalCompressedSharePhoto("development", filename, "report-logo", false), false);
   const source = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
-  const fallback = source.indexOf("if (originalSharePhotoFallback)");
-  const sharpTransform = source.indexOf("reportImageVariant(key, variant");
-  assert.ok(fallback >= 0 && fallback < sharpTransform);
+  assert.equal(source.includes("reportImageVariant(key, variant"), false);
+  assert.match(source, /image_variant_missing/);
 });
 
 test("corrupt input fails explicitly and does not poison reuse", async () => {

@@ -1,4 +1,4 @@
-import express, { type Express, type Request, type Response, type NextFunction } from "express";
+import express, { type Express, type Request, type Response, type NextFunction, type RequestHandler } from "express";
 import cors from "cors";
 import compression from "compression";
 import pinoHttp from "pino-http";
@@ -6,42 +6,28 @@ import path from "path";
 import fs from "fs";
 import jwt from "jsonwebtoken";
 import router from "./routes";
+import reportImageUploadsRouter from "./routes/report-image-uploads";
+import fileImageUploadsRouter from "./routes/file-image-uploads";
+import reportShareImageUploadsRouter from "./routes/report-share-image-uploads";
 import { logger } from "./lib/logger";
 import { JWT_SECRET, verifyToken, diagnoseRejectedToken } from "./lib/auth";
 import { canViewAttendancePhoto, verifyAndMaybeRenewToken } from "./middlewares/auth";
-import { streamFromCloud, cloudReportImageSource } from "./lib/fileStorage";
-import {
-  reportImageVariant,
-  shouldServeOriginalCompressedSharePhoto,
-  type ReportImageVariantDiagnostic,
-} from "./lib/reportImageVariants";
-import {
-  findStoredReportImageVariant,
-  storeReportImageVariant,
-} from "./lib/reportImageVariantStorage";
+import { requireProjectAccess } from "./middlewares/auth";
+import { requireTabEdit } from "./middlewares/tab-access";
+import { streamFromCloud, UPLOADS_PREFIX } from "./lib/fileStorage";
+import { findStoredReportImageVariant } from "./lib/reportImageVariantStorage";
 import { resolveTabPermissions } from "./lib/tab-permissions";
 import { getSystemImageContentType } from "./lib/system-image-content-types";
-import { createReportShareUploadAdmission } from "./lib/report-share-upload-admission";
+import { isLifecycleImageFilename, resolveStoredImageForRead } from "./lib/image-read-reference";
+import { streamStoredImage } from "./lib/image-object-stream";
+import { createImageUploadRequestMiddleware } from "./lib/image-upload-request";
+import { IMAGE_PACKET_TEXT_LIMIT_BYTES } from "@workspace/api-zod";
 import { db, requestMetrics, newRequestMetrics } from "@workspace/db";
-import { usersTable, userCompaniesTable, projectMembersTable, projectsTable, projectFilesTable, attendanceRecordsTable } from "@workspace/db";
-import { eq, count, inArray, and } from "drizzle-orm";
+import { usersTable, userCompaniesTable, projectMembersTable, projectsTable, projectFilesTable, attendanceRecordsTable, imageAssetsTable, reportsTable, companiesTable } from "@workspace/db";
+import { eq, count, inArray, and, or, sql } from "drizzle-orm";
 
 const app: Express = express();
-if (process.env.NODE_ENV === "development") {
-  const imageMemorySampler = setInterval(() => {
-    const imageStatus = reportImageVariant.getStatus();
-    if (imageStatus.activeJobs === 0 && imageStatus.pendingJobs === 0) return;
-    const memory = process.memoryUsage();
-    logger.info({
-      ...imageStatus,
-      rssBytes: memory.rss,
-      heapUsedBytes: memory.heapUsed,
-      externalBytes: memory.external,
-      arrayBuffersBytes: memory.arrayBuffers,
-    }, "Report image processing memory sample");
-  }, 1_000);
-  imageMemorySampler.unref();
-}
+const uploadsDir = path.join(process.cwd(), "uploads");
 app.use((req, res, next) => {
   const metrics = newRequestMetrics();
   const start = performance.now();
@@ -98,23 +84,36 @@ app.use(cors({ exposedHeaders: ["X-Renewed-Token"] }));
 // members, files, reports) by 5-10x, which is the single biggest perceived
 // win on slow connections.
 app.use(compression({ threshold: 1024 }));
+// Auth + distributed admission precede parsing only on image upload endpoints.
+app.use("/api", reportImageUploadsRouter);
+app.use("/api", fileImageUploadsRouter);
+app.use("/api", reportShareImageUploadsRouter);
+const attendanceImageIngress = createImageUploadRequestMiddleware({ temporaryRoot: uploadsDir });
+const attendanceTextBody = express.text({ type: "text/plain", limit: IMAGE_PACKET_TEXT_LIMIT_BYTES });
+const parseAttendanceTextBody: RequestHandler = (req, res, next) => {
+  if (typeof req.body !== "string") { next(); return; }
+  try { req.body = JSON.parse(req.body); next(); }
+  catch { res.status(400).json({ error: "بيانات الحضور غير صالحة" }); }
+};
+for (const action of ["check-in", "check-out"]) {
+  app.use(
+    `/api/attendance/projects/:projectId/${action}`,
+    requireProjectAccess("projectId"),
+    requireTabEdit("attendance"),
+    attendanceImageIngress,
+    attendanceTextBody,
+    parseAttendanceTextBody,
+  );
+}
 // Keep base64 share-photo bodies from accumulating in memory when clients send
 // several concurrent uploads. A database advisory lock in the upload route
 // provides the corresponding cross-instance limit.
-app.use(createReportShareUploadAdmission());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-// Mobile clients (React Native) cannot reliably send Origin/Referer headers,
-// which Replit's Autoscale edge requires for application/json POSTs. As a
-// workaround, the mobile app sends the same JSON payload but with
-// Content-Type: text/plain. Parse those bodies as JSON here so handlers
-// see req.body exactly the same way as a browser request.
-//
-// Limit is 22mb (vs 10mb for JSON) because attendance selfies are uploaded
-// over this same text/plain path as base64, and base64 inflates the payload
-// by ~33%. This keeps parity with the 15MB raw-image cap enforced downstream
-// (15MB binary ≈ 20MB base64), so a valid selfie is never rejected by the
-// body parser before the route's own size/validation checks run.
+// Mobile clients use text/plain JSON to avoid edge rejection of header-stripped
+// application/json requests. Attendance has a route-specific parser above:
+// its image-size limit is held behind authorization and shared upload admission.
+// Keep this smaller fallback for unrelated text/plain endpoints.
 app.use(express.text({ type: "text/plain", limit: "22mb" }));
 app.use((req: Request, _res: Response, next: NextFunction) => {
   if (
@@ -131,11 +130,9 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   next();
 });
 
-const uploadsDir = path.join(process.cwd(), "uploads");
-
 async function canAccessPrivateUpload(filename: string, token: string, res: Response): Promise<boolean> {
   const [projectFiles, attendanceRecords] = await Promise.all([
-    db.select({ projectId: projectFilesTable.projectId })
+    db.select({ id: projectFilesTable.id, projectId: projectFilesTable.projectId, category: projectFilesTable.category, fileUrl: projectFilesTable.fileUrl })
       .from(projectFilesTable)
       .where(eq(projectFilesTable.filename, filename)),
     db.select({
@@ -201,7 +198,26 @@ async function canAccessPrivateUpload(filename: string, token: string, res: Resp
       memberships[0].role as any,
       memberships[0].tabPermissions ?? null,
     );
-    return permissions.files !== "hidden";
+    if (permissions.files !== "hidden") return true;
+    // Reports permission is not permission to browse the project's files.
+    // Limit this exception to the member's own report upload or an image
+    // actually referenced by a report in the same authorized project.
+    if (file.category !== "image" || permissions.reports === "hidden") return false;
+    if (isLifecycleImageFilename(filename)) {
+      const [ownUpload] = await db.select({ id: imageAssetsTable.id }).from(imageAssetsTable).where(and(
+        eq(imageAssetsTable.storageKey, UPLOADS_PREFIX + filename), eq(imageAssetsTable.projectId, file.projectId),
+        eq(imageAssetsTable.projectFileId, file.id), eq(imageAssetsTable.userId, user.userId),
+        eq(imageAssetsTable.profile, "report"), eq(imageAssetsTable.state, "ready"),
+      )).limit(1);
+      if (ownUpload) return true;
+    }
+    const [referenced] = await db.select({ id: reportsTable.id }).from(reportsTable).where(and(
+      eq(reportsTable.projectId, file.projectId), or(
+        sql`${file.fileUrl} = ANY(${reportsTable.imageUrls})`,
+        sql`${reportsTable.imageGroups} @> ${JSON.stringify([{ urls: [file.fileUrl] }])}::jsonb`,
+      ),
+    )).limit(1);
+    return Boolean(referenced);
   }
 
   try {
@@ -229,6 +245,18 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
   const reqPath = decodeURIComponent(req.path).replace(/^\//, "");
   if (reqPath.startsWith("logo-")) {
     return next();
+  }
+  if (isLifecycleImageFilename(reqPath)) {
+    const [asset] = await db.select({ id: imageAssetsTable.id }).from(imageAssetsTable).where(and(
+      eq(imageAssetsTable.storageKey, UPLOADS_PREFIX + reqPath),
+      eq(imageAssetsTable.profile, "logo"),
+      eq(imageAssetsTable.state, "ready"),
+    )).limit(1);
+    if (asset) {
+      const [logo] = await db.select({ id: companiesTable.id }).from(companiesTable)
+        .where(eq(companiesTable.logoUrl, `/api/uploads/${reqPath}`)).limit(1);
+      if (logo) return next();
+    }
   }
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith("Bearer ")
@@ -262,6 +290,31 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
     return;
   }
   const localPath = path.join(uploadsDir, filename);
+  if (isLifecycleImageFilename(filename)) {
+    const controller = new AbortController();
+    res.once("close", () => controller.abort());
+    void (async () => {
+      const use = req.query.variant === "report-thumbnail" ? "thumbnail"
+        : req.query.variant === "report-photo" ? "report" : "primary";
+      const reference = await resolveStoredImageForRead(filename, use);
+      if (res.destroyed) return;
+      if (reference.kind !== "ready") {
+        res.status(reference.kind === "missing" ? 404 : 503).json({ error: "نسخة الصورة غير متاحة حاليًا", code: "image_variant_unavailable" });
+        return;
+      }
+      const result = await streamStoredImage(reference.filename, reference.bucketId, controller.signal);
+      if (res.destroyed) { result.stream.destroy(); return; }
+      res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+      res.setHeader("Content-Type", reference.mimeType);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      if (result.contentLength) res.setHeader("Content-Length", result.contentLength);
+      result.stream.on("error", () => res.destroy()).pipe(res);
+    })().catch(() => {
+      if (!res.destroyed && !res.headersSent) res.status(503).json({ error: "تعذّر تحميل الصورة", code: "image_read_failed" });
+      else if (!res.destroyed) res.destroy();
+    });
+    return;
+  }
 
   // Deliberately after the unchanged upload authorization middleware.
   if (req.query.variant === "report-photo"
@@ -269,27 +322,10 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
     || req.query.variant === "report-logo") {
     const variant = req.query.variant;
     void (async () => {
-      const developmentImageDiagnostics = process.env.NODE_ENV === "development";
-      const variantLookupStarted = developmentImageDiagnostics ? performance.now() : 0;
       const savedVariant = await findStoredReportImageVariant(filename, variant, uploadsDir);
-      const originalSharePhotoFallback = shouldServeOriginalCompressedSharePhoto(
-        process.env.NODE_ENV,
-        filename,
-        variant,
-        Boolean(savedVariant),
-      );
-      const variantLookupMs = developmentImageDiagnostics ? performance.now() - variantLookupStarted : 0;
-      if (developmentImageDiagnostics) {
-        logger.info({
-          variant,
-          originalSharePhotoFallback,
-          storedVariantFound: Boolean(savedVariant),
-          variantLookupMs: Number(variantLookupMs.toFixed(1)),
-          ...reportImageVariant.getStatus(),
-        }, "Report image variant lookup");
-      }
-      if (savedVariant && !originalSharePhotoFallback) {
+      if (savedVariant) {
         res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+        res.setHeader("X-Content-Type-Options", "nosniff");
         res.type(savedVariant.contentType);
         savedVariant.stream.on("error", () => {
           if (!res.headersSent) res.status(500).json({ error: "تعذّر تحميل صورة التقرير" });
@@ -298,133 +334,25 @@ app.use("/api/uploads", async (req: Request, res: Response, next: NextFunction) 
         savedVariant.stream.pipe(res);
         return;
       }
-
-      let key: string;
-      let read: () => Promise<Buffer>;
-      let sourceContentType: string | null = null;
-      let cloudMetadataMs = 0;
-      try {
-        const contentTypeOverride = getSystemImageContentType(filename);
-        const extension = path.extname(filename).toLowerCase();
-        const forceCloudRead = process.env.NODE_ENV === "production"
-          && (extension === ".heic" || extension === ".heif");
-        if (forceCloudRead) {
-          const cloudMetadataStarted = developmentImageDiagnostics ? performance.now() : 0;
-          const source = await cloudReportImageSource(filename);
-          if (developmentImageDiagnostics) cloudMetadataMs = performance.now() - cloudMetadataStarted;
-          if (!source) {
-            res.status(404).json({ error: "الملف غير موجود" });
-            return;
-          }
-          key = `cloud:${filename}:${source.version}`;
-          sourceContentType = source.contentType;
-          read = source.read;
-        } else {
-          const stat = await fs.promises.stat(localPath);
-          if (stat.size > 25 * 1024 * 1024) throw new Error("Report image is too large");
-          key = `local:${filename}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
-          read = () => fs.promises.readFile(localPath);
-        }
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-        const cloudMetadataStarted = developmentImageDiagnostics ? performance.now() : 0;
-        const source = await cloudReportImageSource(filename);
-        if (developmentImageDiagnostics) cloudMetadataMs = performance.now() - cloudMetadataStarted;
-        if (!source) {
-          res.status(404).json({ error: "الملف غير موجود" });
-          return;
-        }
-        key = `cloud:${filename}:${source.version}`;
-        sourceContentType = source.contentType;
-        read = source.read;
-      }
-      if (originalSharePhotoFallback) {
-        const sourceReadStarted = performance.now();
-        const original = await read();
-        const sourceReadMs = performance.now() - sourceReadStarted;
-        if (original.length > 25 * 1024 * 1024) throw new Error("Report image is too large");
-        const extension = path.extname(filename).toLowerCase();
-        const contentType = getSystemImageContentType(filename) ?? sourceContentType ?? (extension === ".png" ? "image/png"
-          : extension === ".webp" ? "image/webp"
-            : extension === ".jpg" || extension === ".jpeg" ? "image/jpeg"
-              : "application/octet-stream");
-        if (developmentImageDiagnostics) {
-          const memory = process.memoryUsage();
-          logger.info({
-            variant,
-            sourceBytes: original.length,
-            sourceReadMs: Number(sourceReadMs.toFixed(1)),
-            cloudMetadataMs: Number(cloudMetadataMs.toFixed(1)),
-            rssBytes: memory.rss,
-            heapUsedBytes: memory.heapUsed,
-            externalBytes: memory.external,
-            arrayBuffersBytes: memory.arrayBuffers,
-          }, "Report image original fallback");
-        }
-        res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
-        res.type(contentType).send(original);
+      const contentTypeOverride = getSystemImageContentType(filename);
+      const localStream = fs.existsSync(localPath) ? fs.createReadStream(localPath) : null;
+      const cloudResult = localStream ? null : await streamFromCloud(filename);
+      const stream = localStream ?? cloudResult?.stream;
+      if (!stream) {
+        res.status(404).json({ error: "نسخة الصورة غير موجودة بعد", code: "image_variant_missing" });
         return;
       }
-      let sourceReadMs = 0;
-      let sourceBytes = 0;
-      const processingStarted = developmentImageDiagnostics ? performance.now() : 0;
-      const readSource = developmentImageDiagnostics
-        ? async () => {
-            const sourceReadStarted = performance.now();
-            const source = await read();
-            sourceReadMs = performance.now() - sourceReadStarted;
-            sourceBytes = source.length;
-            return source;
-          }
-        : read;
-      const onVariantDiagnostic = developmentImageDiagnostics ? (diagnostic: ReportImageVariantDiagnostic) => {
-        const memory = process.memoryUsage();
-        logger.info({
-          ...diagnostic,
-          sourceReadMs: Number(sourceReadMs.toFixed(1)),
-          cloudMetadataMs: Number(cloudMetadataMs.toFixed(1)),
-          processingElapsedMs: Number((performance.now() - processingStarted).toFixed(1)),
-          rssBytes: memory.rss,
-          heapUsedBytes: memory.heapUsed,
-          externalBytes: memory.external,
-          arrayBuffersBytes: memory.arrayBuffers,
-        }, "Report image variant processing");
-      } : undefined;
-      const image = await reportImageVariant(key, variant, readSource, onVariantDiagnostic);
-      const persistStarted = developmentImageDiagnostics ? performance.now() : 0;
-      let persisted = true;
-      try {
-        await storeReportImageVariant(filename, variant, image, uploadsDir);
-      } catch (error) {
-        persisted = false;
-        logger.warn({ err: error, filename, variant }, "Could not persist report image preview");
-      }
-      if (developmentImageDiagnostics) {
-        logger.info({
-          variant,
-          sourceBytes,
-          outputBytes: image.buffer.length,
-          sourceReadMs: Number(sourceReadMs.toFixed(1)),
-          cloudMetadataMs: Number(cloudMetadataMs.toFixed(1)),
-          persistenceMs: Number((performance.now() - persistStarted).toFixed(1)),
-          persisted,
-          processingElapsedMs: Number((performance.now() - processingStarted).toFixed(1)),
-          ...reportImageVariant.getStatus(),
-          ...(() => {
-            const memory = process.memoryUsage();
-            return {
-              rssBytes: memory.rss,
-              heapUsedBytes: memory.heapUsed,
-              externalBytes: memory.external,
-              arrayBuffersBytes: memory.arrayBuffers,
-            };
-          })(),
-        }, "Report image variant request complete");
-      }
       res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
-      res.type(image.contentType).send(image.buffer);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.type(contentTypeOverride ?? cloudResult?.contentType ?? path.extname(filename));
+      const readable = stream as NodeJS.ReadableStream;
+      readable.on("error", () => {
+        if (!res.headersSent) res.status(500).json({ error: "تعذّر تحميل صورة التقرير" });
+        else res.destroy();
+      });
+      readable.pipe(res);
     })().catch((error) => {
-      logger.warn({ err: error, filename }, "Report image preparation failed");
+      logger.warn({ filename, variant }, "Report image read failed");
       if (!res.headersSent) res.status(500).json({ error: "تعذّر تجهيز صورة التقرير" });
     });
     return;

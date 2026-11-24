@@ -15,10 +15,11 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [
-      path.resolve(artifactDir, "src/index.ts"),
-      path.resolve(artifactDir, "src/migrate-legacy-data.ts"),
-    ],
+    entryPoints: {
+      index: path.resolve(artifactDir, "src/index.ts"),
+      "migrate-legacy-data": path.resolve(artifactDir, "src/migrate-legacy-data.ts"),
+      "image-processing-worker": path.resolve(artifactDir, "src/lib/image-processing-worker.ts"),
+    },
     platform: "node",
     bundle: true,
     format: "esm",

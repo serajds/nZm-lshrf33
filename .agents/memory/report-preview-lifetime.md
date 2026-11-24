@@ -39,8 +39,8 @@ Adding derivative generation to the upload path does not create derivatives for 
 
 **How to apply:** Isolate bulk image processing from request serving, bound source pixels and transform retries, and keep progress durable. Test a cold report with many old images; verify CPU/RSS and recovery before enabling the batch in Production.
 
-The approved image-optimization target is a separate JPEG copy no larger than 100 KB for small-grid print layouts. Preserve original uploads, report records, and snapshots; legacy backfill is opt-in and resumable.
+The historical approval used a separate JPEG copy no larger than 100 KB for small-grid print layouts. The newer image-overhaul requirements supersede that as the final quality policy: 1600px report images targeting 150–350KB, 400px thumbnails targeting 15–50KB, and documented detail-preserving exceptions. Preserve historical uploads, records and snapshots; legacy backfill remains opt-in and resumable.
 
-**Why:** The user wants existing and future report photos to load and print lightly without changing historical source data, and approved production readiness after the development-only button was absent after publish.
+**Why:** The user explicitly requires reassessing the old 100KB ceiling against engineering detail quality rather than treating the previous approval as permanent.
 
-**How to apply:** For legacy photos, add environment-scoped derivatives and leave source URLs and database rows unchanged. Generate the same bounded copy for future uploads. Publishing and initiating the first Production batch remain explicit user actions.
+**How to apply:** Compare actual engineering details before choosing final encodings. For legacy photos retain sources and reversible mappings; do not silently apply the old ceiling as the new policy. Publishing and initiating a Production batch remain separately authorized user actions.

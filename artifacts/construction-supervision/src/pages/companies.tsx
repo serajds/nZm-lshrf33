@@ -71,6 +71,7 @@ export default function Companies() {
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const logoUploadKeys = useRef(new WeakMap<File, string>());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -116,6 +117,17 @@ export default function Companies() {
     reader.readAsDataURL(file);
   };
 
+  const appendLogoUpload = (formData: FormData, file: File | null) => {
+    if (!file) return;
+    let clientKey = logoUploadKeys.current.get(file);
+    if (!clientKey) {
+      clientKey = crypto.randomUUID();
+      logoUploadKeys.current.set(file, clientKey);
+    }
+    formData.append("logo", file);
+    formData.append("clientKey", clientKey);
+  };
+
   const createMutation = useMutation({
     mutationFn: async (values: CompanyFormValues) => {
       const formData = new FormData();
@@ -124,7 +136,7 @@ export default function Companies() {
       if (values.phone) formData.append("phone", values.phone);
       if (values.email) formData.append("email", values.email);
       if (values.address) formData.append("address", values.address);
-      if (logoFile) formData.append("logo", logoFile);
+      appendLogoUpload(formData, logoFile);
 
       return customFetch<Company>(`${API}/companies`, { method: "POST", body: formData, responseType: "json" });
     },
@@ -145,7 +157,7 @@ export default function Companies() {
       if (values.phone) formData.append("phone", values.phone);
       if (values.email) formData.append("email", values.email);
       if (values.address) formData.append("address", values.address);
-      if (logoFile) formData.append("logo", logoFile);
+      appendLogoUpload(formData, logoFile);
 
       return customFetch<Company>(`${API}/companies/${editingCompany.id}`, { method: "PATCH", body: formData, responseType: "json" });
     },

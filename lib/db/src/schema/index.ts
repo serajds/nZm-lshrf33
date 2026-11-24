@@ -1,3 +1,4 @@
+export * from "./image_assets";
 export * from "./users";
 export * from "./projects";
 export * from "./project_categories";
