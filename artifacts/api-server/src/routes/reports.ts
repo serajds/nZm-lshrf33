@@ -751,6 +751,13 @@ router.post("/public/report-image-shares/complete", async (req, res): Promise<vo
     res.status(410).json({ error: "انتهت صلاحية الرابط أو تم إلغاؤه أو إكمال الرفع" });
     return;
   }
+  if (active.share.uploadedCount < 1) {
+    res.status(409).json({
+      error: "لا يمكن إنهاء رفع القسم قبل رفع صورة واحدة على الأقل",
+      code: "report_image_share_empty",
+    });
+    return;
+  }
   const [completed] = await db.update(reportImageSharesTable).set({ status: "completed" })
     .where(and(
       eq(reportImageSharesTable.id, active.share.id),
