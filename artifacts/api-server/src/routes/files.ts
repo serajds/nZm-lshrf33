@@ -1,7 +1,7 @@
 import { Router, type IRouter, type RequestHandler } from "express";
 import { db } from "@workspace/db";
 import { projectFilesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import multer from "multer";
@@ -23,6 +23,7 @@ import {
   deleteStoredReportImageVariants,
   storeReportPrintImage,
 } from "../lib/reportImageVariantStorage";
+import { permanentlyDeleteReportImages } from "../lib/report-image-cleanup";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -396,11 +397,85 @@ router.post(
   },
 );
 
+router.delete(
+  "/projects/:projectId/files/images/bulk",
+  requireProjectAccess("projectId"),
+  rejectContractor,
+  rejectViewer,
+  requireTabEdit("files"),
+  async (req, res): Promise<void> => {
+    const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
+    const projectId = parseInt(rawProjectId, 10);
+    const rawIds: unknown = req.body?.ids;
+    if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.length > 100
+      || rawIds.some(id => !Number.isSafeInteger(id) || Number(id) <= 0)) {
+      res.status(400).json({ error: "حدد من صورة واحدة إلى 100 صورة صالحة" });
+      return;
+    }
+    const ids = [...new Set(rawIds as number[])];
+    const files = await db.select({
+      id: projectFilesTable.id,
+      category: projectFilesTable.category,
+      fileUrl: projectFilesTable.fileUrl,
+    }).from(projectFilesTable).where(and(
+      eq(projectFilesTable.projectId, projectId),
+      inArray(projectFilesTable.id, ids),
+    ));
+    if (files.length !== ids.length) {
+      res.status(409).json({ error: "تغيرت قائمة الصور؛ حدّث الصفحة ثم أعد التحديد" });
+      return;
+    }
+    if (files.some(file => file.category !== "image")) {
+      res.status(400).json({ error: "يمكن حذف الصور فقط من خلال هذا الإجراء" });
+      return;
+    }
+    try {
+      const deletedCount = await permanentlyDeleteReportImages(
+        projectId,
+        files.map(file => file.fileUrl),
+      );
+      res.json({ requestedCount: files.length, deletedCount });
+    } catch (error) {
+      req.log.error({ error, projectId, fileIds: ids }, "Could not bulk delete project images");
+      res.status(500).json({ error: "تعذّر إكمال حذف الصور؛ حدّث القائمة وتحقق من الصور المتبقية" });
+    }
+  },
+);
+
 router.delete("/projects/:projectId/files/:id", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("files"), async (req, res): Promise<void> => {
   const rawProjectId = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const projectId = parseInt(rawProjectId, 10);
   const id = parseInt(rawId, 10);
+
+  const [existing] = await db.select({
+    id: projectFilesTable.id,
+    category: projectFilesTable.category,
+    fileUrl: projectFilesTable.fileUrl,
+  }).from(projectFilesTable).where(and(
+    eq(projectFilesTable.id, id),
+    eq(projectFilesTable.projectId, projectId),
+  ));
+  if (!existing) {
+    res.status(404).json({ error: "الملف غير موجود" });
+    return;
+  }
+
+  if (existing.category === "image") {
+    try {
+      const deletedCount = await permanentlyDeleteReportImages(projectId, [existing.fileUrl]);
+      if (deletedCount !== 1) {
+        res.status(409).json({ error: "لم يتم حذف الصورة من الملفات؛ قد تكون غير قابلة للحذف أو مرتبطة بملف آخر" });
+        return;
+      }
+    } catch (error) {
+      req.log.error({ error, projectId, fileId: id }, "Could not delete project image");
+      res.status(500).json({ error: "تعذّر حذف الصورة نهائياً؛ حاول مرة أخرى" });
+      return;
+    }
+    res.sendStatus(204);
+    return;
+  }
 
   const [file] = await db.delete(projectFilesTable)
     .where(and(eq(projectFilesTable.id, id), eq(projectFilesTable.projectId, projectId)))

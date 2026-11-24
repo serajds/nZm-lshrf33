@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { 
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ProjectNav } from "@/components/project-nav";
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
@@ -64,6 +65,9 @@ export default function ProjectFiles() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [previewFile, setPreviewFile] = useState<ProjectFile | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [selectedImageIds, setSelectedImageIds] = useState<number[]>([]);
+  const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadCategory, setUploadCategory] = useState("document");
@@ -80,6 +84,9 @@ export default function ProjectFiles() {
   const { data: allFiles, isLoading } = useListFiles(projectId, {}, { query: { enabled: !!projectId } });
   
   const deleteFile = useDeleteFile();
+  useEffect(() => {
+    setSelectedImageIds([]);
+  }, [projectId]);
 
   const categoryFiltered = (allFiles ?? []).filter((f: ProjectFile) =>
     !categoryFilter || categoryFilter === "all" || f.category === categoryFilter
@@ -87,6 +94,12 @@ export default function ProjectFiles() {
 
   const filteredFiles = categoryFiltered.filter((f: ProjectFile) =>
     !searchQuery || f.originalName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  const visibleImageFiles = filteredFiles.filter((f: ProjectFile) => f.category === "image");
+  const visibleImageIds = new Set(visibleImageFiles.map((f: ProjectFile) => f.id));
+  const selectedVisibleImageCount = selectedImageIds.filter(id => visibleImageIds.has(id)).length;
+  const selectedImageFiles = (allFiles ?? []).filter(
+    (file: ProjectFile) => file.category === "image" && selectedImageIds.includes(file.id),
   );
 
   const categoryCounts = (allFiles ?? []).reduce((acc: Record<string, number>, f: ProjectFile) => {
@@ -109,11 +122,99 @@ export default function ProjectFiles() {
     try {
       await deleteFile.mutateAsync({ projectId, id: deletingId });
       queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) });
+      setSelectedImageIds(current => current.filter(id => id !== deletingId));
+      if (allFiles?.some(file => file.id === deletingId && file.category === "image")) {
+        queryClient.invalidateQueries({
+          predicate: query => typeof query.queryKey[0] === "string"
+            && query.queryKey[0].startsWith(`/api/projects/${projectId}/reports`),
+        });
+      }
       toast({ title: "تم حذف الملف" });
     } catch {
       toast({ variant: "destructive", title: "فشل الحذف" });
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const toggleVisibleImageSelection = (checked: boolean) => {
+    setSelectedImageIds(current => {
+      if (checked) return [...new Set([...current, ...visibleImageFiles.map((file: ProjectFile) => file.id)])];
+      return current.filter(id => !visibleImageIds.has(id));
+    });
+  };
+
+  const toggleImageSelection = (id: number, checked: boolean) => {
+    setSelectedImageIds(current => checked
+      ? [...new Set([...current, id])]
+      : current.filter(selectedId => selectedId !== id));
+  };
+
+  const handleBulkDeleteImages = async () => {
+    const ids = selectedImageFiles.map(file => file.id);
+    if (ids.length === 0 || isBulkDeleting) return;
+    setIsBulkDeleting(true);
+    let didAttempt = false;
+    let totalDeleted = 0;
+    let totalRequested = 0;
+    try {
+      for (let offset = 0; offset < ids.length; offset += 100) {
+        const batch = ids.slice(offset, offset + 100);
+        didAttempt = true;
+        const response = await fetchWithSession(`/api/projects/${projectId}/files/images/bulk`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: batch }),
+        });
+        const result = await response.json().catch(() => null) as
+          | { requestedCount?: number; deletedCount?: number; error?: string }
+          | null;
+        if (!response.ok || !result) {
+          throw new Error(result?.error || "تعذّر حذف الصور المحددة");
+        }
+        totalRequested += result.requestedCount ?? batch.length;
+        totalDeleted += result.deletedCount ?? 0;
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) }),
+        queryClient.invalidateQueries({
+          predicate: query => typeof query.queryKey[0] === "string"
+            && query.queryKey[0].startsWith(`/api/projects/${projectId}/reports`),
+        }),
+      ]);
+      setSelectedImageIds([]);
+      setIsBulkDeleteConfirmOpen(false);
+      if (totalDeleted < totalRequested) {
+        toast({
+          variant: "destructive",
+          title: `حُذف ${totalDeleted} من ${totalRequested} صورة`,
+          description: "بقيت بعض الصور في الملفات؛ حدّث القائمة وتحقق منها.",
+        });
+      } else {
+        toast({ title: `تم حذف ${totalDeleted} صورة من الملفات والتقارير` });
+      }
+    } catch (error) {
+      if (didAttempt) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) }),
+          queryClient.invalidateQueries({
+            predicate: query => typeof query.queryKey[0] === "string"
+              && query.queryKey[0].startsWith(`/api/projects/${projectId}/reports`),
+          }),
+        ]);
+        setSelectedImageIds([]);
+        setIsBulkDeleteConfirmOpen(false);
+      }
+      toast({
+        variant: "destructive",
+        title: didAttempt
+          ? `تعذّر إكمال الحذف؛ تم تأكيد حذف ${totalDeleted} صورة`
+          : "تعذّر حذف الصور المحددة",
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setIsBulkDeleting(false);
     }
   };
 
@@ -386,6 +487,53 @@ export default function ProjectFiles() {
         )}
       </div>
 
+      {!isViewer && (visibleImageFiles.length > 0 || selectedImageFiles.length > 0) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-3">
+          <label className="flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium">
+            <Checkbox
+              checked={visibleImageFiles.length > 0 && selectedVisibleImageCount === visibleImageFiles.length
+                ? true
+                : selectedVisibleImageCount > 0 ? "indeterminate" : false}
+              onCheckedChange={checked => toggleVisibleImageSelection(checked === true)}
+              disabled={visibleImageFiles.length === 0 || isBulkDeleting}
+              aria-label="تحديد الصور الظاهرة"
+            />
+            <span>
+              {visibleImageFiles.length > 0
+                ? `تحديد الصور الظاهرة (${visibleImageFiles.length})`
+                : "لا توجد صور ظاهرة ضمن التصفية الحالية"}
+            </span>
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedImageFiles.length > 0 && (
+              <>
+                <span className="text-sm text-muted-foreground">
+                  المحدد: {selectedImageFiles.length} صورة
+                </span>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setIsBulkDeleteConfirmOpen(true)}
+                  disabled={isBulkDeleting || deleteFile.isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  حذف المحدد
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedImageIds([])}
+                  disabled={isBulkDeleting}
+                >
+                  إلغاء التحديد
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <LoadingSpinner text="جاري تحميل الملفات..." />
       ) : filteredFiles.length === 0 ? (
@@ -403,7 +551,10 @@ export default function ProjectFiles() {
             const Icon = cfg.icon;
             const showPreview = isImageFile(file);
             return (
-              <Card key={file.id} className="overflow-hidden flex flex-col group hover:shadow-lg transition-all duration-200">
+              <Card
+                key={file.id}
+                className={`overflow-hidden flex flex-col group hover:shadow-lg transition-all duration-200 ${selectedImageIds.includes(file.id) ? "ring-2 ring-primary" : ""}`}
+              >
                 {showPreview ? (
                   <div 
                     className="h-36 bg-muted/30 flex items-center justify-center overflow-hidden cursor-pointer relative"
@@ -416,6 +567,19 @@ export default function ProjectFiles() {
                       loading="lazy"
                       onError={(e) => { (e.target as HTMLImageElement).src = ''; (e.target as HTMLImageElement).className = 'hidden'; }}
                     />
+                    {!isViewer && file.category === "image" && (
+                      <div
+                        className="absolute right-2 top-2 z-10 rounded-md bg-background/90 p-1 shadow"
+                        onClick={event => event.stopPropagation()}
+                        onPointerDown={event => event.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={selectedImageIds.includes(file.id)}
+                          onCheckedChange={checked => toggleImageSelection(file.id, checked === true)}
+                          aria-label={`تحديد الصورة ${file.originalName}`}
+                        />
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
                       <Eye className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
                     </div>
@@ -497,12 +661,42 @@ export default function ProjectFiles() {
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
             <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
-            <AlertDialogDescription>هل أنت متأكد من حذف هذا الملف؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
+            <AlertDialogDescription>
+              {allFiles?.find(file => file.id === deletingId)?.category === "image"
+                ? "سيُحذف الملف نهائيًا من التخزين ومن كل تقرير يستخدم هذه الصورة. لا يمكن التراجع عن ذلك."
+                : "هل أنت متأكد من حذف هذا الملف؟ لا يمكن التراجع عن هذا الإجراء."}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row-reverse gap-2">
             <AlertDialogCancel>إلغاء</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               حذف
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isBulkDeleteConfirmOpen} onOpenChange={open => {
+        if (!isBulkDeleting) setIsBulkDeleteConfirmOpen(open);
+      }}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد حذف الصور المحددة</AlertDialogTitle>
+            <AlertDialogDescription>
+              سيتم حذف {selectedImageFiles.length} صورة نهائيًا من ملفات المشروع والتخزين، وإزالتها من التقارير التي تستخدمها. لا يمكن التراجع عن ذلك.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2">
+            <AlertDialogCancel disabled={isBulkDeleting}>إلغاء</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isBulkDeleting || selectedImageFiles.length === 0}
+              onClick={event => {
+                event.preventDefault();
+                void handleBulkDeleteImages();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isBulkDeleting ? <><Loader2 className="ml-2 h-4 w-4 animate-spin" /> جارٍ الحذف...</> : "حذف الصور"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
