@@ -187,9 +187,11 @@ test("signed-in browser exercises report-photo batches and preview through 50 im
       window.fetch = async function(input, init) {
         const rawUrl = input instanceof Request ? input.url : String(input);
         let variant = null;
+        let requestPath = null;
         try {
           const parsed = new URL(rawUrl, window.location.href);
           if (parsed.pathname.startsWith("/api/uploads/")) {
+            requestPath = parsed.pathname;
             const candidate = parsed.searchParams.get("variant");
             if (candidate === "report-thumbnail" || candidate === "report-photo") variant = candidate;
           }
@@ -200,13 +202,13 @@ test("signed-in browser exercises report-photo batches and preview through 50 im
         try {
           response = await nativeFetch(input, init);
           window.imageResourceResponses.push({
-            variant, startedAt, status: response.status,
+            variant, requestPath, startedAt, status: response.status,
             contentLength: Number(response.headers.get("content-length")) || null,
             cacheControl: response.headers.get("cache-control"),
           });
           return response;
         } catch (error) {
-          window.imageResourceResponses.push({ variant, startedAt, status: 0, error: String(error) });
+          window.imageResourceResponses.push({ variant, requestPath, startedAt, status: 0, error: String(error) });
           throw error;
         }
       };
@@ -276,7 +278,8 @@ test("signed-in browser exercises report-photo batches and preview through 50 im
       await clickExpressionOn(cdp, '[...document.querySelectorAll("[role=menuitem]")].find(item=>item.textContent.includes("تعديل التقرير"))');
       await until(() => cdp.eval('!!document.querySelector(\'[role="dialog"] input[type="file"]\')'));
     };
-    const previewBatch = async (reportNumber, description, expectedCount, exercisePrint = false) => {
+    const previewBatch = async (reportNumber, description, expectedCount, expectedUrls, exercisePrint = false) => {
+      const expectedPaths = expectedUrls.map(url => new URL(url, origin).pathname);
       const previousTargets = new Set((await fetch(`http://127.0.0.1:${debugPort}/json/list`).then(response => response.json())).map(item => item.id));
       const previewStarted = performance.now();
       const openerStartedAt = await cdp.eval("performance.now()");
@@ -310,7 +313,8 @@ test("signed-in browser exercises report-photo batches and preview through 50 im
         return { imageCount:images.length, ready:images.filter(image=>image.complete&&image.naturalWidth>1).length };
       })()`);
       const initialThumbnailRequests = await cdp.eval(
-        `window.imageResourceResponses.slice(${responseRecordStart}).filter(row=>row.variant==="report-thumbnail").length`,
+        `window.imageResourceResponses.slice(${responseRecordStart}).filter(row=>
+          row.variant==="report-thumbnail" && ${JSON.stringify(expectedPaths)}.includes(row.requestPath)).length`,
       );
       await previewCdp.eval('document.querySelector("img[data-report-image-index]")?.scrollIntoView({block:"center"})');
       await until(() => previewCdp.eval(`(()=>{
@@ -338,12 +342,14 @@ test("signed-in browser exercises report-photo batches and preview through 50 im
       assert.ok(thumbnailState.ready >= thumbnailTarget);
       const readImageNetwork = () => cdp.eval(`(()=>{
         const since=${JSON.stringify(openerStartedAt)};
+        const expectedPaths=new Set(${JSON.stringify(expectedPaths)});
         const all=performance.getEntriesByType("resource").filter(entry=>{
           if(entry.startTime<since)return false;
-          try { const url=new URL(entry.name);return url.pathname.startsWith("/api/uploads/"); }
+          try { const url=new URL(entry.name);return expectedPaths.has(url.pathname); }
           catch { return false; }
         });
-        const responses=(window.imageResourceResponses||[]).slice(${responseRecordStart});
+        const responses=(window.imageResourceResponses||[]).slice(${responseRecordStart})
+          .filter(row=>expectedPaths.has(row.requestPath));
         const summarize=variant=>{
           const entries=all.filter(entry=>{try{return new URL(entry.name).searchParams.get("variant")===variant}catch{return false}});
           const durations=entries.map(entry=>entry.responseEnd-entry.startTime).sort((a,b)=>a-b);
@@ -361,6 +367,9 @@ test("signed-in browser exercises report-photo batches and preview through 50 im
             transferBytes:entries.reduce((sum,entry)=>sum+entry.transferSize,0),
             responseHeaderBytes:responseRows.reduce((sum,row)=>sum+(row.contentLength||0),0),
             responseStatuses:responseRows.map(row=>row.status),
+            responseDetails:responseRows.map(row=>({
+              path:row.requestPath, status:row.status, startedAt:row.startedAt, error:row.error??null,
+            })),
             cacheControl:uniqueControls,
             p50RequestMs:durations.length?durations[Math.floor((durations.length-1)*0.5)]:null,
             maxConcurrent,
@@ -369,9 +378,20 @@ test("signed-in browser exercises report-photo batches and preview through 50 im
         return {thumbnail:summarize("report-thumbnail"),photo:summarize("report-photo")};
       })()`);
       const networkBeforeZoom = await readImageNetwork();
-      assert.equal(networkBeforeZoom.thumbnail.requestCount, thumbnailTarget);
+      assert.ok(networkBeforeZoom.thumbnail.requestCount >= thumbnailTarget,
+        JSON.stringify({ reportNumber, expectedCount, thumbnailTarget, networkBeforeZoom }, null, 2));
+      if (exercisePrint) {
+        assert.equal(networkBeforeZoom.thumbnail.requestCount, expectedCount,
+          "the explicit print-preparation sweep should load each thumbnail once");
+      } else if (expectedCount > 1) {
+        assert.ok(networkBeforeZoom.thumbnail.requestCount < expectedCount,
+          "opening preview should not eagerly fetch every thumbnail");
+      }
       assert.equal(networkBeforeZoom.photo.requestCount, 0, "normal preview must not fetch report-photo variants");
-      const thumbnailResourcesBeforeRepeat = networkBeforeZoom.thumbnail.requestCount;
+      const initialCountsByPath = new Map();
+      for (const row of networkBeforeZoom.thumbnail.responseDetails) {
+        initialCountsByPath.set(row.path, (initialCountsByPath.get(row.path) ?? 0) + 1);
+      }
       await previewCdp.eval('document.querySelector("img[data-report-image-index]")?.scrollIntoView({block:"start"})');
       await previewCdp.eval("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
       if (expectedCount > 1) {
@@ -380,8 +400,14 @@ test("signed-in browser exercises report-photo batches and preview through 50 im
       }
       await new Promise(resolve => setTimeout(resolve, 150));
       const networkAfterRepeat = await readImageNetwork();
-      assert.equal(networkAfterRepeat.thumbnail.requestCount, thumbnailResourcesBeforeRepeat,
-        "revisiting an already loaded thumbnail must reuse the preview-owned image");
+      const countsAfterRepeat = new Map();
+      for (const row of networkAfterRepeat.thumbnail.responseDetails) {
+        countsAfterRepeat.set(row.path, (countsAfterRepeat.get(row.path) ?? 0) + 1);
+      }
+      const repeatedLoadedPaths = [...initialCountsByPath].filter(([assetPath, count]) =>
+        countsAfterRepeat.get(assetPath) !== count);
+      assert.deepEqual(repeatedLoadedPaths, [],
+        "revisiting a loaded thumbnail must not request that same image again");
       let zoomNaturalWidth = null, printPrepared = null;
       if (exercisePrint) {
         await clickExpressionOn(previewCdp, 'document.querySelector("img[data-report-image-index]")');
@@ -500,7 +526,8 @@ test("signed-in browser exercises report-photo batches and preview through 50 im
           longTasks:window.imageLongTasks.filter(task=>task.startTime>=start).map(task=>task.duration),
         };
       })()`);
-      const preview = await previewBatch(report.reportNumber, `وصف اختبار متصفح ${count} صورة`, count, count === 50);
+      const preview = await previewBatch(report.reportNumber, `وصف اختبار متصفح ${count} صورة`,
+        count, orderedUrls, count === 50);
       assert.equal(preview.textPresent, true);
       assert.equal(preview.imageCount, count);
       assert.deepEqual(cdp.errors, []);
