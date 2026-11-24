@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-const APP_NAME = "ركاز - RIKAZ";
+const APP_NAME = "RIKAZ - ركاز";
 
 export function usePageTitle(title?: string) {
   useEffect(() => {
