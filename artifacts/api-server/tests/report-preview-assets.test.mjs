@@ -77,8 +77,17 @@ test("report image links remain report-scoped and use stored variants without re
   assert.ok(start >= 0 && end > start);
   assert.match(route, /requireProjectAccess\("projectId"\).*requireTabView\("reports"\)/s);
   assert.match(route, /authorizedReportImageFilenames\(/);
-  assert.match(route, /signReportPrintImage\(filename, 900\)/);
+  assert.match(route, /assertReportPrintImageBudget\(targets\)/);
+  assert.match(route, /getUploadObjectMetadata\(managed\.filename, managed\.bucketId\)/);
+  assert.match(route, /reportPrintImageObjectName\(filename\)/);
+  assert.match(route, /getStoredReportImageVariantMetadata\(/);
+  assert.match(route, /source=original/);
   assert.match(route, /createSignedUploadReadUrl\(filename, 900\)/);
+  assert.match(route, /retryable: true/);
+  assert.ok(route.indexOf("assertReportPrintImageBudget(targets)") < route.indexOf("target.createUrl()"));
+  assert.doesNotMatch(route, /cloudReportImageSource/);
+  const previewUrlSource = await readFile(new URL("../../construction-supervision/src/lib/report-logos.ts", import.meta.url), "utf8");
+  assert.match(previewUrlSource, /searchParams\.get\("source"\) === "original"/);
   assert.doesNotMatch(route, /NODE_ENV !== "development"/);
   assert.doesNotMatch(route, /sharp\(|reportImageVariant\(|createAndStoreReportImageVariant/);
 });

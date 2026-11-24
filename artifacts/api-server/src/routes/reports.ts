@@ -14,19 +14,26 @@ import { buildReportAiPrompt, reportEditorInstruction } from "../lib/report-ai-p
 import { approvedReportFingerprint, buildApprovedReportPrompt, parseApprovedReportDraft, validApprovedProgress } from "../lib/report-approved-inputs";
 import { buildReportActivityAnalysis } from "../lib/report-activity-analysis";
 import {
-  cloudReportImageSource,
   createSignedUploadReadUrl,
+  createSignedUploadObjectReadUrl,
+  getUploadObjectMetadata,
+  isCloudStorageConfigured,
 } from "../lib/fileStorage";
 import { authorizedReportImageFilenames, mapWithConcurrency, reportUploadFilenames } from "../lib/report-preview-assets";
 import { createReportImageOptimizationJobStore } from "../lib/report-image-optimization-job-store";
 import { resolveStoredImageForRead } from "../lib/image-read-reference";
+import {
+  assertReportPrintImageBudget,
+  reportPrintMimeTypeFromFilename,
+} from "../lib/report-print-image-preflight";
 import {
   REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES,
   REPORT_IMAGE_SHARE_MAX_LIMIT,
 } from "@workspace/api-zod";
 import { permanentlyDeleteReportImages } from "../lib/report-image-cleanup";
 import {
-  signReportPrintImage,
+  reportPrintImageObjectName,
+  getStoredReportImageVariantMetadata,
 } from "../lib/reportImageVariantStorage";
 
 type ImageGroup = {
@@ -983,42 +990,94 @@ router.get(
     );
 
     try {
-      const signed = await mapWithConcurrency(authorized, 4, async filename => {
+      const targets = await mapWithConcurrency(authorized, 4, async filename => {
         const originalKey = `/api/uploads/${encodeURIComponent(filename)}`;
         const managed = await resolveStoredImageForRead(filename, "print", projectId);
         if (managed.kind !== "legacy") {
           if (managed.kind !== "ready") throw new Error("Managed report image is not ready");
-          // Keep the short protected app URL. The preview loader requests the
-          // thumbnail/photo variant separately and the existing upload gate
-          // rechecks the viewer's current project/report authorization.
-          return [originalKey, originalKey] as const;
-        }
-        let optimizedUrl: string | null;
-        try {
-          optimizedUrl = await signReportPrintImage(filename, 900);
-        } catch (error) {
-          if (fs.existsSync(path.join(reportUploadsDir, filename))) {
-            return [originalKey, originalKey] as const;
+          const metadata = await getUploadObjectMetadata(managed.filename, managed.bucketId);
+          if (!metadata || metadata.contentType !== managed.mimeType) {
+            throw new Error("Managed report print image metadata is unavailable");
           }
-          throw error;
+          return {
+            key: originalKey,
+            filename,
+            ...metadata,
+            createUrl: async () => originalKey,
+          };
         }
-        if (optimizedUrl) return [originalKey, optimizedUrl] as const;
-        if (await cloudReportImageSource(filename)) {
-          return [originalKey, await createSignedUploadReadUrl(filename, 900)] as const;
+        const printObject = reportPrintImageObjectName(filename);
+        const printMetadata = isCloudStorageConfigured()
+          ? await getUploadObjectMetadata(printObject)
+          : null;
+        if (printMetadata) {
+          return {
+            key: originalKey,
+            filename,
+            ...printMetadata,
+            createUrl: () => createSignedUploadObjectReadUrl(printObject, 900),
+          };
         }
-        if (fs.existsSync(path.join(reportUploadsDir, filename))) {
-          return [originalKey, originalKey] as const;
+
+        const cloudMetadata = isCloudStorageConfigured()
+          ? await getUploadObjectMetadata(filename)
+          : null;
+        if (cloudMetadata) {
+          return {
+            key: originalKey,
+            filename,
+            ...cloudMetadata,
+            createUrl: () => createSignedUploadReadUrl(filename, 900),
+          };
+        }
+
+        const localPhotoMetadata = await getStoredReportImageVariantMetadata(
+          filename,
+          "report-photo",
+          reportUploadsDir,
+        );
+        if (localPhotoMetadata) {
+          return {
+            key: originalKey,
+            filename,
+            ...localPhotoMetadata,
+            createUrl: async () => originalKey,
+          };
+        }
+
+        const localPath = path.join(reportUploadsDir, filename);
+        if (fs.existsSync(localPath)) {
+          const stat = fs.statSync(localPath);
+          if (!stat.isFile()) throw new Error("Report image source is not a file");
+          return {
+            key: originalKey,
+            filename,
+            size: stat.size,
+            contentType: reportPrintMimeTypeFromFilename(filename),
+            // Explicitly select the checked original; don't let the preview
+            // loader silently substitute a different historical derivative.
+            createUrl: async () => `${originalKey}?source=original`,
+          };
         }
         throw new Error("Report image is unavailable in local and cloud storage");
       });
+      // Validate every exact target before signing or returning any links.
+      assertReportPrintImageBudget(targets);
+      const signed = await mapWithConcurrency(targets, 4, async target =>
+        [target.key, await target.createUrl()] as const,
+      );
       res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
       res.json({
         assets: Object.fromEntries(signed),
         expiresAt: new Date(Date.now() + 900_000).toISOString(),
       });
     } catch (error) {
-      req.log.error({ projectId, reportId, imageCount: authorized.length }, "Could not sign report preview images");
-      res.status(503).json({ error: "تعذّر تجهيز روابط صور التقرير؛ حاول مرة أخرى" });
+      req.log.error({ projectId, reportId, imageCount: authorized.length, reason: error instanceof Error ? error.message : "unknown" }, "Could not preflight report print images");
+      res.status(503).json({
+        error: "تعذّر التحقق من صور التقرير ضمن الحد الآمن؛ لم يُنشأ PDF ناقص. أعد المحاولة بعد اكتمال تجهيز الصور.",
+        code: "report_print_images_unavailable",
+        retryable: true,
+      });
     }
   },
 );

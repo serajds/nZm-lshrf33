@@ -4,6 +4,7 @@ export function reportPreviewAssetUrl(url: string, kind: "photo" | "thumbnail" |
   try {
     const parsed = new URL(url, origin);
     if (parsed.origin !== origin || !/^\/api\/uploads\/[^/]+$/.test(parsed.pathname)) return url;
+    if (parsed.searchParams.get("source") === "original") return `${parsed.pathname}${parsed.search}`;
     const variant = kind === "logo"
       ? "report-logo"
       : kind === "thumbnail" ? "report-thumbnail" : "report-photo";

@@ -77,8 +77,10 @@ test("report reads use prepared print variants for every report image profile", 
   }
 });
 
-test("report reads fail explicitly instead of falling back when a required print variant is incomplete", async () => {
-  activeAsset = asset("report_technical", "failed");
-  const result = await resolveStoredImageForRead(primaryKey.split("/").at(-1), "report", 7);
-  assert.deepEqual(result, { kind: "missing_derivative", imageId: uuid });
+test("report reads fail explicitly instead of falling back when required print copies are missing", async () => {
+  for (const profile of ["report", "report_detail", "report_technical", "file_image"]) {
+    activeAsset = asset(profile, "failed");
+    const result = await resolveStoredImageForRead(primaryKey.split("/").at(-1), "report", 7);
+    assert.deepEqual(result, { kind: "missing_derivative", imageId: uuid }, profile);
+  }
 });

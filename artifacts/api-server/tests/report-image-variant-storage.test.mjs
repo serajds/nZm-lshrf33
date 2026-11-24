@@ -19,7 +19,12 @@ const bundle = await build({
 });
 const module = { exports: {} };
 new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
-const { deleteStoredReportImageVariants, findStoredReportImageVariant, reportPrintImageObjectName } = module.exports;
+const {
+  deleteStoredReportImageVariants,
+  findStoredReportImageVariant,
+  getStoredReportImageVariantMetadata,
+  reportPrintImageObjectName,
+} = module.exports;
 
 async function streamToBuffer(stream) {
   const chunks = [];
@@ -47,10 +52,12 @@ test("legacy derivatives can be read and are cleaned only with their owning old 
     await writeFile(path.join(uploadsDir, photo), derivative);
     await writeFile(path.join(uploadsDir, thumbnail), derivative);
     const saved = await findStoredReportImageVariant(originalFilename, "report-photo", uploadsDir);
+    const metadata = await getStoredReportImageVariantMetadata(originalFilename, "report-photo", uploadsDir);
     const thumb = await findStoredReportImageVariant(originalFilename, "report-thumbnail", uploadsDir);
     assert.ok(saved);
     assert.ok(thumb);
     assert.equal(saved.contentType, "image/jpeg");
+    assert.deepEqual(metadata, { size: derivative.length, contentType: "image/jpeg" });
     assert.equal(thumb.contentType, "image/jpeg");
     assert.deepEqual(await streamToBuffer(saved.stream), derivative);
     assert.deepEqual(await streamToBuffer(thumb.stream), derivative);

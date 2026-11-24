@@ -5,7 +5,8 @@ import { createHash } from "node:crypto";
 import {
   createSignedUploadObjectReadUrl,
   deleteFromCloud,
-  getUploadObjectSize,
+  getUploadObjectMetadata,
+  isCloudStorageConfigured,
   streamFromCloud,
 } from "./fileStorage";
 type ReportImageVariant = "report-photo" | "report-thumbnail" | "report-logo";
@@ -26,8 +27,9 @@ export function reportPrintImageObjectName(originalFilename: string): string {
 }
 
 export async function reportPrintImageExists(originalFilename: string): Promise<boolean> {
-  const size = await getUploadObjectSize(reportPrintImageObjectName(originalFilename));
-  return size !== null && size <= 1536 * 1024;
+  const metadata = await getUploadObjectMetadata(reportPrintImageObjectName(originalFilename));
+  return metadata !== null && metadata.size > 0 && metadata.size <= 1536 * 1024
+    && metadata.contentType === "image/jpeg";
 }
 
 export async function signReportPrintImage(
@@ -93,6 +95,31 @@ export async function findStoredReportImageVariant(
           stream: stored.stream,
           contentType: stored.contentType ?? candidate.contentType,
         };
+      }
+    }
+  }
+  return null;
+}
+
+export async function getStoredReportImageVariantMetadata(
+  originalFilename: string,
+  variant: ReportImageVariant,
+  uploadsDir: string,
+): Promise<{ size: number; contentType: string } | null> {
+  assertSafeFilename(originalFilename);
+  for (const candidate of candidateVariantFilenames(originalFilename, variant)) {
+    const localPath = path.join(uploadsDir, candidate.filename);
+    try {
+      const stat = await fsp.stat(localPath);
+      if (stat.isFile()) return { size: stat.size, contentType: candidate.contentType };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+
+    if (isCloudStorageConfigured() && (isProduction || (isDevelopment && variant === "report-photo"))) {
+      const metadata = await getUploadObjectMetadata(cloudVariantFilename(originalFilename, variant, candidate));
+      if (metadata) {
+        return { size: metadata.size, contentType: metadata.contentType ?? candidate.contentType };
       }
     }
   }

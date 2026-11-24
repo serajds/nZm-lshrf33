@@ -197,6 +197,31 @@ export async function deleteFromCloud(filename: string): Promise<void> {
   }
 }
 
+export async function getUploadObjectMetadata(
+  objectName: string,
+  bucketId = BUCKET_ID,
+): Promise<{ size: number; contentType: string | null } | null> {
+  if (!bucketId) throw new Error("Object storage bucket is not configured");
+  const segments = objectName.split("/");
+  if (!objectName || objectName.startsWith("/") || segments.some(segment =>
+    !segment || segment === "." || segment === ".." || segment.includes("\\") || segment.includes("\0")
+  )) {
+    throw new Error("Invalid upload object name");
+  }
+  try {
+    const [metadata] = await getBucket(bucketId).file(UPLOADS_PREFIX + objectName).getMetadata();
+    const size = Number(metadata.size);
+    if (!Number.isSafeInteger(size) || size < 0) throw new Error("Stored image size is invalid");
+    return {
+      size,
+      contentType: typeof metadata.contentType === "string" ? metadata.contentType.split(";")[0]!.trim().toLowerCase() : null,
+    };
+  } catch (error) {
+    if ((error as { code?: number }).code === 404) return null;
+    throw error;
+  }
+}
+
 /** Metadata is checked per request, so replaced objects never reuse an old variant. */
 export async function cloudReportImageSource(filename: string): Promise<{
   version: string;
