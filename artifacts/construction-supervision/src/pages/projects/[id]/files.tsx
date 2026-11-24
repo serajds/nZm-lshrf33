@@ -34,10 +34,10 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Trash2, ArrowRight, FileText, File as FileIcon, 
+import {
+  Trash2, ArrowRight, FileText, File as FileIcon,
   UploadCloud, Download, Search, FolderOpen, FileImage, FileSpreadsheet,
-  FileCheck2, Eye, HardDrive, Loader2
+  FileCheck2, Eye, HardDrive, Loader2, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { LoadingSpinner, EmptyState } from "@/components/ui/loading-spinner";
 import { ProtectedImage, downloadProtectedAsset } from "@/components/protected-image";
@@ -70,6 +70,8 @@ export default function ProjectFiles() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 24;
   const [uploadCategory, setUploadCategory] = useState("document");
   const [uploadDescription, setUploadDescription] = useState("");
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
@@ -81,33 +83,37 @@ export default function ProjectFiles() {
   const { canEdit, isHidden } = useTabAccess(projectId, "files", { redirectIfHidden: true });
   const isViewer = !canEdit;
   
-  const { data: allFiles, isLoading } = useListFiles(projectId, {}, { query: { enabled: !!projectId } });
+  const listParams = {
+    page: currentPage,
+    pageSize,
+    category: categoryFilter && categoryFilter !== "all" ? categoryFilter as
+      "image" | "pdf" | "test_result" | "document" | "other" : undefined,
+    search: searchQuery.trim() || undefined,
+  };
+  const {
+    data: filePage,
+    isLoading,
+    isError,
+    refetch,
+  } = useListFiles(projectId, listParams, { query: { enabled: !!projectId } });
+  const pageFiles = filePage?.files ?? [];
+  const summary = filePage?.summary;
   
   const deleteFile = useDeleteFile();
   useEffect(() => {
     setSelectedImageIds([]);
   }, [projectId]);
 
-  const categoryFiltered = (allFiles ?? []).filter((f: ProjectFile) =>
-    !categoryFilter || categoryFilter === "all" || f.category === categoryFilter
-  );
+  useEffect(() => {
+    if (filePage && currentPage > Math.max(filePage.totalPages, 1)) {
+      setCurrentPage(Math.max(filePage.totalPages, 1));
+    }
+  }, [currentPage, filePage]);
 
-  const filteredFiles = categoryFiltered.filter((f: ProjectFile) =>
-    !searchQuery || f.originalName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  const visibleImageFiles = filteredFiles.filter((f: ProjectFile) => f.category === "image");
+  const visibleImageFiles = pageFiles.filter((file: ProjectFile) => file.category === "image");
   const visibleImageIds = new Set(visibleImageFiles.map((f: ProjectFile) => f.id));
   const selectedVisibleImageCount = selectedImageIds.filter(id => visibleImageIds.has(id)).length;
-  const selectedImageFiles = (allFiles ?? []).filter(
-    (file: ProjectFile) => file.category === "image" && selectedImageIds.includes(file.id),
-  );
-
-  const categoryCounts = (allFiles ?? []).reduce((acc: Record<string, number>, f: ProjectFile) => {
-    acc[f.category] = (acc[f.category] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const totalSize = (allFiles ?? []).reduce((s: number, f: ProjectFile) => s + f.fileSize, 0);
+  const selectedImageCount = selectedImageIds.length;
 
   const handleDownload = async (file: ProjectFile) => {
     try {
@@ -123,7 +129,7 @@ export default function ProjectFiles() {
       await deleteFile.mutateAsync({ projectId, id: deletingId });
       queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) });
       setSelectedImageIds(current => current.filter(id => id !== deletingId));
-      if (allFiles?.some(file => file.id === deletingId && file.category === "image")) {
+      if (pageFiles.some(file => file.id === deletingId && file.category === "image")) {
         queryClient.invalidateQueries({
           predicate: query => typeof query.queryKey[0] === "string"
             && query.queryKey[0].startsWith(`/api/projects/${projectId}/reports`),
@@ -151,7 +157,7 @@ export default function ProjectFiles() {
   };
 
   const handleBulkDeleteImages = async () => {
-    const ids = selectedImageFiles.map(file => file.id);
+    const ids = selectedImageIds;
     if (ids.length === 0 || isBulkDeleting) return;
     setIsBulkDeleting(true);
     let didAttempt = false;
@@ -241,6 +247,7 @@ export default function ProjectFiles() {
       if (!response.ok) throw new Error(`Upload failed with HTTP ${response.status}`);
 
       queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) });
+      setCurrentPage(1);
       setIsDialogOpen(false);
       setFileToUpload(null);
       setUploadDescription("");
@@ -306,32 +313,31 @@ export default function ProjectFiles() {
 
       <ProjectNav projectId={projectId} />
 
-      {!isLoading && (allFiles ?? []).length > 0 && (
+      {!isLoading && (summary?.totalFiles ?? 0) > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <Card 
             className={`surface-card surface-card-hover cursor-pointer ${!categoryFilter || categoryFilter === 'all' ? 'ring-2 ring-primary shadow-md' : ''}`}
-            onClick={() => setCategoryFilter("all")}
+            onClick={() => { setCategoryFilter("all"); setCurrentPage(1); }}
           >
             <CardContent className="p-3 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                 <FolderOpen className="h-5 w-5 text-primary" />
               </div>
               <div className="min-w-0">
-                <p className="text-xl font-bold tabular-nums">{(allFiles ?? []).length}</p>
+                <p className="text-xl font-bold tabular-nums">{summary?.totalFiles ?? 0}</p>
                 <p className="text-[11px] text-muted-foreground truncate">جميع الملفات</p>
               </div>
             </CardContent>
           </Card>
           {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => {
-            const count = categoryCounts[key] || 0;
-            if (count === 0) return null;
+            const count = summary?.categories[key as keyof typeof summary.categories] ?? 0;
             const Icon = cfg.icon;
             const isActive = categoryFilter === key;
             return (
               <Card 
                 key={key}
                 className={`surface-card surface-card-hover cursor-pointer ${isActive ? `ring-2 ring-primary shadow-md` : ''}`}
-                onClick={() => setCategoryFilter(isActive ? "all" : key)}
+                onClick={() => { setCategoryFilter(isActive ? "all" : key); setCurrentPage(1); }}
               >
                 <CardContent className="p-3 flex items-center gap-3">
                   <div className={`p-2 rounded-lg ${cfg.bg} shrink-0`}>
@@ -355,13 +361,13 @@ export default function ProjectFiles() {
             placeholder="بحث في الملفات..." 
             className="h-11 rounded-xl pr-9"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
           />
         </div>
-        {totalSize > 0 && (
-          <div className="hidden sm:flex items-center gap-1.5 text-sm text-muted-foreground px-3 border rounded-md bg-muted/30">
+        {(summary?.totalSize ?? 0) > 0 && (
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground px-3 border rounded-md bg-muted/30">
             <HardDrive className="h-3.5 w-3.5" />
-            <span>{formatFileSize(totalSize)}</span>
+            <span>{formatFileSize(summary?.totalSize ?? 0)}</span>
           </div>
         )}
         {!isViewer && (
@@ -381,7 +387,7 @@ export default function ProjectFiles() {
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden" dir="rtl">
-            <div className="bg-gradient-to-br from-blue-500/10 via-background to-background p-6 pb-4 border-b border-border/50">
+            <div className="bg-muted/40 p-6 pb-4 border-b border-border/50">
               <DialogHeader>
                 <DialogTitle className="text-xl">رفع ملف جديد</DialogTitle>
               </DialogHeader>
@@ -437,7 +443,7 @@ export default function ProjectFiles() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-gradient-to-br from-muted/30 to-background shadow-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 p-5 rounded-2xl border bg-muted/30 shadow-sm">
                 <div className="space-y-2">
                   <Label className="text-foreground/90">التصنيف</Label>
                   <Select value={uploadCategory} onValueChange={setUploadCategory}>
@@ -487,7 +493,7 @@ export default function ProjectFiles() {
         )}
       </div>
 
-      {!isViewer && (visibleImageFiles.length > 0 || selectedImageFiles.length > 0) && (
+      {!isViewer && (visibleImageFiles.length > 0 || selectedImageCount > 0) && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-3">
           <label className="flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium">
             <Checkbox
@@ -505,10 +511,10 @@ export default function ProjectFiles() {
             </span>
           </label>
           <div className="flex flex-wrap items-center gap-2">
-            {selectedImageFiles.length > 0 && (
+            {selectedImageCount > 0 && (
               <>
                 <span className="text-sm text-muted-foreground">
-                  المحدد: {selectedImageFiles.length} صورة
+                  المحدد: {selectedImageCount} صورة
                 </span>
                 <Button
                   variant="destructive"
@@ -536,17 +542,28 @@ export default function ProjectFiles() {
 
       {isLoading ? (
         <LoadingSpinner text="جاري تحميل الملفات..." />
-      ) : filteredFiles.length === 0 ? (
+      ) : isError ? (
+        <Card className="border-destructive/40">
+          <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+            <p className="text-sm text-destructive">تعذّر تحميل ملفات المشروع. تحقق من الاتصال وحاول مرة أخرى.</p>
+            <Button variant="outline" onClick={() => void refetch()}>إعادة المحاولة</Button>
+          </CardContent>
+        </Card>
+      ) : pageFiles.length === 0 ? (
         <Card className="border-dashed">
           <EmptyState
             icon={<FolderOpen className="h-7 w-7 text-muted-foreground/60" />}
-            title={searchQuery ? "لا توجد نتائج" : "لا توجد ملفات"}
-            description={searchQuery ? `لم يتم العثور على ملفات تطابق "${searchQuery}"` : "ارفع ملفات المشروع مثل المخططات والصور والمستندات"}
+            title={searchQuery || (categoryFilter && categoryFilter !== "all") ? "لا توجد نتائج" : "لا توجد ملفات"}
+            description={searchQuery
+              ? `لم يتم العثور على ملفات تطابق "${searchQuery}"`
+              : categoryFilter && categoryFilter !== "all"
+                ? "لا توجد ملفات ضمن هذا التصنيف"
+                : "ارفع ملفات المشروع مثل المخططات والصور والمستندات"}
           />
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredFiles.map((file: ProjectFile) => {
+          {pageFiles.map((file: ProjectFile) => {
             const cfg = getCategoryConfig(file.category);
             const Icon = cfg.icon;
             const showPreview = isImageFile(file);
@@ -628,6 +645,36 @@ export default function ProjectFiles() {
         </div>
       )}
 
+      {!isLoading && !isError && filePage && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-3">
+          <p className="text-sm text-muted-foreground">
+            النتائج: <span className="font-semibold text-foreground">{filePage.total}</span>
+            {" · "}
+            الصفحة <span className="font-semibold text-foreground">{filePage.page}</span>
+            {" من "}
+            <span className="font-semibold text-foreground">{Math.max(filePage.totalPages, 1)}</span>
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(page => Math.max(1, page - 1))}
+              disabled={currentPage <= 1}
+            >
+              <ChevronRight className="ml-1 h-4 w-4" /> السابق
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(page => Math.min(filePage.totalPages, page + 1))}
+              disabled={currentPage >= filePage.totalPages}
+            >
+              التالي <ChevronLeft className="mr-1 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <Dialog open={!!previewFile} onOpenChange={(open) => { if (!open) setPreviewFile(null); }}>
         <DialogContent className="max-w-3xl p-0 overflow-hidden" dir="rtl">
           {previewFile && (
@@ -662,7 +709,7 @@ export default function ProjectFiles() {
           <AlertDialogHeader>
             <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
             <AlertDialogDescription>
-              {allFiles?.find(file => file.id === deletingId)?.category === "image"
+              {pageFiles.find(file => file.id === deletingId)?.category === "image"
                 ? "سيُحذف الملف نهائيًا من التخزين ومن كل تقرير يستخدم هذه الصورة. لا يمكن التراجع عن ذلك."
                 : "هل أنت متأكد من حذف هذا الملف؟ لا يمكن التراجع عن هذا الإجراء."}
             </AlertDialogDescription>
@@ -683,13 +730,13 @@ export default function ProjectFiles() {
           <AlertDialogHeader>
             <AlertDialogTitle>تأكيد حذف الصور المحددة</AlertDialogTitle>
             <AlertDialogDescription>
-              سيتم حذف {selectedImageFiles.length} صورة نهائيًا من ملفات المشروع والتخزين، وإزالتها من التقارير التي تستخدمها. لا يمكن التراجع عن ذلك.
+              سيتم حذف {selectedImageCount} صورة نهائيًا من ملفات المشروع والتخزين، وإزالتها من التقارير التي تستخدمها. لا يمكن التراجع عن ذلك.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row-reverse gap-2">
             <AlertDialogCancel disabled={isBulkDeleting}>إلغاء</AlertDialogCancel>
             <AlertDialogAction
-              disabled={isBulkDeleting || selectedImageFiles.length === 0}
+              disabled={isBulkDeleting || selectedImageCount === 0}
               onClick={event => {
                 event.preventDefault();
                 void handleBulkDeleteImages();

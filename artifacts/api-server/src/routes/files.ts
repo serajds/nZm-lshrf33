@@ -1,7 +1,7 @@
 import { Router, type IRouter, type RequestHandler } from "express";
 import { db } from "@workspace/db";
 import { projectFilesTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, sum } from "drizzle-orm";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import multer from "multer";
@@ -95,20 +95,83 @@ const router: IRouter = Router();
 router.get("/projects/:projectId/files", requireProjectAccess("projectId"), rejectContractor, requireTabView("files"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
-  const { category } = req.query;
+  const rawPage = req.query.page;
+  const rawPageSize = req.query.pageSize;
+  const rawCategory = req.query.category;
+  const rawSearch = req.query.search;
+  const page = rawPage === undefined ? 1 : Number(rawPage);
+  const pageSize = rawPageSize === undefined ? 24 : Number(rawPageSize);
+  const categories = ["image", "pdf", "test_result", "document", "other"] as const;
 
-  let query = db.select().from(projectFilesTable).where(eq(projectFilesTable.projectId, projectId));
-
-  if (category && typeof category === "string") {
-    query = db.select().from(projectFilesTable)
-      .where(and(
-        eq(projectFilesTable.projectId, projectId),
-        eq(projectFilesTable.category, category as "image" | "pdf" | "test_result" | "document" | "other")
-      ));
+  if (!Number.isSafeInteger(page) || page < 1
+    || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100
+    || !Number.isSafeInteger((page - 1) * pageSize)) {
+    res.status(400).json({ error: "رقم الصفحة يجب أن يكون موجباً، وحجم الصفحة بين 1 و100" });
+    return;
+  }
+  if (rawCategory !== undefined
+    && (typeof rawCategory !== "string" || !categories.includes(rawCategory as typeof categories[number]))) {
+    res.status(400).json({ error: "تصنيف الملفات غير صالح" });
+    return;
+  }
+  if (rawSearch !== undefined && (typeof rawSearch !== "string" || rawSearch.length > 200)) {
+    res.status(400).json({ error: "عبارة البحث يجب ألا تتجاوز 200 حرف" });
+    return;
   }
 
-  const files = await query.orderBy(projectFilesTable.uploadedAt);
-  res.json(files);
+  const search = typeof rawSearch === "string" ? rawSearch.trim() : "";
+  const filters = [eq(projectFilesTable.projectId, projectId)];
+  if (typeof rawCategory === "string") {
+    filters.push(eq(projectFilesTable.category, rawCategory as typeof categories[number]));
+  }
+  if (search) {
+    const escapedSearch = search.replace(/[\\%_]/g, "\\$&");
+    filters.push(ilike(projectFilesTable.originalName, `%${escapedSearch}%`));
+  }
+  const where = and(...filters);
+  const offset = (page - 1) * pageSize;
+
+  const [files, totalResult, categorySummary] = await Promise.all([
+    db.select().from(projectFilesTable)
+      .where(where)
+      .orderBy(desc(projectFilesTable.uploadedAt), desc(projectFilesTable.id))
+      .limit(pageSize)
+      .offset(offset),
+    db.select({ total: count() }).from(projectFilesTable).where(where),
+    db.select({
+      category: projectFilesTable.category,
+      count: count(),
+      size: sum(projectFilesTable.fileSize),
+    }).from(projectFilesTable)
+      .where(eq(projectFilesTable.projectId, projectId))
+      .groupBy(projectFilesTable.category),
+  ]);
+  const total = totalResult[0]?.total ?? 0;
+  const summary = {
+    totalFiles: 0,
+    totalSize: 0,
+    categories: {
+      image: 0,
+      pdf: 0,
+      test_result: 0,
+      document: 0,
+      other: 0,
+    } satisfies Record<typeof categories[number], number>,
+  };
+  for (const row of categorySummary) {
+    summary.totalFiles += row.count;
+    summary.totalSize += Number(row.size ?? 0);
+    summary.categories[row.category] = row.count;
+  }
+
+  res.json({
+    files,
+    page,
+    pageSize,
+    total,
+    totalPages: Math.ceil(total / pageSize),
+    summary,
+  });
 });
 
 // Shared persist + cloud-upload step used by both the generic Files-tab

@@ -66,6 +66,7 @@ import type {
   OwnerLinkResponse,
   OwnerProjectView,
   OwnerVerifyBody,
+  PagedProjectFiles,
   Project,
   ProjectCategory,
   ProjectCategoryBody,
@@ -3303,7 +3304,7 @@ export function useExportReportsPdf<
 }
 
 /**
- * @summary List files for a project
+ * @summary List a page of project files with project-wide summaries
  */
 export const getListFilesUrl = (
   projectId: number,
@@ -3328,8 +3329,8 @@ export const listFiles = async (
   projectId: number,
   params?: ListFilesParams,
   options?: RequestInit,
-): Promise<ProjectFile[]> => {
-  return customFetch<ProjectFile[]>(getListFilesUrl(projectId, params), {
+): Promise<PagedProjectFiles> => {
+  return customFetch<PagedProjectFiles>(getListFilesUrl(projectId, params), {
     ...options,
     method: "GET",
   });
@@ -3347,7 +3348,7 @@ export const getListFilesQueryKey = (
 
 export const getListFilesQueryOptions = <
   TData = Awaited<ReturnType<typeof listFiles>>,
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
 >(
   projectId: number,
   params?: ListFilesParams,
@@ -3382,15 +3383,15 @@ export const getListFilesQueryOptions = <
 export type ListFilesQueryResult = NonNullable<
   Awaited<ReturnType<typeof listFiles>>
 >;
-export type ListFilesQueryError = ErrorType<unknown>;
+export type ListFilesQueryError = ErrorType<ErrorResponse>;
 
 /**
- * @summary List files for a project
+ * @summary List a page of project files with project-wide summaries
  */
 
 export function useListFiles<
   TData = Awaited<ReturnType<typeof listFiles>>,
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
 >(
   projectId: number,
   params?: ListFilesParams,

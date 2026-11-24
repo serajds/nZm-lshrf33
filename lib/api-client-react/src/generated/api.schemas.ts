@@ -830,6 +830,29 @@ export interface ProjectFile {
   uploadedAt: string;
 }
 
+export type ProjectFilesSummaryCategories = {
+  image: number;
+  pdf: number;
+  test_result: number;
+  document: number;
+  other: number;
+};
+
+export interface ProjectFilesSummary {
+  totalFiles: number;
+  totalSize: number;
+  categories: ProjectFilesSummaryCategories;
+}
+
+export interface PagedProjectFiles {
+  files: ProjectFile[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  summary: ProjectFilesSummary;
+}
+
 export interface OwnerVerifyBody {
   token: string;
   password?: string;
@@ -1546,10 +1569,34 @@ export type UploadPublicReportImage201 = {
 
 export type ListFilesParams = {
   /**
-   * @nullable
+   * One-based page number
+   * @minimum 1
    */
-  category?: string | null;
+  page?: number;
+  /**
+   * Number of files per page (maximum 100)
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  category?: ListFilesCategory;
+  /**
+   * Case-insensitive substring search in the original filename
+   * @maxLength 200
+   */
+  search?: string;
 };
+
+export type ListFilesCategory =
+  (typeof ListFilesCategory)[keyof typeof ListFilesCategory];
+
+export const ListFilesCategory = {
+  image: "image",
+  pdf: "pdf",
+  test_result: "test_result",
+  document: "document",
+  other: "other",
+} as const;
 
 export type UploadFileBody = {
   file: Blob;

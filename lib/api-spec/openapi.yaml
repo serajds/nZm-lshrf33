@@ -919,26 +919,52 @@ paths:
     get:
       operationId: listFiles
       tags: [files]
-      summary: List files for a project
+      summary: List a page of project files with project-wide summaries
       parameters:
         - name: projectId
           in: path
           required: true
           schema:
             type: integer
+        - name: page
+          in: query
+          description: One-based page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: Number of files per page (maximum 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 24
         - name: category
           in: query
           schema:
-            type: ["string", "null"]
+            type: string
+            enum: [image, pdf, test_result, document, other]
+        - name: search
+          in: query
+          description: Case-insensitive substring search in the original filename
+          schema:
+            type: string
+            maxLength: 200
       responses:
         "200":
-          description: List of files
+          description: Requested page, matching result count, and project-wide summaries
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ProjectFile"
+                $ref: "#/components/schemas/PagedProjectFiles"
+        "400":
+          description: Invalid pagination or filter parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       operationId: uploadFile
       tags: [files]
@@ -2879,6 +2905,48 @@ components:
         - fileSize
         - mimeType
         - uploadedAt
+
+    PagedProjectFiles:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectFile"
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        summary:
+          $ref: "#/components/schemas/ProjectFilesSummary"
+      required: [files, page, pageSize, total, totalPages, summary]
+
+    ProjectFilesSummary:
+      type: object
+      properties:
+        totalFiles:
+          type: integer
+        totalSize:
+          type: integer
+        categories:
+          type: object
+          properties:
+            image:
+              type: integer
+            pdf:
+              type: integer
+            test_result:
+              type: integer
+            document:
+              type: integer
+            other:
+              type: integer
+          required: [image, pdf, test_result, document, other]
+      required: [totalFiles, totalSize, categories]
 
     # Owner portal
     OwnerVerifyBody:

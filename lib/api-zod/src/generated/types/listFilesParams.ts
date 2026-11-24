@@ -5,10 +5,24 @@
  * API specification for Engineering Supervision System
  * OpenAPI spec version: 0.1.0
  */
+import type { ListFilesCategory } from "./listFilesCategory";
 
 export type ListFilesParams = {
   /**
-   * @nullable
+   * One-based page number
+   * @minimum 1
    */
-  category?: string | null;
+  page?: number;
+  /**
+   * Number of files per page (maximum 100)
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  category?: ListFilesCategory;
+  /**
+   * Case-insensitive substring search in the original filename
+   * @maxLength 200
+   */
+  search?: string;
 };
