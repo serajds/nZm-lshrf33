@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { REPORT_IMAGE_MAX_PIXELS } from "@workspace/api-zod";
 
 export type ReportImageVariant = "report-photo" | "report-thumbnail" | "report-logo";
 type ImageResult = { buffer: Buffer; contentType: string };
@@ -107,7 +108,7 @@ export function createReportImageVariants() {
       try {
         const source = await readSource();
         if (source.length > MAX_SOURCE_BYTES) throw new Error("Report image is too large");
-        const options = { limitInputPixels: 40_000_000 };
+        const options = { limitInputPixels: REPORT_IMAGE_MAX_PIXELS };
         const metadataStarted = onDiagnostic ? performance.now() : 0;
         const metadata = await sharp(source, options).metadata();
         const metadataMs = onDiagnostic ? performance.now() - metadataStarted : undefined;
