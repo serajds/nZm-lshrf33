@@ -19,8 +19,10 @@ NODE_ENV=development node --import ./scripts/node_modules/tsx/dist/loader.mjs sc
 node scripts/image-audit/report.mjs
 ```
 
-Run measurement commands sequentially, with no other benchmark/build running,
-to avoid introducing CPU/memory contention between experiments.
+Run measurement commands sequentially, with no other benchmark/build or
+configured development workflows (API, web, mobile, mockup) running. They share
+host resources and can contaminate p95 results. Preserve each run's evidence;
+do not replace a failed or overlapping run with a later result.
 The browser command needs an isolated headless Chromium instance listening on
 DevTools port 9222. It opens and closes its own target, serves only synthetic
 fixtures on an ephemeral loopback port, uses the real report template/loader,
@@ -76,7 +78,9 @@ only its child at the explicitly separate bucket, and exercises real routers
 with six synthetic users. The traffic generator is outside the measured API
 process. A 700MiB/120s guard can abort the run; guard cancellations are recorded
 separately from HTTP errors/latency. Cleanup deletes only exact SDK-recorded
-synthetic keys, never a bucket sweep.
+synthetic keys, never a bucket sweep. Each upload stage keeps its peer traffic
+active for up to eight extra seconds when needed to meet the existing 30-sample
+floor; this affects sample sufficiency, not the p95 threshold.
 
 `legacy-inventory.mjs` is a read-only aggregate over the development database.
 It deliberately does not list or read object-storage files, so its counts do
