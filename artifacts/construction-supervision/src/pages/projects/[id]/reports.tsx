@@ -13,6 +13,7 @@ import {
   useGetProject,
   useGetReportAuditLog,
   getGetReportAuditLogQueryKey,
+  getListFilesQueryKey,
   getReport,
   getListReportsQueryKey,
   getGetReportQueryKey,
@@ -1256,7 +1257,6 @@ export default function ProjectReports() {
         const updateBody: UpdateReportBody & { deleteImageUrls?: string[] } = {
           ...rest,
           ...(futureDraft ? { progressPercentage: null } : {}),
-          imageUrls: flatImageUrls,
           imageGroups: groupsForApi,
           ...(deleteImageUrls.length > 0 ? { deleteImageUrls } : {}),
         };
@@ -1278,14 +1278,29 @@ export default function ProjectReports() {
         if (snapshotPayload.length > 0) {
           updateBody.activitiesSnapshot = snapshotPayload;
         }
-        await updateReport.mutateAsync({ projectId, id: editingId, data: updateBody });
+        const updateResult = await updateReport.mutateAsync({ projectId, id: editingId, data: updateBody }) as
+          Report & { deletedImageCount?: number };
         queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(projectId, editingId) });
         queryClient.invalidateQueries({ queryKey: getGetReportAuditLogQueryKey(projectId, editingId) });
-        toast({
-          title: deleteImageUrls.length > 0
-            ? "تم تحديث التقرير وحذف الصور من النظام"
-            : "تم التحديث",
-        });
+        if (deleteImageUrls.length > 0) {
+          queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) });
+          const deletedCount = updateResult.deletedImageCount;
+          if (typeof deletedCount === "number" && deletedCount < deleteImageUrls.length) {
+            toast({
+              variant: "destructive",
+              title: `حُفظ التقرير، لكن حُذف ${deletedCount} من ${deleteImageUrls.length} ملفًا فقط`,
+              description: "بقيت ملفات لم يتأكد حذفها من التخزين؛ راجع تبويب الملفات.",
+            });
+            return;
+          }
+          toast({
+            title: typeof deletedCount === "number"
+              ? `تم تحديث التقرير وحذف ${deletedCount} صورة من الملفات`
+              : "تم تحديث التقرير وحذف الصور",
+          });
+        } else {
+          toast({ title: "تم التحديث" });
+        }
       } else {
         if (!futureDraft) {
           if (newReportManual ? !manualProgressEntered : !periodProgress.data?.available || periodProgress.isFetching) {

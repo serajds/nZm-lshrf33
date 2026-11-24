@@ -1327,9 +1327,10 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
     return;
   }
 
+  let deletedImageCount: number | undefined;
   if (deleteImageUrls.length > 0) {
     try {
-      await permanentlyDeleteReportImages(projectId, deleteImageUrls);
+      deletedImageCount = await permanentlyDeleteReportImages(projectId, deleteImageUrls);
     } catch (error) {
       req.log.error({ error, projectId, reportId: id }, "Could not permanently delete report section images");
       res.status(500).json({ error: "حُفظ التقرير، لكن تعذّر حذف بعض الصور نهائياً؛ أعد حفظ التعديلات لإكمال الحذف" });
@@ -1340,7 +1341,10 @@ router.patch("/projects/:projectId/reports/:id", requireProjectAccess("projectId
   const { logAudit: logAudit2 } = await import("../lib/audit");
   await logAudit2({ userId: (req as any).user?.userId, action: "update", entityType: "report", entityId: report.id, entityName: `تقرير #${report.reportNumber}`, projectId, details: { reportDate: report.reportDate, progressPercentage: report.progressPercentage, statusAfter: report.status, changedFields: Object.keys(updateData) } });
 
-  res.json(report);
+  res.json({
+    ...report,
+    ...(deletedImageCount !== undefined ? { deletedImageCount } : {}),
+  });
 });
 
 router.patch("/projects/:projectId/reports/:id/status", requireProjectManager("projectId"), requireTabEdit("reports"), async (req, res): Promise<void> => {
