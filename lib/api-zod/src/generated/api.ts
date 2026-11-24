@@ -1081,29 +1081,72 @@ export const ExportReportsPdfParams = zod.object({
 });
 
 /**
- * @summary List files for a project
+ * @summary List a page of project files with project-wide summaries
  */
 export const ListFilesParams = zod.object({
   projectId: zod.coerce.number(),
 });
 
+export const listFilesQueryPageDefault = 1;
+
+export const listFilesQueryPageSizeDefault = 24;
+export const listFilesQueryPageSizeMax = 100;
+
+export const listFilesQuerySearchMax = 200;
+
 export const ListFilesQueryParams = zod.object({
-  category: zod.coerce.string().nullish(),
+  page: zod.coerce
+    .number()
+    .min(1)
+    .default(listFilesQueryPageDefault)
+    .describe("One-based page number"),
+  pageSize: zod.coerce
+    .number()
+    .min(1)
+    .max(listFilesQueryPageSizeMax)
+    .default(listFilesQueryPageSizeDefault)
+    .describe("Number of files per page (maximum 100)"),
+  category: zod
+    .enum(["image", "pdf", "test_result", "document", "other"])
+    .optional(),
+  search: zod.coerce
+    .string()
+    .max(listFilesQuerySearchMax)
+    .optional()
+    .describe("Case-insensitive substring search in the original filename"),
 });
 
-export const ListFilesResponseItem = zod.object({
-  id: zod.number(),
-  projectId: zod.number(),
-  filename: zod.string(),
-  originalName: zod.string(),
-  category: zod.enum(["image", "pdf", "test_result", "document", "other"]),
-  fileUrl: zod.string(),
-  fileSize: zod.number(),
-  mimeType: zod.string(),
-  description: zod.string().nullish(),
-  uploadedAt: zod.coerce.date(),
+export const ListFilesResponse = zod.object({
+  files: zod.array(
+    zod.object({
+      id: zod.number(),
+      projectId: zod.number(),
+      filename: zod.string(),
+      originalName: zod.string(),
+      category: zod.enum(["image", "pdf", "test_result", "document", "other"]),
+      fileUrl: zod.string(),
+      fileSize: zod.number(),
+      mimeType: zod.string(),
+      description: zod.string().nullish(),
+      uploadedAt: zod.coerce.date(),
+    }),
+  ),
+  page: zod.number(),
+  pageSize: zod.number(),
+  total: zod.number(),
+  totalPages: zod.number(),
+  summary: zod.object({
+    totalFiles: zod.number(),
+    totalSize: zod.number(),
+    categories: zod.object({
+      image: zod.number(),
+      pdf: zod.number(),
+      test_result: zod.number(),
+      document: zod.number(),
+      other: zod.number(),
+    }),
+  }),
 });
-export const ListFilesResponse = zod.array(ListFilesResponseItem);
 
 /**
  * @summary Upload a file for a project
