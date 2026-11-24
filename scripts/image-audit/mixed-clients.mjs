@@ -97,6 +97,20 @@ export async function runMixedClients({ origin, projectIds, reportIds, tokens },
       await new Promise(resolve => setTimeout(resolve, 200));
     }
   });
+  const measuredOperations = ["report", "project-edit", "attendance-write", "files", "export"];
+  async function waitForPhaseSampleFloor(phaseName) {
+    const deadline = performance.now() + 8_000;
+    while (!signal.aborted && performance.now() < deadline) {
+      const counts = new Map();
+      for (const row of requests) {
+        if (row.phase === phaseName && row.status > 0) {
+          counts.set(row.operation, (counts.get(row.operation) ?? 0) + 1);
+        }
+      }
+      if (measuredOperations.every(operation => (counts.get(operation) ?? 0) >= 30)) return;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
   for (const [batchSize, repeatCount] of Object.entries(mixedUploadRepetitions)) {
     const batchCount = Number(batchSize);
     for (let repetition = 0; repetition < repeatCount; repetition++) {
@@ -127,6 +141,10 @@ export async function runMixedClients({ origin, projectIds, reportIds, tokens },
       };
       await Promise.all([uploadWorker(), uploadWorker()]);
     }
+    // Keep the same concurrent peers active until each operation has enough
+    // samples for the fixed p95 acceptance rule. This avoids false BLOCKED
+    // results when a short upload stage ends before slower routes reach 30.
+    await waitForPhaseSampleFloor(`upload-${batchSize}`);
   }
   finished = true;
   await Promise.all(peers);

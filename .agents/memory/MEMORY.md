@@ -36,3 +36,4 @@
 - [Project-tab scroll restoration](project-tab-scroll.md) — destination routes may mount before data creates a scroll range; retry boundedly after the layout can scroll.
 - [Image overhaul safety](image-overhaul-safety.md) — ordered phase gates, explicit storage isolation and evidence-based acceptance; current image targets supersede the historical 100KB ceiling.
 - [Report print image budget](report-print-image-budget.md) — preflight each exact image copy; print accepts JPEG/PNG/WebP, 8 MiB per image and 32 MiB total.
+- [PDF export event-loop fairness](pdf-export-event-loop.md) — yield between batches of report rows and photos so PDF generation does not starve other API requests.

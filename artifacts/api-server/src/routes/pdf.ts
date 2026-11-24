@@ -72,6 +72,7 @@ const PAGE_W = 595.28;
 const PAGE_H = 841.89;
 const MARGIN = 45;
 const CONTENT_W = PAGE_W - MARGIN * 2;
+const yieldToEventLoop = () => new Promise<void>(resolve => setImmediate(resolve));
 
 // ─────────────────────────────────────────────
 // Color palette
@@ -247,7 +248,12 @@ function snapshotActualIsHistoricallyUnverified(
             if (!resolved) throw new Error("missing");
             const stat = await fs.promises.stat(resolved.path);
             if (!stat.isFile() || stat.size > 25 * 1024 * 1024) throw new Error("size");
-            const validation = await validateReportPdfImage(resolved.path, resolved.managed);
+            const fingerprint = [
+              stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs,
+            ].join(":");
+            const validation = await validateReportPdfImage(
+              resolved.path, resolved.managed, undefined, fingerprint,
+            );
             metadataValidationMs += validation.metadataMs;
             pixelValidationMs += validation.pixelValidationMs;
             if (validation.pixelValidated) {
@@ -507,7 +513,7 @@ function snapshotActualIsHistoricallyUnverified(
     });
     y += headerH;
 
-    activities.forEach((a, i) => {
+    for (const [i, a] of activities.entries()) {
       const rowH = 32;
       y = ensurePage(doc, rowH + 10);
       const bg = i % 2 === 0 ? C.white : "#f8fafc";
@@ -561,7 +567,8 @@ function snapshotActualIsHistoricallyUnverified(
       }
 
       y += rowH;
-    });
+      if ((i + 1) % 16 === 0) await yieldToEventLoop();
+    }
 
     // Legend
     y = ensurePage(doc, 30);
@@ -725,6 +732,7 @@ function snapshotActualIsHistoricallyUnverified(
             { width: CONTENT_W - 12, align: "right" },
           );
           y += 14;
+          if ((activityIndex + 1) % 16 === 0) await yieldToEventLoop();
         }
         y += 4;
       }
@@ -798,13 +806,14 @@ function snapshotActualIsHistoricallyUnverified(
           y = drawSectionHeader(doc, `${group.category} (${group.paths.length} صورة)`, y);
           const imgW = (CONTENT_W - 10) / 2;
           const imgH = imgW * 0.65;
-          group.paths.forEach((imgPath, ii) => {
+          for (const [ii, imgPath] of group.paths.entries()) {
             const col = ii % 2;
             const ix = col === 0 ? MARGIN + imgW + 10 : MARGIN;
             if (col === 0) y = ensurePage(doc, imgH + 10);
             doc.image(imgPath, ix, y, { fit: [imgW, imgH], align: "center" });
             if (col === 1 || ii === group.paths.length - 1) y += imgH + 8;
-          });
+            if ((ii + 1) % 2 === 0) await yieldToEventLoop();
+          }
         }
       }
     }
