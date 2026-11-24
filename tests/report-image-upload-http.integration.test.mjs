@@ -273,8 +273,10 @@ test("the real report upload entry confirms isolated objects and preserves autho
       assert.equal(retried.status, 201);
       assert.equal((await retried.json()).id, file.id);
       assert.equal(written.size, writesBefore + 2);
-      const { permanentlyDeleteReportImages } = await import("../artifacts/api-server/src/lib/report-image-cleanup.ts");
-      assert.equal(await permanentlyDeleteReportImages(project.id, [file.fileUrl]), 1);
+      const deleteResponse = await fetch(`http://127.0.0.1:${server.address().port}/api/projects/${project.id}/files/${file.id}`, {
+        method: "DELETE", headers: { Authorization: `Bearer ${token(admin)}` },
+      });
+      assert.equal(deleteResponse.status, 204, await deleteResponse.text());
       assert.equal((await db.select().from(projectFilesTable)).some(row => row.id === file.id), false);
       assert.equal((await db.select().from(imageAssetsTable)).some(row => row.projectFileId === file.id), false);
       assert.equal((await cloudBucket.file(`uploads/${file.filename}`).exists())[0], false);
@@ -297,8 +299,15 @@ test("the real report upload entry confirms isolated objects and preserves autho
       assert.ok(file.image.thumbnailKey);
       assert.equal(file.image.printKey, null);
       assert.equal(written.size, before + 2);
-      const { permanentlyDeleteReportImages } = await import("../artifacts/api-server/src/lib/report-image-cleanup.ts");
-      assert.equal(await permanentlyDeleteReportImages(project.id, [file.fileUrl]), 1);
+      const bulkDeleteResponse = await fetch(`http://127.0.0.1:${server.address().port}/api/projects/${project.id}/files/images/bulk`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token(admin)}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [file.id] }),
+      });
+      const bulkDeleteBody = await bulkDeleteResponse.text();
+      assert.equal(bulkDeleteResponse.status, 200, bulkDeleteBody);
+      assert.deepEqual(JSON.parse(bulkDeleteBody), { requestedCount: 1, deletedCount: 1 });
+      assert.equal((await db.select().from(projectFilesTable)).some(row => row.id === file.id), false);
       assert.equal((await cloudBucket.file(`uploads/${file.filename}`).exists())[0], false);
     });
     await t.test("company raster logos use the alpha-preserving profile and isolated storage", async () => {
