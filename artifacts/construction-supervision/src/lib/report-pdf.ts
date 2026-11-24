@@ -463,6 +463,7 @@ export function buildPrintHTML(data: ReportPdfData): string {
   @media print {
     .toolbar { display: none !important; }
     [data-report-image-placeholder] { display: none !important; }
+    [data-report-image-zoom] { display: none !important; }
   }
   @media screen {
     body { max-width: 210mm; margin: 0 auto; padding-left: 16px; padding-right: 16px; }

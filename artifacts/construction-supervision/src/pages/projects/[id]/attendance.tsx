@@ -233,6 +233,7 @@ export default function ProjectAttendance() {
       fd.append("selfie", file, file.name);
       fd.append("latitude", String(pos.coords.latitude));
       fd.append("longitude", String(pos.coords.longitude));
+      fd.append("clientId", crypto.randomUUID());
       if (Number.isFinite(pos.coords.accuracy)) fd.append("accuracy", String(pos.coords.accuracy));
 
       const url = `${API_BASE}/attendance/projects/${projectId}/${pendingType === "check_in" ? "check-in" : "check-out"}`;

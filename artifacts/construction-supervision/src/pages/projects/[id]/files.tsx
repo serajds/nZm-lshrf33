@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { blobToCanonicalBase64 } from "@/lib/prepare-report-image";
 import { 
   useListFiles,
   useDeleteFile,
@@ -78,6 +79,7 @@ export default function ProjectFiles() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageUploadKeys = useRef(new WeakMap<File, string>());
 
   const { data: project } = useGetProject(projectId, { query: { enabled: !!projectId } });
   const { canEdit, isHidden } = useTabAccess(projectId, "files", { redirectIfHidden: true });
@@ -233,18 +235,44 @@ export default function ProjectFiles() {
 
     try {
       setIsUploading(true);
-      const formData = new FormData();
-      formData.append("file", fileToUpload);
-      formData.append("category", uploadCategory);
-      if (uploadDescription) {
-        formData.append("description", uploadDescription);
+      const file = fileToUpload;
+      const managedImage = uploadCategory === "image"
+        && /\.(?:jpe?g|png|webp|heic|heif|tif?f|avif)$/i.test(file.name);
+      let response: Response;
+      if (managedImage) {
+        let clientKey = imageUploadKeys.current.get(file);
+        if (!clientKey) {
+          clientKey = crypto.randomUUID();
+          imageUploadKeys.current.set(file, clientKey);
+        }
+        const signal = AbortSignal.timeout(120_000);
+        const base64 = await blobToCanonicalBase64(file, signal);
+        response = await fetchWithSession(`/api/projects/${projectId}/files/images/upload`, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({
+            mode: "source",
+            clientKey,
+            fileName: file.name,
+            mimeType: file.type,
+            encoding: "webp",
+            base64,
+            description: uploadDescription || undefined,
+          }),
+          signal,
+        });
+      } else {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("category", uploadCategory);
+        if (uploadDescription) formData.append("description", uploadDescription);
+        response = await fetchWithSession(`/api/projects/${projectId}/files`, {
+          method: "POST",
+          body: formData,
+        });
       }
-
-      const response = await fetchWithSession(`/api/projects/${projectId}/files`, {
-        method: "POST",
-        body: formData,
-      });
       if (!response.ok) throw new Error(`Upload failed with HTTP ${response.status}`);
+      if (managedImage) imageUploadKeys.current.delete(file);
 
       queryClient.invalidateQueries({ queryKey: getListFilesQueryKey(projectId) });
       setCurrentPage(1);

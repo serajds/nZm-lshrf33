@@ -12,7 +12,7 @@ const bundle = await build({
   platform: "node",
   format: "esm",
 });
-const { loadReportPreview, attachProgressiveReportImages } = await import(
+const { loadReportPreview, attachProgressiveReportImages, updateReportPreviewImages } = await import(
   `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`,
 );
 
@@ -60,12 +60,13 @@ test("photos load on approach, isolate failures, upgrade for print and clean up 
   const observerInstances = [];
   const revoked = [];
   const printButton = new FakeButton();
+  const imageStatus = { textContent: "" };
   const printCalls = [];
   const confirmations = [];
   const document = {
     querySelectorAll: () => images,
     querySelector: selector => placeholders.get(Number(selector.match(/\d+/)?.[0])) ?? null,
-    getElementById: id => id === "report-print-button" ? printButton : null,
+    getElementById: id => id === "report-print-button" ? printButton : id === "report-image-status" ? imageStatus : null,
   };
   const owner = {
     document,
@@ -90,6 +91,7 @@ test("photos load on approach, isolate failures, upgrade for print and clean up 
     confirm: message => { confirmations.push(message); return true; },
   };
   const calls = [];
+  let failedPhotoAttempts = 0;
   let active = 0;
   let maxActive = 0;
   let activeThumbnails = 0;
@@ -110,10 +112,11 @@ test("photos load on approach, isolate failures, upgrade for print and clean up 
       await tick();
       active -= 1;
       if (variant === "thumbnail") activeThumbnails -= 1;
-      if (url === "/photo/1") throw new Error("temporary photo failure");
+      if (url === "/photo/1" && variant === "thumbnail") throw new Error("temporary thumbnail failure");
+      if (url === "/photo/1" && variant === "photo" && failedPhotoAttempts++ === 0) throw new Error("temporary photo failure");
       return `blob:${variant}-${url}`;
     },
-    onProgress: value => progress.push(value),
+    onProgress: value => { progress.push(value); updateReportPreviewImages(owner, value); },
   });
 
   assert.deepEqual(calls, []);
@@ -125,16 +128,21 @@ test("photos load on approach, isolate failures, upgrade for print and clean up 
   assert.equal(images[2].src, "blob:thumbnail-/photo/2");
 
   printButton.click();
+  await waitFor(() => assert.equal(printButton.disabled, false));
+  assert.equal(printCalls.length, 0);
+  assert.match(imageStatus.textContent, /لم يُنشأ PDF/);
+  assert.match(printButton.textContent, /إعادة المحاولة/);
+  printButton.click();
   await waitFor(() => assert.equal(printCalls.length, 1));
   assert.ok(calls.some(([url, variant]) => url === "/photo/0" && variant === "photo"));
   assert.ok(calls.some(([url, variant]) => url === "/photo/1" && variant === "photo"));
   assert.ok(calls.some(([url, variant]) => url === "/photo/101" && variant === "photo"));
-  assert.equal(calls.filter(([, variant]) => variant === "photo").length, imageCount);
+  assert.equal(calls.filter(([, variant]) => variant === "photo").length, imageCount + 1);
   assert.ok(maxActive <= 2, `photo loader concurrency was ${maxActive}`);
   assert.ok(maxActiveThumbnails <= 1, `thumbnail concurrency was ${maxActiveThumbnails}`);
   assert.equal(progress.at(-1).total, imageCount);
-  assert.equal(progress.at(-1).failed, 1);
-  assert.equal(confirmations.length, 1);
+  assert.equal(progress.at(-1).failed, 0);
+  assert.equal(confirmations.length, 0);
 
   cleanup();
   assert.equal(observer.disconnected, true);
@@ -239,10 +247,41 @@ test("printing cancels queued screen thumbnails before requesting print copies",
   cleanup();
 });
 
+test("zoom opens the report-quality image only on demand and releases its dialog", async () => {
+  const image = new FakeImage(0), appended = [], printButton = new FakeButton();
+  const owner = {
+    closed: false,
+    document: {
+      querySelectorAll: () => [image],
+      querySelector: () => null,
+      getElementById: id => id === "report-print-button" ? printButton : null,
+      body: { appendChild: element => appended.push(element) },
+      createElement: tag => new FakeElement(tag),
+    },
+    URL: { revokeObjectURL() {} },
+    addEventListener() {}, removeEventListener() {},
+  };
+  const calls = [];
+  const cleanup = attachProgressiveReportImages({
+    owner, imageUrls: ["/zoom/0"], onProgress() {},
+    loadAsset: async (_url, variant) => { calls.push(variant); return `blob:${variant}`; },
+  });
+  await waitFor(() => assert.equal(image.currentSrc, "blob:thumbnail"));
+  image.emit("click", { preventDefault() {} });
+  await waitFor(() => assert.equal(appended.length, 1));
+  assert.deepEqual(calls, ["thumbnail", "photo"]);
+  assert.equal(appended[0].attributes["aria-modal"], "true");
+  assert.equal(appended[0].children[0].currentSrc, "blob:photo");
+  appended[0].children[1].emit("click", { stopPropagation() {} });
+  assert.equal(appended[0].removed, true);
+  cleanup();
+});
+
 class FakeImage {
   constructor(index) {
     this.dataset = { reportImageIndex: String(index) };
     this.listeners = new Map();
+    this.style = {};
     this.complete = false;
     this.naturalWidth = 0;
     this.currentSrc = "";
@@ -255,6 +294,17 @@ class FakeImage {
   removeEventListener(name, callback) {
     this.listeners.get(name)?.delete(callback);
   }
+  setAttribute() {}
+  focus() {}
+  removeAttribute() {}
+  cloneNode() {
+    const image = new FakeImage(Number(this.dataset.reportImageIndex));
+    image.currentSrc = this.currentSrc;
+    return image;
+  }
+  emit(name, event = {}) {
+    for (const callback of this.listeners.get(name) ?? []) callback(event);
+  }
   set src(value) {
     this.currentSrc = value;
     this.complete = true;
@@ -264,6 +314,28 @@ class FakeImage {
     });
   }
   get src() { return this.currentSrc; }
+}
+
+class FakeElement {
+  constructor(tag) {
+    this.tagName = tag;
+    this.style = {};
+    this.dataset = {};
+    this.attributes = {};
+    this.listeners = new Map();
+    this.children = [];
+    this.removed = false;
+  }
+  setAttribute(name, value) { this.attributes[name] = value; }
+  addEventListener(name, callback) {
+    const listeners = this.listeners.get(name) ?? new Set();
+    listeners.add(callback); this.listeners.set(name, listeners);
+  }
+  removeEventListener(name, callback) { this.listeners.get(name)?.delete(callback); }
+  append(...elements) { this.children.push(...elements); }
+  remove() { this.removed = true; }
+  focus() {}
+  emit(name, event = {}) { for (const callback of this.listeners.get(name) ?? []) callback(event); }
 }
 
 class FakeButton {

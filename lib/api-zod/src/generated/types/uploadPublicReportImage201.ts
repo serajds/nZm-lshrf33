@@ -8,4 +8,6 @@
 
 export type UploadPublicReportImage201 = {
   uploaded?: boolean;
+  uploadedCount?: number;
+  maxImages?: number;
 };

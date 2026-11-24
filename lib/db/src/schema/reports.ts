@@ -1,6 +1,7 @@
 import { pgTable, text, serial, timestamp, real, integer, date, jsonb, index, boolean, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { projectFilesTable } from "./project_files";
 
 export type ReportImageGroup = { id?: string; category: string; urls: string[] };
 
@@ -51,6 +52,24 @@ export const reportImageSharesTable = pgTable("report_image_shares", {
   index("report_image_shares_report_group_idx").on(t.reportId, t.groupId, t.createdAt),
   index("report_image_shares_expiry_idx").on(t.expiresAt),
   unique("report_image_shares_token_hash_key").on(t.tokenHash),
+]);
+
+export const reportImageShareUploadsTable = pgTable("report_image_share_uploads", {
+  id: serial("id").primaryKey(),
+  shareId: integer("share_id").notNull().references(() => reportImageSharesTable.id, { onDelete: "cascade" }),
+  clientKey: text("client_key").notNull(),
+  state: text("state", { enum: ["uploading", "ready", "failed"] }).notNull().default("uploading"),
+  position: integer("position").notNull(),
+  groupStartIndex: integer("group_start_index").notNull(),
+  projectFileId: integer("project_file_id").references(() => projectFilesTable.id, { onDelete: "set null" }),
+  fileUrl: text("file_url"),
+  errorCode: text("error_code"),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, table => [
+  unique("report_image_share_uploads_share_client_key").on(table.shareId, table.clientKey),
+  index("report_image_share_uploads_recovery_idx").on(table.state, table.leaseExpiresAt),
 ]);
 
 export const insertReportSchema = createInsertSchema(reportsTable).omit({ id: true, createdAt: true, updatedAt: true });

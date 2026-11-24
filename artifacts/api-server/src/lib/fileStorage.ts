@@ -1,16 +1,19 @@
 import { objectStorageClient, signObjectURL } from "./objectStorage";
 import fs from "fs";
 import path from "path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 const BUCKET_ID = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID || "";
-const UPLOADS_PREFIX = "uploads/";
+import { UPLOADS_PREFIX, isLifecycleImageObjectFilename } from "./image-asset-keys";
+export { UPLOADS_PREFIX } from "./image-asset-keys";
 
 export function isCloudStorageConfigured(): boolean {
   return Boolean(BUCKET_ID);
 }
 
-function getBucket() {
-  return objectStorageClient.bucket(BUCKET_ID);
+function getBucket(bucketId = BUCKET_ID) {
+  return objectStorageClient.bucket(bucketId);
 }
 
 export async function uploadToCloud(localPath: string, filename: string): Promise<void> {
@@ -25,21 +28,21 @@ export async function uploadToCloud(localPath: string, filename: string): Promis
   });
 }
 
-export async function createSignedUploadReadUrl(filename: string, ttlSec = 300): Promise<string> {
-  if (!BUCKET_ID) throw new Error("Object storage bucket is not configured");
+export async function createSignedUploadReadUrl(filename: string, ttlSec = 300, bucketId = BUCKET_ID): Promise<string> {
+  if (!bucketId) throw new Error("Object storage bucket is not configured");
   if (!filename || path.basename(filename) !== filename || filename === "." || filename === "..") {
     throw new Error("Invalid upload filename");
   }
   return signObjectURL({
-    bucketName: BUCKET_ID,
+    bucketName: bucketId,
     objectName: UPLOADS_PREFIX + filename,
     method: "GET",
     ttlSec,
   });
 }
 
-export async function createSignedUploadObjectReadUrl(objectName: string, ttlSec = 300): Promise<string> {
-  if (!BUCKET_ID) throw new Error("Object storage bucket is not configured");
+export async function createSignedUploadObjectReadUrl(objectName: string, ttlSec = 300, bucketId = BUCKET_ID): Promise<string> {
+  if (!bucketId) throw new Error("Object storage bucket is not configured");
   const segments = objectName.split("/");
   if (!objectName || objectName.startsWith("/") || segments.some(segment =>
     !segment || segment === "." || segment === ".." || segment.includes("\\") || segment.includes("\0")
@@ -47,7 +50,7 @@ export async function createSignedUploadObjectReadUrl(objectName: string, ttlSec
     throw new Error("Invalid upload object name");
   }
   return signObjectURL({
-    bucketName: BUCKET_ID,
+    bucketName: bucketId,
     objectName: UPLOADS_PREFIX + objectName,
     method: "GET",
     ttlSec,
@@ -58,22 +61,59 @@ export async function uploadBufferToCloud(
   objectName: string,
   buffer: Buffer,
   contentType: string,
+  options: { signal?: AbortSignal; createOnly?: boolean; bucketId?: string; expectedSha256?: string } = {},
 ): Promise<void> {
-  if (!BUCKET_ID) throw new Error("Object storage bucket is not configured");
+  const bucketId = options.bucketId ?? BUCKET_ID;
+  if (!bucketId) throw new Error("Object storage bucket is not configured");
   const segments = objectName.split("/");
   if (!objectName || objectName.startsWith("/") || segments.some(segment =>
     !segment || segment === "." || segment === ".." || segment.includes("\\") || segment.includes("\0")
   )) {
     throw new Error("Invalid upload object name");
   }
-  await getBucket().file(UPLOADS_PREFIX + objectName).save(buffer, {
+  const destination = getBucket(bucketId).file(UPLOADS_PREFIX + objectName).createWriteStream({
     resumable: false,
-    metadata: { contentType, cacheControl: "private, max-age=300" },
+    validation: "crc32c",
+    ...(options.createOnly ? { preconditionOpts: { ifGenerationMatch: 0 } } : {}),
+    metadata: {
+      contentType,
+      cacheControl: "private, no-store",
+      ...(options.expectedSha256 ? { metadata: { sha256: options.expectedSha256 } } : {}),
+    },
   });
+  await pipeline(Readable.from([buffer]), destination, { signal: options.signal });
 }
 
-export async function getUploadObjectSize(objectName: string): Promise<number | null> {
-  if (!BUCKET_ID) throw new Error("Object storage bucket is not configured");
+/** Verify finalized object metadata; upload CRC32C validates the stored payload. */
+export async function verifyUploadObject(
+  objectName: string,
+  expected: { byteSize: number; mimeType: string; sha256: string },
+  signal?: AbortSignal,
+  bucketId = BUCKET_ID,
+): Promise<void> {
+  if (!bucketId) throw new Error("storage_unconfigured");
+  if (!/^[A-Za-z0-9_-]+\.(?:jpg|jpeg|png|webp)$/.test(objectName)) throw new Error("invalid_image_object_name");
+  signal?.throwIfAborted();
+  const url = await signObjectURL({
+    bucketName: bucketId, objectName: UPLOADS_PREFIX + objectName,
+    method: "HEAD", ttlSec: 60, signal,
+  });
+  const response = await fetch(url, { method: "HEAD", signal, cache: "no-store" });
+  await response.body?.cancel();
+  if (!response.ok) throw new Error(response.status === 404 ? "stored_image_missing" : "stored_image_metadata_unavailable");
+  const size = Number(response.headers.get("content-length"));
+  const sha256 = response.headers.get("x-goog-meta-sha256");
+  const generation = Number(response.headers.get("x-goog-generation"));
+  if (size !== expected.byteSize) throw new Error("stored_image_size_mismatch");
+  if (response.headers.get("content-type")?.split(";")[0] !== expected.mimeType) {
+    throw new Error("stored_image_metadata_mismatch");
+  }
+  if (!Number.isSafeInteger(generation) || generation <= 0) throw new Error("stored_image_generation_missing");
+  if (sha256 !== expected.sha256) throw new Error("stored_image_hash_mismatch");
+}
+
+export async function getUploadObjectSize(objectName: string, bucketId = BUCKET_ID): Promise<number | null> {
+  if (!bucketId) throw new Error("Object storage bucket is not configured");
   const segments = objectName.split("/");
   if (!objectName || objectName.startsWith("/") || segments.some(segment =>
     !segment || segment === "." || segment === ".." || segment.includes("\\") || segment.includes("\0")
@@ -81,7 +121,7 @@ export async function getUploadObjectSize(objectName: string): Promise<number | 
     throw new Error("Invalid upload object name");
   }
   try {
-    const [metadata] = await getBucket().file(UPLOADS_PREFIX + objectName).getMetadata();
+    const [metadata] = await getBucket(bucketId).file(UPLOADS_PREFIX + objectName).getMetadata();
     const size = Number(metadata.size);
     return Number.isFinite(size) && size >= 0 ? size : null;
   } catch (error) {
@@ -103,7 +143,7 @@ export async function listUploadedImageObjects(): Promise<Array<{
     if (!file.name.startsWith(UPLOADS_PREFIX)) continue;
     const filename = file.name.slice(UPLOADS_PREFIX.length);
     // These are derived previews/print copies, not uploaded source images.
-    if (filename.includes("/") || filename.startsWith("report-preview-")) continue;
+    if (filename.includes("/") || filename.startsWith("report-preview-") || isLifecycleImageObjectFilename(filename)) continue;
     if (!imageExtension.test(filename)) continue;
     const size = Number(file.metadata?.size);
     results.push({
@@ -115,10 +155,10 @@ export async function listUploadedImageObjects(): Promise<Array<{
   return results;
 }
 
-export async function streamFromCloud(filename: string): Promise<{ stream: NodeJS.ReadableStream; contentType: string | undefined } | null> {
-  if (!BUCKET_ID) return null;
+export async function streamFromCloud(filename: string, bucketId = BUCKET_ID): Promise<{ stream: NodeJS.ReadableStream; contentType: string | undefined } | null> {
+  if (!bucketId) return null;
   try {
-    const file = getBucket().file(UPLOADS_PREFIX + filename);
+    const file = getBucket(bucketId).file(UPLOADS_PREFIX + filename);
     const [exists] = await file.exists();
     if (!exists) return null;
     const [metadata] = await file.getMetadata();
@@ -130,9 +170,23 @@ export async function streamFromCloud(filename: string): Promise<{ stream: NodeJ
   }
 }
 
-export async function deleteFromCloudStrict(filename: string): Promise<void> {
-  if (!BUCKET_ID) return;
-  await getBucket().file(UPLOADS_PREFIX + filename).delete({ ignoreNotFound: true });
+export async function deleteFromCloudStrict(filename: string, bucketId = BUCKET_ID): Promise<void> {
+  if (!bucketId) return;
+  await getBucket(bucketId).file(UPLOADS_PREFIX + filename).delete({ ignoreNotFound: true });
+}
+
+/** Bounded compensation, exclusively for the new service's owned objects. */
+export async function deleteImageObjectStrict(filename: string, bucketId = BUCKET_ID, signal?: AbortSignal): Promise<void> {
+  if (!bucketId || !isLifecycleImageObjectFilename(filename)) {
+    throw new Error("invalid_image_cleanup_target");
+  }
+  const deadline = AbortSignal.any([AbortSignal.timeout(5000), ...(signal ? [signal] : [])]);
+  const url = await signObjectURL({
+    bucketName: bucketId, objectName: UPLOADS_PREFIX + filename, method: "DELETE", ttlSec: 60, signal: deadline,
+  });
+  const response = await fetch(url, { method: "DELETE", signal: deadline, cache: "no-store" });
+  await response.body?.cancel();
+  if (!response.ok && response.status !== 404) throw new Error("image_cleanup_failed");
 }
 
 export async function deleteFromCloud(filename: string): Promise<void> {

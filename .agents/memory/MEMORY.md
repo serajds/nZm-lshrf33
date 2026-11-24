@@ -34,3 +34,4 @@
 - [Historical backfill gap detection](historical-backfill-gap-detection.md) — a progress point recorded after an activity started does not prove earlier report dates are covered.
 - [Expo types in shared workspaces](expo-workspace-types.md) — newer Expo React types can leak through pnpm peers; isolate shared peer resolution and verify after a clean install.
 - [Project-tab scroll restoration](project-tab-scroll.md) — destination routes may mount before data creates a scroll range; retry boundedly after the layout can scroll.
+- [Image overhaul safety](image-overhaul-safety.md) — ordered phase gates, explicit storage isolation and evidence-based acceptance; current image targets supersede the historical 100KB ceiling.

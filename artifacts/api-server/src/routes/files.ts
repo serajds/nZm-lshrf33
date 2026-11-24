@@ -1,46 +1,32 @@
-import { Router, type IRouter, type RequestHandler } from "express";
+import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { projectFilesTable } from "@workspace/db";
-import { and, count, desc, eq, ilike, inArray, sum } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, sql, sum } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { requireProjectAccess, rejectContractor, rejectViewer } from "../middlewares/auth";
 import { requireTabEdit, requireTabView } from "../middlewares/tab-access";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { promises as fsp } from "fs";
-import { randomUUID, createHash } from "node:crypto";
-import sharp from "sharp";
 import { uploadToCloud, deleteFromCloud, isCloudStorageConfigured } from "../lib/fileStorage";
-import { isValidBase64String } from "../lib/base64-validation";
-import { reportsTable, reportImageSharesTable } from "@workspace/db";
+import { IMAGE_CLIENT_KEY_PATTERN, IMAGE_SOURCE_MAX_BYTES } from "@workspace/api-zod";
 import {
-  REPORT_IMAGE_MAX_BYTES,
-  REPORT_IMAGE_MAX_PIXELS,
-  type ReportShareImageGroup,
-  appendReportShareImage,
-  isAllowedReportImageDimensions,
-  isJpgReportImageUpload,
-  nextReportImageShareUploadCount,
-} from "@workspace/api-zod";
-import {
-  createAndStoreReportImageVariant,
   deleteStoredReportImageVariants,
-  storeReportPrintImage,
 } from "../lib/reportImageVariantStorage";
 import { permanentlyDeleteReportImages } from "../lib/report-image-cleanup";
-import { tryAcquireReportShareUploadLock } from "../lib/report-share-upload-lock";
-import {
-  ReportShareImageValidationError,
-  validateReportShareImageBuffer,
-} from "../lib/report-share-image-validation";
+import { createImageLifecycle } from "../lib/image-lifecycle";
+import { imageObjectName } from "../lib/image-asset-keys";
+import { sendImageUploadError } from "../lib/image-upload-errors";
+import { ImageProcessingError } from "../lib/image-processing";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tiff", ".tif"];
-const IMAGE_QUALITY = 80;
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tiff", ".tif", ".avif"];
+const fileImageLifecycle = createImageLifecycle();
 
 function isImageFile(filename: string): boolean {
   return IMAGE_EXTENSIONS.includes(path.extname(filename).toLowerCase());
@@ -60,35 +46,6 @@ const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 },
 });
-const reportImageUpload = multer({
-  storage,
-  limits: { fileSize: REPORT_IMAGE_MAX_BYTES },
-});
-const reportImageUploadMiddleware: RequestHandler = (req, res, next) => {
-  reportImageUpload.single("file")(req, res, error => {
-    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-      res.status(413).json({ error: "الحد الأقصى لحجم صورة التقرير 5 ميغابايت" });
-      return;
-    }
-    next(error);
-  });
-};
-
-async function compressImage(filePath: string): Promise<{ size: number; filename: string }> {
-  const baseName = path.basename(filePath, path.extname(filePath));
-  const compressedName = baseName + "-compressed.jpg";
-  const compressedPath = path.join(path.dirname(filePath), compressedName);
-
-  let pipeline = sharp(filePath, { limitInputPixels: REPORT_IMAGE_MAX_PIXELS }).rotate();
-
-  pipeline = pipeline.jpeg({ quality: IMAGE_QUALITY, mozjpeg: true });
-  await pipeline.toFile(compressedPath);
-
-  // Async I/O — was blocking the event loop on every upload.
-  await fsp.unlink(filePath);
-  const stats = await fsp.stat(compressedPath);
-  return { size: stats.size, filename: compressedName };
-}
 
 const router: IRouter = Router();
 
@@ -120,7 +77,8 @@ router.get("/projects/:projectId/files", requireProjectAccess("projectId"), reje
   }
 
   const search = typeof rawSearch === "string" ? rawSearch.trim() : "";
-  const filters = [eq(projectFilesTable.projectId, projectId)];
+  const projectFilter = eq(projectFilesTable.projectId, projectId);
+  const filters = [];
   if (typeof rawCategory === "string") {
     filters.push(eq(projectFilesTable.category, rawCategory as typeof categories[number]));
   }
@@ -128,41 +86,40 @@ router.get("/projects/:projectId/files", requireProjectAccess("projectId"), reje
     const escapedSearch = search.replace(/[\\%_]/g, "\\$&");
     filters.push(ilike(projectFilesTable.originalName, `%${escapedSearch}%`));
   }
-  const where = and(...filters);
+  const where = filters.length ? and(projectFilter, ...filters) : projectFilter;
+  const aggregateFilter = filters.length ? and(...filters) : sql`true`;
   const offset = (page - 1) * pageSize;
 
-  const [files, totalResult, categorySummary] = await Promise.all([
+  const [files, aggregateRows] = await Promise.all([
     db.select().from(projectFilesTable)
       .where(where)
       .orderBy(desc(projectFilesTable.uploadedAt), desc(projectFilesTable.id))
       .limit(pageSize)
       .offset(offset),
-    db.select({ total: count() }).from(projectFilesTable).where(where),
     db.select({
-      category: projectFilesTable.category,
-      count: count(),
-      size: sum(projectFilesTable.fileSize),
-    }).from(projectFilesTable)
-      .where(eq(projectFilesTable.projectId, projectId))
-      .groupBy(projectFilesTable.category),
+      filteredTotal: sql<number>`count(*) filter (where ${aggregateFilter})`.mapWith(Number),
+      totalFiles: count(),
+      totalSize: sum(projectFilesTable.fileSize),
+      imageCount: sql<number>`count(*) filter (where ${projectFilesTable.category} = 'image')`.mapWith(Number),
+      pdfCount: sql<number>`count(*) filter (where ${projectFilesTable.category} = 'pdf')`.mapWith(Number),
+      testResultCount: sql<number>`count(*) filter (where ${projectFilesTable.category} = 'test_result')`.mapWith(Number),
+      documentCount: sql<number>`count(*) filter (where ${projectFilesTable.category} = 'document')`.mapWith(Number),
+      otherCount: sql<number>`count(*) filter (where ${projectFilesTable.category} = 'other')`.mapWith(Number),
+    }).from(projectFilesTable).where(projectFilter),
   ]);
-  const total = totalResult[0]?.total ?? 0;
+  const aggregate = aggregateRows[0];
+  const total = Number(aggregate?.filteredTotal ?? 0);
   const summary = {
-    totalFiles: 0,
-    totalSize: 0,
+    totalFiles: Number(aggregate?.totalFiles ?? 0),
+    totalSize: Number(aggregate?.totalSize ?? 0),
     categories: {
-      image: 0,
-      pdf: 0,
-      test_result: 0,
-      document: 0,
-      other: 0,
+      image: Number(aggregate?.imageCount ?? 0),
+      pdf: Number(aggregate?.pdfCount ?? 0),
+      test_result: Number(aggregate?.testResultCount ?? 0),
+      document: Number(aggregate?.documentCount ?? 0),
+      other: Number(aggregate?.otherCount ?? 0),
     } satisfies Record<typeof categories[number], number>,
   };
-  for (const row of categorySummary) {
-    summary.totalFiles += row.count;
-    summary.totalSize += Number(row.size ?? 0);
-    summary.categories[row.category] = row.count;
-  }
 
   res.json({
     files,
@@ -198,23 +155,10 @@ export async function persistUploadedFile(
   description: string | null,
   options: PersistUploadedFileOptions = {},
 ): Promise<PersistedProjectFile> {
+  if (category === "image") throw new Error("Raster images must use the shared image lifecycle");
   let finalFilename = file.filename;
   let finalSize = file.size;
   let finalMimeType = file.mimetype;
-
-  if (isImageFile(file.originalname)) {
-    try {
-      const originalSize = file.size;
-      const result = await compressImage(path.join(uploadsDir, file.filename));
-      finalFilename = result.filename;
-      finalSize = result.size;
-      finalMimeType = "image/jpeg";
-      const savedPercent = Math.round((1 - result.size / originalSize) * 100);
-      console.log(`Image compressed: ${file.originalname} ${(originalSize / 1024).toFixed(0)}KB → ${(result.size / 1024).toFixed(0)}KB (${savedPercent}% saved)`);
-    } catch (err) {
-      console.warn("Image compression failed, using original:", err);
-    }
-  }
 
   if (options.requireCloudStorage && !isCloudStorageConfigured()) {
     await cleanupUncommittedUpload(finalFilename);
@@ -229,20 +173,6 @@ export async function persistUploadedFile(
     }
     console.error("Cloud upload failed, file saved locally only:", err);
   }
-  if (category === "image" && isImageFile(finalFilename)) {
-    try {
-      const printImage = await createAndStoreReportImageVariant(finalFilename, "report-photo", uploadsDir);
-      await storeReportPrintImage(finalFilename, printImage);
-    } catch (err) {
-      console.warn("Report preview copy could not be prepared during upload:", err);
-    }
-    try {
-      await createAndStoreReportImageVariant(finalFilename, "report-thumbnail", uploadsDir);
-    } catch (err) {
-      console.warn("Report thumbnail could not be prepared during upload:", err);
-    }
-  }
-
   const fileUrl = `/api/uploads/${finalFilename}`;
 
   const values: ProjectFileInsert = {
@@ -265,222 +195,6 @@ export async function persistUploadedFile(
   }
 }
 
-const REPORT_SHARE_MAX_BYTES = REPORT_IMAGE_MAX_BYTES;
-
-async function persistReportShareImage(
-  buffer: Buffer,
-  originalName: string,
-  projectId: number,
-  mimeType: string,
-  insertProjectFile: (values: ProjectFileInsert) => Promise<PersistedProjectFile>,
-): Promise<{ file: PersistedProjectFile; width: number; height: number }> {
-  const extension = ".jpg";
-  const { width, height } = await validateReportShareImageBuffer(buffer, originalName, mimeType);
-  const filename = `report-share-${randomUUID()}${extension}`;
-  const filepath = path.join(uploadsDir, filename);
-  try {
-    await fsp.writeFile(filepath, buffer, { flag: "wx" });
-    const file = await persistUploadedFile({
-      fieldname: "file",
-      originalname: path.basename(originalName || `صورة${extension}`).slice(0, 180),
-      encoding: "7bit",
-      mimetype: mimeType,
-      destination: uploadsDir,
-      filename,
-      path: filepath,
-      size: buffer.length,
-      buffer,
-      stream: undefined,
-    } as unknown as Express.Multer.File, projectId, "image", "صورة قسم تقرير", {
-      insertProjectFile,
-      // Production report-share uploads must not be acknowledged when their
-      // durable object-storage write failed. Development can still exercise
-      // the flow with local storage.
-      requireCloudStorage: process.env.NODE_ENV === "production",
-    });
-    return { file, width, height };
-  } catch (error) {
-    await fsp.unlink(filepath).catch(() => {});
-    throw error;
-  }
-}
-
-async function discardPersistedReportImage(fileId: number, filename: string): Promise<void> {
-  await db.delete(projectFilesTable).where(eq(projectFilesTable.id, fileId));
-  await fsp.unlink(path.join(uploadsDir, filename)).catch(() => {});
-  await deleteFromCloud(filename);
-  await deleteStoredReportImageVariants(filename, uploadsDir);
-}
-
-const reportShareTokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
-
-router.post("/public/report-image-shares/upload", async (req, res): Promise<void> => {
-  const startedAt = performance.now();
-  const token = req.body?.token;
-  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{40,100}$/.test(token)) {
-    res.status(410).json({ error: "الرابط غير صالح أو انتهت صلاحيته" });
-    return;
-  }
-  const base64 = req.body?.imageBase64;
-  const mimeType = req.body?.mimeType;
-  const originalName = typeof req.body?.fileName === "string" ? req.body.fileName : "صورة.jpg";
-  if (!isJpgReportImageUpload(originalName, typeof mimeType === "string" ? mimeType : "")) {
-    res.status(400).json({ error: "يُسمح فقط برفع الصور بامتداد JPG" });
-    return;
-  }
-  if (typeof base64 !== "string" || base64.length === 0 || !isValidBase64String(base64)) {
-    res.status(400).json({ error: "بيانات الصورة غير صالحة أو تجاوزت الحجم المسموح" });
-    return;
-  }
-  if (base64.length > Math.ceil(REPORT_SHARE_MAX_BYTES * 4 / 3) + 8) {
-    res.status(413).json({ error: "الحد الأقصى لحجم الصورة 5 ميغابايت" });
-    return;
-  }
-
-  const [candidate] = await db.select({
-    id: reportImageSharesTable.id,
-    reportId: reportImageSharesTable.reportId,
-    projectId: reportImageSharesTable.projectId,
-  }).from(reportImageSharesTable)
-    .where(eq(reportImageSharesTable.tokenHash, reportShareTokenHash(token)))
-    .limit(1);
-  if (!candidate) {
-    res.status(410).json({ error: "انتهت صلاحية الرابط أو تم إلغاؤه أو إكمال الرفع" });
-    return;
-  }
-  const persistedFiles: PersistedProjectFile[] = [];
-  let imageWidth = 0;
-  let imageHeight = 0;
-  let attachment: { kind: "attached"; uploadedCount: number; maxImages: number }
-    | { kind: "limit"; uploadedCount: number; maxImages: number }
-    | { kind: "unavailable" }
-    | { kind: "busy" };
-  try {
-    attachment = await db.transaction(async (tx) => {
-      // The lock is transaction-scoped and shared across API instances. It
-      // protects both the image-processing budget and the share's image cap.
-      if (!await tryAcquireReportShareUploadLock(query => tx.execute(query))) {
-        return { kind: "busy" as const };
-      }
-
-      // Match the report -> share lock order used when shares are created.
-      const [report] = await tx.select().from(reportsTable)
-        .where(and(
-          eq(reportsTable.id, candidate.reportId),
-          eq(reportsTable.projectId, candidate.projectId),
-        )).for("update");
-      const [lockedShare] = await tx.select().from(reportImageSharesTable)
-        .where(eq(reportImageSharesTable.id, candidate.id)).for("update");
-      if (!lockedShare || lockedShare.status === "completed" || lockedShare.status === "cancelled"
-        || lockedShare.expiresAt <= new Date()
-        || lockedShare.reportId !== candidate.reportId || lockedShare.projectId !== candidate.projectId) {
-        return { kind: "unavailable" as const };
-      }
-      const uploadedCount = nextReportImageShareUploadCount(lockedShare.uploadedCount, lockedShare.maxImages);
-      if (uploadedCount === null) {
-        return {
-          kind: "limit" as const,
-          uploadedCount: lockedShare.uploadedCount,
-          maxImages: lockedShare.maxImages,
-        };
-      }
-      if (!report || !Array.isArray(report.imageGroups)) return { kind: "unavailable" as const };
-      const groups = (report.imageGroups as ReportShareImageGroup[])
-        .map(group => ({ ...group, urls: Array.isArray(group.urls) ? group.urls : [] }));
-      if (!groups.some(group => group.id === lockedShare.groupId)) return { kind: "unavailable" as const };
-
-      let buffer: Buffer;
-      try {
-        buffer = Buffer.from(base64, "base64");
-      } catch {
-        throw new ReportShareImageValidationError("تعذّر قراءة الصورة", 400);
-      }
-      if (buffer.length === 0) throw new ReportShareImageValidationError("تعذّر قراءة الصورة", 400);
-      if (buffer.length > REPORT_SHARE_MAX_BYTES) {
-        throw new ReportShareImageValidationError("الحد الأقصى لحجم الصورة 5 ميغابايت", 413);
-      }
-
-      const persisted = await persistReportShareImage(
-        buffer,
-        originalName,
-        lockedShare.projectId,
-        mimeType,
-        async values => {
-          const [row] = await tx.insert(projectFilesTable).values(values).returning();
-          return row;
-        },
-      );
-      persistedFiles.push(persisted.file);
-      imageWidth = persisted.width;
-      imageHeight = persisted.height;
-
-      const appended = appendReportShareImage(
-        groups,
-        lockedShare.groupId,
-        persisted.file.fileUrl,
-        Array.isArray(report.imageUrls) ? report.imageUrls : [],
-      );
-      if (!appended) return { kind: "unavailable" as const };
-      await tx.update(reportsTable).set({
-        imageGroups: appended.groups,
-        imageUrls: appended.imageUrls,
-      })
-        .where(eq(reportsTable.id, report.id));
-      await tx.update(reportImageSharesTable).set({ status: "uploading", uploadedCount })
-        .where(eq(reportImageSharesTable.id, lockedShare.id));
-      return { kind: "attached" as const, uploadedCount, maxImages: lockedShare.maxImages };
-    });
-  } catch (error) {
-    const persistedFile = persistedFiles[0];
-    if (persistedFile) await discardPersistedReportImage(persistedFile.id, persistedFile.filename);
-    if (error instanceof ReportShareImageValidationError) {
-      res.status(error.statusCode).json({ error: error.message });
-      return;
-    }
-    req.log.error({ error }, "Could not attach report image from a share link");
-    res.status(500).json({ error: "تعذّر رفع الصورة وربطها؛ حاول مرة أخرى" });
-    return;
-  }
-  if (attachment.kind === "busy") {
-    res.setHeader("Retry-After", "2");
-    res.status(429).json({
-      error: "النظام يعالج صورة أخرى الآن. أعد المحاولة بعد لحظات.",
-      retryable: true,
-    });
-    return;
-  }
-  if (attachment.kind !== "attached") {
-    const persistedFile = persistedFiles[0];
-    if (persistedFile) await discardPersistedReportImage(persistedFile.id, persistedFile.filename);
-    if (attachment.kind === "limit") {
-      res.status(409).json({
-        error: `بلغ هذا الرابط الحد الذي اختاره منشئ الرابط وهو ${attachment.maxImages} صورة`,
-        uploadedCount: attachment.uploadedCount,
-        maxImages: attachment.maxImages,
-      });
-      return;
-    }
-    res.status(410).json({ error: "انتهت صلاحية الرابط أو لم يعد القسم متاحاً" });
-    return;
-  }
-  if (process.env.NODE_ENV === "development") {
-    const memory = process.memoryUsage();
-    req.log.info({
-      uploadBytes: Buffer.byteLength(base64, "base64"),
-      imageWidth,
-      imageHeight,
-      elapsedMs: Math.round(performance.now() - startedAt),
-      rssBytes: memory.rss,
-      externalBytes: memory.external,
-    }, "Report-share image upload completed");
-  }
-  res.status(201).json({
-    uploaded: true,
-    uploadedCount: attachment.uploadedCount,
-    maxImages: attachment.maxImages,
-  });
-});
-
 router.post("/projects/:projectId/files", requireProjectAccess("projectId"), rejectContractor, rejectViewer, requireTabEdit("files"), upload.single("file"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
   const projectId = parseInt(raw, 10);
@@ -491,8 +205,47 @@ router.post("/projects/:projectId/files", requireProjectAccess("projectId"), rej
   }
 
   const { category, description } = req.body;
-  if (!category) {
+  if (!["image", "pdf", "test_result", "document", "other"].includes(category)) {
     res.status(400).json({ error: "نوع الملف مطلوب" });
+    return;
+  }
+  if (category === "image") {
+    const sourcePath = req.file.path;
+    const originalName = path.basename(req.file.originalname.replace(/\\/g, "/"))
+      .replace(/[\0\r\n]/g, "").slice(0, 255);
+    const rawClientKey = req.get("Idempotency-Key");
+    const clientKey = rawClientKey || randomUUID();
+    const controller = new AbortController();
+    req.once("aborted", () => controller.abort());
+    res.once("close", () => { if (!res.writableEnded) controller.abort(); });
+    try {
+      if (!isImageFile(originalName)) throw new ImageProcessingError("unsupported_format");
+      if (req.file.size > IMAGE_SOURCE_MAX_BYTES) throw new ImageProcessingError("source_size_limit");
+      if (!IMAGE_CLIENT_KEY_PATTERN.test(clientKey)) throw new ImageProcessingError("invalid_image_identity");
+      const userId = req.user!.userId;
+      const result = await fileImageLifecycle.upload({
+        principal: `user:${userId}`, authorizedScope: `project:${projectId}:files`,
+        projectId, userId, clientKey, profile: "file_image", sourcePath,
+        signal: controller.signal,
+        onCommit: async (tx, asset) => {
+          const filename = imageObjectName(asset.storageKey!);
+          const [row] = await tx.insert(projectFilesTable).values({
+            projectId, filename, originalName, category: "image",
+            fileUrl: `/api/uploads/${filename}`, fileSize: asset.byteSize!,
+            mimeType: asset.mimeType!, description: typeof description === "string" ? description.slice(0, 500) : null,
+          }).returning({ id: projectFilesTable.id });
+          return row?.id ?? null;
+        },
+      });
+      if (!result.projectFileId) throw new ImageProcessingError("image_reference_removed");
+      const [row] = await db.select().from(projectFilesTable).where(eq(projectFilesTable.id, result.projectFileId));
+      if (!row) throw new ImageProcessingError("image_reference_removed");
+      res.status(201).json({ ...row, image: result.image });
+    } catch (error) {
+      sendImageUploadError(res, error);
+    } finally {
+      await fsp.unlink(sourcePath).catch(() => {});
+    }
     return;
   }
 
@@ -505,59 +258,6 @@ router.post("/projects/:projectId/files", requireProjectAccess("projectId"), rej
 
   res.status(201).json(row);
 });
-
-// Dedicated upload endpoint for images attached to project reports. It is
-// gated by the "reports" tab edit permission instead of "files" — engineers
-// who can edit the Reports tab but NOT the Files tab were previously
-// blocked with a 403 when trying to attach photos to a report. Files
-// uploaded here still land in the same projectFilesTable (so they show up
-// in the project's file inventory and get the same cloud-storage treatment),
-// just gated under a different tab.
-router.post(
-  "/projects/:projectId/reports/uploads",
-  requireProjectAccess("projectId"),
-  rejectContractor,
-  rejectViewer,
-  requireTabEdit("reports"),
-  reportImageUploadMiddleware,
-  async (req, res): Promise<void> => {
-    const raw = Array.isArray(req.params.projectId) ? req.params.projectId[0] : req.params.projectId;
-    const projectId = parseInt(raw, 10);
-
-    if (!req.file) {
-      res.status(400).json({ error: "الملف مطلوب" });
-      return;
-    }
-    if (!isJpgReportImageUpload(req.file.originalname, req.file.mimetype)) {
-      await fsp.unlink(req.file.path).catch(() => {});
-      res.status(400).json({ error: "يُسمح فقط برفع الصور بامتداد JPG" });
-      return;
-    }
-    try {
-      const metadata = await sharp(req.file.path, { limitInputPixels: REPORT_IMAGE_MAX_PIXELS }).metadata();
-      if (metadata.format !== "jpeg") throw new Error("invalid jpeg");
-      if (!isAllowedReportImageDimensions(metadata.width, metadata.height)) {
-        await fsp.unlink(req.file.path).catch(() => {});
-        res.status(413).json({ error: "أبعاد الصورة تتجاوز الحد الآمن وهو 40 ميغابكسل" });
-        return;
-      }
-    } catch (error) {
-      await fsp.unlink(req.file.path).catch(() => {});
-      if (error instanceof Error && /pixel limit|exceeds.*limit/i.test(error.message)) {
-        res.status(413).json({ error: "أبعاد الصورة تتجاوز الحد الآمن وهو 40 ميغابكسل" });
-        return;
-      }
-      res.status(400).json({ error: "محتوى الملف ليس صورة JPG صالحة" });
-      return;
-    }
-
-    const description =
-      typeof req.body?.description === "string" ? req.body.description : "صورة تقرير";
-
-    const row = await persistUploadedFile(req.file, projectId, "image", description);
-    res.status(201).json(row);
-  },
-);
 
 router.delete(
   "/projects/:projectId/files/images/bulk",

@@ -805,6 +805,82 @@ progress as a weighted average using each row's stored `weight`.
   activitiesSnapshot?: UpdateReportBodyActivitiesSnapshotItem[] | null;
 }
 
+export type PreparedReportImagePacketMode =
+  (typeof PreparedReportImagePacketMode)[keyof typeof PreparedReportImagePacketMode];
+
+export const PreparedReportImagePacketMode = {
+  prepared: "prepared",
+  source: "source",
+} as const;
+
+export type PreparedReportImagePacketQualityProfile =
+  (typeof PreparedReportImagePacketQualityProfile)[keyof typeof PreparedReportImagePacketQualityProfile];
+
+export const PreparedReportImagePacketQualityProfile = {
+  report: "report",
+  report_detail: "report_detail",
+  report_technical: "report_technical",
+} as const;
+
+export type PreparedReportImagePacketEncoding =
+  (typeof PreparedReportImagePacketEncoding)[keyof typeof PreparedReportImagePacketEncoding];
+
+export const PreparedReportImagePacketEncoding = {
+  webp: "webp",
+  jpeg: "jpeg",
+} as const;
+
+/**
+ * Limits, output targets, and policy version come from the shared image policy.
+ */
+export interface PreparedReportImagePacket {
+  mode: PreparedReportImagePacketMode;
+  clientKey: string;
+  batchKey?: string;
+  position?: number;
+  qualityProfile?: PreparedReportImagePacketQualityProfile;
+  fileName: string;
+  mimeType?: string;
+  encoding?: PreparedReportImagePacketEncoding;
+  /** Canonical Base64 without data URL or whitespace; request-only, never returned or persisted. */
+  base64: string;
+}
+
+export type ManagedReportImageProfile =
+  (typeof ManagedReportImageProfile)[keyof typeof ManagedReportImageProfile];
+
+export const ManagedReportImageProfile = {
+  report: "report",
+  report_detail: "report_detail",
+  report_technical: "report_technical",
+} as const;
+
+export type ManagedReportImageState =
+  (typeof ManagedReportImageState)[keyof typeof ManagedReportImageState];
+
+export const ManagedReportImageState = {
+  ready: "ready",
+} as const;
+
+export interface ManagedReportImage {
+  id: string;
+  profile: ManagedReportImageProfile;
+  policyVersion: number;
+  state: ManagedReportImageState;
+  storageKey: string;
+  thumbnailKey: string;
+  printKey: string;
+  mimeType: string;
+  byteSize: number;
+  width: number;
+  height: number;
+}
+
+export interface ReportImageException {
+  variant: string;
+  code: string;
+}
+
 export type ProjectFileCategory =
   (typeof ProjectFileCategory)[keyof typeof ProjectFileCategory];
 
@@ -828,6 +904,33 @@ export interface ProjectFile {
   /** @nullable */
   description?: string | null;
   uploadedAt: string;
+}
+
+export type ReportImageUploadResult = ProjectFile & {
+  image: ManagedReportImage;
+  exceptions: ReportImageException[];
+};
+
+export type ReportImageUploadStatusState =
+  (typeof ReportImageUploadStatusState)[keyof typeof ReportImageUploadStatusState];
+
+export const ReportImageUploadStatusState = {
+  processing: "processing",
+  uploading: "uploading",
+  ready: "ready",
+  failed: "failed",
+} as const;
+
+export interface ReportImageUploadStatus {
+  state: ReportImageUploadStatusState;
+  imageId: string;
+  policyVersion: number;
+  image?: ManagedReportImage;
+  file?: ProjectFile;
+  exceptions?: ReportImageException[];
+  /** @nullable */
+  errorCode?: string | null;
+  retryable?: boolean;
 }
 
 export type ProjectFilesSummaryCategories = {
@@ -1563,8 +1666,27 @@ export type GetPublicReportImageShare200 = {
   periodEnd: string;
 };
 
+export type UploadPublicReportImageParams = {
+  /**
+   * Preferred token location; legacy clients may still send it in the request body.
+   */
+  token?: string;
+};
+
+export type UploadPublicReportImage200 = {
+  uploaded?: boolean;
+  uploadedCount?: number;
+  maxImages?: number;
+};
+
 export type UploadPublicReportImage201 = {
   uploaded?: boolean;
+  uploadedCount?: number;
+  maxImages?: number;
+};
+
+export type GetReportImageUploadStatusParams = {
+  clientKey: string;
 };
 
 export type ListFilesParams = {

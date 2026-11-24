@@ -18,28 +18,6 @@ export function isAllowedReportImageDimensions(width: unknown, height: unknown):
     && safeWidth <= Math.floor(REPORT_IMAGE_MAX_PIXELS / safeHeight);
 }
 
-export function appendReportShareImage(
-  groups: readonly ReportShareImageGroup[],
-  groupId: string,
-  fileUrl: string,
-  existingImageUrls: readonly string[] = [],
-): { groups: ReportShareImageGroup[]; imageUrls: string[] } | null {
-  let found = false;
-  const nextGroups = groups.map(group => {
-    const urls = Array.isArray(group.urls) ? group.urls : [];
-    if (group.id !== groupId) return { ...group, urls: [...urls] };
-    found = true;
-    return { ...group, urls: [...urls, fileUrl] };
-  });
-  if (!found) return null;
-
-  const imageUrls = [...new Set([
-    ...existingImageUrls,
-    ...nextGroups.flatMap(group => group.urls),
-  ])];
-  return { groups: nextGroups, imageUrls };
-}
-
 export function isJpgReportImageUpload(fileName: string, mimeType: string): boolean {
   return mimeType === "image/jpeg" && /\.jpg$/i.test(fileName);
 }

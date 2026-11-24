@@ -48,6 +48,7 @@ import type {
   GetProjectDeviationTimelineParams,
   GetPublicReportImageShare200,
   GetPublicReportImageShareParams,
+  GetReportImageUploadStatusParams,
   HealthStatus,
   ImportActivities400,
   ImportActivitiesBody,
@@ -67,6 +68,7 @@ import type {
   OwnerProjectView,
   OwnerVerifyBody,
   PagedProjectFiles,
+  PreparedReportImagePacket,
   Project,
   ProjectCategory,
   ProjectCategoryBody,
@@ -78,6 +80,8 @@ import type {
   RegisterResponse,
   Report,
   ReportAuditLogEntry,
+  ReportImageUploadResult,
+  ReportImageUploadStatus,
   SearchActivityGroupSourcesParams,
   UpdateActivityBody,
   UpdateActivityGroupBody,
@@ -91,7 +95,9 @@ import type {
   UpdateReportStatusBody,
   UpdateUserBody,
   UploadFileBody,
+  UploadPublicReportImage200,
   UploadPublicReportImage201,
+  UploadPublicReportImageParams,
   User,
 } from "./api.schemas";
 
@@ -2858,16 +2864,31 @@ export function useGetPublicReportImageShare<
 /**
  * @summary Add one validated image to the section named by its limited upload token
  */
-export const getUploadPublicReportImageUrl = () => {
-  return `/api/public/report-image-shares/upload`;
+export const getUploadPublicReportImageUrl = (
+  params?: UploadPublicReportImageParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/public/report-image-shares/upload?${stringifiedParams}`
+    : `/api/public/report-image-shares/upload`;
 };
 
 export const uploadPublicReportImage = async (
   uploadPublicReportImageBody: string,
+  params?: UploadPublicReportImageParams,
   options?: RequestInit,
-): Promise<UploadPublicReportImage201> => {
-  return customFetch<UploadPublicReportImage201>(
-    getUploadPublicReportImageUrl(),
+): Promise<UploadPublicReportImage200 | UploadPublicReportImage201> => {
+  return customFetch<UploadPublicReportImage200 | UploadPublicReportImage201>(
+    getUploadPublicReportImageUrl(params),
     {
       ...options,
       method: "POST",
@@ -2884,14 +2905,14 @@ export const getUploadPublicReportImageMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof uploadPublicReportImage>>,
     TError,
-    { data: BodyType<string> },
+    { data: BodyType<string>; params?: UploadPublicReportImageParams },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof uploadPublicReportImage>>,
   TError,
-  { data: BodyType<string> },
+  { data: BodyType<string>; params?: UploadPublicReportImageParams },
   TContext
 > => {
   const mutationKey = ["uploadPublicReportImage"];
@@ -2905,11 +2926,11 @@ export const getUploadPublicReportImageMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof uploadPublicReportImage>>,
-    { data: BodyType<string> }
+    { data: BodyType<string>; params?: UploadPublicReportImageParams }
   > = (props) => {
-    const { data } = props ?? {};
+    const { data, params } = props ?? {};
 
-    return uploadPublicReportImage(data, requestOptions);
+    return uploadPublicReportImage(data, params, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -2931,14 +2952,14 @@ export const useUploadPublicReportImage = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof uploadPublicReportImage>>,
     TError,
-    { data: BodyType<string> },
+    { data: BodyType<string>; params?: UploadPublicReportImageParams },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof uploadPublicReportImage>>,
   TError,
-  { data: BodyType<string> },
+  { data: BodyType<string>; params?: UploadPublicReportImageParams },
   TContext
 > => {
   return useMutation(getUploadPublicReportImageMutationOptions(options));
@@ -3295,6 +3316,221 @@ export function useExportReportsPdf<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getExportReportsPdfQueryOptions(projectId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * The same JSON envelope is accepted as application/json or text/plain. Existing multipart clients remain supported by the server, but new clients should use this envelope.
+ * @summary Upload a report image using the shared image lifecycle
+ */
+export const getUploadReportImageUrl = (projectId: number) => {
+  return `/api/projects/${projectId}/reports/uploads`;
+};
+
+export const uploadReportImage = async (
+  projectId: number,
+  preparedReportImagePacket: PreparedReportImagePacket,
+  options?: RequestInit,
+): Promise<ReportImageUploadResult> => {
+  return customFetch<ReportImageUploadResult>(
+    getUploadReportImageUrl(projectId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(preparedReportImagePacket),
+    },
+  );
+};
+
+export const getUploadReportImageMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadReportImage>>,
+    TError,
+    { projectId: number; data: BodyType<PreparedReportImagePacket> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadReportImage>>,
+  TError,
+  { projectId: number; data: BodyType<PreparedReportImagePacket> },
+  TContext
+> => {
+  const mutationKey = ["uploadReportImage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadReportImage>>,
+    { projectId: number; data: BodyType<PreparedReportImagePacket> }
+  > = (props) => {
+    const { projectId, data } = props ?? {};
+
+    return uploadReportImage(projectId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadReportImageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadReportImage>>
+>;
+export type UploadReportImageMutationBody = BodyType<PreparedReportImagePacket>;
+export type UploadReportImageMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Upload a report image using the shared image lifecycle
+ */
+export const useUploadReportImage = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadReportImage>>,
+    TError,
+    { projectId: number; data: BodyType<PreparedReportImagePacket> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadReportImage>>,
+  TError,
+  { projectId: number; data: BodyType<PreparedReportImagePacket> },
+  TContext
+> => {
+  return useMutation(getUploadReportImageMutationOptions(options));
+};
+
+/**
+ * @summary Recover upload state after losing its response without resending image bytes
+ */
+export const getGetReportImageUploadStatusUrl = (
+  projectId: number,
+  params: GetReportImageUploadStatusParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/projects/${projectId}/reports/uploads/status?${stringifiedParams}`
+    : `/api/projects/${projectId}/reports/uploads/status`;
+};
+
+export const getReportImageUploadStatus = async (
+  projectId: number,
+  params: GetReportImageUploadStatusParams,
+  options?: RequestInit,
+): Promise<ReportImageUploadStatus> => {
+  return customFetch<ReportImageUploadStatus>(
+    getGetReportImageUploadStatusUrl(projectId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetReportImageUploadStatusQueryKey = (
+  projectId: number,
+  params?: GetReportImageUploadStatusParams,
+) => {
+  return [
+    `/api/projects/${projectId}/reports/uploads/status`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetReportImageUploadStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getReportImageUploadStatus>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  projectId: number,
+  params: GetReportImageUploadStatusParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReportImageUploadStatus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetReportImageUploadStatusQueryKey(projectId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getReportImageUploadStatus>>
+  > = ({ signal }) =>
+    getReportImageUploadStatus(projectId, params, {
+      signal,
+      ...requestOptions,
+    });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!projectId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getReportImageUploadStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetReportImageUploadStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getReportImageUploadStatus>>
+>;
+export type GetReportImageUploadStatusQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Recover upload state after losing its response without resending image bytes
+ */
+
+export function useGetReportImageUploadStatus<
+  TData = Awaited<ReturnType<typeof getReportImageUploadStatus>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  projectId: number,
+  params: GetReportImageUploadStatusParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReportImageUploadStatus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReportImageUploadStatusQueryOptions(
+    projectId,
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

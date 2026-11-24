@@ -29,8 +29,8 @@ export class Cdp {
     return r.result.value;
   }
 }
-export async function until(fn) {
-  const deadline = Date.now() + 45_000;
+export async function until(fn, timeoutMs = 45_000) {
+  const deadline = Date.now() + timeoutMs;
   let error;
   while (Date.now() < deadline) {
     try { if (await fn()) return; } catch (e) { error = e; }

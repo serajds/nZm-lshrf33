@@ -978,6 +978,24 @@ export const GetPublicReportImageShareResponse = zod.object({
 });
 
 /**
+ * @summary Add one validated image to the section named by its limited upload token
+ */
+export const UploadPublicReportImageQueryParams = zod.object({
+  token: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Preferred token location; legacy clients may still send it in the request body.",
+    ),
+});
+
+export const UploadPublicReportImageResponse = zod.object({
+  uploaded: zod.boolean().optional(),
+  uploadedCount: zod.number().optional(),
+  maxImages: zod.number().optional(),
+});
+
+/**
  * @summary Approve or revert a report (project_manager / admin)
  */
 export const UpdateReportStatusParams = zod.object({
@@ -1078,6 +1096,92 @@ export const GetReportAuditLogResponse = zod.array(
  */
 export const ExportReportsPdfParams = zod.object({
   projectId: zod.coerce.number(),
+});
+
+/**
+ * The same JSON envelope is accepted as application/json or text/plain. Existing multipart clients remain supported by the server, but new clients should use this envelope.
+ * @summary Upload a report image using the shared image lifecycle
+ */
+export const UploadReportImageParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const UploadReportImageBody = zod
+  .object({
+    mode: zod.enum(["prepared", "source"]),
+    clientKey: zod.string(),
+    batchKey: zod.string().uuid().optional(),
+    position: zod.number().optional(),
+    qualityProfile: zod
+      .enum(["report", "report_detail", "report_technical"])
+      .optional(),
+    fileName: zod.string(),
+    mimeType: zod.string().optional(),
+    encoding: zod.enum(["webp", "jpeg"]).optional(),
+    base64: zod
+      .string()
+      .describe(
+        "Canonical Base64 without data URL or whitespace; request-only, never returned or persisted.",
+      ),
+  })
+  .describe(
+    "Limits, output targets, and policy version come from the shared image policy.",
+  );
+
+/**
+ * @summary Recover upload state after losing its response without resending image bytes
+ */
+export const GetReportImageUploadStatusParams = zod.object({
+  projectId: zod.coerce.number(),
+});
+
+export const GetReportImageUploadStatusQueryParams = zod.object({
+  clientKey: zod.coerce.string(),
+});
+
+export const GetReportImageUploadStatusResponse = zod.object({
+  state: zod.enum(["processing", "uploading", "ready", "failed"]),
+  imageId: zod.string().uuid(),
+  policyVersion: zod.number(),
+  image: zod
+    .object({
+      id: zod.string().uuid(),
+      profile: zod.enum(["report", "report_detail", "report_technical"]),
+      policyVersion: zod.number(),
+      state: zod.enum(["ready"]),
+      storageKey: zod.string(),
+      thumbnailKey: zod.string(),
+      printKey: zod.string(),
+      mimeType: zod.string(),
+      byteSize: zod.number(),
+      width: zod.number(),
+      height: zod.number(),
+    })
+    .optional(),
+  file: zod
+    .object({
+      id: zod.number(),
+      projectId: zod.number(),
+      filename: zod.string(),
+      originalName: zod.string(),
+      category: zod.enum(["image", "pdf", "test_result", "document", "other"]),
+      fileUrl: zod.string(),
+      fileSize: zod.number(),
+      mimeType: zod.string(),
+      description: zod.string().nullish(),
+      uploadedAt: zod.coerce.date(),
+    })
+    .optional(),
+  exceptions: zod
+    .array(
+      zod.object({
+        variant: zod.string(),
+        code: zod.string(),
+      }),
+    )
+    .optional(),
+  errorCode: zod.string().nullish(),
+  retryable: zod.boolean().optional(),
 });
 
 /**

@@ -67,12 +67,13 @@ function uploadImage(
   token: string,
   file: File,
   imageBase64: string,
+  clientKey: string,
   onProgress: (ratio: number) => void,
   attempt = 0,
 ): Promise<{ uploadedCount?: number; maxImages?: number }> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open("POST", `${API_BASE}/public/report-image-shares/upload`);
+    request.open("POST", `${API_BASE}/public/report-image-shares/upload?token=${encodeURIComponent(token)}`);
     request.setRequestHeader("Content-Type", "text/plain");
     request.timeout = 180_000;
     request.upload.onprogress = event => {
@@ -96,7 +97,7 @@ function uploadImage(
         const delayMs = Math.min(5000, Math.max(1000, Number.isFinite(retryAfter) ? retryAfter * 1000 : 2000));
         window.setTimeout(() => {
           onProgress(0);
-          uploadImage(token, file, imageBase64, onProgress, attempt + 1).then(resolve, reject);
+          uploadImage(token, file, imageBase64, clientKey, onProgress, attempt + 1).then(resolve, reject);
         }, delayMs + Math.floor(Math.random() * 500));
       } else {
         reject(new Error(typeof data.error === "string" ? data.error : "تعذّر رفع الصورة. أعد المحاولة."));
@@ -106,7 +107,7 @@ function uploadImage(
     request.ontimeout = () => reject(new Error("استغرق رفع الصورة وقتاً طويلاً. أعد المحاولة."));
     request.onabort = () => reject(new Error("تم إيقاف رفع الصورة."));
     request.send(JSON.stringify({
-      token,
+      clientKey,
       fileName: file.name,
       mimeType: file.type,
       imageBase64,
@@ -117,6 +118,7 @@ function uploadImage(
 export default function PublicReportImageUpload() {
   const token = new URLSearchParams(window.location.search).get("token") ?? "";
   const fileInput = useRef<HTMLInputElement>(null);
+  const uploadKeys = useRef(new Map<string, string>());
   const dragDepth = useRef(0);
   const [share, setShare] = useState<PublicShare | null>(null);
   const [loading, setLoading] = useState(true);
@@ -209,7 +211,13 @@ export default function PublicReportImageUpload() {
           fileName: file.name,
         });
         const imageBase64 = await fileToBase64(file);
-        const result = await uploadImage(token, file, imageBase64, ratio => {
+        const fileIdentity = `${file.name}\u0000${file.size}\u0000${file.lastModified}`;
+        let clientKey = uploadKeys.current.get(fileIdentity);
+        if (!clientKey) {
+          clientKey = crypto.randomUUID();
+          uploadKeys.current.set(fileIdentity, clientKey);
+        }
+        const result = await uploadImage(token, file, imageBase64, clientKey, ratio => {
           setUploadProgress({
             loadedBytes: Math.min(totalBytes, loadedBytes + Math.floor(file.size * ratio)),
             totalBytes,
@@ -219,6 +227,7 @@ export default function PublicReportImageUpload() {
             fileName: file.name,
           });
         });
+        uploadKeys.current.delete(fileIdentity);
         loadedBytes += file.size;
         uploadedCount += 1;
         setShare(current => current ? {

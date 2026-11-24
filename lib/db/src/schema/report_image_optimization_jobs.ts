@@ -12,7 +12,7 @@ export const reportImageOptimizationJobsTable = pgTable("report_image_optimizati
   projectId: integer("project_id").notNull()
     .references(() => projectsTable.id, { onDelete: "cascade" }),
   status: text("status", {
-    enum: ["running", "completed", "completed_with_errors"],
+    enum: ["running", "paused", "completed", "completed_with_errors"],
   }).notNull().default("running"),
   items: jsonb("items").$type<ReportImageOptimizationItem[]>().notNull().default([]),
   total: integer("total").notNull().default(0),

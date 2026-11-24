@@ -1,18 +1,20 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type RequestHandler } from "express";
 import { db } from "@workspace/db";
-import { companiesTable, projectMembersTable, projectsTable, userCompaniesTable } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { companiesTable, imageAssetsTable, projectMembersTable, projectsTable, userCompaniesTable } from "@workspace/db";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { requireAuth, requireAdminOrPM } from "../middlewares/auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { promises as fsp } from "fs";
-import { uploadToCloud, deleteFromCloud } from "../lib/fileStorage";
-import {
-  createAndStoreReportImageVariant,
-  deleteStoredReportImageVariants,
-} from "../lib/reportImageVariantStorage";
-import { compressImageBuffer } from "../lib/image-compression-core";
+import { deleteFromCloud, deleteImageObjectStrict } from "../lib/fileStorage";
+import { createImageLifecycle } from "../lib/image-lifecycle";
+import { createImageUploadRequestMiddleware, imageUploadRequest } from "../lib/image-upload-request";
+import { sendImageUploadError } from "../lib/image-upload-errors";
+import { ImageProcessingError } from "../lib/image-processing";
+import { IMAGE_CLIENT_KEY_PATTERN } from "@workspace/api-zod";
+import { imageObjectName, isLifecycleImageFilename } from "../lib/image-asset-keys";
+import { deleteStoredReportImageVariants } from "../lib/reportImageVariantStorage";
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -31,28 +33,51 @@ const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = [".jpg", ".jpeg", ".png", ".svg", ".webp"];
+    const allowed = [".jpg", ".jpeg", ".png", ".svg", ".webp", ".gif"];
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, allowed.includes(ext));
   },
 });
 
 const router: IRouter = Router();
+const imageLifecycle = createImageLifecycle();
+const imageIngress = createImageUploadRequestMiddleware({ temporaryRoot: uploadsDir });
+type LogoImageCommit = NonNullable<Parameters<typeof imageLifecycle.upload>[0]["onCommit"]>;
+const trackLogoUpload: RequestHandler = (req, res, next) => {
+  if (req.file) imageUploadRequest(res)?.trackIncoming(req.file.path);
+  next();
+};
 const companyTypes = ["owner", "contractor", "supervisor"] as const;
 type CompanyType = (typeof companyTypes)[number];
 
-async function compressUploadedLogo(filename: string): Promise<void> {
-  const filePath = path.join(uploadsDir, filename);
-  const original = await fsp.readFile(filePath);
-  const result = await compressImageBuffer(original, ["company_logo"]);
-  if (result.status !== "compressed") return;
-  const temporaryPath = `${filePath}.compress-${process.pid}-${Date.now()}`;
-  try {
-    await fsp.writeFile(temporaryPath, result.buffer, { flag: "wx" });
-    await fsp.rename(temporaryPath, filePath);
-  } finally {
-    await fsp.rm(temporaryPath, { force: true }).catch(() => undefined);
-  }
+async function saveManagedCompanyLogo(
+  req: Request,
+  res: Response,
+  clientKey: string,
+  scope: string,
+  onCommit: LogoImageCommit,
+): Promise<string> {
+  if (!req.file) throw new ImageProcessingError("invalid_image_packet");
+  const context = imageUploadRequest(res);
+  if (!context) throw new ImageProcessingError("image_request_unavailable");
+  const result = await context.run(() => imageLifecycle.upload({
+    principal: `user:${req.user!.userId}`,
+    authorizedScope: scope,
+    projectId: null,
+    userId: req.user!.userId,
+    clientKey,
+    profile: "logo",
+    sourcePath: req.file!.path,
+    signal: context.signal,
+    lease: context.lease,
+    onCommit,
+  }));
+  if (!result.image.storageKey) throw new ImageProcessingError("image_reference_removed");
+  return result.fileUrl;
+}
+
+function isManagedCompanyLogo(filename: string): boolean {
+  return /\.(?:jpe?g|png|webp|gif|svg)$/i.test(filename);
 }
 
 const memberCompanyFields = {
@@ -174,7 +199,7 @@ router.get("/companies/:id", requireAuth, async (req, res): Promise<void> => {
   res.json(company);
 });
 
-router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, res): Promise<void> => {
+router.post("/companies", requireAdminOrPM, imageIngress, upload.single("logo"), trackLogoUpload, async (req, res): Promise<void> => {
   const { name, type, phone, email, address } = req.body;
 
   if (typeof name !== "string" || !name.trim() || !type) {
@@ -187,35 +212,43 @@ router.post("/companies", requireAdminOrPM, upload.single("logo"), async (req, r
   }
 
   let logoUrl: string | null = null;
-  if (req.file) {
-    try {
-      await compressUploadedLogo(req.file.filename);
-    } catch {
-      await fsp.unlink(path.join(uploadsDir, req.file.filename)).catch(() => undefined);
-      res.status(400).json({ error: "تعذر قراءة الشعار أو ضغطه بأمان" });
-      return;
-    }
-    try {
-      await uploadToCloud(path.join(uploadsDir, req.file.filename), req.file.filename);
-    } catch (err) {
-      console.error("Cloud upload failed for logo, saved locally only:", err);
-    }
-    try {
-      await createAndStoreReportImageVariant(req.file.filename, "report-logo", uploadsDir);
-    } catch (err) {
-      console.warn("Report logo preview copy could not be prepared during upload:", err);
-    }
-    logoUrl = `/api/uploads/${req.file.filename}`;
-  }
-
-  const [company] = await db.insert(companiesTable).values({
+  const companyValues = {
     name: name.trim(),
     type,
-    logoUrl,
     phone: phone || null,
     email: email || null,
     address: address || null,
     createdById: req.user?.userId ?? null,
+  };
+  if (req.file && isManagedCompanyLogo(req.file.originalname)) {
+    const clientKey = req.body?.clientKey;
+    if (typeof clientKey !== "string" || !IMAGE_CLIENT_KEY_PATTERN.test(clientKey)) {
+      res.status(400).json({ error: "مفتاح رفع الشعار غير صالح" });
+      return;
+    }
+    try {
+      logoUrl = await saveManagedCompanyLogo(
+        req, res, clientKey, `user:${req.user!.userId}:company-create`,
+        async (tx, asset) => {
+          const filename = imageObjectName(asset.storageKey!);
+          await tx.insert(companiesTable).values({
+            ...companyValues,
+            logoUrl: `/api/uploads/${filename}`,
+          });
+          return null;
+        },
+      );
+      const [company] = await db.select().from(companiesTable).where(eq(companiesTable.logoUrl, logoUrl));
+      if (!company) throw new ImageProcessingError("image_reference_removed");
+      res.status(201).json(company);
+    } catch (error) {
+      sendImageUploadError(res, error);
+    }
+    return;
+  }
+  const [company] = await db.insert(companiesTable).values({
+    ...companyValues,
+    logoUrl,
   }).returning();
 
   res.status(201).json(company);
@@ -237,7 +270,7 @@ router.patch("/companies/:id", requireAdminOrPM, async (req, res, next): Promise
     }
   }
   next();
-}, upload.single("logo"), async (req, res): Promise<void> => {
+}, imageIngress, upload.single("logo"), trackLogoUpload, async (req, res): Promise<void> => {
   const id = parseCompanyId(req.params.id);
   if (id === null) {
     res.status(400).json({ error: "معرف الشركة غير صالح" });
@@ -278,24 +311,35 @@ router.patch("/companies/:id", requireAdminOrPM, async (req, res, next): Promise
   if (body.address !== undefined) updateData.address = body.address || null;
 
   if (req.file) {
-    try {
-      await compressUploadedLogo(req.file.filename);
-    } catch {
-      await fsp.unlink(path.join(uploadsDir, req.file.filename)).catch(() => undefined);
-      res.status(400).json({ error: "تعذر قراءة الشعار أو ضغطه بأمان" });
+    if (isManagedCompanyLogo(req.file.originalname)) {
+      const clientKey = req.body?.clientKey;
+      if (typeof clientKey !== "string" || !IMAGE_CLIENT_KEY_PATTERN.test(clientKey)) {
+        res.status(400).json({ error: "مفتاح رفع الشعار غير صالح" });
+        return;
+      }
+      try {
+        const logoUrl = await saveManagedCompanyLogo(
+          req, res, clientKey, `company:${id}:logo`,
+          async (tx, asset) => {
+            const filename = imageObjectName(asset.storageKey!);
+            const [updated] = await tx.update(companiesTable)
+              .set({ ...updateData, logoUrl: `/api/uploads/${filename}` })
+              .where(eq(companiesTable.id, id)).returning({ id: companiesTable.id });
+            if (!updated) throw new ImageProcessingError("company_not_found");
+            return null;
+          },
+        );
+        const [company] = await db.select().from(companiesTable)
+          .where(eq(companiesTable.logoUrl, logoUrl));
+        if (!company) throw new ImageProcessingError("image_reference_removed");
+        res.json(company);
+      } catch (error) {
+        sendImageUploadError(res, error);
+      }
       return;
     }
-    try {
-      await uploadToCloud(path.join(uploadsDir, req.file.filename), req.file.filename);
-    } catch (err) {
-      console.error("Cloud upload failed for logo update, saved locally only:", err);
-    }
-    try {
-      await createAndStoreReportImageVariant(req.file.filename, "report-logo", uploadsDir);
-    } catch (err) {
-      console.warn("Report logo preview copy could not be prepared during upload:", err);
-    }
-    updateData.logoUrl = `/api/uploads/${req.file.filename}`;
+    sendImageUploadError(res, new ImageProcessingError("unsupported_format"));
+    return;
   }
 
   if (Object.keys(updateData).length === 0) {
@@ -330,9 +374,37 @@ router.delete("/companies/:id", requireAdminOrPM, async (req, res): Promise<void
     return;
   }
 
+  let managedAssetId: string | null = null;
   if (company.logoUrl) {
-    const filename = company.logoUrl.split("/").pop();
-    if (filename) {
+    const filename = company.logoUrl.split("/").pop() ?? "";
+    if (isLifecycleImageFilename(filename)) {
+      const [asset] = await db.select().from(imageAssetsTable)
+        .where(eq(imageAssetsTable.storageKey, `uploads/${filename}`));
+      if (!asset) {
+        res.status(500).json({ error: "بيانات الشعار غير مكتملة؛ لم يُحذف" });
+        return;
+      }
+      if (asset.profile === "logo" && asset.projectId === null) {
+        const [shared] = await db.select({ id: companiesTable.id }).from(companiesTable)
+          .where(and(eq(companiesTable.logoUrl, company.logoUrl), ne(companiesTable.id, id))).limit(1);
+        if (!shared) {
+          if (!asset.storageBucket || !asset.storageKey) {
+            res.status(500).json({ error: "تعذر التحقق من مخزن الشعار؛ لم يُحذف" });
+            return;
+          }
+          for (const key of [asset.storageKey, asset.thumbnailKey, asset.printKey]) {
+            if (key) await deleteImageObjectStrict(imageObjectName(key), asset.storageBucket);
+          }
+          await fsp.unlink(path.join(uploadsDir, filename)).catch(() => {});
+          managedAssetId = asset.id;
+        }
+      } else {
+        const filePath = path.join(uploadsDir, filename);
+        await fsp.unlink(filePath).catch(() => {});
+        await deleteFromCloud(filename);
+        await deleteStoredReportImageVariants(filename, uploadsDir);
+      }
+    } else {
       const filePath = path.join(uploadsDir, filename);
       await fsp.unlink(filePath).catch(() => {});
       await deleteFromCloud(filename);
@@ -340,7 +412,10 @@ router.delete("/companies/:id", requireAdminOrPM, async (req, res): Promise<void
     }
   }
 
-  await db.delete(companiesTable).where(eq(companiesTable.id, id));
+  await db.transaction(async tx => {
+    await tx.delete(companiesTable).where(eq(companiesTable.id, id));
+    if (managedAssetId) await tx.delete(imageAssetsTable).where(eq(imageAssetsTable.id, managedAssetId!));
+  });
   res.json({ success: true });
 });
 

@@ -18,18 +18,15 @@ import {
   createSignedUploadReadUrl,
 } from "../lib/fileStorage";
 import { authorizedReportImageFilenames, mapWithConcurrency, reportUploadFilenames } from "../lib/report-preview-assets";
-import { createReportImageOptimizationJobs } from "../lib/report-image-optimization-jobs";
 import { createReportImageOptimizationJobStore } from "../lib/report-image-optimization-job-store";
-import { reportImageVariant, REPORT_PRINT_IMAGE_MAX_BYTES } from "../lib/reportImageVariants";
+import { resolveStoredImageForRead } from "../lib/image-read-reference";
 import {
   REPORT_IMAGE_SHARE_DEFAULT_MAX_IMAGES,
   REPORT_IMAGE_SHARE_MAX_LIMIT,
 } from "@workspace/api-zod";
 import { permanentlyDeleteReportImages } from "../lib/report-image-cleanup";
 import {
-  reportPrintImageExists,
   signReportPrintImage,
-  storeReportPrintImage,
 } from "../lib/reportImageVariantStorage";
 
 type ImageGroup = {
@@ -169,9 +166,23 @@ async function attachImageShareStatus<T extends { id: number; imageGroups: unkno
   reports: T[],
 ): Promise<T[]> {
   if (reports.length === 0) return reports;
+  const hasResolvableGroups = reports.some(report =>
+    Array.isArray(report.imageGroups)
+    && report.imageGroups.some(group => Boolean(
+      group && typeof group === "object" && "id" in group && typeof group.id === "string" && group.id.length > 0,
+    )),
+  );
+  if (!hasResolvableGroups) return reports;
   const rows = await db.select().from(reportImageSharesTable)
     .where(inArray(reportImageSharesTable.reportId, reports.map(report => report.id)))
     .orderBy(desc(reportImageSharesTable.createdAt), desc(reportImageSharesTable.id));
+  return mapImageShareStatus(reports, rows);
+}
+
+function mapImageShareStatus<T extends { id: number; imageGroups: unknown }>(
+  reports: T[],
+  rows: (typeof reportImageSharesTable.$inferSelect)[],
+): T[] {
   const latest = new Map<string, typeof rows[number]>();
   for (const row of rows) {
     const key = `${row.reportId}:${row.groupId}`;
@@ -200,44 +211,12 @@ async function attachImageShareStatus<T extends { id: number; imageGroups: unkno
 
 const router: IRouter = Router();
 const reportUploadsDir = path.join(process.cwd(), "uploads");
-const reportImageOptimizationEnabled = process.env.NODE_ENV !== "production";
-const reportImageOptimizationJobs = createReportImageOptimizationJobs(
-  createReportImageOptimizationJobStore(),
-  async (projectId, item) => {
-  const [sourceFile] = await db.select({ id: projectFilesTable.id })
-    .from(projectFilesTable)
-    .where(and(
-      eq(projectFilesTable.projectId, projectId),
-      eq(projectFilesTable.filename, item.filename),
-      eq(projectFilesTable.category, "image"),
-    ))
-    .limit(1);
-  if (!sourceFile) return "skipped";
-  if (await reportPrintImageExists(item.filename)) return "skipped";
-  if (item.fileSize > 0 && item.fileSize <= REPORT_PRINT_IMAGE_MAX_BYTES) return "skipped";
-
-  const localPath = path.join(reportUploadsDir, item.filename);
-  let key: string;
-  let readSource: () => Promise<Buffer>;
-  try {
-    const stat = await fs.promises.stat(localPath);
-    if (stat.size > 25 * 1024 * 1024) throw new Error("Image exceeds the safe 25 MB processing limit");
-    key = `local:${item.filename}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
-    readSource = () => fs.promises.readFile(localPath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    const source = await cloudReportImageSource(item.filename);
-    if (!source) throw new Error("Source image is missing from storage");
-    key = `cloud:${item.filename}:${source.version}`;
-    readSource = source.read;
-  }
-
-  const image = await reportImageVariant(key, "report-photo", readSource);
-  await storeReportPrintImage(item.filename, image);
-  return "optimized";
-  },
-  { autoStart: reportImageOptimizationEnabled },
-);
+const reportImageOptimizationJobStore = createReportImageOptimizationJobStore();
+if (process.env.NODE_ENV === "development" && process.env.REPLIT_DEPLOYMENT !== "1") {
+  void reportImageOptimizationJobStore.pauseRunningForUnifiedPipeline().then(count => {
+    if (count) console.info("Paused legacy report-image jobs", { jobsPaused: count });
+  }).catch(() => console.warn("Could not pause legacy report-image jobs"));
+}
 
 router.get("/projects/:projectId/reports/progress-as-of", requireProjectAccess("projectId"), rejectContractor, requireTabView("reports"), async (req, res): Promise<void> => {
   if (!validReportDay(req.query.periodEnd)) {
@@ -560,7 +539,8 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), re
   // with 50 reports × 100 activities, this cut payload significantly.
   // imageGroups must stay because the list view renders the photo
   // sections directly on each report card.
-  const reports = await db.select({
+  const [reports, shareRows] = await Promise.all([
+    db.select({
     id: reportsTable.id,
     projectId: reportsTable.projectId,
     reportNumber: reportsTable.reportNumber,
@@ -586,16 +566,23 @@ router.get("/projects/:projectId/reports", requireProjectAccess("projectId"), re
     createdById: reportsTable.createdById,
     createdAt: reportsTable.createdAt,
     updatedAt: reportsTable.updatedAt,
-  }).from(reportsTable)
-    .where(and(...conditions))
+    }).from(reportsTable)
+      .where(and(...conditions))
     // reportDate is a DATE (no time component), so two reports created on
     // the same day need a deterministic secondary key — fall back to
     // createdAt/id desc so the most recently entered report always wins
     // the tiebreak. Without this, same-day reports appeared in arbitrary
     // order and "newest" felt broken to users.
-    .orderBy(desc(reportsTable.reportDate), desc(reportsTable.createdAt), desc(reportsTable.id));
+      .orderBy(desc(reportsTable.reportDate), desc(reportsTable.createdAt), desc(reportsTable.id)),
+    db.select().from(reportImageSharesTable)
+      .where(inArray(
+        reportImageSharesTable.reportId,
+        db.select({ id: reportsTable.id }).from(reportsTable).where(and(...conditions)),
+      ))
+      .orderBy(desc(reportImageSharesTable.createdAt), desc(reportImageSharesTable.id)),
+  ]);
 
-  res.json(await attachImageShareStatus(reports));
+  res.json(mapImageShareStatus(reports, shareRows));
 });
 
 router.post(
@@ -998,6 +985,14 @@ router.get(
     try {
       const signed = await mapWithConcurrency(authorized, 4, async filename => {
         const originalKey = `/api/uploads/${encodeURIComponent(filename)}`;
+        const managed = await resolveStoredImageForRead(filename, "print", projectId);
+        if (managed.kind !== "legacy") {
+          if (managed.kind !== "ready") throw new Error("Managed report image is not ready");
+          // Keep the short protected app URL. The preview loader requests the
+          // thumbnail/photo variant separately and the existing upload gate
+          // rechecks the viewer's current project/report authorization.
+          return [originalKey, originalKey] as const;
+        }
         let optimizedUrl: string | null;
         try {
           optimizedUrl = await signReportPrintImage(filename, 900);
@@ -1022,7 +1017,7 @@ router.get(
         expiresAt: new Date(Date.now() + 900_000).toISOString(),
       });
     } catch (error) {
-      req.log.error({ error, projectId, reportId, imageCount: authorized.length }, "Could not sign report preview images");
+      req.log.error({ projectId, reportId, imageCount: authorized.length }, "Could not sign report preview images");
       res.status(503).json({ error: "تعذّر تجهيز روابط صور التقرير؛ حاول مرة أخرى" });
     }
   },
@@ -1032,61 +1027,7 @@ router.post(
   "/projects/:projectId/reports/image-optimization",
   requireProjectManager("projectId"), requireTabEdit("reports"),
   async (req, res): Promise<void> => {
-    if (!reportImageOptimizationEnabled) {
-      res.status(503).json({ error: "تهيئة الصور القديمة متوقفة مؤقتًا في الإنتاج" });
-      return;
-    }
-    const projectId = Number(req.params.projectId);
-    if (!Number.isSafeInteger(projectId) || projectId <= 0) {
-      res.status(400).json({ error: "معرف المشروع غير صالح" });
-      return;
-    }
-    const reportRows = await db.select({
-      imageUrls: reportsTable.imageUrls,
-      imageGroups: reportsTable.imageGroups,
-    }).from(reportsTable).where(eq(reportsTable.projectId, projectId));
-    const reportUrls = reportRows.flatMap(report => {
-      const groups = Array.isArray(report.imageGroups) ? report.imageGroups as ImageGroup[] : [];
-      const groupUrls = groups.flatMap(group => Array.isArray(group.urls) ? group.urls : []);
-      return groupUrls.length ? groupUrls : Array.isArray(report.imageUrls) ? report.imageUrls : [];
-    });
-    const referenced = reportUploadFilenames(reportUrls);
-    if (referenced.length > 5000) {
-      res.status(413).json({ error: "عدد صور المشروع يتجاوز حد المعالجة الآمنة؛ قسّم العمل على مشاريع أصغر" });
-      return;
-    }
-    const [files, attendance] = referenced.length ? await Promise.all([
-      db.select({
-        filename: projectFilesTable.filename,
-        projectId: projectFilesTable.projectId,
-        category: projectFilesTable.category,
-        fileSize: projectFilesTable.fileSize,
-      }).from(projectFilesTable).where(inArray(projectFilesTable.filename, referenced)),
-      db.select({ filename: attendanceRecordsTable.selfieFilename })
-        .from(attendanceRecordsTable).where(inArray(attendanceRecordsTable.selfieFilename, referenced)),
-    ]) : [[], []];
-    const authorized = authorizedReportImageFilenames(
-      referenced,
-      files,
-      attendance.map(row => row.filename).filter((filename): filename is string => typeof filename === "string"),
-      projectId,
-    );
-    const sizes = new Map(files.map(file => [file.filename, Number(file.fileSize ?? 0)]));
-    const items = authorized.map(filename => ({
-      filename,
-      fileSize: sizes.get(filename) ?? 0,
-    }));
-    const result = await reportImageOptimizationJobs.start(projectId, items);
-
-    if (result.blockedByOtherProject) {
-      res.status(409).json({ error: "تجري تهيئة صور مشروع آخر؛ انتظر اكتمالها ثم أعد المحاولة" });
-      return;
-    }
-    if (!result.job) {
-      res.status(500).json({ error: "تعذّر إنشاء مهمة تهيئة الصور" });
-      return;
-    }
-    res.status(202).json(result.job);
+    res.status(410).json({ error: "توقفت آلية تهيئة الصور القديمة؛ لم تُحذف صور التقارير أو سجلات المهام." });
   },
 );
 
@@ -1100,7 +1041,7 @@ router.get(
       return;
     }
     res.setHeader("Cache-Control", "private, no-store");
-    res.json(await reportImageOptimizationJobs.get(projectId));
+    res.json(await reportImageOptimizationJobStore.getLatest(projectId));
   },
 );
 

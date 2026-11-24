@@ -35,3 +35,17 @@ mtime_ms = 1793640269411
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:36064327-e501-4c16-88c7-f8a88267d13f/5f00b61c-ff5c-4eb6-b8fd-8b6b06424f2f/6ee32c5b-9ca6-4102-80ec-6c9c1a7122e0"
 storage_version_token = "1793640371485009"
 content_type = "text/html"
+
+[[outputs]]
+id = "113usK87j_XygLQ-HLKqY"
+uri = "file://generated-artifacts/image-audit/baseline-report.html"
+type = "html"
+title = "التقرير النهائي لمنظومة الصور"
+description = "التقرير يوثق ثلاث اختبارات حمل مستقلة، النتائج PASS وFAIL وBLOCKED، مراجعة الكود المستقلة، وحواجز عدم لمس الإنتاج."
+logical_id = "afe87f98-256e-4460-9c8c-74af3471628f"
+content_hash = "sha256:dd5affde65e5e732b442c75aeee4c366a35ffc7aae90a3ab5feddab5aa7d3052"
+size = 13042063
+mtime_ms = 1795543029020
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:36064327-e501-4c16-88c7-f8a88267d13f/afe87f98-256e-4460-9c8c-74af3471628f/638cfee1-36ff-4147-a021-4f817670c0d8"
+storage_version_token = "1795543081537714"
+content_type = "text/html"

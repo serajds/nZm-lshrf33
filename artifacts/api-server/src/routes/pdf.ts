@@ -11,11 +11,32 @@ import path from "path";
 import fs from "fs";
 import { streamFromCloud } from "../lib/fileStorage";
 import { pipeline } from "stream/promises";
+import { randomUUID } from "node:crypto";
+import { resolveStoredImageForRead } from "../lib/image-read-reference";
+import { streamStoredImage } from "../lib/image-object-stream";
+import { mapWithConcurrency } from "../lib/report-preview-assets";
+import { validateReportPdfImage } from "../lib/report-pdf-image-validation";
+import { logger } from "../lib/logger";
 
-async function resolveImagePath(imgUrl: string, uploadsDir: string): Promise<string | null> {
+async function resolveImagePath(imgUrl: string, uploadsDir: string, projectId: number): Promise<{ path: string; managed: boolean } | null> {
   const filename = path.basename(imgUrl.split("?")[0]);
+  const managed = await resolveStoredImageForRead(filename, "print", projectId);
+  if (managed.kind !== "legacy") {
+    if (managed.kind !== "ready") throw new Error("Report image unavailable");
+    const destination = path.join(uploadsDir, managed.filename);
+    if (fs.existsSync(destination)) return { path: destination, managed: true };
+    const temporary = path.join(uploadsDir, `.pdf-image-${randomUUID()}.tmp`);
+    try {
+      const cloud = await streamStoredImage(managed.filename, managed.bucketId);
+      await pipeline(cloud.stream, fs.createWriteStream(temporary, { flags: "wx" }));
+      await fs.promises.rename(temporary, destination);
+      return { path: destination, managed: true };
+    } finally {
+      await fs.promises.rm(temporary, { force: true });
+    }
+  }
   const localPath = path.join(uploadsDir, filename);
-  if (fs.existsSync(localPath)) return localPath;
+  if (fs.existsSync(localPath)) return { path: localPath, managed: false };
 
   const cloudResult = await streamFromCloud(filename);
   if (!cloudResult) return null;
@@ -23,7 +44,27 @@ async function resolveImagePath(imgUrl: string, uploadsDir: string): Promise<str
   const tmpPath = path.join(uploadsDir, filename);
   const ws = fs.createWriteStream(tmpPath);
   await pipeline(cloudResult.stream as NodeJS.ReadableStream, ws);
-  return tmpPath;
+  return { path: tmpPath, managed: false };
+}
+
+type PdfImageGroup = { category: string; urls: string[] };
+class ReportPdfImageError extends Error {
+  constructor(readonly reportId: number, readonly imageIndex: number) { super("report_pdf_image_unavailable"); }
+}
+function reportImageGroups(report: { imageGroups?: unknown; imageUrls?: string[] | null }): PdfImageGroup[] {
+  if (Array.isArray(report.imageGroups)) {
+    const groups = report.imageGroups.flatMap((value): PdfImageGroup[] => {
+      if (!value || typeof value !== "object") return [];
+      const group = value as { category?: unknown; urls?: unknown };
+      if (!Array.isArray(group.urls)) return [];
+      return [{
+        category: typeof group.category === "string" ? group.category : "صور التقرير",
+        urls: group.urls.map(url => typeof url === "string" ? url : ""),
+      }];
+    });
+    if (groups.length) return groups;
+  }
+  return report.imageUrls?.length ? [{ category: "صور الموقع", urls: report.imageUrls }] : [];
 }
 
 const AMIRI_FONT = path.join(process.cwd(), "src/fonts/Amiri-Regular.ttf");
@@ -185,6 +226,68 @@ function snapshotActualIsHistoricallyUnverified(
   const suspensions = await db.select().from(projectSuspensionsTable)
     .where(eq(projectSuspensionsTable.projectId, projectId))
     .orderBy(projectSuspensionsTable.startDate);
+
+  // Resolve and validate every image before sending PDF headers. Missing or
+  // corrupt inputs must fail the export, never silently produce a partial PDF.
+  const uploadsDir = path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  const imagePathsByReport = new Map<number, Array<{ category: string; paths: string[] }>>();
+  const imagePreflightStarted = performance.now();
+  let imageCount = 0, imageBytes = 0, managedImageCount = 0, legacyImageCount = 0;
+  let pixelValidationCount = 0, pixelValidationMs = 0, metadataValidationMs = 0;
+  try {
+    for (const report of reports) {
+      let imageIndex = 0;
+      const groups = await mapWithConcurrency(reportImageGroups(report), 1, async group => ({
+        category: group.category,
+        paths: await mapWithConcurrency(group.urls, 1, async url => {
+          const index = imageIndex++;
+          try {
+            const resolved = await resolveImagePath(url, uploadsDir, projectId);
+            if (!resolved) throw new Error("missing");
+            const stat = await fs.promises.stat(resolved.path);
+            if (!stat.isFile() || stat.size > 25 * 1024 * 1024) throw new Error("size");
+            const validation = await validateReportPdfImage(resolved.path, resolved.managed);
+            metadataValidationMs += validation.metadataMs;
+            pixelValidationMs += validation.pixelValidationMs;
+            if (validation.pixelValidated) {
+              pixelValidationCount++;
+              legacyImageCount++;
+            } else {
+              managedImageCount++;
+            }
+            imageCount++;
+            imageBytes += stat.size;
+            return resolved.path;
+          } catch {
+            throw new ReportPdfImageError(report.id, index);
+          }
+        }),
+      }));
+      imagePathsByReport.set(report.id, groups);
+    }
+    logger.info({
+      projectId, imageCount, imageBytes,
+      managedImageCount, legacyImageCount, pixelValidationCount,
+      pixelValidationMs: Number(pixelValidationMs.toFixed(1)),
+      metadataValidationMs: Number(metadataValidationMs.toFixed(1)),
+      preflightMs: Number((performance.now() - imagePreflightStarted).toFixed(1)),
+    }, "PDF image preflight complete");
+  } catch (error) {
+    if (error instanceof ReportPdfImageError) {
+      logger.warn({
+        projectId, reportId: error.reportId, imageIndex: error.imageIndex,
+      }, "PDF export stopped before returning an incomplete image set");
+      res.status(503).json({
+        error: "تعذّر تجهيز إحدى صور التقرير. لم يُنشأ ملف PDF؛ أعد المحاولة بعد إصلاح الصورة.",
+        code: "report_pdf_image_unavailable",
+        reportId: error.reportId,
+        imageIndex: error.imageIndex,
+      });
+      return;
+    }
+    throw error;
+  }
 
   const hasFont = fs.existsSync(AMIRI_FONT);
   const periodOnly = project.reportDisplayMode === "period_only";
@@ -689,29 +792,18 @@ function snapshotActualIsHistoricallyUnverified(
       }
 
       // Images (if any)
-      if (report.imageUrls && report.imageUrls.length > 0) {
-        const uploadsDir = path.join(process.cwd(), "uploads");
-        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-        const validImgs: string[] = [];
-        for (const imgUrl of report.imageUrls) {
-          try {
-            const resolved = await resolveImagePath(imgUrl, uploadsDir);
-            if (resolved) validImgs.push(resolved);
-          } catch { /* skip */ }
-        }
-        if (validImgs.length > 0) {
+      for (const group of imagePathsByReport.get(report.id) ?? []) {
+        if (group.paths.length > 0) {
           y = ensurePage(doc, 40);
-          y = drawSectionHeader(doc, `صور الموقع (${validImgs.length})`, y);
+          y = drawSectionHeader(doc, `${group.category} (${group.paths.length} صورة)`, y);
           const imgW = (CONTENT_W - 10) / 2;
           const imgH = imgW * 0.65;
-          validImgs.forEach((imgPath, ii) => {
+          group.paths.forEach((imgPath, ii) => {
             const col = ii % 2;
             const ix = col === 0 ? MARGIN + imgW + 10 : MARGIN;
             if (col === 0) y = ensurePage(doc, imgH + 10);
-            try {
-              doc.image(imgPath, ix, y, { fit: [imgW, imgH], align: "center" });
-            } catch { /* skip */ }
-            if (col === 1 || ii === validImgs.length - 1) y += imgH + 8;
+            doc.image(imgPath, ix, y, { fit: [imgW, imgH], align: "center" });
+            if (col === 1 || ii === group.paths.length - 1) y += imgH + 8;
           });
         }
       }

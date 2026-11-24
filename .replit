@@ -45,6 +45,9 @@ build = ["pnpm", "run", "build"]
 [userenv.shared]
 OPENAI_API_BASE = "https://api.groq.com/openai/v1"
 
+[userenv.development]
+IMAGE_AUDIT_BUCKET_ID = "replit-objstore-425422f6-cee2-461f-8331-c7f5746fd92d"
+
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
