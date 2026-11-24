@@ -261,8 +261,8 @@ export default function OwnerPortal() {
     const hasLogos = !!(ownerLogo?.logoUrl || supervisorLogo?.logoUrl);
 
     return (
-      <div className="min-h-screen flex bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/.12),transparent_34%),linear-gradient(135deg,hsl(var(--background)),hsl(var(--muted)/.28))]" dir="rtl">
-        <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 30%, #d1fae5 60%, #a7f3d0 100%)' }}>
+      <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950" dir="rtl">
+        <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden bg-emerald-50 dark:bg-emerald-950">
           <div className="absolute inset-0 opacity-[0.4]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='%2310b981' fill-opacity='0.06'%3E%3Cpath d='M0 0h40v40H0V0zm40 40h40v40H40V40zm0-40h2l-2 2V0zm0 4l4-4h2l-6 6V4zm0 4l8-8h2L40 10V8zm0 4L52 0h2L40 14v-2zm0 4L56 0h2L40 18v-2zm0 4L60 0h2L40 22v-2zm0 4L64 0h2L40 26v-2zm0 4L68 0h2L40 30v-2zm0 4L72 0h2L40 34v-2zm0 4L76 0h2L40 38v-2zm0 4L80 0v2L42 40h-2zm4 0L80 4v2L46 40h-2zm4 0L80 8v2L50 40h-2zm4 0l28-28v2L54 40h-2zm4 0l24-24v2L58 40h-2zm4 0l20-20v2L62 40h-2zm4 0l16-16v2L66 40h-2zm4 0l12-12v2L70 40h-2zm4 0l8-8v2l-6 6h-2zm4 0l4-4v2l-2 2h-2z'/%3E%3C/g%3E%3C/svg%3E")` }} />
 
           <div className="relative z-10 flex flex-col items-center justify-center w-full p-12 xl:p-16">
@@ -314,7 +314,7 @@ export default function OwnerPortal() {
         </div>
 
         <div className="surface-card w-full lg:w-[45%] rounded-none border-0 shadow-2xl shadow-primary/10 flex flex-col">
-          <div className="lg:hidden bg-gradient-to-b from-emerald-50 to-white border-b border-emerald-100/50 px-6 py-8 text-center">
+          <div className="lg:hidden bg-emerald-50 dark:bg-slate-900 border-b border-emerald-100/50 px-6 py-8 text-center">
             {hasLogos && (
               <div className="flex items-center justify-center gap-6 mb-5">
                 {[ownerLogo, supervisorLogo].map((logo, i) => {
@@ -642,8 +642,8 @@ export default function OwnerPortal() {
   const apiBase = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   return (
-    <div className="min-h-screen bg-gradient-to-bl from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" dir="rtl">
-      <div className="bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950" dir="rtl">
+      <div className="bg-slate-900 text-white">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-6">
           {companyLogos && (companyLogos.owner?.logoUrl || companyLogos.contractor?.logoUrl || companyLogos.supervisor?.logoUrl) && (
             <div className="flex items-center justify-center gap-8 mb-6 pb-5 border-b border-white/10">
@@ -698,7 +698,7 @@ export default function OwnerPortal() {
       <div className="max-w-7xl mx-auto px-4 md:px-8 -mt-4">
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-6">
           <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm relative overflow-hidden">
-            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-l from-emerald-400 to-emerald-600" />
+            <div className="absolute top-0 inset-x-0 h-1 bg-emerald-500" />
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <Gauge className="h-4 w-4" />
@@ -720,7 +720,7 @@ export default function OwnerPortal() {
           </Card>
 
           <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm relative overflow-hidden">
-            <div className={`absolute top-0 inset-x-0 h-1 ${delayDays != null && delayDays > 0 ? 'bg-gradient-to-l from-red-400 to-red-600' : 'bg-gradient-to-l from-blue-400 to-blue-600'}`} />
+            <div className={`absolute top-0 inset-x-0 h-1 ${delayDays != null && delayDays > 0 ? 'bg-red-500' : 'bg-blue-500'}`} />
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <Timer className="h-4 w-4" />
@@ -753,7 +753,7 @@ export default function OwnerPortal() {
           </Card>
 
           <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm relative overflow-hidden">
-            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-l from-violet-400 to-violet-600" />
+            <div className="absolute top-0 inset-x-0 h-1 bg-violet-500" />
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <ActivityIcon className="h-4 w-4" />
@@ -768,7 +768,7 @@ export default function OwnerPortal() {
           </Card>
 
           <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm relative overflow-hidden">
-            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-l from-amber-400 to-amber-600" />
+            <div className="absolute top-0 inset-x-0 h-1 bg-amber-500" />
             <CardContent className="pt-5 pb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <FileText className="h-4 w-4" />
@@ -1701,7 +1701,7 @@ export default function OwnerPortal() {
                                           title={`الفعلي: ${startLabel} → ${endLabel} (${a.actualProgress}%)`}
                                         >
                                           {ongoing && (
-                                            <div className="absolute inset-y-0 start-0 w-2 bg-gradient-to-r from-white/60 to-transparent rounded-s-sm" />
+                                            <div className="absolute inset-y-0 start-0 w-2 bg-white/40 rounded-s-sm" />
                                           )}
                                         </div>
                                       );
